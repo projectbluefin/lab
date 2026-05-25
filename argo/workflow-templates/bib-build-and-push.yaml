@@ -17,7 +17,6 @@ spec:
             value: "ghcr.io/ublue-os/bluefin:latest"
           - name: image-tag
             value: "latest"
-          - name: ssh-pubkey
       steps:
         - - name: check
             template: bib-disk-check
@@ -51,8 +50,6 @@ spec:
               parameters:
                 - name: image-tag
                   value: "{{inputs.parameters.image-tag}}"
-                - name: ssh-pubkey
-                  value: "{{inputs.parameters.ssh-pubkey}}"
 
     # Check if golden disk already exists on hostPath
     - name: bib-disk-check
@@ -155,11 +152,12 @@ spec:
 
     # Configure golden disk: enable sshd, inject key, disable SELinux via BLS
     # Then move to golden hostPath. No zot push, no buildah, no OCI wrap.
+    # Pubkey is read from the bluefin-test-ssh-key secret via secretKeyRef —
+    # no kubectl needed inside the pod, no parameter needed from callers.
     - name: bib-disk-configure
       inputs:
         parameters:
           - name: image-tag
-          - name: ssh-pubkey
       nodeSelector:
         kubernetes.io/hostname: ghost
       volumes:
@@ -178,6 +176,12 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
+        env:
+          - name: SSH_PUBKEY
+            valueFrom:
+              secretKeyRef:
+                name: bluefin-test-ssh-key
+                key: id_ed25519.pub
         volumeMounts:
           - name: dev
             mountPath: /dev
@@ -191,11 +195,9 @@ spec:
             set -euo pipefail
             TAG="{{inputs.parameters.image-tag}}"
             DISK="/var/tmp/bib-output/${TAG}/image/disk.raw"
-            # Get correct pubkey from cluster secret (ignore any hardcoded parameter)
-            PUBKEY=$(kubectl get secret bluefin-test-ssh-key -n argo \
-              -o jsonpath='{.data.id_ed25519\.pub}' | base64 -d)
+            PUBKEY="${SSH_PUBKEY}"
             if [[ -z "${PUBKEY}" ]]; then
-              echo "ERROR: could not read bluefin-test-ssh-key secret from argo namespace" >&2
+              echo "ERROR: SSH_PUBKEY from bluefin-test-ssh-key secret is empty" >&2
               exit 1
             fi
             echo "Using pubkey: ${PUBKEY}"

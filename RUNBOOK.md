@@ -2,6 +2,32 @@
 
 > For future agents and human operators. Last updated: 2026-05-25.
 
+## GitOps Policy — Read Before Doing Anything
+
+**No SSH to nodes.** Never SSH to ghost (192.168.1.102) or exo-1 (192.168.1.239).
+All node-level operations run as privileged Argo Workflow pods. If you think you need SSH,
+you need a WorkflowTemplate instead.
+
+**No `kubectl apply` for WorkflowTemplates.** Edit the YAML in `argo/workflow-templates/`,
+push to `main`, and ArgoCD auto-syncs within ~3 minutes. To force immediate sync:
+```bash
+just argocd-sync
+```
+
+**MCP tool usage for agents:**
+| Operation | Use |
+|---|---|
+| Submit a workflow | Argo MCP `submit_workflow` or `just <target>` |
+| Watch workflow status | Argo MCP `get_workflow` / `list_workflows` |
+| Get workflow logs | Argo MCP `get_workflow_logs` |
+| Update a WorkflowTemplate | Edit YAML → git push → ArgoCD syncs |
+| Read cluster state | kubectl MCP or `just list-vms` / `just list-workflows` |
+| Patch a golden disk | `just patch-disk [tag]` (submits `patch-golden-disk` workflow) |
+
+**Never use `argo-mcp-create_workflow_template` for template updates** — ArgoCD owns
+that reconciliation loop. MCP template creation bypasses git history and will be
+overwritten on the next ArgoCD sync.
+
 ## Cluster Topology
 
 | Host | Role | IP | Specs |
@@ -33,48 +59,34 @@ Golden disks live on ghost at `/var/tmp/bluefin-golden/<variant>/disk.raw`.
 
 ### Building a Golden Disk (BIB)
 
-Submit the `bib-build-and-push` WorkflowTemplate via Argo:
 ```bash
-argo submit --from workflowtemplate/bib-build-and-push \
-  -p image-tag=latest \
-  -n argo
+just ensure-disk          # latest
+just ensure-disk lts      # lts
 ```
 
-### Patching a Golden Disk (SSH key fix procedure)
+`bib-disk-configure` reads the SSH pubkey from the `bluefin-test-ssh-key` secret automatically
+via `secretKeyRef` — no pubkey parameter needed, no SSH to node required.
 
-Run on ghost as root. Required after any BIB rebuild:
+### Patching an Existing Golden Disk
+
+Use when SSH auth fails on a disk that was built before 2026-05-25, or after secret rotation:
 
 ```bash
-sudo bash << 'PATCH'
-PUBKEY=$(kubectl get secret bluefin-test-ssh-key -n argo \
-  -o jsonpath="{.data.id_ed25519}" | base64 -d | ssh-keygen -y -f /dev/stdin)
-DISK="/var/tmp/bluefin-golden/latest/disk.raw"
-
-losetup -D; sleep 1
-LOOP=$(losetup --find --partscan --show "$DISK"); sleep 1
-mkdir -p /mnt/bfpatch
-mount "${LOOP}p4" /mnt/bfpatch
-DEPLOY=$(ls /mnt/bfpatch/ostree/deploy/default/deploy/ | head -1)
-VAR="/mnt/bfpatch/ostree/deploy/default/var"
-ROOT="/mnt/bfpatch/ostree/deploy/default/deploy/${DEPLOY}"
-
-chmod 755 "${VAR}/home/bluefin-test"
-mkdir -p "${VAR}/home/bluefin-test/.ssh"
-echo "$PUBKEY" > "${VAR}/home/bluefin-test/.ssh/authorized_keys"
-chmod 750 "${VAR}/home/bluefin-test"
-chmod 700 "${VAR}/home/bluefin-test/.ssh"
-chmod 600 "${VAR}/home/bluefin-test/.ssh/authorized_keys"
-chown -R 1001:1001 "${VAR}/home/bluefin-test"
-
-printf 'PermitRootLogin yes\nPasswordAuthentication no\nStrictModes no\n' \
-  > "${ROOT}/etc/ssh/sshd_config.d/99-bluefin-test.conf"
-chmod 600 "${ROOT}/etc/ssh/sshd_config.d/99-bluefin-test.conf"
-sync
-umount /mnt/bfpatch; losetup -d "$LOOP"
-PATCH
+just patch-disk           # latest
+just patch-disk lts       # lts
 ```
 
-**Critical:** always derive pubkey from the secret (`ssh-keygen -y -f`). Never hardcode it.
+This submits the `patch-golden-disk` WorkflowTemplate which runs as a privileged pod on ghost.
+**Do not SSH to ghost to run the patch manually.** The workflow does the same operations.
+
+### After Secret Rotation
+
+If `bluefin-test-ssh-key` is regenerated, all existing golden disks have the old pubkey.
+Run `just patch-disk` for each variant, then verify SSH:
+```bash
+just patch-disk latest
+just patch-disk lts
+```
 
 ## SSH Key
 
@@ -83,16 +95,22 @@ Stored in k8s secret `bluefin-test-ssh-key` in `argo` namespace.
 ```bash
 # Get fingerprint (to verify)
 kubectl get secret bluefin-test-ssh-key -n argo \
-  -o jsonpath="{.data.id_ed25519}" | base64 -d | ssh-keygen -lf /dev/stdin
+  -o jsonpath="{.data.id_ed25519\.pub}" | base64 -d | ssh-keygen -lf -
 
 # Current fingerprint (2026-05-25): SHA256:4iazqYR3lM2tOuniG4MOSERDz0+qaq12qoM/WqP5qLw
 ```
 
-**Key mismatch bug:** `bib-disk-configure` in the BIB workflow may silently write the wrong key
-or write it to a path that is not the runtime path. Always verify with the patch procedure above
-after every disk rebuild.
+## bib-disk-configure — Fixed Bugs (2026-05-25)
 
-## Known Bugs in bib-disk-configure
+All four SSH auth bugs were fixed. Golden disks built after 2026-05-25 do not need manual patching.
+
+| Bug | Fix |
+|---|---|
+| Home dir 777 — sshd StrictModes rejects it | `chmod 750` added after chown |
+| sshd_config.d drop-in 666 — sshd rejects it | `chmod 600` added after write |
+| authorized_keys write not verified | `test -s` check; exits 1 on empty file |
+| Disk not flushed before umount | `sync` added before umount |
+| pubkey read via kubectl (not in image) | Replaced with `secretKeyRef` env var |
 
 1. **Home directory permissions 777**: `mkdir -p` inside container creates home dir with 0777.
    sshd `StrictModes yes` refuses `authorized_keys` from world-writable home dirs.
@@ -129,14 +147,22 @@ At runtime:
 | Template | Namespace | Purpose |
 |---|---|---|
 | `bib-build-and-push` | argo | Build golden disk with BIB |
+| `patch-golden-disk` | argo | Patch SSH auth on existing disk (no SSH to node) |
 | `provision-bluefin-vm` | argo | Reflink + hostDisk + KubeVirt VM |
 | `provision-flatcar-vm` | argo | Prepare Flatcar disk + KubeVirt VM |
 | `run-gnome-tests` | argo | SSH into VM, run behave suite via qecore-headless |
 
 ### Updating a WorkflowTemplate
 
-Use the Argo MCP tool `argo-mcp-create_workflow_template`. Do NOT use
-`kubernetes-mcp-resources_create_or_update` (missing `resource` arg — broken).
+Edit `argo/workflow-templates/<name>.yaml`, commit, push to `main`.
+ArgoCD (`argocd/application.yaml`) auto-syncs. To check sync state:
+```bash
+just argocd-status
+just argocd-sync   # force immediate sync
+```
+
+**Do NOT** use `argo-mcp-create_workflow_template` or `kubectl apply -f` for template updates.
+These bypass git and will be overwritten by ArgoCD.
 
 ### Argo `outputs.result` stdout pollution
 

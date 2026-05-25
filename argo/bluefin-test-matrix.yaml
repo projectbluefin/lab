@@ -35,10 +35,6 @@ spec:
         value: "ghcr.io/ublue-os/bluefin:latest"
       - name: image-lts
         value: "ghcr.io/ublue-os/bluefin:lts"
-      - name: ssh-pubkey
-        # Deprecated — bib-disk-configure now reads key directly from the bluefin-test-ssh-key secret.
-        # This parameter is kept for backward compatibility but is no longer used.
-        value: ""
       - name: pr-title
         value: ""
       - name: pr-number
@@ -58,8 +54,6 @@ spec:
                   value: "{{workflow.parameters.image-latest}}"
                 - name: image-tag
                   value: "latest"
-                - name: ssh-pubkey
-                  value: "{{workflow.parameters.ssh-pubkey}}"
 
         # Phase 0b: ensure lts golden disk (after latest to avoid containers-storage race)
         - - name: ensure-disk-lts
@@ -72,8 +66,6 @@ spec:
                   value: "{{workflow.parameters.image-lts}}"
                 - name: image-tag
                   value: "lts"
-                - name: ssh-pubkey
-                  value: "{{workflow.parameters.ssh-pubkey}}"
 
         # Phase 1: provision both VMs in parallel (btrfs reflink ~24ms each)
         - - name: bluefin-latest

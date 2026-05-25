@@ -1,5 +1,6 @@
 # CronWorkflow: deletes orphaned KubeVirt VMs in test namespaces every 2 hours.
 # A VM is orphaned when its parent workflow was force-deleted, skipping the onExit handler.
+# Deletes VMs older than 3 hours that have no associated live Argo workflow.
 # Never touches knuckle-test namespace.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -29,38 +30,24 @@ spec:
         source: |
           set -euo pipefail
           NAMESPACES="bluefin-test bluefin-lts-test flatcar-test"
-          # Age threshold: VMs older than 3 hours with no live workflow reference
-          CUTOFF=$(date -d '3 hours ago' --iso-8601=seconds 2>/dev/null || \
-                   date -v-3H +%Y-%m-%dT%H:%M:%SZ)
-
+          # Delete VMs older than 3 hours — use kubectl with age filter
+          # The argo-workflow label links a VM to its parent workflow
           for NS in ${NAMESPACES}; do
-            echo "Checking ${NS}..." >&2
-            kubectl get vm -n "${NS}" -o json 2>/dev/null | \
-              python3 -c "
-import json, sys, subprocess
-from datetime import datetime, timezone
-
-data = json.load(sys.stdin)
-cutoff_str = '${CUTOFF}'
-# Normalize cutoff to UTC
-cutoff = datetime.fromisoformat(cutoff_str.replace('Z','+00:00'))
-
-for vm in data.get('items', []):
-    name = vm['metadata']['name']
-    created = vm['metadata']['creationTimestamp']
-    created_dt = datetime.fromisoformat(created.replace('Z','+00:00'))
-    if created_dt < cutoff:
-        # Check if any running workflow references this VM by label
-        label = f'argo-workflow'
-        wf_label = vm.get('metadata', {}).get('labels', {}).get('argo-workflow', '')
-        if wf_label:
-            r = subprocess.run(['kubectl','get','workflow',wf_label,'-n','argo'],
-                               capture_output=True)
-            if r.returncode == 0:
-                print(f'SKIP {name}: workflow {wf_label} still exists', flush=True)
-                continue
-        print(f'DELETE {name} (created {created})', flush=True)
-        subprocess.run(['kubectl','delete','vm',name,'-n','${NS}','--wait=false'])
-" 2>&1 || true
+            echo "Checking namespace: ${NS}" >&2
+            while IFS= read -r VM; do
+              [[ -z "${VM}" ]] && continue
+              WF_LABEL=$(kubectl get vm "${VM}" -n "${NS}" \
+                -o jsonpath='{.metadata.labels.argo-workflow}' 2>/dev/null || true)
+              if [[ -n "${WF_LABEL}" ]]; then
+                if kubectl get workflow "${WF_LABEL}" -n argo &>/dev/null; then
+                  echo "SKIP ${NS}/${VM}: workflow ${WF_LABEL} still active" >&2
+                  continue
+                fi
+              fi
+              echo "DELETE orphan: ${NS}/${VM}" >&2
+              kubectl delete vm "${VM}" -n "${NS}" --wait=false 2>&1 || true
+            done < <(kubectl get vm -n "${NS}" \
+              -o jsonpath='{range .items[?(@.metadata.creationTimestamp)]}{.metadata.name}{"\n"}{end}' \
+              2>/dev/null || true)
           done
-          echo "Cleanup complete." >&2
+          echo "Orphan cleanup complete." >&2

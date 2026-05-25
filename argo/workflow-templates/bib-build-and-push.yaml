@@ -238,13 +238,21 @@ spec:
             # SSH key
             mkdir -p "${VAR}/home/bluefin-test/.ssh"
             printf '%s\n' "${PUBKEY}" > "${VAR}/home/bluefin-test/.ssh/authorized_keys"
+            # authorized_keys must be non-empty or SSH auth silently fails
+            test -s "${VAR}/home/bluefin-test/.ssh/authorized_keys" || {
+              echo "ERROR: authorized_keys empty or not written" >&2; exit 1
+            }
             chown -R "${BFT_UID}:${BFT_UID}" "${VAR}/home/bluefin-test"
+            # 750 on home dir: sshd StrictModes rejects world- or group-writable home
+            chmod 750 "${VAR}/home/bluefin-test"
             chmod 700 "${VAR}/home/bluefin-test/.ssh"
             chmod 600 "${VAR}/home/bluefin-test/.ssh/authorized_keys"
 
             # Allow SSH sessions to see AT-SPI env vars (required for Dogtail)
             mkdir -p "${ROOT}/etc/ssh/sshd_config.d/"
             printf 'PermitUserEnvironment yes\n' > "${ROOT}/etc/ssh/sshd_config.d/99-bluefin-test.conf"
+            # sshd on Fedora rejects world-writable config drop-ins
+            chmod 600 "${ROOT}/etc/ssh/sshd_config.d/99-bluefin-test.conf"
 
             # Sudoers
             echo 'bluefin-test ALL=(ALL) NOPASSWD:ALL' > "${ROOT}/etc/sudoers.d/bluefin-test"
@@ -257,6 +265,7 @@ spec:
               echo "Patched: $(grep '^options ' ${conf} | head -1)"
             done
 
+            sync
             umount /mnt/btboot
             umount /mnt/btroot
             losetup -d "${LOOP}"

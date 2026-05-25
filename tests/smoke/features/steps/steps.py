@@ -188,22 +188,139 @@ def last_command_output_stripped_is(context, expected) -> None:
     )
 
 
+# ── Shell.Eval helpers (GNOME 50: uinput Super + AT-SPI toggle click broken) ──
+
+def _shell_eval(js: str) -> str:
+    """Run JS in GNOME Shell and return stdout. Requires unsafe_mode=true."""
+    import subprocess
+    r = subprocess.run(
+        ['gdbus', 'call', '--session',
+         '--dest', 'org.gnome.Shell',
+         '--object-path', '/org/gnome/Shell',
+         '--method', 'org.gnome.Shell.Eval',
+         js],
+        capture_output=True, text=True, timeout=5,
+    )
+    print(f"Shell.Eval({js!r}) → {r.stdout.strip()}", flush=True)
+    return r.stdout
+
+
+def _shell_eval_inner(js: str) -> str:
+    """Return the inner JS-result string from Shell.Eval's (bs) GVariant tuple.
+
+    gdbus output format: ``(true, 'value')`` — the outer bool is the DBus
+    call-success flag, NOT the JS result.  ``'true' in out.lower()`` is a
+    false-positive trap because the wrapper always contains 'true'.
+    This helper extracts only the inner quoted value.
+    """
+    import re
+    out = _shell_eval(js)
+    m = re.search(r"\((?:true|false),\s*'(.*)'\)", out.strip())
+    return m.group(1) if m else ""
+
+
+@step('Open Activities overview via Shell.Eval')
+def open_overview_eval(context) -> None:
+    _shell_eval('Main.overview.show()')
+    sleep(1)
+
+
+@step('Close Activities overview via Shell.Eval')
+def close_overview_eval(context) -> None:
+    _shell_eval('Main.overview.hide()')
+    sleep(0.5)
+
+
+@step('Open Quick Settings via Shell.Eval')
+def open_quick_settings_eval(context) -> None:
+    # menu.toggle() is stable across GNOME 49/50
+    _shell_eval('Main.panel.statusArea.quickSettings.menu.toggle()')
+    sleep(0.5)
+
+
+@step('Quick Settings panel is open via Shell.Eval')
+def quick_settings_open_eval(context) -> None:
+    inner = _shell_eval_inner('Main.panel.statusArea.quickSettings.menu.isOpen.toString()')
+    assert inner == 'true', f"Quick Settings not open — Shell.Eval inner: {inner!r}"
+
+
+@step('Quick Settings panel is closed via Shell.Eval')
+def quick_settings_closed_eval(context) -> None:
+    for _ in range(8):
+        inner = _shell_eval_inner('Main.panel.statusArea.quickSettings.menu.isOpen.toString()')
+        if inner == 'false':
+            return
+        sleep(0.5)
+    raise AssertionError(f"Quick Settings still open after 4s — Shell.Eval inner: {inner!r}")
+
+
+@step('Open date menu via Shell.Eval')
+def open_date_menu_eval(context) -> None:
+    # menu.toggle() is stable across GNOME 49/50; _toggleMenu() is GNOME 50+ only
+    _shell_eval('Main.panel.statusArea.dateMenu.menu.toggle()')
+    sleep(0.5)
+
+
+@step('Close Quick Settings via Shell.Eval')
+def close_quick_settings_eval(context) -> None:
+    # close(0) = BoxPointer.PopupAnimation.NONE — explicit close, not toggle
+    _shell_eval('Main.panel.statusArea.quickSettings.menu.close(0)')
+    sleep(0.5)
+
+
+@step('Close date menu via Shell.Eval')
+def close_date_menu_eval(context) -> None:
+    _shell_eval('Main.panel.statusArea.dateMenu.menu.close(0)')
+    sleep(0.5)
+
+
+@step('Date menu panel is open via Shell.Eval')
+def date_menu_open_eval(context) -> None:
+    inner = _shell_eval_inner('Main.panel.statusArea.dateMenu.menu.isOpen.toString()')
+    assert inner == 'true', f"Date menu not open — Shell.Eval inner: {inner!r}"
+
+
+@step('Date menu panel is closed via Shell.Eval')
+def date_menu_closed_eval(context) -> None:
+    for _ in range(8):
+        inner = _shell_eval_inner('Main.panel.statusArea.dateMenu.menu.isOpen.toString()')
+        if inner == 'false':
+            return
+        sleep(0.5)
+    raise AssertionError(f"Date menu still open after 4s — Shell.Eval inner: {inner!r}")
+
+
+@step('Set overview search text to "{text}" via Shell.Eval')
+def set_overview_search_eval(context, text) -> None:
+    """Populate overview search bar via GNOME Shell JS.
+    uinput typing is broken on these VMs — use Shell.Eval instead.
+    """
+    js = f'Main.overview.searchEntry.set_text("{text}"); Main.overview._onSearchChanged();'
+    _shell_eval(js)
+    sleep(0.5)
+
+
 @step("Overview is open")
 def overview_is_open(context) -> None:
-    # AT-SPI: gnome-shell exposes an "overview" named child when open
     shell = tree.root.application("gnome-shell")
-    # dogtail 4.16 dropped requireResult kwarg
-    results = shell.findChildren(lambda n: n.name == "overview" and n.showing)
-    assert results, "Activities overview did not open"
+    for _ in range(8):
+        # GNOME 49/50: name may be 'Overview' or 'overview' — match case-insensitively
+        results = shell.findChildren(lambda n: n.name.lower() == "overview" and n.showing)
+        if results:
+            return
+        sleep(0.5)
+    raise AssertionError("Activities overview did not open after 4s")
 
 
 @step("Overview is closed")
 def overview_is_closed(context) -> None:
     shell = tree.root.application("gnome-shell")
-    results = shell.findChildren(
-        lambda n: n.name == "overview" and n.showing,
-    )
-    assert len(results) == 0, "Activities overview is still showing"
+    for _ in range(8):
+        results = shell.findChildren(lambda n: n.name.lower() == "overview" and n.showing)
+        if not results:
+            return
+        sleep(0.5)
+    raise AssertionError("Activities overview is still showing after 4s")
 
 
 @step('Overview search bar contains "{text}"')

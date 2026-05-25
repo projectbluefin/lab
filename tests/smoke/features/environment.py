@@ -20,33 +20,58 @@ from qecore.common_steps import *  # noqa: F401,F403 — registers all common @s
 def before_all(context) -> None:
     import time
     import subprocess
-    # Give GNOME Shell a moment to settle after qecore-headless restarts GDM.
-    # Without this, get_application() races against AT-SPI bus initialization.
-    time.sleep(8)
-    # Enable GNOME Shell unsafe_mode so the clock and system-status area are
-    # exposed in the AT-SPI tree. Must run AFTER qecore-headless starts the session.
-    # toolkit-accessibility is already true on Bluefin — this exposes shell internals.
-    try:
-        subprocess.run(
-            [
-                'gdbus', 'call', '--session',
-                '--dest', 'org.gnome.Shell',
-                '--object-path', '/org/gnome/Shell',
-                '--method', 'org.gnome.Shell.Eval',
-                'global.context.unsafe_mode = true',
-            ],
-            capture_output=True, timeout=5,
-        )
-        print("unsafe_mode enabled", flush=True)
-    except Exception as e:  # noqa: BLE001
-        print(f"unsafe_mode skipped: {e}", flush=True)
+
+    # Give GDM/GNOME Shell time to start the session
+    time.sleep(5)
+
+    # Enable unsafe_mode to expose clock and system-status in AT-SPI tree
+    for attempt in range(3):
+        try:
+            r = subprocess.run(
+                ['gdbus', 'call', '--session',
+                 '--dest', 'org.gnome.Shell',
+                 '--object-path', '/org/gnome/Shell',
+                 '--method', 'org.gnome.Shell.Eval',
+                 'global.context.unsafe_mode = true'],
+                capture_output=True, timeout=5,
+            )
+            if r.returncode == 0:
+                print(f"unsafe_mode set (attempt {attempt+1})", flush=True)
+                break
+            print(f"unsafe_mode attempt {attempt+1} failed (exit {r.returncode}): {r.stderr.decode()[:200]}", flush=True)
+            time.sleep(2)
+        except Exception as e:  # noqa: BLE001
+            print(f"unsafe_mode attempt {attempt+1} failed: {e}", flush=True)
+            time.sleep(2)
+
+    # Poll until clock + system toggles appear in AT-SPI (up to 15s)
+    from dogtail import tree as dtree
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        try:
+            shell = dtree.root.application('gnome-shell')
+            panels = shell.findChildren(lambda n: n.roleName == 'panel')
+            if panels:
+                toggles = panels[0].findChildren(
+                    lambda n: n.roleName == 'toggle button' and n.showing)
+                toggle_names = [t.name for t in toggles]
+                print(f"Panel toggles: {toggle_names}", flush=True)
+                # Need more than just Activities + Show Apps
+                non_activities = [t for t in toggles if t.name != 'Activities']
+                if len(non_activities) >= 1:
+                    print("Clock/System toggles visible — proceeding", flush=True)
+                    break
+        except Exception as e:  # noqa: BLE001
+            print(f"AT-SPI poll: {e}", flush=True)
+        time.sleep(1)
+    else:
+        print("WARNING: clock/system toggles not found after 15s — proceeding anyway", flush=True)
+
+    # Initialize sandbox
     try:
         context.sandbox = TestSandbox("gnome-shell", context=context)
-        context.sandbox.attach_faf = False          # no ABRT integration in lab
-        context.sandbox.production = False          # disable screencast/journal embeds locally
-
-        # gnome-shell is always running — use context.sandbox.shell (qecore built-in)
-        # rather than get_application() which just re-wraps the same object.
+        context.sandbox.attach_faf = False
+        context.sandbox.production = False
         context.shell = context.sandbox.shell
     except Exception as error:
         print(f"Environment error: before_all: {error}", flush=True)

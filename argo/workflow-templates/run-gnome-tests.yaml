@@ -63,6 +63,27 @@ spec:
           - name: runner-log
             path: /tmp/results/runner.log
             optional: true
+      initContainers:
+        - name: git-sync
+          image: quay.io/fedora/fedora:latest
+          command: [bash, -c]
+          args:
+            - |
+              for attempt in 1 2 3; do
+                dnf install -y --quiet git 2>&1 | tail -2
+                if git clone --depth 1 --branch main \
+                    https://github.com/castrojo/bluefin-test-suite \
+                    /workspace/bluefin-test-suite 2>&1; then
+                  echo "Synced bluefin-test-suite (attempt ${attempt})"
+                  exit 0
+                fi
+                echo "Attempt ${attempt} failed, retrying in 15s..."
+                sleep 15
+              done
+              exit 1
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
       container:
         # Fedora: has dnf, python3, pip3 — matches Bluefin (Fedora-based) package names
         image: quay.io/fedora/fedora:latest
@@ -84,8 +105,8 @@ spec:
           - name: ssh-key
             mountPath: /etc/ssh/test-key
             readOnly: true
-          - name: tests
-            mountPath: /tests
+          - name: workspace
+            mountPath: /workspace
             readOnly: true
         command: [bash, -c]
         args:
@@ -138,7 +159,7 @@ spec:
             # ── Copy test suite to VM ────────────────────────────────────────
             echo "Copying tests/${SUITE}/ to VM..." >&2
             ${SSH} "mkdir -p /tmp/bluefin-tests /tmp/results"
-            ${SCP} /tests/${SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
+            ${SCP} /workspace/bluefin-test-suite/tests/${SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
 
             # ── Run tests via qecore-headless ────────────────────────────────
             # qecore-headless takes the full behave invocation as a single string.
@@ -189,9 +210,5 @@ spec:
           secret:
             secretName: "{{inputs.parameters.ssh-key-secret}}"
             defaultMode: 0400
-        - name: tests
-          hostPath:
-            # /var/tmp is accessible by the kubelet; sync from src with:
-            #   cp -r ~/src/bluefin-test-suite/tests /var/tmp/bluefin-tests
-            path: /var/tmp/bluefin-tests
-            type: Directory
+        - name: workspace
+          emptyDir: {}

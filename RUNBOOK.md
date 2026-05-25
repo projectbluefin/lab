@@ -131,7 +131,7 @@ At runtime:
 | `bib-build-and-push` | argo | Build golden disk with BIB |
 | `provision-bluefin-vm` | argo | Reflink + hostDisk + KubeVirt VM |
 | `provision-flatcar-vm` | argo | Prepare Flatcar disk + KubeVirt VM |
-| `run-tmt-tests` | argo | SSH into VM, run tmt plan |
+| `run-gnome-tests` | argo | SSH into VM, run behave suite via qecore-headless |
 
 ### Updating a WorkflowTemplate
 
@@ -166,7 +166,7 @@ this is the correct AT-SPI app name for Ptyxis on Bluefin.
 ## Dogtail / Wayland Setup
 
 `gnome-ponytail-daemon` is required for AT-SPI coordinate injection on Wayland.
-The `plan.fmf` `enable-ponytail` step starts it via `systemctl --user`.
+The `run-gnome-tests` runner starts it via `qecore-headless` before handing off to behave.
 
 **unsafe_mode is required** for GNOME Shell 50+ AT-SPI access to top-bar elements.
 Add this to `environment.py` `before_all` as `subprocess.run()` AFTER qecore-headless starts:
@@ -367,5 +367,5 @@ reject `kubectl exec`. Use probe pod + SSH to titan instead.
 | Workflow times out at SSH wait | sshd_config.d has 666 permissions | chmod 600 in configure script |
 | `qemu-img: command not found` | Wrong container image for Flatcar prep | Use `quay.io/fedora/fedora:latest` |
 | VM stuck Terminating | KubeVirt controller race | `kubectl delete pod virt-launcher-... -n ns --force` |
-| tmt-run pod Error immediately | `volumes:` inside `container:` block | Move `volumes:` to template level |
+| run-gnome-tests pod Error immediately | `volumes:` inside `container:` block | Move `volumes:` to template level |
 

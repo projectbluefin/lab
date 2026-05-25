@@ -1,0 +1,103 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: bluefin-qa-smoke-
+  namespace: argo
+spec:
+  entrypoint: bluefin-test-pipeline
+  serviceAccountName: argo
+  podMetadata:
+    labels:
+      app.kubernetes.io/part-of: bluefin-test-suite
+      bluefin.io/suite: smoke
+      bluefin.io/image-tag: "{{workflow.parameters.image-tag}}"
+      bluefin.io/variant: bluefin
+    annotations:
+      bluefin.io/image-tag: "{{workflow.parameters.image-tag}}"
+      bluefin.io/variant: "bluefin"
+      bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
+      bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
+      bluefin.io/workflow: "{{workflow.name}}"
+  workflowMetadata:
+    labels:
+      app.kubernetes.io/part-of: bluefin-test-suite
+      bluefin.io/suite: smoke
+      bluefin.io/image-tag: "{{workflow.parameters.image-tag}}"
+      bluefin.io/variant: bluefin
+    annotations:
+      bluefin.io/image-tag: "{{workflow.parameters.image-tag}}"
+      bluefin.io/variant: "bluefin"
+      bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
+      bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
+  onExit: cleanup
+
+  arguments:
+    parameters:
+      - name: image
+        value: "ghcr.io/ublue-os/bluefin:latest"
+      - name: image-tag
+        value: "latest"
+      - name: pr-title
+        value: ""
+      - name: pr-number
+        value: ""
+
+  templates:
+    - name: bluefin-test-pipeline
+      dag:
+        tasks:
+          # Ensure golden disk exists (~2min cold BIB, instant warm check)
+          - name: ensure-disk
+            templateRef:
+              name: bib-build-and-push
+              template: ensure-disk
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{workflow.parameters.image}}"
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+
+          # btrfs reflink clone (~24ms) + VM boot
+          - name: provision
+            dependencies: [ensure-disk]
+            templateRef:
+              name: provision-bluefin-vm
+              template: provision-vm
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+                - name: vm-name
+                  value: "bluefin-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "bluefin-test"
+
+          # behave + qecore GNOME smoke tests
+          - name: run-tests
+            dependencies: [provision]
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+                - name: suite
+                  value: "smoke"
+                - name: variant
+                  value: "{{workflow.parameters.image-tag}}"
+
+    # onExit: delete VM + hostDisk regardless of outcome
+    - name: cleanup
+      steps:
+        - - name: delete-vm
+            templateRef:
+              name: teardown-bluefin-vm
+              template: teardown-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "bluefin-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "bluefin-test"

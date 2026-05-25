@@ -1,0 +1,63 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: flatcar-smoke-
+  namespace: argo
+spec:
+  entrypoint: flatcar-test-pipeline
+  serviceAccountName: argo
+  onExit: cleanup
+  ttlStrategy:
+    secondsAfterCompletion: 3600
+    secondsAfterFailure: 7200
+
+  arguments:
+    parameters:
+      - name: ssh-pubkey
+        value: ""
+
+  templates:
+    - name: flatcar-test-pipeline
+      dag:
+        tasks:
+          - name: provision
+            templateRef:
+              name: provision-flatcar-vm
+              template: provision-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "flatcar-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "flatcar-test"
+                - name: ssh-pubkey
+                  value: "{{workflow.parameters.ssh-pubkey}}"
+
+          - name: run-tests
+            dependencies: [provision]
+            templateRef:
+              name: run-flatcar-tests
+              template: run-flatcar-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+                - name: variant
+                  value: "flatcar"
+                - name: ssh-user
+                  value: "core"
+                - name: ssh-key-secret
+                  value: "bluefin-test-ssh-key"
+
+    - name: cleanup
+      steps:
+        - - name: teardown
+            templateRef:
+              name: teardown-flatcar-vm
+              template: teardown-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "flatcar-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "flatcar-test"

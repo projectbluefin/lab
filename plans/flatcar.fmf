@@ -1,0 +1,48 @@
+/flatcar:
+    summary: Flatcar OS End-to-End Tests
+    description: |
+        Validates Flatcar Container Linux OS on a KubeVirt hostDisk VM.
+        Tests: systemd health, container runtime, networking, knuckle installer.
+
+    discover:
+        how: fmf
+        test: /tests/flatcar
+
+    provision:
+        how: connect
+        guest: 10.0.0.1
+        user: core
+        key: /key
+        ssh-option:
+            - StrictHostKeyChecking=no
+            - UserKnownHostsFile=/dev/null
+
+    prepare:
+        - how: shell
+          name: wait-for-flatcar
+          script: |
+              set -e
+              echo "Waiting for Flatcar systemd..."
+              timeout 60 bash -c 'until systemctl is-system-running 2>/dev/null | grep -qE "running|degraded"; do sleep 3; done'
+
+        - how: shell
+          name: install-test-deps
+          script: |
+              set -e
+              # On Flatcar, /usr is read-only. Install to /opt or use toolbox.
+              # pytest must run from the tmt runner pod, not inside the VM.
+              # tmt's 'execute: how: tmt' runs pytest locally on provision target.
+              # Install pip + pytest in a writable location.
+              export PATH="${PATH}:/opt/bin"
+              if ! command -v pip3 &>/dev/null; then
+                  # Use system Python in /usr/bin (read-only but executable)
+                  python3 -m ensurepip --upgrade 2>/dev/null || true
+              fi
+              pip3 install --quiet pytest 2>/dev/null || true
+
+    execute:
+        how: tmt
+
+    report:
+        how: junit
+        file: /tmp/results/junit-flatcar.xml

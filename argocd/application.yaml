@@ -1,0 +1,25 @@
+# Argo CD Application — keeps WorkflowTemplates in sync from git
+# Apply once: kubectl apply -f argocd/application.yaml -n argocd
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bluefin-test-suite
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/castrojo/bluefin-test-suite
+    targetRevision: main
+    path: argo/workflow-templates
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

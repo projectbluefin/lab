@@ -1,0 +1,135 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: bluefin-qa-pipeline
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: qa-pipeline
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  # ── entrypoint ──────────────────────────────────────────────────────────────
+  entrypoint: pipeline
+
+  # ── cleanup VM + hostDisk on any exit (success, failure, timeout) ──────────
+  onExit: teardown
+
+  # ── parameters ──────────────────────────────────────────────────────────────
+  arguments:
+    parameters:
+      - name: image
+        value: "ghcr.io/ublue-os/bluefin"
+      - name: image-tag
+        value: "latest"
+      - name: namespace
+        value: "bluefin-test"
+      # Comma-separated suite names matching tests/ subdirectories
+      - name: suites
+        value: "smoke,developer"
+      # Used to select Ghostty fixtures on dakota builds
+      - name: variant
+        value: "bluefin"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
+
+  # ── pipeline DAG ─────────────────────────────────────────────────────────────
+  templates:
+    - name: pipeline
+      dag:
+        tasks:
+          # 1. Ensure the golden disk exists on ghost (BIB build if absent)
+          - name: ensure-disk
+            templateRef:
+              name: bib-build-and-push
+              template: ensure-disk
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{workflow.parameters.image}}"
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+
+          # 2. btrfs reflink clone + KubeVirt VM boot → vm-ip
+          - name: provision
+            dependencies: [ensure-disk]
+            templateRef:
+              name: provision-bluefin-vm
+              template: provision-vm
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+                - name: vm-name
+                  value: "bluefin-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+
+          # 3a. Phase 1 — smoke (behave + qecore, every PR)
+          - name: run-smoke
+            dependencies: [provision]
+            when: "'{{workflow.parameters.suites}}' contains 'smoke'"
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+                - name: suite
+                  value: "smoke"
+                - name: variant
+                  value: "{{workflow.parameters.variant}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+
+          # 3b. Phase 2 — developer tools (sequential after smoke)
+          - name: run-developer
+            dependencies: [run-smoke]
+            when: "'{{workflow.parameters.suites}}' contains 'developer'"
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+                - name: suite
+                  value: "developer"
+                - name: variant
+                  value: "{{workflow.parameters.variant}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+
+          # 3c. Phase 3 — software management (sequential, only if in suites list)
+          - name: run-software
+            dependencies: [run-developer]
+            when: "'{{workflow.parameters.suites}}' contains 'software'"
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+                - name: suite
+                  value: "software"
+                - name: variant
+                  value: "{{workflow.parameters.variant}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+
+    # ── onExit handler: stop VM → wait VMI gone → delete hostDisk ──────────────
+    - name: teardown
+      dag:
+        tasks:
+          - name: teardown-vm
+            templateRef:
+              name: teardown-bluefin-vm
+              template: teardown-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "bluefin-test-{{workflow.uid}}"
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"

@@ -1,0 +1,31 @@
+# tmt SSH runner for Bluefin desktop QA
+# Orchestrates test execution via SSH into KubeVirt VMs.
+# Dogtail/AT-SPI runs inside the VM — this container only needs tmt + SSH.
+
+FROM python:3.12-slim
+
+LABEL org.opencontainers.image.description="tmt SSH runner for Bluefin desktop QA"
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        git \
+        openssh-client \
+        rsync \
+    && rm -rf /var/lib/apt/lists/*
+
+# Latest tmt + test tools from PyPI, not distro packages
+RUN pip install --no-cache-dir \
+        'tmt[provision-ssh]' \
+        pytest \
+        pytest-html
+
+WORKDIR /tests
+COPY .fmf/ /tests/.fmf/
+COPY plans/ /tests/plans/
+COPY tests/ /tests/tests/
+
+USER nonroot
+ENTRYPOINT ["tmt"]
+CMD ["run", "--all"]

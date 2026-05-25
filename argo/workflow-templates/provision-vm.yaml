@@ -1,0 +1,200 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: provision-bluefin-vm
+  namespace: argo
+  annotations:
+    description: |
+      Provisions a Bluefin test VM using btrfs reflink from a golden disk.raw.
+      ~24ms clone time (CoW). No CDI, no zot, no PVC.
+      Requires HostDisk feature gate (already enabled in KubeVirt config).
+spec:
+  arguments: {}
+  templates:
+    - name: provision-vm
+      metadata: {}
+      inputs:
+        parameters:
+          - name: image-tag
+            value: "latest"
+          - name: vm-name
+          - name: namespace
+            value: "bluefin-test"
+      outputs:
+        parameters:
+          - name: vm-ip
+            valueFrom:
+              parameter: '{{steps.wait-for-vm.outputs.result}}'
+      steps:
+        - - name: reflink-disk
+            template: reflink-disk
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: '{{inputs.parameters.image-tag}}'
+                - name: vm-name
+                  value: '{{inputs.parameters.vm-name}}'
+        - - name: create-vm
+            template: create-vm
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: '{{inputs.parameters.image-tag}}'
+                - name: vm-name
+                  value: '{{inputs.parameters.vm-name}}'
+                - name: namespace
+                  value: '{{inputs.parameters.namespace}}'
+        - - name: wait-for-vm
+            template: wait-for-vm-ready
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: '{{inputs.parameters.image-tag}}'
+                - name: vm-name
+                  value: '{{inputs.parameters.vm-name}}'
+                - name: namespace
+                  value: '{{inputs.parameters.namespace}}'
+
+    - name: reflink-disk
+      metadata:
+        labels:
+          bluefin.io/step: reflink-disk
+          bluefin.io/variant: "{{inputs.parameters.image-tag}}"
+      inputs:
+        parameters:
+          - name: image-tag
+          - name: vm-name
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      outputs: {}
+      volumes:
+        - name: golden
+          hostPath:
+            path: /var/tmp/bluefin-golden
+        - name: test-disks
+          hostPath:
+            path: /var/tmp/bluefin-test
+            type: DirectoryOrCreate
+      script:
+        image: quay.io/podman/stable:latest
+        command:
+          - bash
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+          - name: golden
+            mountPath: /var/tmp/bluefin-golden
+          - name: test-disks
+            mountPath: /var/tmp/bluefin-test
+        source: |
+          set -euo pipefail
+          TAG="{{inputs.parameters.image-tag}}"
+          VM="{{inputs.parameters.vm-name}}"
+          GOLDEN="/var/tmp/bluefin-golden/${TAG}/disk.raw"
+          DEST="/var/tmp/bluefin-test/${VM}.raw"
+
+          if [[ ! -f "${GOLDEN}" ]]; then
+            echo "ERROR: golden disk not found: ${GOLDEN}" >&2
+            exit 1
+          fi
+
+          START=$(date +%s%N)
+          cp --reflink=auto "${GOLDEN}" "${DEST}"
+          chown 107:107 "${DEST}"
+          chmod 664 "${DEST}"
+          chcon -t svirt_sandbox_file_t "${DEST}" 2>/dev/null || true
+          ELAPSED=$(( ($(date +%s%N) - START) / 1000000 ))
+          echo "reflink clone: ${ELAPSED}ms → ${DEST}"
+
+    - name: create-vm
+      metadata:
+        labels:
+          bluefin.io/step: create-vm
+          bluefin.io/variant: "{{inputs.parameters.image-tag}}"
+      inputs:
+        parameters:
+          - name: image-tag
+          - name: vm-name
+          - name: namespace
+      outputs: {}
+      resource:
+        action: apply
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+            labels:
+              app: bluefin-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Always
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+              spec:
+                nodeSelector:
+                  kubernetes.io/hostname: ghost
+                domain:
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: 8Gi
+                  devices:
+                    disks:
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: rootdisk
+                    hostDisk:
+                      path: /var/tmp/bluefin-test/{{inputs.parameters.vm-name}}.raw
+                      type: Disk
+
+    - name: wait-for-vm-ready
+      metadata:
+        labels:
+          bluefin.io/step: wait-for-vm
+          bluefin.io/variant: "{{inputs.parameters.image-tag}}"
+      inputs:
+        parameters:
+          - name: image-tag
+          - name: vm-name
+          - name: namespace
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      outputs: {}
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command:
+          - bash
+        source: |
+          set -e
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+          LABEL="kubevirt.io/vm=${VM}"
+
+          echo "Waiting for VMI ready..." >&2
+          kubectl wait vmi -n "${NS}" "${VM}" \
+            --for=condition=Ready --timeout=600s >&2
+
+          POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+            -o jsonpath='{.items[0].status.podIP}')
+
+          echo "Waiting for SSH on ${POD_IP}..." >&2
+          timeout 120 bash -c \
+            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
+
+          echo "${POD_IP}"

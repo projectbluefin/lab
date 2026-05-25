@@ -1,0 +1,118 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-flatcar-tests
+  namespace: argo
+  annotations:
+    bluefin.io/stack: "plain behave, SSH from runner pod to Flatcar VM"
+spec:
+  templates:
+    - name: run-flatcar-tests
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: bluefin-test-suite
+          bluefin.io/step: run-flatcar-tests
+          bluefin.io/suite: flatcar
+          bluefin.io/variant: "{{inputs.parameters.variant}}"
+        annotations:
+          bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
+          bluefin.io/issue: "{{inputs.parameters.issue-title}}"
+      inputs:
+        parameters:
+          - name: vm-ip
+          - name: variant
+            value: "flatcar"
+          - name: ssh-user
+            # Flatcar default user is "core", not bluefin-test
+            value: "core"
+          - name: ssh-key-secret
+            value: "bluefin-test-ssh-key"
+          - name: issue-title
+            value: "manual"
+          - name: behave-tags
+            value: ""
+      activeDeadlineSeconds: 1800
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        securityContext:
+          runAsUser: 0
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      outputs:
+        artifacts:
+          - name: behave-html-report
+            path: /tmp/results/report.html
+            optional: true
+          - name: behave-json-results
+            path: /tmp/results/results.json
+            optional: true
+      container:
+        image: quay.io/fedora/fedora:latest
+        imagePullPolicy: Always
+        env:
+          - name: FLATCAR_VM_IP
+            value: "{{inputs.parameters.vm-ip}}"
+          - name: SSH_USER
+            value: "{{inputs.parameters.ssh-user}}"
+          - name: SSH_KEY_PATH
+            value: /etc/ssh/test-key/id_ed25519
+          - name: BEHAVE_TAGS
+            value: "{{inputs.parameters.behave-tags}}"
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+          - name: tests
+            mountPath: /tests
+            readOnly: true
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            mkdir -p /tmp/results
+
+            # Install behave in runner pod (no qecore needed — no GNOME desktop)
+            pip3 install --quiet behave behave-html-pretty-formatter 2>&1 | tail -3
+
+            # Wait for Flatcar SSH (up to 5 minutes — faster boot than Bluefin)
+            SSH_OPTS="-i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+            echo "Waiting for SSH on ${FLATCAR_VM_IP}..." >&2
+            timeout 300 bash -c "
+              until ssh ${SSH_OPTS} ${SSH_USER}@${FLATCAR_VM_IP} 'echo ready' 2>/dev/null; do sleep 5; done
+            "
+            echo "Flatcar SSH ready." >&2
+
+            # Run tests from runner pod; steps SSH into VM using FLATCAR_VM_IP env var
+            TAGS_ARG="${BEHAVE_TAGS:-}"
+            cd /tests/flatcar/features
+
+            behave . \
+              --format html-pretty \
+              --outfile /tmp/results/report.html \
+              --format json.pretty \
+              --outfile /tmp/results/results.json \
+              --no-capture \
+              ${TAGS_ARG}
+
+            python3 -c "
+            import json
+            try:
+                data = json.load(open('/tmp/results/results.json'))
+                failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
+                total  = sum(len(f.get('elements',[])) for f in data)
+                print(f'{total - failed}/{total} scenarios passed')
+            except Exception:
+                print('results.json not found')
+            "
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: "{{inputs.parameters.ssh-key-secret}}"
+            defaultMode: 0400
+        - name: tests
+          hostPath:
+            # /var/tmp is accessible by the kubelet; sync from src with:
+            #   cp -r ~/src/bluefin-test-suite/tests /var/tmp/bluefin-tests
+            path: /var/tmp/bluefin-tests
+            type: Directory

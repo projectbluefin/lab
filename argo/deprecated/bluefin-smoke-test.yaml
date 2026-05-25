@@ -1,0 +1,90 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: bf-smoke-
+  namespace: argo
+spec:
+  entrypoint: bluefin-test-pipeline
+  serviceAccountName: argo
+  podMetadata:
+    labels:
+      test/variant: bluefin
+      test/image-tag: "{{workflow.parameters.image-tag}}"
+      test/plan: "{{workflow.parameters.plan}}"
+  # Auto-delete workflow 1h after completion to free pod logs/storage
+  ttlStrategy:
+    secondsAfterCompletion: 3600
+    secondsAfterSuccess: 3600
+    secondsAfterFailure: 7200
+  onExit: cleanup
+
+  arguments:
+    parameters:
+      - name: image
+        value: "ghcr.io/ublue-os/bluefin:latest"
+      - name: image-tag
+        value: "latest"
+      - name: plan
+        value: "/smoke"
+      - name: ssh-pubkey
+        value: ""
+
+  templates:
+    - name: bluefin-test-pipeline
+      dag:
+        tasks:
+          # Step 1: BIB build+push only if tag missing from zot (~100s cold, instant warm)
+          - name: ensure-disk
+            templateRef:
+              name: bib-build-and-push
+              template: ensure-disk
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{workflow.parameters.image}}"
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+                - name: ssh-pubkey
+                  value: "{{workflow.parameters.ssh-pubkey}}"
+
+          # btrfs reflink clone (~24ms) + VM boot (~30s) — no CDI, no PVC
+          - name: provision
+            dependencies: [ensure-disk]
+            templateRef:
+              name: provision-bluefin-vm
+              template: provision-vm
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+                - name: vm-name
+                  value: "bluefin-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "bluefin-test"
+
+          # tmt SSH runner + Dogtail tests
+          - name: run-tests
+            dependencies: [provision]
+            templateRef:
+              name: run-tmt-tests
+              template: tmt-run
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+                - name: plan
+                  value: "{{workflow.parameters.plan}}"
+
+    # onExit: always delete the VM + its PVC regardless of outcome
+    - name: cleanup
+      steps:
+        - - name: delete-vm
+            templateRef:
+              name: teardown-bluefin-vm
+              template: teardown-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "bluefin-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "bluefin-test"

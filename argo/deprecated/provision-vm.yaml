@@ -1,0 +1,204 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: provision-bluefin-vm
+  namespace: argo
+spec:
+  templates:
+    - name: provision-vm
+      inputs:
+        parameters:
+          - name: image-tag
+            value: "latest"
+          - name: vm-name
+          - name: namespace
+            value: "bluefin-test"
+          - name: disk-size
+            value: "30Gi"
+      outputs:
+        parameters:
+          - name: vm-ip
+            valueFrom:
+              parameter: "{{steps.wait-for-vm.outputs.result}}"
+      steps:
+        - - name: clone-disk
+            template: clone-disk-from-zot
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{inputs.parameters.image-tag}}"
+                - name: pvc-name
+                  value: "{{inputs.parameters.vm-name}}-disk"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+                - name: disk-size
+                  value: "{{inputs.parameters.disk-size}}"
+
+        - - name: create-vm
+            template: create-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: pvc-name
+                  value: "{{inputs.parameters.vm-name}}-disk"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+
+        - - name: wait-for-vm
+            template: wait-for-vm-ready
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+
+    # ── Clone: CDI DataVolume from zot registry source (~60-90s warm) ───────
+    - name: clone-disk-from-zot
+      inputs:
+        parameters:
+          - name: image-tag
+          - name: pvc-name
+          - name: namespace
+          - name: disk-size
+      resource:
+        action: apply
+        # CDI populates the PVC by pulling the OCI image from zot and
+        # extracting /disk/disk.img — no bootc install, no file copy loop
+        successCondition: status.phase == Succeeded
+        failureCondition: status.phase == Failed
+        manifest: |
+          apiVersion: cdi.kubevirt.io/v1beta1
+          kind: DataVolume
+          metadata:
+            name: "{{inputs.parameters.pvc-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+            annotations:
+              cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+          spec:
+            source:
+              registry:
+                url: "docker://192.168.1.102:5000/bluefin-disk:{{inputs.parameters.image-tag}}"
+                pullMethod: node
+                certConfigMap: ""
+                secretRef: ""
+            pvc:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: "{{inputs.parameters.disk-size}}"
+              storageClassName: local-path
+
+    # ── VM: uses the CDI-populated PVC as root disk ──────────────────────────
+    - name: create-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: pvc-name
+          - name: namespace
+      resource:
+        action: apply
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+            labels:
+              app: bluefin-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            running: true
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+              spec:
+                domain:
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: 8Gi
+                  devices:
+                    disks:
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                      - name: cloudinit
+                        disk:
+                          bus: virtio
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: rootdisk
+                    persistentVolumeClaim:
+                      claimName: "{{inputs.parameters.pvc-name}}"
+                  - name: cloudinit
+                    cloudInitNoCloud:
+                      userData: |
+                        #cloud-config
+                        users:
+                          - name: bluefin-test
+                            sudo: ALL=(ALL) NOPASSWD:ALL
+                            shell: /bin/bash
+                            ssh_authorized_keys:
+                              - "{{workflow.parameters.ssh-pubkey}}"
+                        write_files:
+                          - path: /etc/ssh/sshd_config.d/99-test-env.conf
+                            content: |
+                              PermitUserEnvironment yes
+                        runcmd:
+                          - loginctl enable-linger bluefin-test
+                          - systemctl restart sshd
+
+    # ── Wait: poll for pod Ready, emit pod IP on stdout ──────────────────────
+    - name: wait-for-vm-ready
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+      # hostNetwork: reach VM pod IPs via cni0 (masquerade only routes from host ns)
+      hostNetwork: true
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        source: |
+          set -e
+          echo "Waiting for virt-launcher pod..." >&2
+          for i in $(seq 1 30); do
+            COUNT=$(kubectl get pod \
+              -n {{inputs.parameters.namespace}} \
+              -l kubevirt.io/vm={{inputs.parameters.vm-name}} \
+              --no-headers 2>/dev/null | wc -l)
+            [[ "$COUNT" -gt 0 ]] && break
+            sleep 5
+          done
+          kubectl wait pod \
+            -n {{inputs.parameters.namespace}} \
+            -l kubevirt.io/vm={{inputs.parameters.vm-name}} \
+            --for=condition=Ready \
+            --timeout=300s >&2
+          POD_IP=$(kubectl get pod \
+            -n {{inputs.parameters.namespace}} \
+            -l kubevirt.io/vm={{inputs.parameters.vm-name}} \
+            -o jsonpath='{.items[0].status.podIP}')
+          echo "Pod IP: ${POD_IP}" >&2
+          # Probe SSH — VM may reboot during bootc first-boot cloud-init
+          echo "Waiting for SSH on ${POD_IP}:22 (up to 5min)..." >&2
+          timeout 300 bash -c \
+            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
+          echo "SSH is up on ${POD_IP}" >&2
+          # Re-fetch in case pod was replaced during reboot
+          kubectl get pod \
+            -n {{inputs.parameters.namespace}} \
+            -l kubevirt.io/vm={{inputs.parameters.vm-name}} \
+            -o jsonpath='{.items[0].status.podIP}'

@@ -1,0 +1,193 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: bib-build-and-push
+  namespace: argo
+spec:
+  templates:
+    - name: ensure-disk
+      inputs:
+        parameters:
+          - name: image
+            value: "ghcr.io/ublue-os/bluefin:latest"
+          - name: image-tag
+            value: "latest"
+          - name: disk-size
+            value: "30Gi"
+      steps:
+        - - name: check
+            template: check-disk-in-zot
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{inputs.parameters.image-tag}}"
+
+        - - name: bib-img-pull
+            template: bib-img-pull
+            when: "{{steps.check.outputs.result}} == missing"
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{inputs.parameters.image}}"
+
+        - - name: build
+            template: bib-img-build
+            when: "{{steps.check.outputs.result}} == missing"
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{inputs.parameters.image}}"
+                - name: image-tag
+                  value: "{{inputs.parameters.image-tag}}"
+
+        - - name: wrap-and-push
+            template: wrap-and-push
+            when: "{{steps.check.outputs.result}} == missing"
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{inputs.parameters.image-tag}}"
+
+    # ── Step 1: Check if disk image already exists in zot ───────────────────
+    - name: check-disk-in-zot
+      inputs:
+        parameters:
+          - name: image-tag
+      script:
+        image: quay.io/skopeo/stable:latest
+        command: [bash]
+        source: |
+          TAG="{{inputs.parameters.image-tag}}"
+          if skopeo inspect \
+              --tls-verify=false \
+              docker://192.168.1.102:5000/bluefin-disk:${TAG} \
+              &>/dev/null; then
+            echo -n "exists"
+          else
+            echo -n "missing"
+          fi
+
+    # ── Step 2: Pre-pull source image into shared container storage ──────────
+    - name: bib-img-pull
+      inputs:
+        parameters:
+          - name: image
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: containers-storage
+          hostPath:
+            path: /var/lib/containers/storage
+      container:
+        image: quay.io/podman/stable:latest
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+          - name: containers-storage
+            mountPath: /var/lib/containers/storage
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            echo "Pulling {{inputs.parameters.image}}..."
+            podman pull {{inputs.parameters.image}}
+            echo "Pull complete"
+
+    # ── Step 3: BIB build — privileged pod on ghost, writes disk.raw ────────
+    - name: bib-img-build
+      inputs:
+        parameters:
+          - name: image
+          - name: image-tag
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: bib-output
+          hostPath:
+            path: /var/tmp/bib-output
+            type: DirectoryOrCreate
+        - name: containers-storage
+          hostPath:
+            path: /var/lib/containers/storage
+      container:
+        image: quay.io/centos-bootc/bootc-image-builder:latest
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+          - name: dev
+            mountPath: /dev
+          - name: bib-output
+            mountPath: /output
+          - name: containers-storage
+            mountPath: /var/lib/containers/storage
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            TAG="{{inputs.parameters.image-tag}}"
+            OUT="/output/${TAG}"
+            mkdir -p "${OUT}"
+            echo "→ BIB build: {{inputs.parameters.image}} → ${OUT}/disk.raw"
+            bootc-image-builder build \
+              --type raw \
+              --rootfs ext4 \
+              --output "${OUT}" \
+              {{inputs.parameters.image}}
+            # BIB writes to ${OUT}/image/disk.raw
+            echo "✓ BIB build complete: $(du -sh ${OUT}/image/disk.raw)"
+
+    # ── Step 3: Wrap disk.raw as containerDisk OCI artifact, push to zot ────
+    - name: wrap-and-push
+      inputs:
+        parameters:
+          - name: image-tag
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: bib-output
+          hostPath:
+            path: /var/tmp/bib-output
+        - name: containers-storage
+          hostPath:
+            path: /var/lib/containers/storage
+      container:
+        image: quay.io/buildah/stable:latest
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        volumeMounts:
+          - name: bib-output
+            mountPath: /bib-output
+          - name: containers-storage
+            mountPath: /var/lib/containers/storage
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            TAG="{{inputs.parameters.image-tag}}"
+            DISK="/bib-output/${TAG}/image/disk.raw"
+            DEST="192.168.1.102:5000/bluefin-disk:${TAG}"
+
+            echo "→ Wrapping ${DISK} as containerDisk OCI image..."
+
+            # Build a scratch image with disk.raw at /disk/disk.img
+            # (KubeVirt containerDisk convention / CDI registry source)
+            CTR=$(buildah from scratch)
+            buildah add "${CTR}" "${DISK}" /disk/disk.img
+            buildah config --label "org.opencontainers.image.description=Bluefin disk image for KubeVirt/CDI — tag ${TAG}" "${CTR}"
+            buildah commit "${CTR}" "bluefin-disk:${TAG}"
+            buildah push \
+              --tls-verify=false \
+              "bluefin-disk:${TAG}" \
+              "docker://${DEST}"
+            echo "✓ Pushed ${DEST} ($(du -sh ${DISK} | cut -f1))"
+
+            # Cleanup raw disk from hostPath to free space
+            rm -rf "/bib-output/${TAG}"
+            echo "✓ Cleaned /bib-output/${TAG}"

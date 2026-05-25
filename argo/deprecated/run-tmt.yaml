@@ -1,0 +1,101 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-tmt-tests
+  namespace: argo
+spec:
+  templates:
+    - name: tmt-run
+      metadata:
+        labels:
+          bluefin.io/step: tmt-run
+          bluefin.io/variant: "{{inputs.parameters.variant}}"
+        annotations:
+          bluefin.io/plan: "{{inputs.parameters.plan}}"
+          bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
+      inputs:
+        parameters:
+          - name: vm-ip
+          - name: plan
+            value: "/smoke"
+          - name: variant
+            value: "bluefin"
+          - name: ssh-user
+            value: "bluefin-test"
+          - name: ssh-key-secret
+            value: "bluefin-test-ssh-key"
+      # hostNetwork + ghost pin: KubeVirt masquerade only routes from host ns
+      # 60-minute ceiling — prepare (ponytail build ~10min) + execute (~30min)
+      activeDeadlineSeconds: 3600
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        securityContext:
+          runAsUser: 0
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      outputs:
+        artifacts:
+          - name: junit-results
+            path: /tmp/results/junit.xml
+            optional: true
+          - name: test-logs
+            path: /tmp/results/tmt.log
+            optional: true
+      container:
+        image: 192.168.1.102:5000/bluefin-tmt-runner:latest
+        imagePullPolicy: Always
+        env:
+          - name: TMT_SSH_HOST
+            value: "{{inputs.parameters.vm-ip}}"
+          - name: TMT_SSH_USER
+            value: "{{inputs.parameters.ssh-user}}"
+          - name: TMT_SSH_KEY
+            value: /etc/ssh/test-key/id_ed25519
+          - name: BLUEFIN_VARIANT
+            value: "{{inputs.parameters.variant}}"
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            mkdir -p /tmp/results
+
+            # VM boot to sshd-auth-ready takes 3-4 min; allow 10min total
+            echo "Waiting for SSH on ${TMT_SSH_HOST}..."
+            timeout 600 bash -c '
+              until ssh -o StrictHostKeyChecking=no \
+                        -o UserKnownHostsFile=/dev/null \
+                        -o ConnectTimeout=10 \
+                        -o LogLevel=ERROR \
+                        -i '"${TMT_SSH_KEY}"' \
+                        '"${TMT_SSH_USER}"'@'"${TMT_SSH_HOST}"' "echo ready"; do
+                sleep 10
+              done
+            '
+            for plan in /tests/plans/plan.fmf /tests/plans/flatcar.fmf; do
+              text=$(cat "$plan")
+              text=${text//'${TMT_SSH_HOST}'/${TMT_SSH_HOST}}
+              text=${text//'${TMT_SSH_USER}'/${TMT_SSH_USER}}
+              text=${text//'${TMT_SSH_KEY}'/${TMT_SSH_KEY}}
+              printf '%s' "$text" > "$plan"
+            done
+
+            echo "SSH up. Running tmt plan: {{inputs.parameters.plan}}"
+
+            tmt -ddd run \
+              --all \
+              plan --name "{{inputs.parameters.plan}}" \
+              report --how junit \
+                     --file /tmp/results/junit.xml \
+              2>&1 | tee /tmp/results/tmt.log
+
+            echo "Tests complete."
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: "{{inputs.parameters.ssh-key-secret}}"
+            defaultMode: 0400

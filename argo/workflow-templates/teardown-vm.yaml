@@ -1,0 +1,65 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: teardown-bluefin-vm
+  namespace: argo
+spec:
+  templates:
+    - name: teardown-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+            value: "bluefin-test"
+      steps:
+        - - name: delete-vm
+            template: delete-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+        - - name: delete-hostdisk
+            template: delete-hostdisk
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+
+    - name: delete-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+      resource:
+        action: delete
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+
+    - name: delete-hostdisk
+      inputs:
+        parameters:
+          - name: vm-name
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: test-disks
+          hostPath:
+            path: /var/tmp/bluefin-test
+      script:
+        image: cgr.dev/chainguard/bash:latest
+        securityContext:
+          runAsUser: 0
+        command: [bash]
+        volumeMounts:
+          - name: test-disks
+            mountPath: /var/tmp/bluefin-test
+        source: |
+          DISK="/var/tmp/bluefin-test/{{inputs.parameters.vm-name}}.raw"
+          rm -f "${DISK}"
+          echo "Cleaned: ${DISK}"

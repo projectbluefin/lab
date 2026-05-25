@@ -9,6 +9,7 @@ Feature: GNOME Shell smoke tests
   @top_bar
   Scenario: GNOME Shell process is running and accessible via AT-SPI
     * GNOME Shell is accessible via AT-SPI
+    * Dump gnome-shell AT-SPI tree to results
 
   @top_bar
   Scenario: Panel is present in AT-SPI tree

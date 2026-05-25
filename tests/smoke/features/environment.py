@@ -48,16 +48,38 @@ def after_scenario(context, scenario) -> None:
     context.sandbox.after_scenario(context, scenario)
 
 
+def after_step(context, step) -> None:
+    """Print full traceback for errored steps — needed because behave JSON
+    serialises error_message as empty when the exception has no str()."""
+    if step.status.name in ("error", "failed") and step.exception is not None:
+        print(
+            f"\nSTEP_ERROR [{step.name!r}]: "
+            f"{type(step.exception).__name__}: {step.exception}",
+            flush=True,
+        )
+        traceback.print_exception(
+            type(step.exception),
+            step.exception,
+            step.exception.__traceback__,
+            file=sys.stderr,
+        )
+
+
 def after_all(context) -> None:
-    """Dump gnome-shell AT-SPI tree to results for node name discovery."""
+    """Dump gnome-shell AT-SPI tree to results for node name discovery.
+    Runs after the last scenario while the session is still active enough
+    for the sandbox to have a valid shell handle.
+    """
     try:
+        import os
+        if os.path.exists("/tmp/results/atspi_tree.txt"):
+            return  # already written by after_scenario
         shell = context.sandbox.shell
         lines = []
         for child in shell.children[:60]:
             lines.append(f"role={child.roleName!r:30} name={child.name!r}")
             for gc in child.children[:20]:
                 lines.append(f"  role={gc.roleName!r:30} name={gc.name!r}")
-        import os
         os.makedirs("/tmp/results", exist_ok=True)
         with open("/tmp/results/atspi_tree.txt", "w") as f:
             f.write("\n".join(lines))

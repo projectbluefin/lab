@@ -23,7 +23,27 @@ from dogtail import tree
 from qecore.common_steps import *  # noqa: F401,F403
 
 
-@step("GNOME Shell is accessible via AT-SPI")
+@step("Dump gnome-shell AT-SPI tree to results")
+def dump_atspi_tree(context) -> None:
+    """Write the gnome-shell AT-SPI node tree to /tmp/results/atspi_tree.txt.
+
+    Called from the first smoke scenario while the session is live, so the
+    Wayland session and AT-SPI bus are both active.
+    """
+    import os
+    lines = []
+    shell = context.sandbox.shell
+    for child in shell.children[:80]:
+        lines.append(f"role={child.roleName!r:30} name={child.name!r}")
+        for gc in child.children[:30]:
+            lines.append(f"  role={gc.roleName!r:30} name={gc.name!r}")
+    os.makedirs("/tmp/results", exist_ok=True)
+    with open("/tmp/results/atspi_tree.txt", "w") as f:
+        f.write("\n".join(lines))
+    print(f"AT-SPI tree written: {len(lines)} lines", flush=True)
+
+
+
 def gnome_shell_is_accessible(context) -> None:
     """Retrying gnome-shell AT-SPI check via qecore's built-in shell getter.
 

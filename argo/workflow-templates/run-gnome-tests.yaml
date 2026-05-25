@@ -123,6 +123,9 @@ spec:
             # invoke them via /bin/sh which lacks ~/.local/bin in PATH. Symlink to
             # /usr/local/bin so the unlocked overlay makes them globally reachable.
             ${SSH} "for f in \$HOME/.local/bin/qecore_*; do sudo ln -sf \$f /usr/local/bin/\$(basename \$f) 2>/dev/null; done"
+            # uinput: needed for "Key combo with uinput" / "Press key with uinput" steps.
+            # Load kernel module and grant user-level access (survives until VM reboot).
+            ${SSH} "sudo modprobe uinput && sudo chmod 0666 /dev/uinput || true"
             echo "Dependencies installed." >&2
 
             # ── Copy test suite to VM ────────────────────────────────────────

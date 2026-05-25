@@ -1,0 +1,70 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: bluefin-titan-smoke
+  namespace: argo
+  annotations:
+    description: |
+      Runs smoke tests against persistent titan VMs (no BIB build needed).
+      Use when: iterating on tests, CI is slow, or BIB is broken.
+      Prerequisites: titan-bluefin and titan-lts VMs must be running.
+spec:
+  arguments:
+    parameters:
+      - name: vm-ip-latest
+        # kubectl get vmi titan-bluefin -n bluefin-test -o jsonpath='{.status.interfaces[0].ipAddress}'
+        value: ""
+      - name: vm-ip-lts
+        # kubectl get vmi titan-lts -n bluefin-lts-test -o jsonpath='{.status.interfaces[0].ipAddress}'
+        value: ""
+      - name: suite
+        value: "smoke"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
+      - name: issue-title
+        value: "titan smoke run"
+
+  entrypoint: run-smoke
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 1800
+    secondsAfterFailure: 7200
+    secondsAfterSuccess: 1800
+
+  templates:
+    - name: run-smoke
+      steps:
+        - - name: smoke-latest
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-latest}}"
+                - name: suite
+                  value: "{{workflow.parameters.suite}}"
+                - name: variant
+                  value: "latest"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+                - name: issue-title
+                  value: "{{workflow.parameters.issue-title}} - titan-bluefin"
+
+          - name: smoke-lts
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-lts}}"
+                - name: suite
+                  value: "{{workflow.parameters.suite}}"
+                - name: variant
+                  value: "lts"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+                - name: issue-title
+                  value: "{{workflow.parameters.issue-title}} - titan-lts"

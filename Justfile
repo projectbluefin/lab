@@ -46,12 +46,14 @@ setup-argocd:
 
 # Force ArgoCD to sync now instead of waiting for the next poll interval
 argocd-sync:
-    argocd app sync bluefin-test-suite --timeout 120
-    argocd app wait bluefin-test-suite --health --timeout 120
+    argocd app sync testing-lab testing-lab-infra --timeout 120
+    argocd app wait testing-lab --health --timeout 120
+    argocd app wait testing-lab-infra --health --timeout 120
 
 # Show ArgoCD sync status for the test suite
 argocd-status:
-    argocd app get bluefin-test-suite
+    argocd app get testing-lab
+    argocd app get testing-lab-infra
 
 # ── Disk image management ────────────────────────────────────────────────────
 

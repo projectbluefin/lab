@@ -169,7 +169,10 @@ spec:
             ${SSH} "
               export PATH=\$HOME/.local/bin:\$PATH
               BEHAVE_BIN=\$(which behave)
-              \$HOME/.local/bin/qecore-headless \"\$BEHAVE_BIN /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}\"
+              \$HOME/.local/bin/qecore-headless \
+                --session-type wayland \
+                --session-desktop gnome \
+                \"\$BEHAVE_BIN /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}\"
             " || BEHAVE_RC=$?
 
             # ── Collect results ──────────────────────────────────────────────
@@ -181,6 +184,12 @@ spec:
             ${SCP} ${VM_USER}@${VM_IP}:/tmp/results/. /tmp/results/ || true
 
             echo "Done. Results in /tmp/results/" >&2
+            # Print full results JSON to stderr — captured by Loki and Argo MCP get_workflow_logs
+            if [[ -f /tmp/results/results.json ]]; then
+              echo "=== BEHAVE RESULTS JSON ===" >&2
+              cat /tmp/results/results.json >&2
+              echo "=== END BEHAVE RESULTS ===" >&2
+            fi
             # Only the final result summary goes to stdout (Argo outputs.result)
             python3 -c "
             import json, sys

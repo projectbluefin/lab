@@ -1,0 +1,22 @@
+# Exposes argo-server on NodePort 32746 for LAN/MCP agent access.
+# Separate from the cluster-managed argo-server ClusterIP so it won't be
+# overwritten by the Argo Workflows controller.
+# Reachable at http://192.168.1.102:32746 from the local network.
+apiVersion: v1
+kind: Service
+metadata:
+  name: argo-server-nodeport
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/component: argo-server-access
+spec:
+  type: NodePort
+  selector:
+    app: argo-server
+  ports:
+    - name: web
+      port: 2746
+      targetPort: 2746
+      nodePort: 32746
+      protocol: TCP

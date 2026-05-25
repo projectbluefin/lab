@@ -1,9 +1,10 @@
-# Argo CD Application — keeps WorkflowTemplates in sync from git
-# Apply once: kubectl apply -f argocd/application.yaml -n argocd
+# ArgoCD Application — manages manifests/ (infra, VMs, services, CronWorkflows)
+# Apply once: kubectl apply -f argocd/infra-application.yaml -n argocd
+# After this, any file added to manifests/ and pushed to main is auto-applied.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: testing-lab
+  name: testing-lab-infra
   namespace: argocd
   labels:
     app.kubernetes.io/part-of: testing-lab
@@ -12,7 +13,7 @@ spec:
   source:
     repoURL: https://github.com/castrojo/testing-lab
     targetRevision: main
-    path: argo/workflow-templates
+    path: manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: argo

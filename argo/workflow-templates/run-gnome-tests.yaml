@@ -61,9 +61,9 @@ spec:
               for attempt in 1 2 3; do
                 dnf install -y --quiet git 2>&1 | tail -2
                 if git clone --depth 1 --branch main \
-                    https://github.com/castrojo/bluefin-test-suite \
+                    https://github.com/castrojo/testing-lab \
                     /workspace/bluefin-test-suite 2>&1; then
-                  echo "Synced bluefin-test-suite (attempt ${attempt})"
+                  echo "Synced testing-lab (attempt ${attempt})"
                   exit 0
                 fi
                 echo "Attempt ${attempt} failed, retrying in 15s..."

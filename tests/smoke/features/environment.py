@@ -19,9 +19,27 @@ from qecore.common_steps import *  # noqa: F401,F403 — registers all common @s
 
 def before_all(context) -> None:
     import time
+    import subprocess
     # Give GNOME Shell a moment to settle after qecore-headless restarts GDM.
     # Without this, get_application() races against AT-SPI bus initialization.
     time.sleep(8)
+    # Enable GNOME Shell unsafe_mode so the clock and system-status area are
+    # exposed in the AT-SPI tree. Must run AFTER qecore-headless starts the session.
+    # toolkit-accessibility is already true on Bluefin — this exposes shell internals.
+    try:
+        subprocess.run(
+            [
+                'gdbus', 'call', '--session',
+                '--dest', 'org.gnome.Shell',
+                '--object-path', '/org/gnome/Shell',
+                '--method', 'org.gnome.Shell.Eval',
+                'global.context.unsafe_mode = true',
+            ],
+            capture_output=True, timeout=5,
+        )
+        print("unsafe_mode enabled", flush=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"unsafe_mode skipped: {e}", flush=True)
     try:
         context.sandbox = TestSandbox("gnome-shell", context=context)
         context.sandbox.attach_faf = False          # no ABRT integration in lab

@@ -168,12 +168,15 @@ this is the correct AT-SPI app name for Ptyxis on Bluefin.
 `gnome-ponytail-daemon` is required for AT-SPI coordinate injection on Wayland.
 The `plan.fmf` `enable-ponytail` step starts it via `systemctl --user`.
 
-**TODO (not yet implemented):** gnome-ponytail-daemon may require GNOME Shell unsafe mode:
+**unsafe_mode is required** for GNOME Shell 50+ AT-SPI access to top-bar elements.
+Add this to `environment.py` `before_all` as `subprocess.run()` AFTER qecore-headless starts:
 ```bash
 gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
   --method org.gnome.Shell.Eval 'global.context.unsafe_mode = true'
 ```
-This needs to be added to the `enable-ponytail` prepare step in `plan.fmf`.
+**Confirmed on Bluefin 44 (GNOME Shell 50.1):** `toolkit-accessibility=true` IS set correctly;
+AT-SPI gaps in the top-bar are a GNOME Shell issue, not a config issue. `unsafe_mode` is
+required to expose clock/system-status nodes.
 
 ## VM Cleanup
 
@@ -212,18 +215,41 @@ argo submit argo/bluefin-test-matrix.yaml -n argo
 
 ## Iteration 2 Lessons (2026-05-25)
 
-### dogtail 4.16 API changes
+### dogtail 4.16 API changes — root cause + migration
 
-**`findChild(requireResult=...)` is GONE.** The `requireResult` kwarg was removed in dogtail 4.16.
-Migrate all callers:
+**Root cause of `requireResult` TypeError:**
+`findChild(self, predicate, retry=True)` declares NO `**kwargs`. The `@logging_class`
+decorator in `logging.py` does strict `sig.bind(*args, **kwargs)` before the function
+body runs. Any kwarg not in the signature (e.g. `requireResult`) raises `TypeError` at
+the decorator level, before reaching `find_descendant`. `find_descendant(**kwargs)` does
+accept `requireResult` in its allowed kwargs, but `findChild` never passes unknown kwargs
+through.
+
+**`retry=True` causes 20-second waits:** Default `findChild(pred)` uses `retry=True`
+which retries ~20 times with 1s sleep when the node is not found. Use `retry=False`
+for all presence-check calls to avoid 20s hangs in tests.
+
+**Migration table:**
 ```python
-# OLD (broken on dogtail 4.16)
-node = root.findChild(pred, requireResult=True)
+# OLD (broken on dogtail 4.16 — TypeError at logging decorator)
+node = root.findChild(pred, requireResult=True)   # TypeError
+node = root.findChild(pred, requireResult=False)  # TypeError
+node = root.findChild(pred)                       # works but 20s wait if missing
 
-# NEW
-results = root.findChildren(pred)
-assert len(results) > 0, f"No node found matching {pred}"
-node = results[0]
+# NEW (correct)
+# 1. Require node exists (raises SearchError if missing):
+node = root.findChild(pred, retry=True)   # same as default — raises if not found
+
+# 2. Fast fail (raises SearchError after 1 attempt, no 20s wait):
+node = root.findChild(pred, retry=False)
+
+# 3. No-raise / check-if-present (replaces requireResult=False):
+nodes = root.findChildren(pred)
+node = nodes[0] if nodes else None
+
+# 4. Boolean presence check:
+if root.findChildren(pred):
+    ...
 ```
 
 ### qecore `run_and_save` — 5-second timeout rule

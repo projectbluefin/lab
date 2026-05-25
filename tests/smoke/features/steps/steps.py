@@ -294,9 +294,10 @@ def date_menu_closed_eval(context) -> None:
 def set_overview_search_eval(context, text) -> None:
     """Populate overview search bar via GNOME Shell JS.
     uinput typing is broken on these VMs — use Shell.Eval instead.
+    set_text() fires St.Entry::changed which the SearchController is connected to;
+    _onSearchChanged() is a private method removed in GNOME 50 and must not be called.
     """
-    js = f'Main.overview.searchEntry.set_text("{text}"); Main.overview._onSearchChanged();'
-    _shell_eval(js)
+    _shell_eval(f'Main.overview.searchEntry.set_text("{text}")')
     sleep(0.5)
 
 

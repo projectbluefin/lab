@@ -67,6 +67,13 @@ spec:
         # fedora: known-good image for script templates (chainguard/bash pulls unreliably in lab)
         image: quay.io/fedora/fedora:latest
         command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         volumeMounts:
           - name: golden
             mountPath: /var/tmp/bluefin-golden
@@ -93,6 +100,13 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
+        resources:
+          requests:
+            cpu: "2"
+            memory: 2Gi
+          limits:
+            cpu: "4"
+            memory: 4Gi
         volumeMounts:
           - name: containers-storage
             mountPath: /var/lib/containers/storage
@@ -125,6 +139,13 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: "8"
+            memory: 16Gi
         volumeMounts:
           - name: dev
             mountPath: /dev
@@ -176,6 +197,13 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
         env:
           - name: SSH_PUBKEY
             valueFrom:

@@ -49,20 +49,9 @@ spec:
           runAsUser: 0
       nodeSelector:
         kubernetes.io/hostname: ghost
-      outputs:
-        artifacts:
-          - name: behave-html-report
-            path: /tmp/results/report.html
-            optional: true
-          - name: behave-json-results
-            path: /tmp/results/results.json
-            optional: true
-          - name: atspi-tree
-            path: /tmp/results/atspi_tree.txt
-            optional: true
-          - name: runner-log
-            path: /tmp/results/runner.log
-            optional: true
+      # outputs.artifacts removed: Argo wait sidecar fails with exit 64 when no
+      # artifact repository is configured, even for optional artifacts.
+      # Results are captured via outputs.result (stdout) + kubectl logs.
       initContainers:
         - name: git-sync
           image: quay.io/fedora/fedora:latest

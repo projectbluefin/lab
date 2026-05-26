@@ -214,6 +214,7 @@ def activities_toggle_visible(context) -> None:
     print(f"Activities toggle found: name={activities.name!r}", flush=True)
 
 
+@step('Clock toggle is visible in top bar')
 def clock_toggle_visible(context) -> None:
     """Verify the clock / dateMenu is present in GNOME Shell.
 
@@ -555,9 +556,32 @@ def _click_node_or_ancestor(node) -> None:
 
 @step("Launch first overview search result via Shell.Eval")
 def launch_first_search_result(context) -> None:
-    """Launch the selected overview result with the focused Return keypress."""
-    pressKey("Return")
-    sleep(2)
+    """Activate the first overview search result via Shell.Eval JS.
+
+    uinput key events are unreliable on GNOME 50 Wayland sessions without a
+    physical seat.  Use Shell.Eval to directly call activateDefault() on the
+    SearchController, falling back to activating the first result actor.
+    """
+    result = _shell_eval_inner(
+        "(() => {"
+        "const sc = Main.overview._overview"
+        "  && Main.overview._overview.controls"
+        "  && Main.overview._overview.controls._searchController;"
+        "if (!sc) return 'no-sc';"
+        "if (typeof sc.activateDefault === 'function') {"
+        "  sc.activateDefault(); return 'activated';"
+        "}"
+        "if (sc._defaultResult && typeof sc._defaultResult.activate === 'function') {"
+        "  sc._defaultResult.activate(null, global.get_current_time());"
+        "  return 'activated-result';"
+        "}"
+        "return 'no-method';"
+        "})()"
+    )
+    assert result in ('activated', 'activated-result'), (
+        f"Could not activate first overview search result via Shell.Eval: {result!r}"
+    )
+    sleep(3)  # give Flatpak app time to start and register in AT-SPI
 
 
 @step('Application "{app_id}" is open in AT-SPI')

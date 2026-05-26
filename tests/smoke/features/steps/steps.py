@@ -353,20 +353,28 @@ def _shell_eval_inner(js: str) -> str:
     """Return the inner JS-result string from Shell.Eval's (bs) GVariant tuple.
 
     gdbus output format: ``(true, 'value')`` — the outer bool is the DBus
-    call-success flag, NOT the JS result.  ``'true' in out.lower()`` is a
-    false-positive trap because the wrapper always contains 'true'.
-    This helper extracts only the inner quoted value.
+    call-success flag, NOT the JS result.
+
+    GNOME Shell JSON-encodes string results, so the extracted value may have
+    wrapping double-quotes (e.g. ``'"present"'``). Strip them so callers can
+    compare directly (``inner == 'present'``, ``inner == 'true'``, etc.).
     """
     import re
     out = _shell_eval(js)
     m = re.search(r"\((?:true|false),\s*'(.*)'\)", out.strip())
-    return m.group(1) if m else ""
+    if not m:
+        return ""
+    inner = m.group(1)
+    if inner.startswith('"') and inner.endswith('"'):
+        return inner[1:-1]
+    return inner
 
 
 @step('Open Activities overview via Shell.Eval')
 def open_overview_eval(context) -> None:
     _shell_eval('Main.overview.show()')
-    sleep(1)
+    sleep(2)  # GNOME Shell 50 may need >1 s to expose the overview node
+
 
 
 @step('Close Activities overview via Shell.Eval')
@@ -447,10 +455,14 @@ def set_overview_search_eval(context, text) -> None:
 
 @step("Overview is open")
 def overview_is_open(context) -> None:
-    shell = tree.root.application("gnome-shell")
+    # Primary: Shell.Eval — authoritative and unaffected by AT-SPI showing=False
     for _ in range(8):
-        # GNOME 49/50: name may be 'Overview' or 'overview' — match case-insensitively
-        results = shell.findChildren(lambda n: n.name.lower() == "overview" and n.showing)
+        visible = _shell_eval_inner('Main.overview.visible.toString()')
+        if visible == 'true':
+            return
+        # Secondary: AT-SPI node with showing filter relaxed
+        shell = tree.root.application("gnome-shell")
+        results = shell.findChildren(lambda n: n.name.lower() == "overview")
         if results:
             return
         sleep(0.5)
@@ -459,10 +471,10 @@ def overview_is_open(context) -> None:
 
 @step("Overview is closed")
 def overview_is_closed(context) -> None:
-    shell = tree.root.application("gnome-shell")
+    # Primary: Shell.Eval — authoritative and unaffected by AT-SPI showing=False
     for _ in range(8):
-        results = shell.findChildren(lambda n: n.name.lower() == "overview" and n.showing)
-        if not results:
+        visible = _shell_eval_inner('Main.overview.visible.toString()')
+        if visible == 'false':
             return
         sleep(0.5)
     raise AssertionError("Activities overview is still showing after 4s")

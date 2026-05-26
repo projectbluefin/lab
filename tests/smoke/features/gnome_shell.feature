@@ -146,6 +146,20 @@ Feature: GNOME Shell smoke tests
     * Settings panel "Appearance" shows "Style"
     * Close application "org.gnome.Settings" via Shell.Eval
 
+  @browser @app_launch
+  Scenario: Firefox launches and shows browser window
+    * GNOME Shell is accessible via AT-SPI
+    * Open Activities overview via Shell.Eval
+    * Set overview search text to "Firefox" via Shell.Eval
+    * Launch first overview search result via Shell.Eval
+    * Application "org.mozilla.firefox" is open in AT-SPI
+    * Close application "org.mozilla.firefox" via Shell.Eval
+
+  @browser @default_browser
+  Scenario: xdg-settings reports a default browser
+    * Run and save command output: "xdg-settings get default-web-browser"
+    * Last command output stripped contains ".desktop"
+
   # ── Quick Settings state change (#90) ───────────────────────────────────
 
   @quick_settings @state_change

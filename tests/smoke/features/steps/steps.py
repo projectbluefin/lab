@@ -194,6 +194,17 @@ def last_command_output_stripped_is(context, expected) -> None:
     )
 
 
+@step('Last command output stripped contains "{expected}"')
+def last_command_output_stripped_contains(context, expected) -> None:
+    actual = (
+        getattr(context, 'command_stdout', None)
+        or getattr(context, 'last_command_output', None)
+        or getattr(context, 'last_run_output', None)
+        or ""
+    ).strip()
+    assert expected in actual, f"Expected {expected!r} in output: {actual!r}"
+
+
 @step("No gnome-shell journal errors since test start")
 def no_gnome_shell_journal_errors_since_start(context) -> None:
     import subprocess

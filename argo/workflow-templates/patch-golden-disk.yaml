@@ -31,6 +31,13 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 1Gi
         env:
           - name: SSH_PUBKEY
             valueFrom:

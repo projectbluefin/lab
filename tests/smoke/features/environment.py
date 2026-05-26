@@ -148,12 +148,9 @@ def before_all(context) -> None:
         context.sandbox = TestSandbox("gnome-shell", context=context)
         context.sandbox.attach_faf = False
         context.sandbox.production = False
+        context.shell_ready = False
     except Exception as error:
         raise RuntimeError(f"before_all sandbox setup failed: {error}") from error
-
-    _ensure_unsafe_mode("before_all post-sandbox")
-    _wait_for_panel(context)
-
 
 def before_scenario(context, scenario) -> None:
     # Initialize qecore command output attributes (attribute name varies by version)
@@ -164,6 +161,10 @@ def before_scenario(context, scenario) -> None:
         if not hasattr(context, "sandbox"):
             raise RuntimeError("TestSandbox was not initialized in before_all")
         context.sandbox.before_scenario(context, scenario)
+        if not getattr(context, "shell_ready", False):
+            _ensure_unsafe_mode("before_scenario post-sandbox")
+            _wait_for_panel(context)
+            context.shell_ready = True
     except Exception as error:
         tb = traceback.format_exc()
         raise RuntimeError(

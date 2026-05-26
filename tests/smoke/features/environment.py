@@ -107,17 +107,8 @@ def _wait_for_panel(context, attempts: int = 6, delay: int = 5) -> None:
     for attempt in range(1, attempts + 1):
         try:
             shell = context.sandbox.shell
-            # On GNOME Shell 50 in headless mode the top-bar panel reports
-            # showing=False in AT-SPI.  Temporarily disable the showing filter
-            # so findChildren can traverse the full tree for readiness detection.
-            from dogtail.config import config as _dcfg
-            _orig_showing = _dcfg.searchShowingOnly
-            _dcfg.searchShowingOnly = False
-            try:
-                panels = shell.findChildren(lambda node: node.roleName == "panel")
-                toggles = panels[0].findChildren(lambda node: node.roleName == "toggle button") if panels else []
-            finally:
-                _dcfg.searchShowingOnly = _orig_showing
+            panels = shell.findChildren(lambda node: node.roleName == "panel")
+            toggles = panels[0].findChildren(lambda node: node.roleName == "toggle button") if panels else []
             if panels and toggles:
                 context.panel = panels[0]
                 return
@@ -146,9 +137,11 @@ def _wait_for_panel(context, attempts: int = 6, delay: int = 5) -> None:
 
 
 def before_all(context) -> None:
-    # searchShowingOnly=True: all dogtail searches implicitly filter to .showing
-    # nodes — removes need for redundant `.showing` predicates in step code.
-    dogtail_config.searchShowingOnly = True
+    # searchShowingOnly=False: in headless sessions (no physical monitor) GNOME
+    # Shell reports showing=False for all AT-SPI nodes including panels, toggles,
+    # and launched app windows.  Filtering to showing-only nodes would miss
+    # everything.  Disable the filter globally for all headless smoke runs.
+    dogtail_config.searchShowingOnly = False
 
     # Initialize sandbox
     try:

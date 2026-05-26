@@ -159,19 +159,8 @@ def gnome_shell_is_accessible(context) -> None:
 
 
 def _find_panels(shell):
-    """Find gnome-shell panel nodes.
-
-    On GNOME Shell 50 in headless mode the top-bar panel reports showing=False
-    in AT-SPI.  Temporarily disable dogtail's searchShowingOnly filter so the
-    panel can still be found, then restore the original setting.
-    """
-    from dogtail.config import config as _dcfg
-    orig = _dcfg.searchShowingOnly
-    _dcfg.searchShowingOnly = False
-    try:
-        return shell.findChildren(lambda n: n.roleName == "panel")
-    finally:
-        _dcfg.searchShowingOnly = orig
+    """Find gnome-shell panel nodes by role."""
+    return shell.findChildren(lambda n: n.roleName == "panel")
 
 
 @step('Panel is present in AT-SPI tree')
@@ -190,21 +179,11 @@ def panel_is_present(context) -> None:
 
 @step('Activities toggle is visible in top bar')
 def activities_toggle_visible(context) -> None:
-    """Verify the Activities toggle button exists in the top bar.
-
-    Uses _find_panels (searchShowingOnly=False) because on GNOME Shell 50
-    the panel reports showing=False in AT-SPI on headless setups.
-    """
+    """Verify the Activities toggle button exists in the top bar."""
     shell = context.sandbox.shell
     panels = _find_panels(shell)
     assert panels, "Panel (role='panel') not found in gnome-shell"
-    from dogtail.config import config as _dcfg
-    orig = _dcfg.searchShowingOnly
-    _dcfg.searchShowingOnly = False
-    try:
-        toggles = panels[0].findChildren(lambda n: n.roleName == "toggle button")
-    finally:
-        _dcfg.searchShowingOnly = orig
+    toggles = panels[0].findChildren(lambda n: n.roleName == "toggle button")
     activities = next((t for t in toggles if t.name == "Activities"), None)
     if activities is None:
         toggle_info = [(t.name, t.roleName) for t in toggles]
@@ -264,13 +243,7 @@ def system_menu_toggle_visible(context) -> None:
     assert panels, "Panel not found"
     panel = panels[0]
     CANDIDATE_NAMES = {"System", "System menu", "System Menu"}
-    from dogtail.config import config as _dcfg
-    orig = _dcfg.searchShowingOnly
-    _dcfg.searchShowingOnly = False
-    try:
-        toggles = panel.findChildren(lambda n: n.roleName == "toggle button")
-    finally:
-        _dcfg.searchShowingOnly = orig
+    toggles = panel.findChildren(lambda n: n.roleName == "toggle button")
     system = next((t for t in toggles if t.name in CANDIDATE_NAMES), None)
     if system is None:
         toggle_info = [(t.name, t.roleName) for t in toggles]
@@ -495,16 +468,8 @@ def overview_is_closed(context) -> None:
 
 @step('Overview search bar contains "{text}"')
 def overview_search_bar_contains(context, text) -> None:
-    # On GNOME Shell 50 headless the search entry may report showing=False in
-    # AT-SPI even while it is active.  Search without the showing filter.
     shell = tree.root.application("gnome-shell")
-    from dogtail.config import config as _dcfg
-    orig = _dcfg.searchShowingOnly
-    _dcfg.searchShowingOnly = False
-    try:
-        entries = shell.findChildren(lambda n: n.roleName == "text")
-    finally:
-        _dcfg.searchShowingOnly = orig
+    entries = shell.findChildren(lambda n: n.roleName == "text")
     # Filter to entries that have text content matching the search query
     text_entries = [e for e in entries if e.text]
     assert text_entries, "Search bar text entry not found"
@@ -523,22 +488,14 @@ def _app_aliases(app_id: str) -> tuple[str, ...]:
 
 
 def _wait_for_application_node(app_id: str, attempts: int = 10, delay: float = 1.0):
-    from dogtail.config import config as _dcfg
     aliases = _app_aliases(app_id)
     last_seen = []
     for _ in range(attempts):
-        # Launched Flatpak apps report showing=False in AT-SPI on headless
-        # sessions (no physical monitor).  Search without the showing filter.
-        orig = _dcfg.searchShowingOnly
-        _dcfg.searchShowingOnly = False
-        try:
-            apps = tree.root.findChildren(
-                lambda n: n.roleName == "application"
-                and any(alias in (n.name or "").lower() for alias in aliases)
-            )
-            last_seen = [(n.name, n.roleName) for n in tree.root.children[:15]]
-        finally:
-            _dcfg.searchShowingOnly = orig
+        apps = tree.root.findChildren(
+            lambda n: n.roleName == "application"
+            and any(alias in (n.name or "").lower() for alias in aliases)
+        )
+        last_seen = [(n.name, n.roleName) for n in tree.root.children[:15]]
         if apps:
             return apps[0]
         sleep(delay)

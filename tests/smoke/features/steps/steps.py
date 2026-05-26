@@ -673,14 +673,14 @@ def open_settings_panel(context, panel_name) -> None:
         "  });"
         "  p2.init(null);"
         "  const [, out] = p2.communicate_utf8(null, null);"
-        "  (out || '').trim().replace(/\\n/g, ',');"
+        "  (out || 'empty').trim().split('\\n').join(',');"
         "} catch(e) { 'list-err:' + e.message; }"
     )
     print(f"[open_settings_panel] GCC panel list: {panel_list_raw}")
 
     _shell_eval(
         "const p = new Gio.Subprocess({"
-        f"  argv: ['gnome-control-center', '{panel_id}'],"
+        f"  argv: ['gnome-control-center', '--panel', '{panel_id}'],"
         "  flags: Gio.SubprocessFlags.NONE"
         "});"
         "p.init(null);"

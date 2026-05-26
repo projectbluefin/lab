@@ -650,7 +650,34 @@ def open_settings_panel(context, panel_name) -> None:
         "  }"
         "});"
     )
-    sleep(1)
+    # Wait for GCC to fully vanish from AT-SPI before relaunching.
+    for _ in range(10):
+        apps = tree.root.findChildren(
+            lambda n: n.roleName == "application"
+            and any(alias in (n.name or "").lower() for alias in _app_aliases("org.gnome.Settings"))
+        )
+        has_windows = any(
+            app.findChildren(lambda n: n.roleName == "frame") for app in apps
+        )
+        if not has_windows:
+            break
+        sleep(0.5)
+    sleep(0.5)  # small grace period after process exits
+
+    # Capture the valid panel list for diagnostics and ID verification.
+    panel_list_raw = _shell_eval_inner(
+        "try {"
+        "  const p2 = new Gio.Subprocess({"
+        "    argv: ['gnome-control-center', '--list-panels'],"
+        "    flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE"
+        "  });"
+        "  p2.init(null);"
+        "  const [, out] = p2.communicate_utf8(null, null);"
+        "  (out || '').trim().replace(/\\n/g, ',');"
+        "} catch(e) { 'list-err:' + e.message; }"
+    )
+    print(f"[open_settings_panel] GCC panel list: {panel_list_raw}")
+
     _shell_eval(
         "const p = new Gio.Subprocess({"
         f"  argv: ['gnome-control-center', '{panel_id}'],"

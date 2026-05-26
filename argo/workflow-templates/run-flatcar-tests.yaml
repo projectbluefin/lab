@@ -84,7 +84,7 @@ spec:
             dnf install -y -q python3 python3-pip openssh-clients 2>&1 | tail -3
 
             # Install behave in runner pod (no qecore needed — no GNOME desktop)
-            python3 -m pip install --quiet behave behave-html-pretty-formatter 2>&1 | tail -3
+            python3 -m pip install --quiet behave 2>&1 | tail -3
 
             # Wait for Flatcar SSH (up to 5 minutes — faster boot than Bluefin)
             SSH_OPTS="-i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
@@ -99,8 +99,6 @@ spec:
             cd /tests/flatcar/features
 
             behave . \
-              --format html-pretty \
-              --outfile /tmp/results/report.html \
               --format json.pretty \
               --outfile /tmp/results/results.json \
               --no-capture \

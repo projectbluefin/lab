@@ -141,7 +141,7 @@ Feature: GNOME Shell smoke tests
     * Launch first overview search result via Shell.Eval
     * Application "org.gnome.Settings" is open in AT-SPI
     * Open Settings panel "About"
-    * Settings panel "About" shows "Operating System"
+    * Settings panel "About" shows "Region & Language"
     * Open Settings panel "Appearance"
     * Settings panel "Appearance" shows "Light"
     * Close application "org.gnome.Settings" via Shell.Eval

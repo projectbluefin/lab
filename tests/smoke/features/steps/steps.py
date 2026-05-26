@@ -585,12 +585,19 @@ def close_app_via_shell_eval(context, app_id) -> None:
         "}"
         % aliases
     )
-    for _ in range(8):
+    # With searchShowingOnly=False the application node persists after all windows
+    # are destroyed (the process keeps running).  Check for open *windows* (frame
+    # nodes) rather than the application node itself.
+    for _ in range(20):
         apps = tree.root.findChildren(
             lambda n: n.roleName == "application"
             and any(alias in (n.name or "").lower() for alias in _app_aliases(app_id))
         )
-        if not apps:
+        has_windows = any(
+            app.findChildren(lambda n: n.roleName == "frame")
+            for app in apps
+        )
+        if not has_windows:
             if getattr(context, "current_application", None) is not None:
                 context.current_application = None
             return
@@ -610,14 +617,13 @@ def files_sidebar_contains(context, item) -> None:
 
 @step('Open Settings panel "{panel_name}"')
 def open_settings_panel(context, panel_name) -> None:
-    app = getattr(context, "current_application", None) or _wait_for_application_node("org.gnome.Settings")
-    candidates = app.findChildren(
-        lambda n: (n.name or "").strip() == panel_name
-        and n.roleName in {"label", "push button", "list item", "table cell", "row header"}
+    # Navigate directly via settings:// URI — reliable on gnome-control-center 46+
+    # where panels like "About" are nested under "System" and not top-level sidebar items.
+    panel_id = panel_name.lower().replace(" ", "-")
+    _shell_eval(
+        f"Gio.AppInfo.launch_default_for_uri('settings://{panel_id}', null);"
     )
-    assert candidates, f"Settings panel {panel_name!r} not found"
-    _click_node_or_ancestor(candidates[0])
-    sleep(1)
+    sleep(2)
 
 
 @step('Settings panel "{panel_name}" shows "{text}"')

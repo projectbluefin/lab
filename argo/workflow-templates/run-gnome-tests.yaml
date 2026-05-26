@@ -223,11 +223,9 @@ spec:
                 > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
               ${SSH} "
                 export PATH=\$HOME/.local/bin:\$PATH
-                # Kill any stale qecore-headless/gnome-session from a prior aborted run
-                # so we don't get 'Exiting the duplicate of headless script.'
-                for pid in \$(ps aux | grep -F qecore-headless | grep -v grep | awk '{print \$2}'); do kill \"\$pid\" 2>/dev/null || true; done
-                for pid in \$(ps aux | grep -F gnome-session | grep -v grep | awk '{print \$2}'); do kill \"\$pid\" 2>/dev/null || true; done
-                sleep 2
+                # Remove stale qecore-headless lock file from a prior aborted run
+                # without killing the running gnome-session — reusing an existing
+                # session avoids extension-load delays on a fresh session.
                 rm -f /tmp/headless* /tmp/qecore* /tmp/.headless* 2>/dev/null || true
                 \$HOME/.local/bin/qecore-headless \
                   --session-type wayland \

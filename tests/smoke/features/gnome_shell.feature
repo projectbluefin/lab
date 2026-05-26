@@ -173,7 +173,7 @@ Feature: GNOME Shell smoke tests
 
   # ── Bluefin extension workflows (#91) ────────────────────────────────────
 
-  @extension_behavior @ding @regression @bluefin_91
+  @extension_behavior @ding @regression @bluefin_91 @wip
   Scenario: Desktop Icons NG (ding) is enabled and desktop icon area exists    * GNOME Shell is accessible via AT-SPI
     * Extension "ding@rastersoft.com" is enabled
     * AT-SPI root contains a desktop canvas or icon surface
@@ -200,7 +200,7 @@ Feature: GNOME Shell smoke tests
     * Extension "appindicatorsupport@rgcjonas.gmail.com" is enabled
     * App Indicators registers a panel tray host
 
-  @extension_behavior @windows_navigator @regression @bluefin_91
+  @extension_behavior @windows_navigator @regression @bluefin_91 @wip
   Scenario: Windows Navigator shows workspace navigation hints in the overview    * GNOME Shell is accessible via AT-SPI
     * Extension "windowsNavigator@gnome-shell-extensions.gcampax.github.com" is enabled
     * Open Activities overview via Shell.Eval

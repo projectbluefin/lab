@@ -647,7 +647,17 @@ def settings_panel_shows_text(context, panel_name, text) -> None:
         lambda n: text in (n.name or "")
         and n.roleName in {"label", "heading", "page tab", "push button", "text", "static"}
     )
-    assert matches, f"Settings panel {panel_name!r} does not show {text!r}"
+    if not matches:
+        # Dump visible node names to aid diagnosis of panel content changes.
+        all_nodes = app.findChildren(
+            lambda n: n.roleName in {"label", "heading", "push button", "text", "static", "list item"}
+            and (n.name or "").strip()
+        )
+        node_dump = [(n.roleName, n.name) for n in all_nodes[:30]]
+        raise AssertionError(
+            f"Settings panel {panel_name!r} does not show {text!r}. "
+            f"Available nodes (role, name): {node_dump}"
+        )
 
 
 # ── Quick Settings state change (#90) ────────────────────────────────────

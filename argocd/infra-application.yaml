@@ -17,6 +17,16 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: argo
+  ignoreDifferences:
+    - group: kubevirt.io
+      kind: VirtualMachine
+      jqPathExpressions:
+        - .status
+        - .spec.template.metadata.annotations."kubevirt.io/pci-topology-version"
+        - .spec.template.spec.architecture
+        - .spec.template.spec.domain.firmware
+        - .spec.template.spec.domain.resources
+        - .spec.template.spec.volumes[]?.hostDisk.capacity
   syncPolicy:
     automated:
       prune: true

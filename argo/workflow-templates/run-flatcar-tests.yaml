@@ -80,6 +80,9 @@ spec:
             set -euo pipefail
             mkdir -p /tmp/results
 
+            # Install runtime deps (minimal Fedora image lacks python3 and ssh client)
+            dnf install -y -q python3 python3-pip openssh-clients 2>&1 | tail -3
+
             # Install behave in runner pod (no qecore needed — no GNOME desktop)
             python3 -m pip install --quiet behave behave-html-pretty-formatter 2>&1 | tail -3
 

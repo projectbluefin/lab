@@ -13,6 +13,7 @@ qecore-headless (invoked by the Argo runner) handles:
 import re
 import subprocess
 import sys
+import time
 import traceback
 
 from dogtail.config import config as dogtail_config
@@ -20,49 +21,112 @@ from qecore.sandbox import TestSandbox
 from qecore.common_steps import *  # noqa: F401,F403 — registers all common @step definitions
 
 
+def _shell_eval_inner(js: str) -> str:
+    result = subprocess.run(
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.gnome.Shell",
+            "--object-path",
+            "/org/gnome/Shell",
+            "--method",
+            "org.gnome.Shell.Eval",
+            js,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or result.stdout.strip() or "unknown gdbus failure"
+        raise RuntimeError(stderr[:200])
+
+    match = re.search(r"\((?:true|false),\s*'(.*)'\)", result.stdout.strip())
+    if match is None:
+        raise RuntimeError(f"unexpected Shell.Eval output: {result.stdout.strip()[:200]}")
+    return match.group(1)
+
+
+def _shell_snapshot(shell) -> str:
+    lines = []
+
+    def _walk(node, depth=0, max_depth=3):
+        prefix = "  " * depth
+        lines.append(
+            f"{prefix}role={node.roleName!r:25} name={node.name!r:30} showing={node.showing}"
+        )
+        if depth < max_depth:
+            for child in node.children[:25]:
+                _walk(child, depth + 1, max_depth)
+
+    _walk(shell, max_depth=3)
+    return "\n".join(lines)
+
+
+def _write_atspi_tree(shell) -> None:
+    import os
+
+    os.makedirs("/tmp/results", exist_ok=True)
+    with open("/tmp/results/atspi_tree.txt", "w") as handle:
+        handle.write(_shell_snapshot(shell))
+
+
+def _wait_for_panel(context, attempts: int = 6, delay: int = 5) -> None:
+    last_snapshot = "unavailable"
+    last_error = "unknown"
+
+    for attempt in range(1, attempts + 1):
+        try:
+            shell = context.sandbox.shell
+            panels = shell.findChildren(lambda node: node.roleName == "panel")
+            if panels:
+                toggles = panels[0].findChildren(lambda node: node.roleName == "toggle button")
+                if toggles:
+                    context.panel = panels[0]
+                    return
+                last_error = f"panel found but no visible toggle buttons yet (attempt {attempt})"
+            else:
+                last_error = f"panel not exposed in AT-SPI yet (attempt {attempt})"
+            last_snapshot = _shell_snapshot(shell)
+        except Exception as error:  # noqa: BLE001
+            last_error = str(error)
+            last_snapshot = f"unable to snapshot shell: {error}"
+        if attempt < attempts:
+            time.sleep(delay)
+
+    try:
+        _write_atspi_tree(context.sandbox.shell)
+    except Exception:  # noqa: BLE001
+        pass
+
+    raise RuntimeError(
+        "GNOME Shell panel/top-bar readiness failed inside behave before_all.\n"
+        f"Last error: {last_error}\n"
+        f"Last shell snapshot:\n{last_snapshot}"
+    )
+
+
 def before_all(context) -> None:
     # searchShowingOnly=True: all dogtail searches implicitly filter to .showing
     # nodes — removes need for redundant `.showing` predicates in step code.
     dogtail_config.searchShowingOnly = True
     try:
-        result = subprocess.run(
-            [
-                "gdbus",
-                "call",
-                "--session",
-                "--dest",
-                "org.gnome.Shell",
-                "--object-path",
-                "/org/gnome/Shell",
-                "--method",
-                "org.gnome.Shell.Eval",
-                "global.context.unsafe_mode === true",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
+        if _shell_eval_inner("global.context.unsafe_mode === true ? 'true' : 'false'") != "true":
+            raise RuntimeError("unsafe_mode was not enabled by run-gnome-tests readiness checks.")
     except Exception as error:  # noqa: BLE001
         raise RuntimeError(f"unsafe_mode verification failed: {error}") from error
-    if result.returncode != 0:
-        stderr = result.stderr.strip() or result.stdout.strip() or "unknown gdbus failure"
-        raise RuntimeError(f"unsafe_mode verification failed: {stderr[:200]}")
-    match = re.search(r"\((?:true|false),\s*'([^']*)'\)", result.stdout.strip())
-    if match is None or match.group(1) != "true":
-        raise RuntimeError(
-            "unsafe_mode was not enabled by run-gnome-tests readiness checks. "
-            f"Got: {result.stdout.strip()[:200]}"
-        )
 
     # Initialize sandbox
     try:
         context.sandbox = TestSandbox("gnome-shell", context=context)
         context.sandbox.attach_faf = False
         context.sandbox.production = False
-        context.shell = context.sandbox.shell
     except Exception as error:
-        print(f"Environment error: before_all: {error}", flush=True)
-        context.failed_setup = traceback.format_exc()
+        raise RuntimeError(f"before_all sandbox setup failed: {error}") from error
+
+    _wait_for_panel(context)
 
 
 def before_scenario(context, scenario) -> None:
@@ -71,11 +135,14 @@ def before_scenario(context, scenario) -> None:
     context.command_stdout = ""
     context.last_command_output = ""
     try:
+        if not hasattr(context, "sandbox"):
+            raise RuntimeError("TestSandbox was not initialized in before_all")
         context.sandbox.before_scenario(context, scenario)
-    except Exception:
+    except Exception as error:
         tb = traceback.format_exc()
-        print(f"HOOK_ERROR in before_scenario:\n{tb}", flush=True)
-        sys.exit(1)
+        raise RuntimeError(
+            f"before_scenario failed for {scenario.name}: {error}\n{tb}"
+        ) from error
 
 
 def after_scenario(context, scenario) -> None:
@@ -106,16 +173,8 @@ def after_all(context) -> None:
     """
     try:
         import os
-        if os.path.exists("/tmp/results/atspi_tree.txt"):
+        if os.path.exists("/tmp/results/atspi_tree.txt") or not hasattr(context, "sandbox"):
             return  # already written by after_scenario
-        shell = context.sandbox.shell
-        lines = []
-        for child in shell.children[:60]:
-            lines.append(f"role={child.roleName!r:30} name={child.name!r}")
-            for gc in child.children[:20]:
-                lines.append(f"  role={gc.roleName!r:30} name={gc.name!r}")
-        os.makedirs("/tmp/results", exist_ok=True)
-        with open("/tmp/results/atspi_tree.txt", "w") as f:
-            f.write("\n".join(lines))
+        _write_atspi_tree(context.sandbox.shell)
     except Exception:   # noqa: BLE001
         pass

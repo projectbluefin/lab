@@ -24,6 +24,56 @@ from dogtail.rawinput import pressKey
 from qecore.common_steps import *  # noqa: F401,F403
 
 
+def _shell_snapshot(shell, max_children=15):
+    top_level = [(child.roleName, child.name, child.showing) for child in shell.children[:max_children]]
+    panels = shell.findChildren(lambda node: node.roleName == "panel")
+    panel_children = []
+    toggle_names = []
+    if panels:
+        panel_children = [
+            (child.roleName, child.name, child.showing) for child in panels[0].children[:max_children]
+        ]
+        toggle_names = [toggle.name for toggle in panels[0].findChildren(lambda node: node.roleName == "toggle button")]
+    return (
+        f"top-level={top_level}\n"
+        f"panel-children={panel_children}\n"
+        f"toggle-names={toggle_names}"
+    )
+
+
+def _find_panel_with_retry(context, attempts=6, delay=1.0):
+    shell = context.sandbox.shell
+    last_snapshot = _shell_snapshot(shell)
+    for attempt in range(1, attempts + 1):
+        panels = shell.findChildren(lambda node: node.roleName == "panel")
+        if panels:
+            context.panel = panels[0]
+            return panels[0]
+        last_snapshot = _shell_snapshot(shell)
+        if attempt < attempts:
+            sleep(delay)
+    raise AssertionError(
+        f"Panel (role='panel') not found in gnome-shell after {attempts * delay:.1f}s.\n"
+        f"{last_snapshot}"
+    )
+
+
+def _wait_for_toggle(panel, predicate, description, attempts=6, delay=1.0):
+    toggle_info = []
+    for attempt in range(1, attempts + 1):
+        toggles = panel.findChildren(lambda node: node.roleName == "toggle button")
+        toggle_info = [(toggle.name, toggle.roleName, toggle.showing) for toggle in toggles]
+        match = next((toggle for toggle in toggles if predicate(toggle)), None)
+        if match is not None:
+            return match
+        if attempt < attempts:
+            sleep(delay)
+    raise AssertionError(
+        f"{description} not found after {attempts * delay:.1f}s.\n"
+        f"All panel toggles: {toggle_info}"
+    )
+
+
 @step("Dump panel children to log")
 def dump_panel_children(context) -> None:
     """Print the full gnome-shell AT-SPI tree to stdout (Argo logs).
@@ -97,13 +147,7 @@ def panel_is_present(context) -> None:
     Searches by role='panel' — does NOT depend on accessible-name, which
     varies across GNOME versions (may be empty, 'panel', 'top-bar', etc.).
     """
-    shell = context.sandbox.shell
-    # dogtail 4.16 dropped requireResult kwarg — use findChildren instead
-    panels = shell.findChildren(lambda n: n.roleName == "panel")
-    if not panels:
-        children = [(c.roleName, c.name) for c in shell.children[:15]]
-        raise AssertionError(f"Panel (role='panel') not found in gnome-shell.\nTop-level children: {children}")
-    context.panel = panels[0]
+    _find_panel_with_retry(context)
 
 
 @step('Clock toggle is visible in top bar')
@@ -114,30 +158,16 @@ def clock_toggle_visible(context) -> None:
     We match by role and exclude 'Activities' and known system-menu names.
     """
     import re
-    shell = context.sandbox.shell
-    # dogtail 4.16 dropped requireResult kwarg — use findChildren instead
-    panels = shell.findChildren(lambda n: n.roleName == "panel")
-    assert panels, "Panel not found"
-    panel = panels[0]
+    panel = _find_panel_with_retry(context)
     # dogtail.config.searchShowingOnly = True (set in before_all) makes the
     # implicit `.showing` filter redundant here.
-    toggles = panel.findChildren(lambda n: n.roleName == "toggle button")
     SYSTEM_NAMES = {"Activities", "System", "System Menu", "System menu"}
     time_re = re.compile(r'\d{1,2}:\d{2}|clock', re.IGNORECASE)
-    clock = next(
-        (t for t in toggles
-         if t.name and t.name not in SYSTEM_NAMES and time_re.search(t.name)),
-        None,
+    clock = _wait_for_toggle(
+        panel,
+        lambda toggle: toggle.name and toggle.name not in SYSTEM_NAMES and time_re.search(toggle.name),
+        "Clock toggle (time-pattern in accessible-name)",
     )
-    # No lax fallback: accepting "any non-system toggle" caused silent false
-    # passes when the actual clock was missing — see issue #5. If the time
-    # pattern is absent, fail with full toggle inventory for diagnosis.
-    if clock is None:
-        toggle_info = [(t.name, t.roleName) for t in toggles]
-        raise AssertionError(
-            f"Clock toggle (time-pattern in accessible-name) not found.\n"
-            f"All panel toggles: {toggle_info}"
-        )
     context.clock_toggle = clock
     print(f"Clock toggle found: name={clock.name!r}", flush=True)
 
@@ -148,22 +178,13 @@ def system_menu_toggle_visible(context) -> None:
     In GNOME 47/48 the accessible-name is 'System' (not 'System menu').
     Also accepts 'System menu' for forward compatibility.
     """
-    shell = context.sandbox.shell
-    # dogtail 4.16 dropped requireResult kwarg — use findChildren instead
-    panels = shell.findChildren(lambda n: n.roleName == "panel")
-    assert panels, "Panel not found"
-    panel = panels[0]
+    panel = _find_panel_with_retry(context)
     CANDIDATE_NAMES = {"System", "System menu", "System Menu"}
-    toggles = panel.findChildren(lambda n: n.roleName == "toggle button")
-    system = next((t for t in toggles if t.name in CANDIDATE_NAMES), None)
-    # No "first non-clock toggle" fallback: it accepted unrelated buttons
-    # (e.g. notification indicator) and produced silent false passes — issue #5.
-    if system is None:
-        toggle_info = [(t.name, t.roleName) for t in toggles]
-        raise AssertionError(
-            f"System menu toggle not found (looked for {sorted(CANDIDATE_NAMES)}).\n"
-            f"All panel toggles: {toggle_info}"
-        )
+    system = _wait_for_toggle(
+        panel,
+        lambda toggle: toggle.name in CANDIDATE_NAMES,
+        f"System menu toggle (looked for {sorted(CANDIDATE_NAMES)})",
+    )
     context.system_toggle = system
     print(f"System menu toggle found: name={system.name!r}", flush=True)
 
@@ -201,6 +222,9 @@ def _shell_eval(js: str) -> str:
          js],
         capture_output=True, text=True, timeout=5,
     )
+    if r.returncode != 0:
+        stderr = r.stderr.strip() or r.stdout.strip() or "unknown gdbus failure"
+        raise AssertionError(f"Shell.Eval failed for {js!r}: {stderr[:200]}")
     print(f"Shell.Eval({js!r}) → {r.stdout.strip()}", flush=True)
     return r.stdout
 
@@ -216,7 +240,9 @@ def _shell_eval_inner(js: str) -> str:
     import re
     out = _shell_eval(js)
     m = re.search(r"\((?:true|false),\s*'(.*)'\)", out.strip())
-    return m.group(1) if m else ""
+    if m is None:
+        raise AssertionError(f"Unexpected Shell.Eval output for {js!r}: {out.strip()!r}")
+    return m.group(1)
 
 
 @step('Open Activities overview via Shell.Eval')
@@ -303,35 +329,40 @@ def set_overview_search_eval(context, text) -> None:
 
 @step("Overview is open")
 def overview_is_open(context) -> None:
-    shell = tree.root.application("gnome-shell")
+    inner = ""
     for _ in range(8):
-        # GNOME 49/50: name may be 'Overview' or 'overview' — match case-insensitively
-        results = shell.findChildren(lambda n: n.name.lower() == "overview" and n.showing)
-        if results:
+        inner = _shell_eval_inner('Main.overview.visible.toString()')
+        if inner == "true":
             return
         sleep(0.5)
-    raise AssertionError("Activities overview did not open after 4s")
+    raise AssertionError(f"Activities overview did not open after 4s — Shell.Eval inner: {inner!r}")
 
 
 @step("Overview is closed")
 def overview_is_closed(context) -> None:
-    shell = tree.root.application("gnome-shell")
+    inner = ""
     for _ in range(8):
-        results = shell.findChildren(lambda n: n.name.lower() == "overview" and n.showing)
-        if not results:
+        inner = _shell_eval_inner('Main.overview.visible.toString()')
+        if inner == "false":
             return
         sleep(0.5)
-    raise AssertionError("Activities overview is still showing after 4s")
+    raise AssertionError(f"Activities overview is still showing after 4s — Shell.Eval inner: {inner!r}")
 
 
 @step('Overview search bar contains "{text}"')
 def overview_search_bar_contains(context, text) -> None:
-    shell = tree.root.application("gnome-shell")
-    # dogtail 4.16 dropped requireResult kwarg
-    entries = shell.findChildren(lambda n: n.roleName == "text" and n.showing)
-    assert entries, f"Search bar text entry not found"
-    entry = entries[0]
-    assert text in entry.text, f"Search bar text '{entry.text}' does not contain '{text}'"
+    shell = context.sandbox.shell
+    last_entries = []
+    for _ in range(8):
+        entries = shell.findChildren(lambda n: n.roleName == "text")
+        last_entries = [(entry.name, getattr(entry, "text", "")) for entry in entries[:10]]
+        if entries and text in entries[0].text:
+            return
+        sleep(0.5)
+    raise AssertionError(
+        f"Search bar text entry did not contain {text!r} after 4s.\n"
+        f"Visible text nodes: {last_entries}"
+    )
 
 
 def _find_application(*candidate_names):

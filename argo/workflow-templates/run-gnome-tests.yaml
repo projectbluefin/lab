@@ -179,6 +179,23 @@ spec:
             ${SSH} "mkdir -p /tmp/bluefin-tests /tmp/results"
             ${SCP} /workspace/bluefin-test-suite/tests/${SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
 
+            echo "Polling for GNOME Shell AT-SPI readiness..." >&2
+            ${SSH} "bash -c '
+              for i in \$(seq 1 30); do
+                RESULT=\$(gdbus call --session \\
+                  --dest org.gnome.Shell \\
+                  --object-path /org/gnome/Shell \\
+                  --method org.gnome.Shell.Eval \\
+                  \"global.context.unsafe_mode = true; Main.panel ? \\\"ready\\\" : \\\"not-ready\\\"\" 2>/dev/null || true)
+                if echo \"\$RESULT\" | grep -q ready; then
+                  echo \"GNOME Shell ready at attempt \$i\" >&2
+                  break
+                fi
+                echo \"Waiting for GNOME Shell (attempt \$i/30)...\" >&2
+                sleep 3
+              done
+            '"
+
             # ── Run tests via qecore-headless ────────────────────────────────
             # qecore-headless takes the full behave invocation as a single string.
             # It sets up DBUS_SESSION_BUS_ADDRESS, WAYLAND_DISPLAY, XDG_RUNTIME_DIR,

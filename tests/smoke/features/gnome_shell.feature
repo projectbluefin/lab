@@ -143,7 +143,7 @@ Feature: GNOME Shell smoke tests
     * Open Settings panel "About"
     * Settings panel "About" shows "Region & Language"
     * Open Settings panel "Appearance"
-    * Settings panel "Appearance" shows "Light"
+    * Settings panel "Appearance" shows "Default"
     * Close application "org.gnome.Settings" via Shell.Eval
 
   @browser @app_launch @wip

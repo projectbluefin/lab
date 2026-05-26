@@ -217,6 +217,23 @@ teardown:
     just delete-vms
     just delete-workflows
 
+# ── In-cluster homelab substrate ─────────────────────────────────────────────
+
+# Run in-cluster homelab substrate lifecycle tests
+run-homelab-substrate:
+    argo submit --from workflowtemplate/homelab-substrate \
+      -n {{ argo_ns }} --wait --log
+
+# Run in-cluster homelab storage persistence tests
+run-homelab-storage:
+    argo submit --from workflowtemplate/homelab-storage \
+      -n {{ argo_ns }} --wait --log
+
+# Run in-cluster homelab access probe
+run-homelab-access:
+    argo submit --from workflowtemplate/homelab-access-probe \
+      -n {{ argo_ns }} --wait --log
+
 # ── Validation ───────────────────────────────────────────────────────────────
 
 # Lint all Argo YAML manifests

@@ -2,7 +2,20 @@
 
 A cloud-native QA pipeline for [Project Bluefin](https://projectbluefin.io) desktops.
 
-Runs inside Kubernetes on [ghost](https://github.com/castrojo/utah), driven by **Argo Workflows**, booting Bluefin as a **KubeVirt hostDisk VM** (golden disk + btrfs reflink), and executing GUI tests via **behave + qecore + Dogtail (AT-SPI)** — no ISO installer, no pixel matching.
+Runs inside Kubernetes on [ghost](https://github.com/castrojo/utah), driven by **Argo Workflows**, booting Bluefin as a **KubeVirt hostDisk VM** (golden disk + btrfs reflink), and executing GUI tests via **qecore-headless + behave/pytest + Dogtail (AT-SPI)** — no ISO installer, no pixel matching.
+
+## Guiding mantra
+
+This repo exists to prove **Bluefin's image-based operating model**, not to recreate traditional package-manager testing on an atomic desktop.
+
+When choosing what to build, prioritize work that verifies:
+
+1. the **booted image contract** (`bootc`, staged deployments, rollback behavior, read-only `/usr`)
+2. the **integrity contract** (composefs, fs-verity, signature policy, fallback behavior)
+3. the **update orchestration contract** (`uupd`, stream behavior, staged update visibility)
+4. the **user-space isolation contract** (Homebrew, Flatpak, rootless Podman, Docker/Colima living outside the host image)
+
+UI and app coverage still matter, but they should reinforce this model instead of pulling the suite back toward mutable-package assumptions.
 
 ---
 
@@ -22,7 +35,7 @@ GitHub webhook / just run-tests
         │
         ├─ run-gnome-tests ────────► runner pod (Fedora + qecore-headless)
         │                           git-sync → SSH → VM
-        │                           behave + Dogtail (AT-SPI)
+        │                           behave/pytest + Dogtail (AT-SPI)
         │
         └─ teardown (onExit) ──────► delete VM + hostDisk clone
 ```
@@ -37,19 +50,45 @@ GitHub webhook / just run-tests
 
 ## Quick start
 
+For day-to-day iteration, use the **titan** (persistent-VM) lane — no BIB rebuild, ~5 min:
+
 ```bash
-# Run smoke tests against latest Bluefin
+# Fastest validation loop: smoke against persistent titan VMs
+just run-titan-smoke
+
+# Broader UI coverage on titans
+just run-titan-developer
+just run-titan-software
+```
+
+For image / golden-disk changes, or as a pre-merge gate, use the fresh-VM pipeline (~10 min warm):
+
+```bash
+# Smoke against latest Bluefin, fresh VM
 just run-tests
 
-# Run the full matrix (latest + lts)
+# Full matrix (latest + lts)
 just run-tests-matrix
 
-# Apply WorkflowTemplates to the cluster
-just apply-templates
+# Smoke + developer suites on a fresh VM
+just run-developer-tests
 
-# Watch logs
+# Full UI stack through software checks on a fresh VM
+just run-software-tests
+
+# Target a PR branch without merging
+BLUEFIN_TEST_BRANCH=fix/my-branch just run-titan-smoke
+
+# Watch logs of the most recent workflow
 just logs
 ```
+
+> **Agents:** load [`docs/agent-cheatsheet.md`](docs/agent-cheatsheet.md) first —
+> single-file, deterministic recipes for 80% of routine cluster ops (test runs,
+> failure triage, ArgoCD, titan recovery, CronWorkflow ops, SSH rotation, safe
+> cleanup). Escalate to [`docs/lab-operations.md`](docs/lab-operations.md) for the
+> long-form ops guide, [`RUNBOOK.md`](RUNBOOK.md) for architecture, or
+> [`WORKFLOWS.md`](WORKFLOWS.md) for WorkflowTemplate parameter contracts.
 
 ## Repository layout
 
@@ -70,8 +109,8 @@ bluefin-test-suite/
     └── workflow-templates/
         ├── bib-build-and-push.yaml   # golden disk build (BIB)
         ├── provision-bluefin-vm.yaml # reflink clone + KubeVirt VM
-        ├── run-gnome-tests.yaml      # behave + qecore-headless SSH runner
-        └── teardown-bluefin-vm.yaml  # VM + hostDisk cleanup (onExit)
+        ├── run-gnome-tests.yaml      # qecore-headless SSH runner for behave/pytest
+        └── teardown-vm.yaml          # VM + hostDisk cleanup (onExit)
 ```
 
 ## Prerequisites

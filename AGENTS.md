@@ -1,12 +1,38 @@
 # Testing Lab — Agent Instructions
 
-> Read this before touching anything. Last updated: 2026-05-25.
+> **Operating routine? Load [`docs/agent-cheatsheet.md`](docs/agent-cheatsheet.md)
+> first — it covers 80% of cluster ops with deterministic recipes.** This file is
+> the canonical *policy* document; load it for tenets, scope rules, and the data
+> tables. Long-form procedures live in [`docs/lab-operations.md`](docs/lab-operations.md);
+> WorkflowTemplate parameter contracts in [`WORKFLOWS.md`](WORKFLOWS.md);
+> architecture/failure-mode index in [`RUNBOOK.md`](RUNBOOK.md).
 
 ## What This Repo Is
 
 Bluefin QA pipeline: Argo Workflows + KubeVirt + ArgoCD + behave/dogtail.
 Tests boot Bluefin Linux VMs and run GNOME Shell accessibility smoke tests.
 Canonical issue tracker: **castrojo/testing-lab** (this repo). Do NOT file issues in castrojo/copilot-config.
+
+## Test Suite Mantra
+
+This repo's north star is to verify **Bluefin as an image-based, atomic operating system**.
+Agents should treat that as the primary culture of the project, not as a side concern.
+
+When deciding what to test or prioritize:
+
+1. **Prefer platform-contract coverage over package-era habits.**
+   Validate `bootc`, staged deployments, rollback behavior, read-only `/usr`, signature policy,
+   composefs/fs-verity, and `uupd` orchestration before inventing DNF/RPM-style checks.
+2. **Treat Homebrew, Flatpak, Podman, and Docker/Colima as decoupled user-space layers.**
+   The job is to prove those layers integrate cleanly without mutating the host image.
+3. **Use UI coverage to reinforce system guarantees.**
+   GNOME, Ptyxis, Podman Desktop, Bazaar, and related flows are valuable when they prove the
+   Bluefin contract holds in real user workflows, not when they drift into generic desktop QA.
+4. **Bias new issues and tests toward immutable-state evidence.**
+   If a choice exists between another cosmetic UI check and a missing image/update/integrity
+   assertion, prefer the image/update/integrity work.
+5. **Keep everything VM-backed, GitOps-managed, and operator-friendly.**
+   The expected output is durable workflow evidence that another agent or operator can rerun.
 
 ## Core Tenet: All Agent Operations Are API-Driven
 
@@ -16,7 +42,7 @@ Canonical issue tracker: **castrojo/testing-lab** (this repo). Do NOT file issue
 |---|---|
 | Submit a workflow | Argo MCP `submit_workflow` or `just <target>` from a host with cluster access |
 | Check workflow status | Argo MCP `get_workflow` / `list_workflows` |
-| Get workflow logs | Argo MCP `get_workflow_logs` |
+| Get workflow logs | Argo MCP `logs_workflow` or `just logs` |
 | Update a WorkflowTemplate | Edit YAML → `git push main` → ArgoCD auto-syncs (~3 min) |
 | Update cluster infra | Edit `manifests/` → `git push main` → ArgoCD auto-syncs |
 | Read cluster state | kubectl MCP or Argo MCP |
@@ -54,6 +80,12 @@ Rules:
 
 `manifests/` uses `ServerSideApply: true` — manifests patch rather than replace. Safe to define partial resources (e.g. patching a Helm-managed ConfigMap by adding a key).
 
+### KubeVirt feature gates
+
+- `HostDisk` is required for the Bluefin/Flatcar hostDisk VM flows in this repo.
+- `ExperimentalIgnitionSupport` is required for knuckle-style installer VMs that use the `kubevirt.io/ignitiondata` annotation.
+- If VM creation fails with `feature gate is not enabled in kubevirt-config`, treat that as **cluster infra drift** and persist the fix via GitOps under `manifests/` rather than relying on an in-cluster manual patch.
+
 ## Repo Layout
 
 ```
@@ -61,7 +93,7 @@ argo/
   workflow-templates/          ← ArgoCD (testing-lab App) syncs these
     bib-build-and-push.yaml       build golden disk via BIB
     provision-vm.yaml             reflink golden disk + boot KubeVirt VM
-    run-gnome-tests.yaml          SSH into VM, run behave/qecore suite
+    run-gnome-tests.yaml          SSH into VM, run qecore-backed behave/pytest suites
     teardown-vm.yaml              delete VM + hostDisk
     bluefin-titan-smoke.yaml      smoke against persistent titan VMs (fast path)
     bluefin-qa-pipeline.yaml      full pipeline: ensure-disk + provision + tests
@@ -75,6 +107,7 @@ manifests/                     ← ArgoCD (testing-lab-infra App) syncs these
   orphan-vm-cleanup.yaml          CronWorkflow: clean orphaned VMs every 2h
   nightly-smoke.yaml              CronWorkflow: nightly smoke latest @ 02:00 UTC
   nightly-smoke-lts.yaml          CronWorkflow: nightly smoke lts @ 02:30 UTC
+  golden-disk-gc.yaml             CronWorkflow: GC stale golden disks @ 04:00 UTC (DRY_RUN=true default)
   workflow-controller-configmap.yaml  global TTL patch (7d success, 30d failure)
   flatcar-test-namespace.yaml     Flatcar test namespace
 argocd/
@@ -106,8 +139,14 @@ Two always-on VMs for fast test iteration — no BIB build needed, no VM provisi
 
 | VM | Namespace | IP | Disk |
 |---|---|---|---|
-| `titan-bluefin` | bluefin-test | 10.42.0.27 | `/var/home/jorge/VMs/titans/titan-bluefin/image/disk.raw` |
-| `titan-lts` | bluefin-lts-test | 10.42.0.26 | `/var/home/jorge/VMs/titans/image/disk.raw` |
+| `titan-bluefin` | bluefin-test | *(retrieve below)* | `/var/home/jorge/VMs/titans/titan-bluefin/image/disk.raw` |
+| `titan-lts` | bluefin-lts-test | *(retrieve below)* | `/var/home/jorge/VMs/titans/image/disk.raw` |
+
+> IPs are KubeVirt-allocated and drift. Always retrieve live:
+> ```bash
+> kubectl get vmi titan-bluefin -n bluefin-test     -o jsonpath='{.status.interfaces[0].ipAddress}{"\n"}'
+> kubectl get vmi titan-lts     -n bluefin-lts-test -o jsonpath='{.status.interfaces[0].ipAddress}{"\n"}'
+> ```
 
 Managed by ArgoCD via `manifests/titan-bluefin.yaml` and `manifests/titan-lts.yaml`.
 SSH key: `bluefin-test-ssh-key` secret in `argo` namespace.
@@ -133,7 +172,7 @@ To run smoke against them: `just run-titan-smoke` or submit `bluefin-titan-smoke
 
 ## Known GNOME Shell 50 Limitations
 
-On Bluefin 44 / GNOME Shell 50.1, the clock and system-status area are **not exposed as AT-SPI nodes**. All clock/quick-settings/calendar interactions must use Shell.Eval JS. The AT-SPI tree only has `Activities` and `Show Apps` on the top bar.
+On Bluefin 44 / GNOME Shell 50.1, the clock and system-status (quick-settings, dateMenu) toggle nodes **are present** in AT-SPI but report `INT_MIN` geometry — clicking them via dogtail silently misses. All clock/quick-settings/calendar interactions must use `Shell.Eval` JS via `gdbus`. The actionable top-bar nodes exposed normally are `Activities` and `Show Apps`. See [`docs/dogtail-testing.md`](docs/dogtail-testing.md) §6.4–§6.5 for the canonical `Shell.Eval` patterns.
 
 ## dogtail 4.16 API
 
@@ -141,6 +180,22 @@ On Bluefin 44 / GNOME Shell 50.1, the clock and system-status area are **not exp
 - `findChildren(pred)` → returns list, never raises
 - `findChild(pred, retry=False)` → fast fail without 20s wait
 - `searchCutoffCount` and `searchBackoffDuration` are deprecated no-ops
+
+For the full guide on writing, submitting, and debugging dogtail/qecore/behave tests
+in this repo, read [`docs/dogtail-testing.md`](docs/dogtail-testing.md).
+
+For day-to-day cluster operations (running tests, triaging failures, rotating SSH keys,
+recovering titans, pausing CronWorkflows, Loki queries, ArgoCD diagnosis, safe VM
+cleanup), read [`docs/lab-operations.md`](docs/lab-operations.md) — it is the
+paint-by-numbers operator manual and the canonical source for those procedures.
+
+## Vanguard PR Report — required for PR queue mode
+
+When this repo is supporting PR review for `knuckle`, `dakota`, or this repo itself,
+**approval requires a canonical Vanguard Lab Strike Report posted as a PR comment** with
+real lab evidence. The template lives at `~/src/skills/ghost-testlab/report-template.md`
+on the operator's host. See [`docs/lab-operations.md`](docs/lab-operations.md) §11 for
+the exit checklist. Metadata-only or narrative-only reviews do not satisfy this gate.
 
 ## Resource Limits (all workflow pods)
 
@@ -158,12 +213,17 @@ Global TTL default (via workflow-controller-configmap): 7 days success, 30 days 
 
 ## Workflow History
 
-Workflows are retained: 7 days on success, 30 days on failure (global workflowDefaults in workflow-controller-configmap). No external archive database. Loki captures all pod logs. Use Argo MCP `get_workflow_logs` to retrieve results from completed runs.
+Workflows are retained: 7 days on success, 30 days on failure (global workflowDefaults in workflow-controller-configmap) unless a workflow overrides TTL explicitly. No external archive database. Loki captures all pod logs. Use Argo MCP `logs_workflow` or `just logs` to retrieve results from completed runs.
 
 ## SSH Key
 
 `bluefin-test-ssh-key` secret in `argo` namespace. Contains `id_ed25519` and `id_ed25519.pub`.
-Current fingerprint (2026-05-25): `SHA256:4iazqYR3lM2tOuniG4MOSERDz0+qaq12qoM/WqP5qLw`
+
+```bash
+# Always retrieve the live fingerprint — do not trust hardcoded values:
+kubectl get secret bluefin-test-ssh-key -n argo \
+  -o jsonpath='{.data.id_ed25519\.pub}' | base64 -d | ssh-keygen -lf -
+```
 
 ## Namespaces
 
@@ -200,6 +260,12 @@ just list-workflows
 
 # Run smoke against titan VMs (fast — no BIB needed, ~5min)
 just run-titan-smoke
+
+# Run broader GNOME desktop coverage
+just run-developer-tests
+just run-software-tests
+just run-titan-developer
+just run-titan-software
 
 # Run full smoke (BIB + provision + test + teardown, ~10min warm)
 just run-tests

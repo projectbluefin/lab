@@ -27,6 +27,11 @@ spec:
       # branch against persistent titan VMs without merging.
       - name: branch
         value: "main"
+      # behave tag expression forwarded to run-gnome-tests.
+      # Default empty → run-gnome-tests uses its built-in '~@wip' filter.
+      # Override to probe @wip scenarios, e.g. "--tags @bluefin_91,~@wip"
+      - name: behave-tags
+        value: ""
 
   serviceAccountName: argo
   entrypoint: run-smoke
@@ -74,6 +79,8 @@ spec:
                   value: "{{workflow.parameters.issue-title}} - titan-bluefin"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
+                - name: behave-tags
+                  value: "{{workflow.parameters.behave-tags}}"
 
           - name: smoke-lts
             templateRef:
@@ -93,6 +100,8 @@ spec:
                   value: "{{workflow.parameters.issue-title}} - titan-lts"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
+                - name: behave-tags
+                  value: "{{workflow.parameters.behave-tags}}"
 
     - name: preflight
       inputs:

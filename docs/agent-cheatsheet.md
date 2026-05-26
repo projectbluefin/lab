@@ -200,13 +200,17 @@ If `run-titan-smoke` fails after the secret rotation, stop there: titan `authori
 Mandatory gate for `knuckle`, `dakota`, and this repo's PRs.
 
 1. Run the lab loop end-to-end — `just run-titan-smoke` minimum, `just run-tests-matrix` for high-risk changes.
-2. Collect **real evidence**: workflow names, behave summary, and log excerpts.
+2. Collect **real evidence** using **MCP tools only** — not bash `argo`/`kubectl` commands:
+   - Workflow status/steps → `argo-mcp-get_workflow` / `argo-mcp-list_workflows`
+   - Log output → `argo-mcp-get_workflow_logs`
+   - Pod/VMI state → `kubectl` MCP tools
 3. Post the report on the PR using [`docs/vanguard-report-template.md`](vanguard-report-template.md).
 4. Only then apply `agent-tested` and approve / queue.
 
 Hard exit checklist:
 
 - [ ] Real VM-backed lab evidence exists.
+- [ ] Evidence was collected via MCP tools (not bash CLI fallback).
 - [ ] The entire loop was tested, not isolated commands.
 - [ ] A canonical Vanguard report with real data is posted on the PR.
 - [ ] Any blocker is filed as an issue in the owning repo.

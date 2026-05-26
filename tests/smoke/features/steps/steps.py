@@ -570,6 +570,8 @@ def close_app_via_shell_eval(context, app_id) -> None:
     import json
 
     aliases = json.dumps(list(_app_aliases(app_id)))
+    # Close windows AND quit the application process so the next test scenario
+    # gets a clean cold-start launch (avoids stale AT-SPI registration on re-activate).
     _shell_eval(
         "const aliases = %s;"
         "for (const actor of global.get_window_actors()) {"
@@ -583,6 +585,13 @@ def close_app_via_shell_eval(context, app_id) -> None:
         "    win.delete(global.get_current_time());"
         "  }"
         "}"
+        "Shell.AppSystem.get_default().get_running().forEach(app => {"
+        "  const id = (app.get_id() || '').toLowerCase();"
+        "  const name = (app.get_name() || '').toLowerCase();"
+        "  if (aliases.some(alias => id.includes(alias) || name.includes(alias))) {"
+        "    app.request_quit();"
+        "  }"
+        "});"
         % aliases
     )
     # With searchShowingOnly=False the application node persists after all windows

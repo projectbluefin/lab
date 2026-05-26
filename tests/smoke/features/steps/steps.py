@@ -355,10 +355,12 @@ def _shell_eval_inner(js: str) -> str:
     gdbus output format: ``(true, 'value')`` — the outer bool is the DBus
     call-success flag, NOT the JS result.
 
-    GNOME Shell JSON-encodes string results, so the extracted value may have
-    wrapping double-quotes (e.g. ``'"present"'``). Strip them so callers can
-    compare directly (``inner == 'present'``, ``inner == 'true'``, etc.).
+    GNOME Shell JSON-encodes string results.  When the JS evaluates to a string
+    (including JSON.stringify output), Shell.Eval wraps it in an additional JSON
+    layer so the gdbus variant contains ``'"{\\"key\\":val}"'``.  We must use
+    ``json.loads`` to properly unescape, not a simple slice.
     """
+    import json as _json
     import re
     out = _shell_eval(js)
     m = re.search(r"\((?:true|false),\s*'(.*)'\)", out.strip())
@@ -366,7 +368,10 @@ def _shell_eval_inner(js: str) -> str:
         return ""
     inner = m.group(1)
     if inner.startswith('"') and inner.endswith('"'):
-        return inner[1:-1]
+        try:
+            return _json.loads(inner)   # properly unescape \" → "
+        except _json.JSONDecodeError:
+            return inner[1:-1]          # fallback: dumb slice
     return inner
 
 
@@ -387,13 +392,17 @@ def close_overview_eval(context) -> None:
 def open_quick_settings_eval(context) -> None:
     # menu.toggle() is stable across GNOME 49/50
     _shell_eval('Main.panel.statusArea.quickSettings.menu.toggle()')
-    sleep(0.5)
+    sleep(1)  # GNOME Shell 50 may need >0.5 s for the menu to open
 
 
 @step('Quick Settings panel is open via Shell.Eval')
 def quick_settings_open_eval(context) -> None:
-    inner = _shell_eval_inner('Main.panel.statusArea.quickSettings.menu.isOpen.toString()')
-    assert inner == 'true', f"Quick Settings not open — Shell.Eval inner: {inner!r}"
+    for _ in range(6):
+        inner = _shell_eval_inner('Main.panel.statusArea.quickSettings.menu.isOpen.toString()')
+        if inner == 'true':
+            return
+        sleep(0.5)
+    raise AssertionError(f"Quick Settings not open after 3s — Shell.Eval inner: {inner!r}")
 
 
 @step('Quick Settings panel is closed via Shell.Eval')
@@ -410,7 +419,7 @@ def quick_settings_closed_eval(context) -> None:
 def open_date_menu_eval(context) -> None:
     # menu.toggle() is stable across GNOME 49/50; _toggleMenu() is GNOME 50+ only
     _shell_eval('Main.panel.statusArea.dateMenu.menu.toggle()')
-    sleep(0.5)
+    sleep(1)  # GNOME Shell 50 may need >0.5 s for the menu to open
 
 
 @step('Close Quick Settings via Shell.Eval')
@@ -482,12 +491,22 @@ def overview_is_closed(context) -> None:
 
 @step('Overview search bar contains "{text}"')
 def overview_search_bar_contains(context, text) -> None:
+    # On GNOME Shell 50 headless the search entry may report showing=False in
+    # AT-SPI even while it is active.  Search without the showing filter.
     shell = tree.root.application("gnome-shell")
-    # dogtail 4.16 dropped requireResult kwarg
-    entries = shell.findChildren(lambda n: n.roleName == "text" and n.showing)
-    assert entries, f"Search bar text entry not found"
-    entry = entries[0]
-    assert text in entry.text, f"Search bar text '{entry.text}' does not contain '{text}'"
+    from dogtail.config import config as _dcfg
+    orig = _dcfg.searchShowingOnly
+    _dcfg.searchShowingOnly = False
+    try:
+        entries = shell.findChildren(lambda n: n.roleName == "text")
+    finally:
+        _dcfg.searchShowingOnly = orig
+    # Filter to entries that have text content matching the search query
+    text_entries = [e for e in entries if e.text]
+    assert text_entries, "Search bar text entry not found"
+    texts = [e.text for e in text_entries]
+    found = any(text.lower() in t.lower() for t in texts)
+    assert found, f"'{text}' not found in any search bar entry. Entry texts: {texts}"
 
 
 # ── App launch helpers (#65, #87, #88) ───────────────────────────────────
@@ -540,7 +559,9 @@ def launch_first_search_result(context) -> None:
 
 @step('Application "{app_id}" is open in AT-SPI')
 def app_is_open_in_atspi(context, app_id) -> None:
-    context.current_application = _wait_for_application_node(app_id)
+    # Firefox (Flatpak) can take 20-30 s to register in AT-SPI
+    attempts = 30 if "firefox" in app_id.lower() else 10
+    context.current_application = _wait_for_application_node(app_id, attempts=attempts)
 
 
 @step('Close application "{app_id}" via Shell.Eval')

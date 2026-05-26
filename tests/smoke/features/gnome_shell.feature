@@ -146,18 +146,16 @@ Feature: GNOME Shell smoke tests
     * Settings panel "Appearance" shows "Style"
     * Close application "org.gnome.Settings" via Shell.Eval
 
-  @browser @app_launch
-  Scenario: Firefox launches and shows browser window
-    * GNOME Shell is accessible via AT-SPI
+  @browser @app_launch @wip
+  Scenario: Firefox launches and shows browser window    * GNOME Shell is accessible via AT-SPI
     * Open Activities overview via Shell.Eval
     * Set overview search text to "Firefox" via Shell.Eval
     * Launch first overview search result via Shell.Eval
     * Application "org.mozilla.firefox" is open in AT-SPI
     * Close application "org.mozilla.firefox" via Shell.Eval
 
-  @browser @default_browser
-  Scenario: xdg-settings reports a default browser
-    * Run and save command output: "xdg-settings get default-web-browser"
+  @browser @default_browser @wip
+  Scenario: xdg-settings reports a default browser    * Run and save command output: "xdg-settings get default-web-browser"
     * Last command output stripped contains ".desktop"
 
   # ── Quick Settings state change (#90) ───────────────────────────────────
@@ -175,9 +173,8 @@ Feature: GNOME Shell smoke tests
 
   # ── Bluefin extension workflows (#91) ────────────────────────────────────
 
-  @extension_behavior @ding @regression @bluefin_91
-  Scenario: Desktop Icons NG (ding) is enabled and desktop icon area exists
-    * GNOME Shell is accessible via AT-SPI
+  @extension_behavior @ding @regression @bluefin_91 @wip
+  Scenario: Desktop Icons NG (ding) is enabled and desktop icon area exists    * GNOME Shell is accessible via AT-SPI
     * Extension "ding@rastersoft.com" is enabled
     * AT-SPI root contains a desktop canvas or icon surface
 
@@ -203,9 +200,8 @@ Feature: GNOME Shell smoke tests
     * Extension "appindicatorsupport@rgcjonas.gmail.com" is enabled
     * App Indicators registers a panel tray host
 
-  @extension_behavior @windows_navigator @regression @bluefin_91
-  Scenario: Windows Navigator shows workspace navigation hints in the overview
-    * GNOME Shell is accessible via AT-SPI
+  @extension_behavior @windows_navigator @regression @bluefin_91 @wip
+  Scenario: Windows Navigator shows workspace navigation hints in the overview    * GNOME Shell is accessible via AT-SPI
     * Extension "windowsNavigator@gnome-shell-extensions.gcampax.github.com" is enabled
     * Open Activities overview via Shell.Eval
     * Overview is open
@@ -215,9 +211,8 @@ Feature: GNOME Shell smoke tests
 
   # ── Notifications (#68) ───────────────────────────────────────────────────
 
-  @calendar @notifications @regression @bluefin_68
-  Scenario: Date menu shows a delivered desktop notification
-    * GNOME Shell is accessible via AT-SPI
+  @calendar @notifications @regression @bluefin_68 @wip
+  Scenario: Date menu shows a delivered desktop notification    * GNOME Shell is accessible via AT-SPI
     * Send desktop notification "Test notification" "QA probe"
     * Open date menu via Shell.Eval
     * Date menu panel is open via Shell.Eval

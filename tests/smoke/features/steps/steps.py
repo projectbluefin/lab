@@ -558,28 +558,37 @@ def _click_node_or_ancestor(node) -> None:
 def launch_first_search_result(context) -> None:
     """Activate the first overview search result via Shell.Eval JS.
 
-    uinput key events are unreliable on GNOME 50 Wayland sessions without a
-    physical seat.  Use Shell.Eval to directly call activateDefault() on the
-    SearchController, falling back to activating the first result actor.
+    Tries SearchController internal APIs first (version-specific), then falls
+    back to Shell.AppSystem name-match which works across all GNOME Shell versions.
     """
     result = _shell_eval_inner(
         "(() => {"
+        # GNOME 44–46 style: sc.activateDefault() or sc._searchResults.activateDefault()
         "const sc = Main.overview._overview"
         "  && Main.overview._overview.controls"
         "  && Main.overview._overview.controls._searchController;"
-        "if (!sc) return 'no-sc';"
-        "if (typeof sc.activateDefault === 'function') {"
-        "  sc.activateDefault(); return 'activated';"
+        "if (sc) {"
+        "  if (typeof sc.activateDefault === 'function') { sc.activateDefault(); return 'sc-activated'; }"
+        "  const sr = sc._searchResults;"
+        "  if (sr && typeof sr.activateDefault === 'function') { sr.activateDefault(); return 'sr-activated'; }"
+        "  if (sr && sr._defaultResult && typeof sr._defaultResult.activate === 'function') {"
+        "    sr._defaultResult.activate(); return 'dr-activated';"
+        "  }"
         "}"
-        "if (sc._defaultResult && typeof sc._defaultResult.activate === 'function') {"
-        "  sc._defaultResult.activate(null, global.get_current_time());"
-        "  return 'activated-result';"
-        "}"
-        "return 'no-method';"
+        # Universal fallback: match installed app by search-entry text via AppSystem
+        "const text = (Main.overview.searchEntry.get_text() || '').toLowerCase();"
+        "if (!text) return 'no-search-text';"
+        "const apps = Shell.AppSystem.get_default().get_installed();"
+        "const match = apps.find(app => (app.get_name() || '').toLowerCase().includes(text));"
+        "if (!match) return 'appsystem-no-match:' + text;"
+        "Main.overview.hide();"
+        "match.activate();"
+        "return 'appsystem-launched:' + match.get_id();"
         "})()"
     )
-    assert result in ('activated', 'activated-result'), (
-        f"Could not activate first overview search result via Shell.Eval: {result!r}"
+    ok_prefixes = ('sc-activated', 'sr-activated', 'dr-activated', 'appsystem-launched:')
+    assert any(result.startswith(p) for p in ok_prefixes), (
+        f"Could not launch first overview search result: {result!r}"
     )
     sleep(3)  # give Flatpak app time to start and register in AT-SPI
 

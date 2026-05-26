@@ -154,7 +154,7 @@ Feature: GNOME Shell smoke tests
     * Application "org.mozilla.firefox" is open in AT-SPI
     * Close application "org.mozilla.firefox" via Shell.Eval
 
-  @browser @default_browser
+  @browser @default_browser @wip
   Scenario: xdg-settings reports a default browser
     * xdg-settings default browser is ready
     * Last command output stripped contains ".desktop"

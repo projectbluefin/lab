@@ -505,18 +505,25 @@ def _wait_for_application_node(app_id: str, attempts: int = 10, delay: float = 1
 
 
 def _click_node_or_ancestor(node) -> None:
+    """Activate a node via AT-SPI actions (doAction), not screen coordinates.
+
+    dogtail's click() is coordinate-based and silently no-ops in headless
+    Wayland where all nodes report position (0,0).  doAction('click') and
+    doAction('activate') use the AT-SPI Action interface which works
+    independently of geometry.
+    """
     current = node
-    for _ in range(5):
+    for _ in range(6):
         if current is None:
             break
-        if hasattr(current, "click"):
+        for action_name in ("click", "activate", "press"):
             try:
-                current.click()
+                current.doAction(action_name)
                 return
             except Exception:  # noqa: BLE001
                 pass
         current = getattr(current, "parent", None)
-    raise AssertionError(f"Unable to click node or ancestor for {getattr(node, 'name', None)!r}")
+    raise AssertionError(f"Unable to activate node or ancestor for {getattr(node, 'name', None)!r}")
 
 
 @step("Launch first overview search result via Shell.Eval")

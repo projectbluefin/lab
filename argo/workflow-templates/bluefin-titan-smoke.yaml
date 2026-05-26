@@ -136,7 +136,7 @@ spec:
           fi
 
           echo "Preflight ${LABEL} (${VM_IP})..." >&2
-          STATE=$(${SSH} "systemctl is-system-running 2>/dev/null || echo unknown")
+          STATE=$(${SSH} "systemctl is-system-running 2>/dev/null; true" | head -1)
           if [[ "${STATE}" != "running" && "${STATE}" != "degraded" ]]; then
             echo "ERROR: systemd state '${STATE}' on ${LABEL}" >&2
             exit 1

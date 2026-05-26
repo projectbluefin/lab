@@ -191,23 +191,6 @@ spec:
             if [[ "${SUITE}" != "system" ]]; then
               WAIT_FOR_SHELL=/workspace/bluefin-test-suite/tests/shared/wait_for_shell.py
               ${SCP} "${WAIT_FOR_SHELL}" ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/${SUITE}/wait_for_shell.py
-
-              echo "Polling for GNOME Shell AT-SPI readiness..." >&2
-              ${SSH} "bash -c '
-                for i in \$(seq 1 30); do
-                  RESULT=\$(gdbus call --session \\
-                    --dest org.gnome.Shell \\
-                    --object-path /org/gnome/Shell \\
-                    --method org.gnome.Shell.Eval \\
-                    \"global.context.unsafe_mode = true; Main.panel ? \\\"ready\\\" : \\\"not-ready\\\"\" 2>/dev/null || true)
-                  if echo \"\$RESULT\" | grep -q ready; then
-                    echo \"GNOME Shell ready at attempt \$i\" >&2
-                    break
-                  fi
-                  echo \"Waiting for GNOME Shell (attempt \$i/30)...\" >&2
-                  sleep 3
-                done
-              '"
             fi
 
             # ── Run tests ────────────────────────────────────────────────────
@@ -223,18 +206,28 @@ spec:
             ${SSH} "date --iso-8601=seconds > /tmp/results/test-start-time.txt" || true
 
             BEHAVE_RC=0
-            ${SSH} "
-              export PATH=\$HOME/.local/bin:\$PATH
-              BEHAVE_BIN=\$(which behave)
-              if [[ "${SUITE}" == "system" ]]; then
+            if [[ "${SUITE}" == "system" ]]; then
+              ${SSH} "
+                export PATH=\$HOME/.local/bin:\$PATH
+                BEHAVE_BIN=\$(which behave)
                 \"\$BEHAVE_BIN\" /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}
-              else
+              " || BEHAVE_RC=$?
+            else
+              # Write a runner script to the VM to avoid shell-quoting issues
+              # when passing compound commands to qecore-headless.
+              ${SSH} "printf '%s\n' '#!/bin/bash' 'set -euo pipefail' \
+                'export PATH=\$HOME/.local/bin:\$PATH' \
+                'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py' \
+                'exec \$(which behave) /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}' \
+                > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
+              ${SSH} "
+                export PATH=\$HOME/.local/bin:\$PATH
                 \$HOME/.local/bin/qecore-headless \
                   --session-type wayland \
                   --session-desktop gnome \
-                  \"bash -lc 'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py && exec \"\$BEHAVE_BIN\" /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}'\"
-              fi
-            " || BEHAVE_RC=$?
+                  \"/tmp/run-suite.sh\"
+              " || BEHAVE_RC=$?
+            fi
 
             # ── Collect results ──────────────────────────────────────────────
             # Always SCP even when behave exits non-zero (test failures), so

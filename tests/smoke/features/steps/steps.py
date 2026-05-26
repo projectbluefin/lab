@@ -368,8 +368,11 @@ def _shell_eval_inner(js: str) -> str:
         return ""
     inner = m.group(1)
     if inner.startswith('"') and inner.endswith('"'):
+        # GVariant single-quoted string format escapes '\' as '\\', so
+        # JSON.stringify output arrives double-escaped: first undo the
+        # GVariant layer (\\→\), then JSON-decode the shell-level encoding.
         try:
-            return _json.loads(inner)   # properly unescape \" → "
+            return _json.loads(inner.replace('\\\\', '\\'))
         except _json.JSONDecodeError:
             return inner[1:-1]          # fallback: dumb slice
     return inner
@@ -559,8 +562,8 @@ def launch_first_search_result(context) -> None:
 
 @step('Application "{app_id}" is open in AT-SPI')
 def app_is_open_in_atspi(context, app_id) -> None:
-    # Firefox (Flatpak) can take 20-30 s to register in AT-SPI
-    attempts = 30 if "firefox" in app_id.lower() else 10
+    # Firefox (Flatpak) can take 20-30 s; other Flatpak apps (Nautilus, Settings) need ~15-20 s
+    attempts = 30 if "firefox" in app_id.lower() else 20
     context.current_application = _wait_for_application_node(app_id, attempts=attempts)
 
 

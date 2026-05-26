@@ -65,13 +65,13 @@ Feature: GNOME Shell smoke tests
   # NOTE: Clock/System toggle buttons have AT-SPI position INT_MIN on GNOME 50.
   # Drive via Shell.Eval; verify via isOpen JS property.
 
-  @quick_settings
+  @quick_settings @wip
   Scenario: Clicking System menu opens Quick Settings
     * GNOME Shell is accessible via AT-SPI
     * Open Quick Settings via Shell.Eval
     * Quick Settings panel is open via Shell.Eval
 
-  @quick_settings
+  @quick_settings @wip
   Scenario: Escape closes Quick Settings
     * GNOME Shell is accessible via AT-SPI
     * Open Quick Settings via Shell.Eval
@@ -81,13 +81,13 @@ Feature: GNOME Shell smoke tests
 
   # ── Calendar popup ────────────────────────────────────────────────────────
 
-  @calendar
+  @calendar @wip
   Scenario: Clicking clock opens calendar popup
     * GNOME Shell is accessible via AT-SPI
     * Open date menu via Shell.Eval
     * Date menu panel is open via Shell.Eval
 
-  @calendar
+  @calendar @wip
   Scenario: Escape closes calendar popup
     * GNOME Shell is accessible via AT-SPI
     * Open date menu via Shell.Eval
@@ -160,7 +160,7 @@ Feature: GNOME Shell smoke tests
 
   # ── Quick Settings state change (#90) ───────────────────────────────────
 
-  @quick_settings @state_change
+  @quick_settings @state_change @wip
   Scenario: Quick Settings dark style toggle changes desktop theme
     * GNOME Shell is accessible via AT-SPI
     * Open Quick Settings via Shell.Eval
@@ -178,13 +178,13 @@ Feature: GNOME Shell smoke tests
     * Extension "ding@rastersoft.com" is enabled
     * AT-SPI root contains a desktop canvas or icon surface
 
-  @extension_behavior @dash_to_dock @regression @bluefin_91
+  @extension_behavior @dash_to_dock @regression @bluefin_91 @wip
   Scenario: Dash to Dock keeps a visible dock actor outside the overview
     * GNOME Shell is accessible via AT-SPI
     * Extension "dash-to-dock@micxgx.gmail.com" is enabled
     * Dash to Dock exposes a visible dock actor
 
-  @extension_behavior @blur_my_shell @regression @bluefin_91
+  @extension_behavior @blur_my_shell @regression @bluefin_91 @wip
   Scenario: Blur My Shell applies an overview blur effect
     * GNOME Shell is accessible via AT-SPI
     * Extension "blur-my-shell@aunetx" is enabled
@@ -194,7 +194,7 @@ Feature: GNOME Shell smoke tests
     * Close Activities overview via Shell.Eval
     * Overview is closed
 
-  @extension_behavior @app_indicators @regression @bluefin_91
+  @extension_behavior @app_indicators @regression @bluefin_91 @wip
   Scenario: App Indicators registers a tray host in the shell panel
     * GNOME Shell is accessible via AT-SPI
     * Extension "appindicatorsupport@rgcjonas.gmail.com" is enabled

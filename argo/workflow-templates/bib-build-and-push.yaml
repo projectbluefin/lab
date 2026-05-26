@@ -39,6 +39,8 @@ spec:
               parameters:
                 - name: image
                   value: "{{inputs.parameters.image}}"
+                - name: image-tag
+                  value: "{{inputs.parameters.image-tag}}"
 
         - - name: build
             template: bib-img-build
@@ -111,7 +113,12 @@ spec:
             exit 0
           fi
 
-          REMOTE=$(skopeo inspect --no-tags --format '{{.Digest}}' "docker://${IMAGE_REF}" 2>/dev/null || true)
+          SKOPEO_TLS_ARGS=()
+          if [[ "${IMAGE_REF}" == 192.168.1.102:5000/* ]]; then
+            SKOPEO_TLS_ARGS+=(--tls-verify=false)
+          fi
+
+          REMOTE=$(skopeo inspect "${SKOPEO_TLS_ARGS[@]}" --no-tags --format '{{.Digest}}' "docker://${IMAGE_REF}" 2>/dev/null || true)
           if [[ -z "${REMOTE}" ]]; then
             echo "skopeo inspect failed for ${IMAGE_REF}; treating disk as fresh" >&2
             echo -n "exists"
@@ -137,6 +144,7 @@ spec:
       inputs:
         parameters:
           - name: image
+          - name: image-tag
       nodeSelector:
         kubernetes.io/hostname: ghost
       volumes:
@@ -162,7 +170,15 @@ spec:
         args:
           - |
             set -euo pipefail
-            podman pull {{inputs.parameters.image}}
+            IMAGE_REF="{{inputs.parameters.image}}"
+            if [[ "${IMAGE_REF}" != *:* ]]; then
+              IMAGE_REF="${IMAGE_REF}:{{inputs.parameters.image-tag}}"
+            fi
+            PULL_TLS_ARGS=()
+            if [[ "${IMAGE_REF}" == 192.168.1.102:5000/* ]]; then
+              PULL_TLS_ARGS+=(--tls-verify=false)
+            fi
+            podman pull "${PULL_TLS_ARGS[@]}" "${IMAGE_REF}"
 
     - name: bib-img-build
       inputs:
@@ -206,16 +222,19 @@ spec:
           - |
             set -euo pipefail
             TAG="{{inputs.parameters.image-tag}}"
-            OUT="/output/${TAG}"
-            mkdir -p "${OUT}"
-            if [[ -f "${OUT}/image/disk.raw" ]]; then
-              echo "disk.raw already exists at ${OUT}/image/disk.raw, skipping BIB build"
-              exit 0
+            IMAGE_REF="{{inputs.parameters.image}}"
+            if [[ "${IMAGE_REF}" != *:* ]]; then
+              IMAGE_REF="${IMAGE_REF}:${TAG}"
             fi
+            OUT="/output/${TAG}"
+            # ensure-disk only invokes this step for missing/stale disks, so always
+            # rebuild from a clean output dir instead of reusing stale artifacts
+            rm -rf "${OUT}"
+            mkdir -p "${OUT}"
             bootc-image-builder build \
               --type raw --rootfs ext4 \
               --output "${OUT}" \
-              {{inputs.parameters.image}} 2>&1 | tee "${OUT}/bib-build.log"
+              "${IMAGE_REF}" 2>&1 | tee "${OUT}/bib-build.log"
             echo "BIB exit: ${PIPESTATUS[0]}"
             exit ${PIPESTATUS[0]}
 

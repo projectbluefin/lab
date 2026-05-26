@@ -20,6 +20,7 @@ from time import sleep
 
 from behave import step
 from dogtail import tree
+from dogtail.rawinput import pressKey
 from qecore.common_steps import *  # noqa: F401,F403
 
 
@@ -331,3 +332,44 @@ def overview_search_bar_contains(context, text) -> None:
     assert entries, f"Search bar text entry not found"
     entry = entries[0]
     assert text in entry.text, f"Search bar text '{entry.text}' does not contain '{text}'"
+
+
+def _find_application(*candidate_names):
+    for candidate in candidate_names:
+        try:
+            app = tree.root.application(candidate)
+            if app is not None:
+                return app
+        except Exception:  # noqa: BLE001
+            pass
+    return None
+
+
+@step("Launch first overview search result via Enter")
+def launch_first_overview_result(context) -> None:
+    pressKey("Return")
+    sleep(2)
+
+
+@step("Files application is open")
+def files_application_is_open(context) -> None:
+    app = _find_application("org.gnome.Nautilus", "Files", "nautilus")
+    assert app is not None, "Files application did not appear in the AT-SPI tree"
+    context.active_application = app
+
+
+@step("Settings application is open")
+def settings_application_is_open(context) -> None:
+    app = _find_application("org.gnome.Settings", "gnome-control-center", "Settings")
+    assert app is not None, "Settings application did not appear in the AT-SPI tree"
+    context.active_application = app
+
+
+@step("Close active application window")
+def close_active_application_window(context) -> None:
+    app = getattr(context, "active_application", None)
+    assert app is not None, "No active application stored on context"
+    frames = app.findChildren(lambda n: n.roleName == "frame")
+    assert frames, f"No application frame found for {app.name!r}"
+    frames[0].keyCombo("<Alt>F4")
+    sleep(1)

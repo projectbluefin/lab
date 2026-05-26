@@ -1,0 +1,397 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: provision-gnomeos-vm
+  namespace: argo
+  annotations:
+    description: |
+      GNOME OS spike provisioning path.
+      Downloads and verifies a nightly artifact into a cached raw base disk on ghost,
+      reflinks a per-run hostDisk clone, boots a KubeVirt VM, and returns the VM pod IP.
+      This template intentionally does not assume SSH, cloud-init, guest agent, or qecore.
+      The published GNOME OS nightly is currently a hybrid GPT ISO that is usable as a raw disk.
+spec:
+  templates:
+    - name: provision-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+            value: "gnomeos-test"
+          - name: image-url
+          - name: image-sha256
+            value: ""
+          - name: image-format
+            value: "raw"
+          - name: console-hook-config-map
+            value: ""
+      outputs:
+        parameters:
+          - name: vm-ip
+            valueFrom:
+              parameter: "{{steps.wait-for-vm.outputs.result}}"
+      steps:
+        - - name: prepare-disk
+            template: prepare-gnomeos-disk
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: image-url
+                  value: "{{inputs.parameters.image-url}}"
+                - name: image-sha256
+                  value: "{{inputs.parameters.image-sha256}}"
+                - name: image-format
+                  value: "{{inputs.parameters.image-format}}"
+                - name: console-hook-config-map
+                  value: "{{inputs.parameters.console-hook-config-map}}"
+        - - name: create-vm
+            when: "'{{inputs.parameters.console-hook-config-map}}' == ''"
+            template: create-gnomeos-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+          - name: create-vm-with-hook
+            when: "'{{inputs.parameters.console-hook-config-map}}' != ''"
+            template: create-gnomeos-vm-with-hook
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+                - name: console-hook-config-map
+                  value: "{{inputs.parameters.console-hook-config-map}}"
+        - - name: wait-for-vm
+            template: wait-for-gnomeos-boot
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+
+    - name: prepare-gnomeos-disk
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: image-url
+          - name: image-sha256
+          - name: image-format
+          - name: console-hook-config-map
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: gnomeos-cache
+          hostPath:
+            path: /var/tmp/gnomeos-nightly-cache
+            type: DirectoryOrCreate
+        - name: gnomeos-vms
+          hostPath:
+            path: /var/tmp/gnomeos-test
+            type: DirectoryOrCreate
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+        volumeMounts:
+          - name: gnomeos-cache
+            mountPath: /var/tmp/gnomeos-nightly-cache
+          - name: gnomeos-vms
+            mountPath: /var/tmp/gnomeos-test
+        source: |
+          set -euo pipefail
+          VM="{{inputs.parameters.vm-name}}"
+          URL="{{inputs.parameters.image-url}}"
+          SHA="{{inputs.parameters.image-sha256}}"
+          FORMAT="{{inputs.parameters.image-format}}"
+          CACHE_DIR="/var/tmp/gnomeos-nightly-cache"
+          DEST="/var/tmp/gnomeos-test/${VM}.raw"
+
+          if [[ -z "${URL}" ]]; then
+            echo "ERROR: image-url is required" >&2
+            exit 1
+          fi
+
+          download_file() {
+            local url="$1"
+            local out="$2"
+            if command -v curl >/dev/null 2>&1; then
+              curl -L --fail --retry 3 --output "${out}" "${url}"
+              return
+            fi
+            if command -v wget >/dev/null 2>&1; then
+              wget -O "${out}" "${url}"
+              return
+            fi
+            if command -v python3 >/dev/null 2>&1; then
+              python3 - "${url}" "${out}" <<'PY'
+              import sys
+              from urllib.request import urlopen
+
+              url, out = sys.argv[1], sys.argv[2]
+              with urlopen(url) as src, open(out, "wb") as dst:
+                  while True:
+                      chunk = src.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      dst.write(chunk)
+              PY
+              return
+            fi
+            echo "ERROR: no downloader available (need curl, wget, or python3)" >&2
+            exit 1
+          }
+
+          raw_from_xz() {
+            local src="$1"
+            local out="$2"
+            if command -v xzcat >/dev/null 2>&1; then
+              xzcat "${src}" > "${out}"
+              return
+            fi
+            if command -v python3 >/dev/null 2>&1; then
+              python3 - "${src}" "${out}" <<'PY'
+              import lzma
+              import shutil
+              import sys
+
+              src, out = sys.argv[1], sys.argv[2]
+              with lzma.open(src, "rb") as fsrc, open(out, "wb") as fdst:
+                  shutil.copyfileobj(fsrc, fdst)
+              PY
+              return
+            fi
+            echo "ERROR: cannot unpack xz artifact (need xzcat or python3)" >&2
+            exit 1
+          }
+
+          ARTIFACT_NAME="$(basename "${URL%%\?*}")"
+          DOWNLOADED="${CACHE_DIR}/${ARTIFACT_NAME}"
+          CACHE_KEY="${ARTIFACT_NAME}"
+          case "${FORMAT}" in
+            raw)
+              if [[ "${CACHE_KEY}" == *.raw ]]; then
+                BASE_RAW="${CACHE_DIR}/${CACHE_KEY}"
+              else
+                BASE_RAW="${CACHE_DIR}/${CACHE_KEY}.raw"
+              fi
+              ;;
+            raw.xz)
+              BASE_RAW="${CACHE_DIR}/${CACHE_KEY%.xz}"
+              ;;
+            *)
+              echo "ERROR: unsupported image-format '${FORMAT}' (expected raw or raw.xz)" >&2
+              exit 1
+              ;;
+          esac
+          DIGEST_MARKER="${BASE_RAW}.source-digest"
+
+          needs_refresh=0
+          if [[ ! -f "${BASE_RAW}" ]]; then
+            needs_refresh=1
+          elif [[ -n "${SHA}" ]]; then
+            if [[ ! -f "${DIGEST_MARKER}" ]] || [[ "$(cat "${DIGEST_MARKER}")" != "${SHA}" ]]; then
+              needs_refresh=1
+            fi
+          else
+            needs_refresh=1
+          fi
+
+          if (( needs_refresh )); then
+            rm -f "${DOWNLOADED}" "${BASE_RAW}" "${DIGEST_MARKER}"
+            TMP_DOWNLOAD="${DOWNLOADED}.part"
+            TMP_RAW="${BASE_RAW}.part"
+
+            echo "Downloading GNOME OS artifact: ${URL}" >&2
+            download_file "${URL}" "${TMP_DOWNLOAD}"
+            mv "${TMP_DOWNLOAD}" "${DOWNLOADED}"
+
+            if [[ -n "${SHA}" ]]; then
+              echo "${SHA}  ${DOWNLOADED}" | sha256sum -c -
+            fi
+
+            case "${FORMAT}" in
+              raw)
+                mv "${DOWNLOADED}" "${TMP_RAW}"
+                ;;
+              raw.xz)
+                raw_from_xz "${DOWNLOADED}" "${TMP_RAW}"
+                ;;
+            esac
+
+            mv "${TMP_RAW}" "${BASE_RAW}"
+            if [[ -n "${SHA}" ]]; then
+              printf "%s" "${SHA}" > "${DIGEST_MARKER}"
+            fi
+            chown 107:107 "${BASE_RAW}"
+            chmod 664 "${BASE_RAW}"
+            chcon -t svirt_sandbox_file_t "${BASE_RAW}" 2>/dev/null || true
+          fi
+
+          cp --reflink=auto "${BASE_RAW}" "${DEST}"
+          chown 107:107 "${DEST}"
+          chmod 664 "${DEST}"
+          chcon -t svirt_sandbox_file_t "${DEST}" 2>/dev/null || true
+          echo "Prepared GNOME OS spike disk: ${DEST}" >&2
+
+    - name: create-gnomeos-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+      resource:
+        action: apply
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+            labels:
+              app: gnomeos-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Always
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+              spec:
+                nodeSelector:
+                  kubernetes.io/hostname: ghost
+                domain:
+                  firmware:
+                    bootloader:
+                      efi:
+                        secureBoot: false
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: 8Gi
+                  devices:
+                    disks:
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                  machine:
+                    type: q35
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: rootdisk
+                    hostDisk:
+                      path: /var/tmp/gnomeos-test/{{inputs.parameters.vm-name}}.raw
+                      type: Disk
+
+    - name: create-gnomeos-vm-with-hook
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+          - name: console-hook-config-map
+      resource:
+        action: apply
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+            labels:
+              app: gnomeos-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Always
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+                annotations:
+                  hooks.kubevirt.io/hookSidecars: >-
+                    [{"args":["--version","v1alpha2"],"configMap":{"name":"{{inputs.parameters.console-hook-config-map}}","key":"onDefineDomain","hookPath":"/usr/bin/onDefineDomain"}}]
+              spec:
+                nodeSelector:
+                  kubernetes.io/hostname: ghost
+                domain:
+                  firmware:
+                    bootloader:
+                      efi:
+                        secureBoot: false
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: 8Gi
+                  devices:
+                    disks:
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                  machine:
+                    type: q35
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: rootdisk
+                    hostDisk:
+                      path: /var/tmp/gnomeos-test/{{inputs.parameters.vm-name}}.raw
+                      type: Disk
+
+    - name: wait-for-gnomeos-boot
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        source: |
+          set -euo pipefail
+          exec 3>&1
+          exec 1>&2
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+          LABEL="kubevirt.io/vm=${VM}"
+
+          echo "Waiting for GNOME OS VMI ready..." >&2
+          kubectl wait vmi -n "${NS}" "${VM}" \
+            --for=condition=Ready --timeout=600s >&2
+
+          POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+            -o jsonpath='{.items[0].status.podIP}')
+
+          echo "VMI ready; pod IP is ${POD_IP}" >&2
+          echo "${POD_IP}" >&3

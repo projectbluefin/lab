@@ -50,38 +50,12 @@ GitHub webhook / just run-tests
 
 ## Quick start
 
-For day-to-day iteration, use the **titan** (persistent-VM) lane — no BIB rebuild, ~5 min:
+All routine commands live in the repo `Justfile`. For the canonical command matrix and operator recipes, use [`docs/agent-cheatsheet.md`](docs/agent-cheatsheet.md).
 
-```bash
-# Fastest validation loop: smoke against persistent titan VMs
-just run-titan-smoke
-
-# Broader UI coverage on titans
-just run-titan-developer
-just run-titan-software
-```
-
-For image / golden-disk changes, or as a pre-merge gate, use the fresh-VM pipeline (~10 min warm):
-
-```bash
-# Smoke against latest Bluefin, fresh VM
-just run-tests
-
-# Full matrix (latest + lts)
-just run-tests-matrix
-
-# Smoke + developer suites on a fresh VM
-just run-developer-tests
-
-# Full UI stack through software checks on a fresh VM
-just run-software-tests
-
-# Target a PR branch without merging
-BLUEFIN_TEST_BRANCH=fix/my-branch just run-titan-smoke
-
-# Watch logs of the most recent workflow
-just logs
-```
+- Test-only iteration: titan lane (`just run-titan-smoke`)
+- Image or golden-disk validation: fresh-VM lane (`just run-tests` / `just run-tests-matrix`)
+- Branch-under-test: `BLUEFIN_TEST_BRANCH=<ref>` on the relevant `just` target
+- Workflow evidence: `just logs`
 
 > **Agents:** load [`docs/agent-cheatsheet.md`](docs/agent-cheatsheet.md) first —
 > single-file, deterministic recipes for 80% of routine cluster ops (test runs,

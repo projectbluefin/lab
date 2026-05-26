@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-service-tests
+  namespace: argo
+  annotations:
+    bluefin.io/reuses: run-incluster-tests
+spec:
+  templates:
+    - name: run-service-tests
+      inputs:
+        parameters:
+          - name: namespace
+          - name: suite-path
+          - name: lane
+            value: "media"
+          - name: branch
+            value: "main"
+      steps:
+        - - name: run-pytest
+            templateRef:
+              name: run-incluster-tests
+              template: run-pytest
+            arguments:
+              parameters:
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+                - name: suite-path
+                  value: "{{inputs.parameters.suite-path}}"
+                - name: lane
+                  value: "{{inputs.parameters.lane}}"
+                - name: app-label
+                  value: "app=service-catalog-workload"
+                - name: service-name
+                  value: "service-catalog"
+                - name: branch
+                  value: "{{inputs.parameters.branch}}"

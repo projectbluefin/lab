@@ -5,7 +5,7 @@ metadata:
   namespace: argo
   annotations:
     bluefin.io/replaces: run-tmt-tests
-    bluefin.io/stack: "qecore-headless + behave + dogtail + gnome-ponytail-daemon"
+    bluefin.io/stack: "qecore-headless + behave + pytest + dogtail + gnome-ponytail-daemon"
 spec:
   templates:
     - name: run-gnome-tests
@@ -155,17 +155,39 @@ spec:
             # needed because the device node resets on every ostree unlock cycle.
             ${SSH} "
               set -euo pipefail
-              if python3 -c 'import qecore, behave, dogtail' 2>/dev/null && \
-                 rpm -q gnome-ponytail-daemon python3-gnome-ponytail-daemon &>/dev/null && \
-                 [[ -x \"\$HOME/.local/bin/qecore-headless\" ]]; then
+              verify_test_dependencies() {
+                local ok=0
+                if ! python3 -c 'import qecore, behave, dogtail, pytest' 2>/dev/null; then
+                  echo 'ERROR: Missing required Python modules (qecore, behave, dogtail, pytest).' >&2
+                  ok=1
+                fi
+                if ! rpm -q gnome-ponytail-daemon python3-gnome-ponytail-daemon &>/dev/null; then
+                  echo 'ERROR: Missing required RPMs: gnome-ponytail-daemon python3-gnome-ponytail-daemon.' >&2
+                  ok=1
+                fi
+                if ! command -v gnome-ponytail-daemon &>/dev/null; then
+                  echo 'ERROR: gnome-ponytail-daemon is not available in PATH after install.' >&2
+                  ok=1
+                fi
+                if [[ ! -x \"\$HOME/.local/bin/qecore-headless\" ]]; then
+                  echo 'ERROR: qecore-headless is missing from \$HOME/.local/bin.' >&2
+                  ok=1
+                fi
+                return \${ok}
+              }
+              if verify_test_dependencies; then
                 echo 'Test dependencies already installed, skipping.' >&2
               else
                 echo 'Installing test dependencies...' >&2
                 sudo ostree admin unlock 2>/dev/null || true
                 sudo dnf install -y --quiet gnome-ponytail-daemon python3-gnome-ponytail-daemon 2>&1 | tail -3
                 pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
-                python3 -m pip install --quiet --user qecore behave dogtail python-uinput 2>&1 | tail -3
+                python3 -m pip install --quiet --user qecore behave dogtail pytest python-uinput 2>&1 | tail -3
                 for f in \$HOME/.local/bin/qecore_*; do sudo ln -sf \"\$f\" /usr/local/bin/\$(basename \"\$f\") 2>/dev/null; done
+                if ! verify_test_dependencies; then
+                  echo 'ERROR: Test dependency verification failed after install.' >&2
+                  exit 1
+                fi
               fi
               sudo modprobe uinput 2>/dev/null || true
               sudo chmod 0666 /dev/uinput 2>/dev/null || true
@@ -177,12 +199,15 @@ spec:
             echo "Copying tests/${SUITE}/ to VM..." >&2
             ${SSH} "mkdir -p /tmp/bluefin-tests /tmp/results"
             ${SCP} /workspace/bluefin-test-suite/tests/${SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
+            WAIT_FOR_SHELL=/workspace/bluefin-test-suite/tests/shared/wait_for_shell.py
+            ${SCP} "${WAIT_FOR_SHELL}" ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/${SUITE}/wait_for_shell.py
 
             # ── Run tests via qecore-headless ────────────────────────────────
-            # qecore-headless takes the full behave invocation as a single string.
+            # qecore-headless takes the full test command as a single string.
             # It sets up DBUS_SESSION_BUS_ADDRESS, WAYLAND_DISPLAY, XDG_RUNTIME_DIR,
-            # and activates gnome-ponytail-daemon before handing off to behave.
-            echo "Running: qecore-headless 'behave /tmp/bluefin-tests/${SUITE}/features/ ...'" >&2
+            # and activates gnome-ponytail-daemon before handing off to behave/pytest.
+            # Readiness polling runs inside the same qecore-headless session as each
+            # test command so unsafe_mode and AT-SPI state are verified in-context.
             TAGS_ARG=""
             if [[ -n "${BEHAVE_TAGS}" ]]; then
               TAGS_ARG="${BEHAVE_TAGS}"
@@ -192,16 +217,35 @@ spec:
             # $BEHAVE_BIN is expanded by the remote shell so qecore-headless
             # receives an absolute path — subprocess.Popen(shell=False) won't
             # expand variables inside the command string it receives.
-            # Save behave exit code so we can always SCP results before exiting.
-            BEHAVE_RC=0
+            # Save the overall test exit code so we can always SCP results before exiting.
+            TEST_RC=0
             ${SSH} "
               export PATH=\$HOME/.local/bin:\$PATH
-              BEHAVE_BIN=\$(which behave)
-              \$HOME/.local/bin/qecore-headless \
-                --session-type wayland \
-                --session-desktop gnome \
-                \"\$BEHAVE_BIN /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}\"
-            " || BEHAVE_RC=$?
+              export BLUEFIN_VARIANT=${VARIANT}
+              export TEST_JOURNAL_SINCE=\$(date --iso-8601=seconds)
+              echo \"Scoping journal checks to entries since \${TEST_JOURNAL_SINCE}\" >&2
+              export BEHAVE_BIN=\$(which behave)
+              BEHAVE_RC=0
+              PYTEST_RC=0
+              if [[ -d /tmp/bluefin-tests/${SUITE}/features ]]; then
+                echo 'Running behave suite...' >&2
+                \$HOME/.local/bin/qecore-headless \
+                  --session-type wayland \
+                  --session-desktop gnome \
+                  \"bash -lc 'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py && exec \"\$BEHAVE_BIN\" /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}'\" || BEHAVE_RC=\$?
+              fi
+              if find /tmp/bluefin-tests/${SUITE} -maxdepth 1 -name 'test_*.py' -print -quit | grep -q .; then
+                echo 'Running pytest suite...' >&2
+                \$HOME/.local/bin/qecore-headless \
+                  --session-type wayland \
+                  --session-desktop gnome \
+                  \"bash -lc 'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py && exec python3 -m pytest -q /tmp/bluefin-tests/${SUITE} --junitxml /tmp/results/pytest-results.xml'\" || PYTEST_RC=\$?
+              fi
+              if (( BEHAVE_RC != 0 )); then
+                exit \$BEHAVE_RC
+              fi
+              exit \$PYTEST_RC
+            " || TEST_RC=$?
 
             # ── Collect results ──────────────────────────────────────────────
             # Always SCP even when behave exits non-zero (test failures), so
@@ -219,18 +263,25 @@ spec:
               echo "=== END BEHAVE RESULTS ===" >&2
             fi
             # Only the final result summary goes to stdout (Argo outputs.result)
-            python3 -c "
-            import json, sys
-            try:
-                data = json.load(open('/tmp/results/results.json'))
-                failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
-                total  = sum(len(f.get('elements',[])) for f in data)
-                print(f'{total - failed}/{total} scenarios passed')
-            except Exception:
-                print('results.json not found')
-            " 2>/dev/null || echo "(python3 summary unavailable)"
-            # Re-raise behave's exit code so Argo marks the step failed on test failures.
-            exit ${BEHAVE_RC}
+            SUMMARY=()
+            if [[ -f /tmp/results/results.json ]]; then
+              BEHAVE_SUMMARY="$(python3 -c "import json; data=json.load(open('/tmp/results/results.json')); failed=sum(1 for f in data for s in f.get('elements', []) if s.get('status') == 'failed'); total=sum(len(f.get('elements', [])) for f in data); print(f'{total - failed}/{total} behave scenarios passed')" 2>/dev/null || true)"
+              [[ -n "${BEHAVE_SUMMARY}" ]] && SUMMARY+=("${BEHAVE_SUMMARY}")
+            fi
+            if [[ -f /tmp/results/pytest-results.xml ]]; then
+              PYTEST_SUMMARY="$(python3 -c "import xml.etree.ElementTree as ET; root=ET.parse('/tmp/results/pytest-results.xml').getroot(); suites=[root] if root.tag == 'testsuite' else root.findall('testsuite'); tests=sum(int(s.attrib.get('tests', 0)) for s in suites); skipped=sum(int(s.attrib.get('skipped', 0)) for s in suites); failures=sum(int(s.attrib.get('failures', 0)) + int(s.attrib.get('errors', 0)) for s in suites); passed=tests - skipped - failures; print(f'{passed}/{tests} pytest checks passed')" 2>/dev/null || true)"
+              [[ -n "${PYTEST_SUMMARY}" ]] && SUMMARY+=("${PYTEST_SUMMARY}")
+            fi
+            if (( ${#SUMMARY[@]} > 0 )); then
+              (
+                IFS='; '
+                printf '%s\n' "${SUMMARY[*]}"
+              )
+            else
+              echo "results not found"
+            fi
+            # Re-raise the test exit code so Argo marks the step failed on test failures.
+            exit ${TEST_RC}
       volumes:
         - name: ssh-key
           secret:

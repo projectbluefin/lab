@@ -13,7 +13,6 @@ qecore-headless (invoked by the Argo runner) handles:
 import re
 import subprocess
 import sys
-import time
 import traceback
 
 from dogtail.config import config as dogtail_config
@@ -25,64 +24,35 @@ def before_all(context) -> None:
     # searchShowingOnly=True: all dogtail searches implicitly filter to .showing
     # nodes — removes need for redundant `.showing` predicates in step code.
     dogtail_config.searchShowingOnly = True
-
-    # Give GDM/GNOME Shell time to start the session
-    time.sleep(5)
-
-    # Enable unsafe_mode to expose clock and system-status in AT-SPI tree.
-    # Hard-fail if all attempts fail — tests downstream depend on this and
-    # silently proceeding hides the real cause of later AT-SPI lookup failures.
-    last_err = "unknown"
-    for attempt in range(3):
-        try:
-            r = subprocess.run(
-                ['gdbus', 'call', '--session',
-                 '--dest', 'org.gnome.Shell',
-                 '--object-path', '/org/gnome/Shell',
-                 '--method', 'org.gnome.Shell.Eval',
-                 'global.context.unsafe_mode = true'],
-                capture_output=True, timeout=5,
-            )
-            if r.returncode == 0:
-                print(f"unsafe_mode set (attempt {attempt+1})", flush=True)
-                break
-            last_err = f"exit {r.returncode}: {r.stderr.decode('utf-8', errors='replace')[:200]}"
-            print(f"unsafe_mode attempt {attempt+1} failed ({last_err})", flush=True)
-            time.sleep(2)
-        except Exception as e:  # noqa: BLE001
-            last_err = str(e)
-            print(f"unsafe_mode attempt {attempt+1} failed: {e}", flush=True)
-            time.sleep(2)
-    else:
-        raise RuntimeError(
-            f"unsafe_mode activation failed after 3 attempts ({last_err}). "
-            "Clock and system-menu toggles will not be reachable via AT-SPI."
+    try:
+        result = subprocess.run(
+            [
+                "gdbus",
+                "call",
+                "--session",
+                "--dest",
+                "org.gnome.Shell",
+                "--object-path",
+                "/org/gnome/Shell",
+                "--method",
+                "org.gnome.Shell.Eval",
+                "global.context.unsafe_mode === true",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
-
-    # Poll until a clock-like toggle (time string in name) appears in AT-SPI.
-    # Accepting "any non-Activities toggle" silently masked a broken shell setup
-    # where unsafe_mode hadn't taken effect — see issue #5.
-    from dogtail import tree as dtree
-    time_re = re.compile(r'\d{1,2}:\d{2}|clock', re.IGNORECASE)
-    deadline = time.time() + 15
-    while time.time() < deadline:
-        try:
-            shell = dtree.root.application('gnome-shell')
-            panels = shell.findChildren(lambda n: n.roleName == 'panel')
-            if panels:
-                toggles = panels[0].findChildren(
-                    lambda n: n.roleName == 'toggle button')
-                toggle_names = [t.name for t in toggles]
-                if any(n and time_re.search(n) for n in toggle_names):
-                    print(f"Panel toggles ready: {toggle_names}", flush=True)
-                    break
-        except Exception as e:  # noqa: BLE001
-            print(f"AT-SPI poll: {e}", flush=True)
-        time.sleep(1)
-    else:
-        # Do not raise — some sessions are slow to populate the panel and the
-        # individual @step checks will surface the failure with proper context.
-        print("WARNING: clock toggle not visible after 15s — step-level checks will diagnose", flush=True)
+    except Exception as error:  # noqa: BLE001
+        raise RuntimeError(f"unsafe_mode verification failed: {error}") from error
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or result.stdout.strip() or "unknown gdbus failure"
+        raise RuntimeError(f"unsafe_mode verification failed: {stderr[:200]}")
+    match = re.search(r"\((?:true|false),\s*'([^']*)'\)", result.stdout.strip())
+    if match is None or match.group(1) != "true":
+        raise RuntimeError(
+            "unsafe_mode was not enabled by run-gnome-tests readiness checks. "
+            f"Got: {result.stdout.strip()[:200]}"
+        )
 
     # Initialize sandbox
     try:

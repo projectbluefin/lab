@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gnomeos-smbios-hook
+  namespace: gnomeos-test
+data:
+  onDefineDomain: |
+    #!/usr/bin/env python3
+    import sys
+    import xml.etree.ElementTree as ET
+
+
+    def ensure(parent, tag, attrs=None):
+        child = parent.find(tag)
+        if child is None:
+            child = ET.SubElement(parent, tag, attrs or {})
+        return child
+
+
+    root = ET.fromstring(sys.argv[4])
+    sysinfo = ensure(root, "sysinfo", {"type": "smbios"})
+    oem_strings = ensure(sysinfo, "oemStrings")
+
+    entry = ET.Element("entry")
+    entry.text = (
+        "io.systemd.stub.kernel-cmdline-extra="
+        "console=ttyS0 systemd.journald.forward_to_console=1 systemd.debug_shell=ttyS0"
+    )
+    oem_strings.append(entry)
+
+    print(ET.tostring(root, encoding="unicode"))

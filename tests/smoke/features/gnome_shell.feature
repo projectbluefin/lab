@@ -61,6 +61,26 @@ Feature: GNOME Shell smoke tests
     * Close Activities overview via Shell.Eval
     * Overview is closed
 
+  @activities
+  Scenario: Overview search launches Files
+    * GNOME Shell is accessible via AT-SPI
+    * Open Activities overview via Shell.Eval
+    * Overview is open
+    * Set overview search text to "Files" via Shell.Eval
+    * Launch first overview search result via Enter
+    * Files application is open
+    * Close active application window
+
+  @activities
+  Scenario: Overview search launches Settings
+    * GNOME Shell is accessible via AT-SPI
+    * Open Activities overview via Shell.Eval
+    * Overview is open
+    * Set overview search text to "Settings" via Shell.Eval
+    * Launch first overview search result via Enter
+    * Settings application is open
+    * Close active application window
+
   # ── Quick Settings ────────────────────────────────────────────────────────
   # NOTE: Clock/System toggle buttons have AT-SPI position INT_MIN on GNOME 50.
   # Drive via Shell.Eval; verify via isOpen JS property.
@@ -100,10 +120,10 @@ Feature: GNOME Shell smoke tests
   @regression @bluefin_4612
   Scenario: GNOME Shell extensions do not crash shell on load (bluefin#4612)
     * GNOME Shell is accessible via AT-SPI
-    * Run and save command output: "sh -c 'journalctl --no-pager -b -p err..emerg --lines=50 2>/dev/null | grep -c gnome-shell; true'"
+    * Run and save command output: "sh -c 'journalctl --no-pager -b --since=\"${TEST_JOURNAL_SINCE:-1 minute ago}\" -p err..emerg --lines=50 2>/dev/null | grep -c gnome-shell; true'"
     * Last command output stripped "is" "0"
 
   @regression @bluefin_4642
   Scenario: No gnome-shell coredump after session start (bluefin#4642)
-    * Run and save command output: "sh -c 'coredumpctl list gnome-shell --no-pager --lines=10 2>/dev/null | grep -c gnome-shell; true'"
+    * Run and save command output: "sh -c 'coredumpctl list gnome-shell --no-pager --since=\"${TEST_JOURNAL_SINCE:-1 minute ago}\" --lines=10 2>/dev/null | grep -c gnome-shell; true'"
     * Last command output stripped "is" "0"

@@ -193,8 +193,8 @@ paint-by-numbers operator manual and the canonical source for those procedures.
 
 When this repo is supporting PR review for `knuckle`, `dakota`, or this repo itself,
 **approval requires a canonical Vanguard Lab Strike Report posted as a PR comment** with
-real lab evidence. The template lives at `~/src/skills/ghost-testlab/report-template.md`
-on the operator's host. See [`docs/lab-operations.md`](docs/lab-operations.md) §11 for
+real lab evidence. The template lives at [`docs/vanguard-report-template.md`](docs/vanguard-report-template.md).
+See [`docs/lab-operations.md`](docs/lab-operations.md) §11 for
 the exit checklist. Metadata-only or narrative-only reviews do not satisfy this gate.
 
 ## Resource Limits (all workflow pods)
@@ -253,40 +253,6 @@ kubectl get secret bluefin-test-ssh-key -n argo \
 
 ## Common Operations
 
-```bash
-# Check cluster state
-just list-vms
-just list-workflows
-
-# Run smoke against titan VMs (fast — no BIB needed, ~5min)
-just run-titan-smoke
-
-# Run broader GNOME desktop coverage
-just run-developer-tests
-just run-software-tests
-just run-titan-developer
-just run-titan-software
-
-# Run full smoke (BIB + provision + test + teardown, ~10min warm)
-just run-tests
-
-# Build/rebuild golden disk
-just ensure-disk         # latest
-just ensure-disk lts     # lts
-
-# Fix SSH auth on existing disk after secret rotation
-just patch-disk          # latest
-just patch-disk lts
-
-# Force ArgoCD sync
-just argocd-sync
-
-# Check ArgoCD status
-just argocd-status
-
-# Clean up orphaned VMs
-just delete-vms
-
-# Lint Argo YAML
-just lint
-```
+`docs/agent-cheatsheet.md` is the canonical command matrix for routine operator work.
+Use it for test runs, ArgoCD actions, titan recovery, CronWorkflow operations, and
+safe cleanup; use `docs/lab-operations.md` when you need the longer decision trees.

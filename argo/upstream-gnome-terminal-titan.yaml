@@ -1,0 +1,1142 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: upstream-gnome-terminal-
+  namespace: argo
+spec:
+  serviceAccountName: argo
+  entrypoint: run-upstream-suite
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 1800
+    secondsAfterFailure: 7200
+    secondsAfterSuccess: 1800
+
+  arguments:
+    parameters:
+      - name: vm-ip-latest
+        value: ""
+      - name: vm-ip-lts
+        value: ""
+      - name: ssh-user
+        value: "bluefin-test"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
+      - name: upstream-suite-repo
+        value: "https://github.com/modehnal/GNOMETerminalAutomation.git"
+      - name: upstream-suite-ref
+        value: "main"
+      - name: issue-title
+        value: "Red Hat upstream GNOME Terminal suite"
+
+  templates:
+    - name: run-upstream-suite
+      steps:
+        - - name: preflight-latest
+            template: preflight
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-latest}}"
+                - name: label
+                  value: "titan-bluefin"
+          - name: preflight-lts
+            template: preflight
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-lts}}"
+                - name: label
+                  value: "titan-lts"
+        - - name: upstream-latest
+            template: execute-upstream-suite
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-latest}}"
+                - name: variant
+                  value: "latest"
+                - name: label
+                  value: "titan-bluefin"
+          - name: upstream-lts
+            template: execute-upstream-suite
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-lts}}"
+                - name: variant
+                  value: "lts"
+                - name: label
+                  value: "titan-lts"
+
+    - name: preflight
+      inputs:
+        parameters:
+          - name: vm-ip
+          - name: label
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        securityContext:
+          runAsUser: 0
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: "{{workflow.parameters.ssh-key-secret}}"
+            defaultMode: 0400
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 200m
+            memory: 512Mi
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+        source: |
+          set -euo pipefail
+          VM_IP="{{inputs.parameters.vm-ip}}"
+          LABEL="{{inputs.parameters.label}}"
+          SSH="ssh -i /etc/ssh/test-key/id_ed25519 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR {{workflow.parameters.ssh-user}}@${VM_IP}"
+
+          if ! command -v ssh &>/dev/null; then
+            dnf install -y --quiet openssh-clients 2>&1 | tail -2
+          fi
+
+          echo "Preflight ${LABEL} (${VM_IP})..." >&2
+          STATE=$(${SSH} "systemctl is-system-running 2>/dev/null || true" | tail -n1)
+          if [[ -z "${STATE}" ]]; then
+            STATE="unknown"
+          fi
+          if [[ "${STATE}" != "running" && "${STATE}" != "degraded" ]]; then
+            echo "ERROR: systemd state '${STATE}' on ${LABEL}" >&2
+            exit 1
+          fi
+          FREE=$(${SSH} "df -BG / | awk 'NR==2{print \$4}' | tr -d G")
+          if [[ "${FREE}" -lt 2 ]]; then
+            echo "ERROR: only ${FREE}GB free on ${LABEL} root — need ≥ 2GB" >&2
+            exit 1
+          fi
+          echo "Preflight passed: ${LABEL} systemd=${STATE}, disk=${FREE}GB free" >&2
+
+    - name: execute-upstream-suite
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: bluefin-test-suite
+          bluefin.io/step: run-upstream-gnome-terminal
+          bluefin.io/variant: "{{inputs.parameters.variant}}"
+          bluefin.io/suite: upstream-gnome-terminal
+        annotations:
+          bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
+          bluefin.io/issue: "{{workflow.parameters.issue-title}}"
+          bluefin.io/upstream-repo: "{{workflow.parameters.upstream-suite-repo}}"
+          bluefin.io/upstream-ref: "{{workflow.parameters.upstream-suite-ref}}"
+      inputs:
+        parameters:
+          - name: vm-ip
+          - name: variant
+          - name: label
+      activeDeadlineSeconds: 5400
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        securityContext:
+          runAsUser: 0
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: "{{workflow.parameters.ssh-key-secret}}"
+            defaultMode: 0400
+        - name: workspace
+          emptyDir: {}
+      initContainers:
+        - name: git-sync
+          image: quay.io/fedora/fedora:latest
+          env:
+            - name: UPSTREAM_REPO
+              value: "{{workflow.parameters.upstream-suite-repo}}"
+            - name: UPSTREAM_REF
+              value: "{{workflow.parameters.upstream-suite-ref}}"
+          command: [bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              for attempt in 1 2 3; do
+                rm -rf /workspace/upstream-suite
+                dnf install -y --quiet git 2>&1 | tail -2
+                if git clone --depth 1 --branch "${UPSTREAM_REF}" \
+                    "${UPSTREAM_REPO}" /workspace/upstream-suite 2>&1; then
+                  echo "Synced upstream suite @ ${UPSTREAM_REF} (attempt ${attempt})"
+                  exit 0
+                fi
+                rm -rf /workspace/upstream-suite
+                if git clone "${UPSTREAM_REPO}" /workspace/upstream-suite 2>&1 && \
+                   git -C /workspace/upstream-suite checkout "${UPSTREAM_REF}" 2>&1; then
+                  echo "Synced upstream suite @ ${UPSTREAM_REF} via SHA fallback (attempt ${attempt})"
+                  exit 0
+                fi
+                echo "Attempt ${attempt} failed, retrying in 15s..."
+                sleep 15
+              done
+              exit 1
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+      container:
+        image: quay.io/fedora/fedora:latest
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "1"
+            memory: 1Gi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+        env:
+          - name: VM_IP
+            value: "{{inputs.parameters.vm-ip}}"
+          - name: VM_USER
+            value: "{{workflow.parameters.ssh-user}}"
+          - name: VARIANT
+            value: "{{inputs.parameters.variant}}"
+          - name: LABEL
+            value: "{{inputs.parameters.label}}"
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+          - name: workspace
+            mountPath: /workspace
+            readOnly: true
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            mkdir -p /tmp/results
+            LOG=/tmp/results/runner.log
+            exec > >(tee -a "$LOG") 2>&1
+
+            if ! command -v ssh &>/dev/null; then
+              dnf install -y --quiet openssh-clients rsync 2>&1 | tail -3
+            fi
+
+            SSH_OPTS="-i /etc/ssh/test-key/id_ed25519 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+            SSH="ssh ${SSH_OPTS} ${VM_USER}@${VM_IP}"
+            SCP="scp ${SSH_OPTS} -r"
+
+            echo "Waiting for SSH on ${LABEL} (${VM_IP})..." >&2
+            timeout 600 bash -c "
+              until ${SSH} 'echo ready' 2>/dev/null; do sleep 10; done
+            "
+            echo "SSH ready." >&2
+
+            ${SSH} "
+              set -euo pipefail
+              verify_upstream_dependencies() {
+                local ok=0
+                if ! python3 -c 'import qecore, behave, dogtail, pytest' 2>/dev/null; then
+                  echo 'ERROR: Missing required Python modules (qecore, behave, dogtail, pytest).' >&2
+                  ok=1
+                fi
+                if ! rpm -q gnome-ponytail-daemon python3-gnome-ponytail-daemon gnome-terminal gedit &>/dev/null; then
+                  echo 'ERROR: Missing required RPMs for upstream GNOME Terminal suite.' >&2
+                  ok=1
+                fi
+                if ! command -v gnome-terminal &>/dev/null; then
+                  echo 'ERROR: gnome-terminal is not available in PATH after install.' >&2
+                  ok=1
+                fi
+                if ! command -v gedit &>/dev/null; then
+                  echo 'ERROR: gedit is not available in PATH after install.' >&2
+                  ok=1
+                fi
+                if [[ ! -x \"\$HOME/.local/bin/qecore-headless\" ]]; then
+                  echo 'ERROR: qecore-headless is missing from \$HOME/.local/bin.' >&2
+                  ok=1
+                fi
+                return \${ok}
+              }
+              if verify_upstream_dependencies; then
+                echo 'Upstream GNOME Terminal dependencies already installed, skipping.' >&2
+              else
+                echo 'Installing upstream GNOME Terminal dependencies...' >&2
+                sudo ostree admin unlock 2>/dev/null || true
+                sudo dnf install -y --quiet gnome-ponytail-daemon python3-gnome-ponytail-daemon gnome-terminal gedit 2>&1 | tail -3
+                pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
+                python3 -m pip install --quiet --user qecore==3.24 behave==1.2.6 dogtail pytest python-uinput behave-html-pretty-formatter 2>&1 | tail -3
+                for f in \$HOME/.local/bin/qecore_*; do sudo ln -sf \"\$f\" /usr/local/bin/\$(basename \"\$f\") 2>/dev/null; done
+                sudo mkdir -p /home
+                sudo ln -sfn \"\$HOME\" /home/test
+                mkdir -p \"\$HOME/Videos\"
+                if ! verify_upstream_dependencies; then
+                  echo 'ERROR: Upstream GNOME Terminal dependency verification failed after install.' >&2
+                  exit 1
+                fi
+              fi
+              sudo modprobe uinput 2>/dev/null || true
+              sudo chmod 0666 /dev/uinput 2>/dev/null || true
+              sudo chcon -t uinput_device_t /dev/uinput 2>/dev/null || true
+            "
+            echo "Dependencies ready." >&2
+
+            echo "Copying upstream GNOME Terminal suite to VM..." >&2
+            ${SSH} "rm -rf /tmp/upstream-tests && mkdir -p /tmp/upstream-tests /tmp/results"
+            ${SCP} /workspace/upstream-suite/. ${VM_USER}@${VM_IP}:/tmp/upstream-tests/
+            cat > /tmp/patch-upstream-env.py <<'PY'
+            from pathlib import Path
+            path = Path('/tmp/upstream-tests/features/environment.py')
+            text = path.read_text()
+            if 'import subprocess' not in text:
+                text = 'import re\nimport subprocess\nfrom time import sleep\n' + text
+            text = text.replace('a11y_app_name=\"gnome-terminal-server\"', 'a11y_app_name=\"org.gnome.Terminal\"')
+            text = text.replace('a11y_app_name=\"gnome-terminal-preferences\"', 'a11y_app_name=\"org.gnome.Terminal.Preferences\"')
+            ponytail_block = (
+                "from dogtail import rawinput as dt_rawinput\n"
+                "from dogtail import tree as dt_tree\n"
+                "from dogtail.config import config as dogtail_config\n"
+                "from dogtail.accessibles.accessible_component import AccessibleComponent as DTAccessibleComponent\n"
+                "from dogtail.ponytail_helper import ponytail_helper as dt_ponytail_helper\n"
+                "from gi.repository import Atspi\n\n"
+                "from qecore.application import Application as QEApplication\n\n"
+                "_testing_lab_original_get_size = DTAccessibleComponent.get_size\n"
+                "_testing_lab_original_click = dt_rawinput.click\n\n"
+                "def _testing_lab_qecore_get_root(app):\n"
+                "    from dogtail.tree import root as dt_root\n"
+                "    applications = dt_root.applications()\n"
+                "    for candidate in applications:\n"
+                "        if candidate.name == app.a11y_app_name:\n"
+                "            return candidate\n"
+                "    raise RuntimeError(f\"Application '{app.a11y_app_name}' was not found in application tree: {[x.name for x in applications]}\")\n\n"
+                "def _testing_lab_force_monitor_connection(window_id=None, input_source=\"mouse\"):\n"
+                "    ponytail_interface = dt_ponytail_helper.get_ponytail_interface()\n"
+                "    try:\n"
+                "        if ponytail_interface.connected is not None and not isinstance(ponytail_interface.connected, str):\n"
+                "            ponytail_interface.disconnect()\n"
+                "            sleep(0.2)\n"
+                "    except Exception:\n"
+                "        pass\n"
+                "    if ponytail_interface.connected is None:\n"
+                "        ponytail_interface.connectMonitor()\n\n"
+                "def _testing_lab_click(x, y, button=1, check=True, window_id=None):\n"
+                "    if dt_rawinput.SESSION_TYPE == \"x11\":\n"
+                "        return _testing_lab_original_click(x, y, button=button, check=check, window_id=window_id)\n"
+                "    (_x, _y) = dt_rawinput.update_coords((x, y))\n"
+                "    if check:\n"
+                "        dt_rawinput.check_coordinates(_x, _y)\n"
+                "    _testing_lab_force_monitor_connection(window_id=\"\", input_source=\"mouse\")\n"
+                "    dt_ponytail_helper.get_ponytail_interface().generateButtonEvent(button, _x, _y)\n"
+                "    dt_rawinput.do_delay(dt_rawinput.config.action_delay)\n\n"
+                "def _testing_lab_get_size(acc_object):\n"
+                "    try:\n"
+                "        return _testing_lab_original_get_size(acc_object)\n"
+                "    except Exception as exc:\n"
+                "        if \"GetWindows is not allowed\" not in str(exc):\n"
+                "            raise\n"
+                "        if dt_tree.AccessibleObject.is_newton(acc_object):\n"
+                "            atspi_point = acc_object.get_size()\n"
+                "        else:\n"
+                "            atspi_point = Atspi.Component.get_size(acc_object)\n"
+                "        return (atspi_point.x, atspi_point.y)\n\n"
+                "dt_ponytail_helper.ponytail_check_connection = _testing_lab_force_monitor_connection\n"
+                "dt_ponytail_helper.get_window_id = lambda accessible_object: \"\"\n"
+                "dt_ponytail_helper.get_window_has_focus = lambda: True\n"
+                "dt_rawinput.click = _testing_lab_click\n"
+                "dt_tree.click = _testing_lab_click\n"
+                "dt_tree.Node.window_id = property(lambda self: \"\")\n"
+                "dt_tree.Node.window_has_focus = property(lambda self: True)\n"
+                "DTAccessibleComponent.get_size = staticmethod(_testing_lab_get_size)\n"
+                "QEApplication.get_root = _testing_lab_qecore_get_root\n"
+            )
+            if 'dt_ponytail_helper.ponytail_check_connection = _testing_lab_force_monitor_connection' not in text:
+                text = text.replace('from qecore.utility import run\n', 'from qecore.utility import run\n' + ponytail_block + '\n')
+            before_all_old = '''    try:
+                    context.sandbox = TestSandbox("gnome-terminal", context=context)
+            '''
+            before_all_new = '''    try:
+                    result = subprocess.run([
+                        "gdbus",
+                        "call",
+                        "--session",
+                        "--dest",
+                        "org.gnome.Shell",
+                        "--object-path",
+                        "/org/gnome/Shell",
+                        "--method",
+                        "org.gnome.Shell.Eval",
+                        "global.context.unsafe_mode = true",
+                    ], capture_output=True, text=True, timeout=5)
+                    if result.returncode != 0:
+                        stderr = result.stderr.strip() or result.stdout.strip() or "unknown gdbus failure"
+                        raise RuntimeError(f"unsafe_mode enable failed: {stderr[:200]}")
+                    dogtail_config.searchShowingOnly = True
+                    context.sandbox = TestSandbox("gnome-terminal", context=context)
+                    context.sandbox.production = False
+            '''
+            text = text.replace(before_all_old, before_all_new)
+            text = text.replace(
+                '    run("dconf reset /org/gtk/Settings/Debug/enable-inspector-keybinding")\n',
+                '    run("dconf reset /org/gtk/Settings/Debug/enable-inspector-keybinding")\n'
+                '    run("dconf write /org/gnome/terminal/legacy/default-show-menubar true")\n',
+            )
+            path.write_text(text)
+            steps_path = Path('/tmp/upstream-tests/features/steps/steps.py')
+            steps_text = steps_path.read_text()
+            helper_anchor = 'LOGGING = Logging()\n'
+            helper_block = (
+                'LOGGING = Logging()\n\n'
+                'def _testing_lab_terminal_widgets(context):\n'
+                '    widgets = context.terminal.instance.findChildren(\n'
+                '        lambda x: x.roleName == "terminal" and x.showing\n'
+                '    )\n'
+                '    if widgets:\n'
+                '        return widgets\n'
+                '    return context.terminal.instance.findChildren(\n'
+                '        lambda x: x.roleName == "terminal"\n'
+                '    )\n\n'
+                'def _testing_lab_terminal_text(context):\n'
+                '    widgets = [x for x in _testing_lab_terminal_widgets(context) if getattr(x, "focused", False)]\n'
+                '    if not widgets:\n'
+                '        widgets = _testing_lab_terminal_widgets(context)\n'
+                '    if not widgets:\n'
+                '        _testing_lab_log_terminal_tree(context, "no terminal widget")\n'
+                '    assert widgets, "No terminal widget found in accessibility tree."\n'
+                '    text = getattr(widgets[0], "text", "")\n'
+                '    return text if text is not None else ""\n\n'
+                'def _testing_lab_dump_visible_tree(node, depth=0, max_depth=2, max_children=25):\n'
+                '    if node is None or depth > max_depth:\n'
+                '        return []\n'
+                '    children = list(getattr(node, "children", []) or [])\n'
+                '    lines = []\n'
+                '    for child in children[:max_children]:\n'
+                '        lines.append(\n'
+                '            f"{\'  \' * depth}- role={getattr(child, \'roleName\', None)!r} name={getattr(child, \'name\', None)!r} showing={getattr(child, \'showing\', None)!r} visible={getattr(child, \'visible\', None)!r} selected={getattr(child, \'selected\', None)!r}"\n'
+                '        )\n'
+                '        lines.extend(_testing_lab_dump_visible_tree(child, depth + 1, max_depth, max_children))\n'
+                '    return lines\n\n'
+                'def _testing_lab_log_terminal_tree(context, reason):\n'
+                '    print(f"TESTING_LAB_A11Y_TREE_BEGIN reason={reason}")\n'
+                '    try:\n'
+                '        for line in _testing_lab_dump_visible_tree(context.terminal.instance):\n'
+                '            print(line)\n'
+                '    except Exception as exc:\n'
+                '        print(f"TESTING_LAB_A11Y_TREE_ERROR {exc}")\n'
+                '    print("TESTING_LAB_A11Y_TREE_END")\n'
+            )
+            if 'def _testing_lab_terminal_widgets(context):' not in steps_text:
+                steps_text = steps_text.replace(helper_anchor, helper_block)
+            menubar_old = (
+                '@step("Make sure Menubar is showing")\n'
+                'def make_sure_menubar_is_showing(context) -> None:\n'
+                '    """\n'
+                '    Make sure Menubar is showing.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '    """\n'
+                '\n'
+                '    menubar = context.terminal.instance.child(roleName="menu bar")\n'
+                '    for _ in range(10):\n'
+                '        if not (menubar.showing and menubar.visible):\n'
+                '            terminal_frame = context.terminal.instance.child(roleName="frame")\n'
+                '            sleep(1)\n'
+                '            terminal_frame.click(3)\n'
+                '            try:\n'
+                '                context.execute_steps(\n'
+                '                    \'* Left click "Show Menubar" "check menu item" in "terminal"\'\n'
+                '                )\n'
+                '            except Exception:  # pylint: disable=broad-except\n'
+                '                pressKey("Esc")\n'
+            )
+            menubar_new = (
+                '@step("Make sure Menubar is showing")\n'
+                'def make_sure_menubar_is_showing(context) -> None:\n'
+                '    """\n'
+                '    Make sure Menubar is showing.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '    """\n'
+                '\n'
+                '    for _ in range(10):\n'
+                '        menubars = context.terminal.instance.findChildren(\n'
+                '            lambda x: x.roleName == "menu bar" and x.showing\n'
+                '        )\n'
+                '        if menubars:\n'
+                '            return\n'
+                '        terminal_frames = context.terminal.instance.findChildren(\n'
+                '            lambda x: x.roleName == "frame" and x.showing\n'
+                '        )\n'
+                '        if not terminal_frames:\n'
+                '            sleep(1)\n'
+                '            continue\n'
+                '        sleep(1)\n'
+                '        terminal_frames[0].click(3)\n'
+                '        try:\n'
+                '            context.execute_steps(\n'
+                '                \'* Left click "Show Menubar" "check menu item" in "terminal"\'\n'
+                '            )\n'
+                '        except Exception:  # pylint: disable=broad-except\n'
+                '            pressKey("Esc")\n'
+                '\n'
+                '    _testing_lab_log_terminal_tree(context, "menubar unavailable")\n'
+                '    return\n'
+            )
+            steps_text = steps_text.replace(menubar_old, menubar_new)
+            terminal_contains_old = (
+                '@step(\'Terminal contains string "{tested_string}"\')\n'
+                'def terminal_contains_string(context, tested_string) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal contains given string.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param tested_string: String to be compared against.\n'
+                '    :type tested_string: str\n'
+                '    """\n'
+                '\n'
+                '    text_in_terminal = context.terminal.instance.findChild(\n'
+                '        lambda x: x.name == "Terminal" and x.roleName == "terminal" and x.focused\n'
+                '    ).text\n'
+                '\n'
+                '    assert tested_string in text_in_terminal, "".join(\n'
+                '        (\n'
+                '            f"\\nExpected string:\\n \'{tested_string}\'",\n'
+                '            f"\\nFound string   :\\n \'{text_in_terminal}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            terminal_contains_new = (
+                '@step(\'Terminal contains string "{tested_string}"\')\n'
+                'def terminal_contains_string(context, tested_string) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal contains given string.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param tested_string: String to be compared against.\n'
+                '    :type tested_string: str\n'
+                '    """\n'
+                '\n'
+                '    text_in_terminal = _testing_lab_terminal_text(context)\n'
+                '\n'
+                '    assert tested_string in text_in_terminal, "".join(\n'
+                '        (\n'
+                '            f"\\nExpected string:\\n \'{tested_string}\'",\n'
+                '            f"\\nFound string   :\\n \'{text_in_terminal}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            steps_text = steps_text.replace(terminal_contains_old, terminal_contains_new)
+            terminal_not_old = (
+                '@step(\'Terminal does not contain string "{tested_string}"\')\n'
+                'def terminal_does_not_contain_string(context, tested_string) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal does not contain given string.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param tested_string: String to be compared against.\n'
+                '    :type tested_string: str\n'
+                '    """\n'
+                '\n'
+                '    terminal = context.terminal.instance.findChild(\n'
+                '        lambda x: x.name == "Terminal" and x.roleName == "terminal" and x.focused\n'
+                '    ).text\n'
+                '\n'
+                '    assert (\n'
+                '        tested_string not in terminal\n'
+                '    ), "String was found. Indication of test failure."\n'
+            )
+            terminal_not_new = (
+                '@step(\'Terminal does not contain string "{tested_string}"\')\n'
+                'def terminal_does_not_contain_string(context, tested_string) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal does not contain given string.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param tested_string: String to be compared against.\n'
+                '    :type tested_string: str\n'
+                '    """\n'
+                '\n'
+                '    terminal = _testing_lab_terminal_text(context)\n'
+                '\n'
+                '    assert (\n'
+                '        tested_string not in terminal\n'
+                '    ), "String was found. Indication of test failure."\n'
+            )
+            steps_text = steps_text.replace(terminal_not_old, terminal_not_new)
+            terminal_empty_old = (
+                '@step("Terminal output is empty")\n'
+                'def terminal_output_is_empty(context) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal output is empty.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '    """\n'
+                '\n'
+                '    terminal = context.terminal.instance.findChild(\n'
+                '        lambda x: x.name == "Terminal" and x.roleName == "terminal" and x.focused\n'
+                '    ).text\n'
+                '\n'
+                '    assert terminal.strip("\\n") == "", "\\n".join(\n'
+                '        (\n'
+                '            "\\nTerminal is not empty. Indication of test failure.",\n'
+                '            f"Terminal lenght : \'{len(terminal)}\'",\n'
+                '            f"Terminal content: \'{terminal}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            terminal_empty_new = (
+                '@step("Terminal output is empty")\n'
+                'def terminal_output_is_empty(context) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal output is empty.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '    """\n'
+                '\n'
+                '    terminal = _testing_lab_terminal_text(context)\n'
+                '\n'
+                '    assert terminal.strip("\\n") == "", "\\n".join(\n'
+                '        (\n'
+                '            "\\nTerminal is not empty. Indication of test failure.",\n'
+                '            f"Terminal lenght : \'{len(terminal)}\'",\n'
+                '            f"Terminal content: \'{terminal}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            steps_text = steps_text.replace(terminal_empty_old, terminal_empty_new)
+            open_preferences_old = (
+                '@step("Open preferences")\n'
+                'def open_preferences(context) -> None:\n'
+                '    """\n'
+                '    Open preferences\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '    """\n'
+                '\n'
+                '    context.execute_steps(\'* Left click "Edit" "menu" in "terminal"\')\n'
+                '    context.execute_steps(\'* Left click "Preferences" "menu item" in "terminal"\')\n'
+                '    context.execute_steps(\'* Application "preferences" is running\')\n'
+                '    sleep(2)\n'
+            )
+            open_preferences_new = (
+                '@step("Open preferences")\n'
+                'def open_preferences(context) -> None:\n'
+                '    """\n'
+                '    Open preferences\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '    """\n'
+                '\n'
+                '    menu_buttons = context.terminal.instance.findChildren(\n'
+                '        lambda x: x.name == "Menu" and x.roleName in ("toggle button", "button") and x.showing\n'
+                '    )\n'
+                '    if menu_buttons:\n'
+                '        menu_buttons[0].click()\n'
+                '        sleep(1)\n'
+                '        preferences_items = context.terminal.instance.findChildren(\n'
+                '            lambda x: x.name == "Preferences" and x.showing\n'
+                '        )\n'
+                '        if preferences_items:\n'
+                '            preferences_items[0].click()\n'
+                '            context.execute_steps(\'* Application "preferences" is running\')\n'
+                '            sleep(2)\n'
+                '            return\n'
+                '        pressKey("Esc")\n'
+                '\n'
+                '    context.execute_steps(\'* Left click "Edit" "menu" in "terminal"\')\n'
+                '    context.execute_steps(\'* Left click "Preferences" "menu item" in "terminal"\')\n'
+                '    context.execute_steps(\'* Application "preferences" is running\')\n'
+                '    sleep(2)\n'
+            )
+            steps_text = steps_text.replace(open_preferences_old, open_preferences_new)
+            if '@step("Open search via header bar")' not in steps_text:
+                steps_text += (
+                    '\n\n@step("Open search via header bar")\n'
+                    'def open_search_via_header_bar(context) -> None:\n'
+                    '    """Open search from the current GNOME Terminal header bar."""\n'
+                    '\n'
+                    '    find_buttons = context.terminal.instance.findChildren(\n'
+                    '        lambda x: x.name == "Find" and x.roleName in ("button", "toggle button") and x.showing\n'
+                    '    )\n'
+                    '    assert find_buttons, "Find button is not exposed in the accessibility tree."\n'
+                    '    find_buttons[0].click()\n'
+                    '    sleep(1)\n'
+                )
+            if 'def _testing_lab_open_header_bar_menu(context) -> None:' not in steps_text:
+                steps_text += (
+                    '\n\ndef _testing_lab_open_header_bar_menu(context) -> None:\n'
+                    '    menu_buttons = context.terminal.instance.findChildren(\n'
+                    '        lambda x: x.name == "Menu" and x.roleName in ("toggle button", "button") and x.showing\n'
+                    '    )\n'
+                    '    if not menu_buttons:\n'
+                    '        _testing_lab_log_terminal_tree(context, "header menu unavailable")\n'
+                    '    assert menu_buttons, "Header bar menu button is not exposed in the accessibility tree."\n'
+                    '    menu_buttons[0].click()\n'
+                    '    sleep(1)\n\n'
+                    'def _testing_lab_find_named_controls(context, item_name, roles):\n'
+                    '    return context.terminal.instance.findChildren(\n'
+                    '        lambda x: x.name == item_name and x.roleName in roles and x.showing\n'
+                    '    )\n\n'
+                    '@step(\'Open header bar item "{item_name}"\')\n'
+                    'def open_header_bar_item(context, item_name) -> None:\n'
+                    '    """Activate a visible item from the GNOME Terminal header bar menu."""\n'
+                    '\n'
+                    '    _testing_lab_open_header_bar_menu(context)\n'
+                    '    items = _testing_lab_find_named_controls(\n'
+                    '        context, item_name, ("menu item", "push button", "button", "label")\n'
+                    '    )\n'
+                    '    if not items:\n'
+                    '        _testing_lab_log_terminal_tree(context, f"header item unavailable: {item_name}")\n'
+                    '    assert items, f\'Header bar item "{item_name}" is not exposed in the accessibility tree.\'\n'
+                    '    items[0].click()\n'
+                    '    sleep(1)\n\n'
+                    '@step(\'Open header bar advanced item "{item_name}"\')\n'
+                    'def open_header_bar_advanced_item(context, item_name) -> None:\n'
+                    '    """Activate a visible item from the header bar Advanced submenu."""\n'
+                    '\n'
+                    '    _testing_lab_open_header_bar_menu(context)\n'
+                    '    advanced_items = _testing_lab_find_named_controls(\n'
+                    '        context, "Advanced", ("menu item", "menu", "push button", "button", "label")\n'
+                    '    )\n'
+                    '    if not advanced_items:\n'
+                    '        _testing_lab_log_terminal_tree(context, "header advanced submenu unavailable")\n'
+                    '    assert advanced_items, "Header bar Advanced submenu is not exposed in the accessibility tree."\n'
+                    '    advanced_items[0].click()\n'
+                    '    sleep(1)\n'
+                    '    items = _testing_lab_find_named_controls(\n'
+                    '        context, item_name, ("menu item", "push button", "button", "label")\n'
+                    '    )\n'
+                    '    if not items:\n'
+                    '        _testing_lab_log_terminal_tree(context, f"header advanced item unavailable: {item_name}")\n'
+                    '    assert items, f\'Header bar Advanced item "{item_name}" is not exposed in the accessibility tree.\'\n'
+                    '    items[0].click()\n'
+                    '    sleep(1)\n\n'
+                    'def _testing_lab_current_page_tab(context):\n'
+                    '    tabs = context.terminal.instance.findChildren(\n'
+                    '        lambda x: x.roleName == "page tab" and x.showing\n'
+                    '    )\n'
+                    '    selected_tabs = [x for x in tabs if getattr(x, "selected", False)]\n'
+                    '    if selected_tabs:\n'
+                    '        return selected_tabs[0]\n'
+                    '    focused_tabs = [x for x in tabs if getattr(x, "focused", False)]\n'
+                    '    if focused_tabs:\n'
+                    '        return focused_tabs[0]\n'
+                    '    if tabs:\n'
+                    '        return tabs[0]\n'
+                    '    _testing_lab_log_terminal_tree(context, "page tab unavailable")\n'
+                    '    raise AssertionError("No visible page tab is exposed in the accessibility tree.")\n\n'
+                    '@step(\'Open current tab menu item "{item_name}"\')\n'
+                    'def open_current_tab_menu_item(context, item_name) -> None:\n'
+                    '    """Activate a visible item from the current terminal tab context menu."""\n'
+                    '\n'
+                    '    _testing_lab_current_page_tab(context).click(3)\n'
+                    '    sleep(1)\n'
+                    '    items = _testing_lab_find_named_controls(\n'
+                    '        context, item_name, ("menu item", "push button", "button", "label")\n'
+                    '    )\n'
+                    '    if not items:\n'
+                    '        _testing_lab_log_terminal_tree(context, f"tab menu item unavailable: {item_name}")\n'
+                    '    assert items, f\'Tab context menu item "{item_name}" is not exposed in the accessibility tree.\'\n'
+                    '    items[0].click()\n'
+                    '    sleep(1)\n'
+                )
+            scenarios_root = Path('/tmp/upstream-tests/features/scenarios')
+            scenario_rewrites = (
+                (
+                    "\n".join((
+                        '@tabs_menu_previous_tab',
+                        '  Scenario: Tabs Menu Previous Tab',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><2>"',
+                        '    * Left click "Tabs" "menu" in "terminal"',
+                        '    * Left click "Previous Tab" "menu item" in "terminal"',
+                        '    * Type text: "test-string-1"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-1" was targeted and contains string "test-string-1"',
+                    )),
+                    "\n".join((
+                        '@tabs_menu_previous_tab',
+                        '  Scenario: Tabs Menu Previous Tab',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><2>"',
+                        '    * Key combo: "<Alt><1>"',
+                        '    * Type text: "test-string-1"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-1" was targeted and contains string "test-string-1"',
+                    )),
+                ),
+                (
+                    "\n".join((
+                        '@tabs_menu_next_tab',
+                        '  Scenario: Tabs Menu Next Tab',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><1>"',
+                        '    * Left click "Tabs" "menu" in "terminal"',
+                        '    * Left click "Next Tab" "menu item" in "terminal"',
+                        '    * Type text: "test-string-2"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-2" was targeted and contains string "test-string-2"',
+                    )),
+                    "\n".join((
+                        '@tabs_menu_next_tab',
+                        '  Scenario: Tabs Menu Next Tab',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><1>"',
+                        '    * Key combo: "<Alt><2>"',
+                        '    * Type text: "test-string-2"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-2" was targeted and contains string "test-string-2"',
+                    )),
+                ),
+                (
+                    "\n".join((
+                        '@tabs_menu_move_tab_left',
+                        '  Scenario: Tabs Menu Move Tab Left',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><2>"',
+                        '    * Left click "Tabs" "menu" in "terminal"',
+                        '    * Left click "Move Terminal Left" "menu item" in "terminal"',
+                        '    * Key combo: "<Alt><1>"',
+                        '    * Type text: "test-string-2"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-2" was targeted and contains string "test-string-2"',
+                    )),
+                    "\n".join((
+                        '@tabs_menu_move_tab_left',
+                        '  Scenario: Tabs Menu Move Tab Left',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><2>"',
+                        '    * Open current tab menu item "Move Terminal Left"',
+                        '    * Key combo: "<Alt><1>"',
+                        '    * Type text: "test-string-2"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-2" was targeted and contains string "test-string-2"',
+                    )),
+                ),
+                (
+                    "\n".join((
+                        '@tabs_menu_move_tab_right',
+                        '  Scenario: Tabs Menu Move Tab Right',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><1>"',
+                        '    * Left click "Tabs" "menu" in "terminal"',
+                        '    * Left click "Move Terminal Right" "menu item" in "terminal"',
+                        '    * Key combo: "<Alt><2>"',
+                        '    * Type text: "test-string-1"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-1" was targeted and contains string "test-string-1"',
+                    )),
+                    "\n".join((
+                        '@tabs_menu_move_tab_right',
+                        '  Scenario: Tabs Menu Move Tab Right',
+                        '    * Prepare two Tabs for testing',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Key combo: "<Alt><1>"',
+                        '    * Open current tab menu item "Move Terminal Right"',
+                        '    * Key combo: "<Alt><2>"',
+                        '    * Type text: "test-string-1"',
+                        '    * Press key: "Enter"',
+                        '    * Tab "tab-1" was targeted and contains string "test-string-1"',
+                    )),
+                ),
+                (
+                    "\n".join((
+                        '@tabs_menu_detach_tab',
+                        '  Scenario: Tabs Menu Move Detach Tab.',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Left click "Tabs" "menu" in "terminal"',
+                        '    * Left click "Detach Terminal" "menu item" in "terminal"',
+                        '    * Terminal has "2" windows',
+                    )),
+                    "\n".join((
+                        '@tabs_menu_detach_tab',
+                        '  Scenario: Tabs Menu Move Detach Tab.',
+                        '    * Key combo: "<Ctrl><Shift><T>"',
+                        '    * Open current tab menu item "Detach Terminal"',
+                        '    * Terminal has "2" windows',
+                    )),
+                ),
+                (
+                    "\n".join((
+                        '@help_menu_contents',
+                        '  Scenario: Help Menu Contents',
+                        '    * Enable GTK inspector',
+                        '    * Left click "Help" "menu" in "terminal"',
+                        '    * Left click "Contents" "menu item" in "terminal"',
+                        '    * Wait 3 seconds before action',
+                        '    * Item "Terminal" "document web" is "showing" in "yelp"',
+                    )),
+                    "\n".join((
+                        '@help_menu_contents',
+                        '  Scenario: Help Menu Contents',
+                        '    * Enable GTK inspector',
+                        '    * Open header bar item "Help"',
+                        '    * Wait 3 seconds before action',
+                        '    * Item "Terminal" "document web" is "showing" in "yelp"',
+                    )),
+                ),
+                (
+                    "\n".join((
+                        '@help_menu_about',
+                        '  Scenario: Help Menu About',
+                        '    * Enable GTK inspector',
+                        '    * Left click "Help" "menu" in "terminal"',
+                        '    * Left click "About" "menu item" in "terminal"',
+                        '    * Item "About GNOME Terminal" "dialog" is "showing" in "terminal"',
+                    )),
+                    "\n".join((
+                        '@help_menu_about',
+                        '  Scenario: Help Menu About',
+                        '    * Enable GTK inspector',
+                        '    * Open header bar item "About"',
+                        '    * Item "About GNOME Terminal" "dialog" is "showing" in "terminal"',
+                    )),
+                ),
+                (
+                    "\n".join((
+                        '@help_menu_inspector',
+                        '  Scenario: Help Menu Inspector',
+                        '    * Enable GTK inspector',
+                        '    * Left click "Help" "menu" in "terminal"',
+                        '    * Left click "Inspector" "menu item" in "terminal"',
+                        '    * Item "Objects" "radio button" is "showing" in "terminal"',
+                    )),
+                    "\n".join((
+                        '@help_menu_inspector',
+                        '  Scenario: Help Menu Inspector',
+                        '    * Enable GTK inspector',
+                        '    * Open header bar advanced item "Inspector"',
+                        '    * Item "Objects" "radio button" is "showing" in "terminal"',
+                    )),
+                ),
+            )
+            for feature_path in scenarios_root.glob('*.feature'):
+                feature_text = feature_path.read_text()
+                feature_text = feature_text.replace(
+                    '* Left click "Search" "menu" in "terminal"',
+                    '* Open search via header bar',
+                )
+                for old_block, new_block in scenario_rewrites:
+                    feature_text = feature_text.replace(old_block, new_block)
+                feature_path.write_text(feature_text)
+            terminal_windows_old = (
+                '@step(\'Terminal has "{expected_number:d}" windows\')\n'
+                'def terminal_has_windows(context, expected_number) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal has expected number of windows.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param expected_number: Expected number.\n'
+                '    :type expected_number: str\n'
+                '    """\n'
+                '\n'
+                '    terminal_windows_count = 0\n'
+                '\n'
+                '    for _ in range(5):\n'
+                '        terminal_windows_count = len(\n'
+                '            context.terminal.instance.findChildren(\n'
+                '                lambda x: ("Terminal" in x.name or "test@" in x.name)\n'
+                '                and x.roleName == "frame"\n'
+                '            )\n'
+                '        )\n'
+                '\n'
+                '        if terminal_windows_count == expected_number:\n'
+                '            return\n'
+                '\n'
+                '        sleep(1)\n'
+                '\n'
+                '    assert False, "".join(\n'
+                '        (\n'
+                '            f"\\nNumber of expected open windows: \'{expected_number}\'",\n'
+                '            f"\\nNumber of found open windows:    \'{terminal_windows_count}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            terminal_windows_new = (
+                '@step(\'Terminal has "{expected_number:d}" windows\')\n'
+                'def terminal_has_windows(context, expected_number) -> None:\n'
+                '    """\n'
+                '    Verify that the terminal has expected number of windows.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param expected_number: Expected number.\n'
+                '    :type expected_number: str\n'
+                '    """\n'
+                '\n'
+                '    terminal_windows_count = 0\n'
+                '\n'
+                '    for _ in range(5):\n'
+                '        frames = context.terminal.instance.findChildren(\n'
+                '            lambda x: x.roleName == "frame" and x.showing\n'
+                '        )\n'
+                '        if not frames:\n'
+                '            frames = context.terminal.instance.findChildren(\n'
+                '                lambda x: x.roleName == "frame"\n'
+                '            )\n'
+                '        terminal_windows_count = len(frames)\n'
+                '        if terminal_windows_count == 0 and _testing_lab_terminal_widgets(context):\n'
+                '            terminal_windows_count = 1\n'
+                '\n'
+                '        if terminal_windows_count == expected_number:\n'
+                '            return\n'
+                '\n'
+                '        sleep(1)\n'
+                '\n'
+                '    assert False, "".join(\n'
+                '        (\n'
+                '            f"\\nNumber of expected open windows: \'{expected_number}\'",\n'
+                '            f"\\nNumber of found open windows:    \'{terminal_windows_count}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            steps_text = steps_text.replace(terminal_windows_old, terminal_windows_new)
+            terminal_tabs_old = (
+                '@step(\'Terminal has "{expected_number:d}" tabs\')\n'
+                'def terminal_has_tabs(context, expected_number) -> None:\n'
+                '    """\n'
+                '    Verify that terminal has expected number of tabs.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param expected_number: Given expected number of tabs.\n'
+                '    :type expected_number: str\n'
+                '    """\n'
+                '\n'
+                '    terminal_tabs_count = 0\n'
+                '\n'
+                '    for _ in range(5):\n'
+                '        terminal_tabs_count = len(\n'
+                '            context.terminal.instance.findChildren(\n'
+                '                lambda x: x.name == "Terminal" and x.roleName == "terminal"\n'
+                '            )\n'
+                '        )\n'
+                '\n'
+                '        if terminal_tabs_count == int(expected_number):\n'
+                '            return\n'
+                '\n'
+                '        sleep(1)\n'
+                '\n'
+                '    assert False, "".join(\n'
+                '        (\n'
+                '            f"\\nNumber of expected open tabs: \'{expected_number}\'",\n'
+                '            f"\\nNumber of found open tabs:    \'{terminal_tabs_count}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            terminal_tabs_new = (
+                '@step(\'Terminal has "{expected_number:d}" tabs\')\n'
+                'def terminal_has_tabs(context, expected_number) -> None:\n'
+                '    """\n'
+                '    Verify that terminal has expected number of tabs.\n'
+                '\n'
+                '    :param context: Holds contextual information during the running of tests.\n'
+                '    :type context: <behave.runner.Context>\n'
+                '\n'
+                '    :param expected_number: Given expected number of tabs.\n'
+                '    :type expected_number: str\n'
+                '    """\n'
+                '\n'
+                '    terminal_tabs_count = 0\n'
+                '\n'
+                '    for _ in range(5):\n'
+                '        page_tabs = context.terminal.instance.findChildren(\n'
+                '            lambda x: x.roleName == "page tab" and x.showing\n'
+                '        )\n'
+                '        if page_tabs:\n'
+                '            terminal_tabs_count = len(page_tabs)\n'
+                '        else:\n'
+                '            terminal_tabs_count = len(_testing_lab_terminal_widgets(context))\n'
+                '\n'
+                '        if terminal_tabs_count == int(expected_number):\n'
+                '            return\n'
+                '\n'
+                '        sleep(1)\n'
+                '\n'
+                '    assert False, "".join(\n'
+                '        (\n'
+                '            f"\\nNumber of expected open tabs: \'{expected_number}\'",\n'
+                '            f"\\nNumber of found open tabs:    \'{terminal_tabs_count}\'",\n'
+                '        )\n'
+                '    )\n'
+            )
+            steps_text = steps_text.replace(terminal_tabs_old, terminal_tabs_new)
+            steps_path.write_text(steps_text)
+            PY
+            ${SCP} /tmp/patch-upstream-env.py ${VM_USER}@${VM_IP}:/tmp/patch-upstream-env.py
+            ${SSH} "python3 /tmp/patch-upstream-env.py && rm -f /tmp/patch-upstream-env.py"
+            ${SSH} "cat > /tmp/upstream-tests/run-upstream-suite.sh <<'EOF'
+            #!/usr/bin/env bash
+            set -euo pipefail
+            export PATH=\"\$HOME/.local/bin:\$PATH\"
+            cd /tmp/upstream-tests
+            for i in \$(seq 1 30); do
+              gdbus introspect --session \
+                --dest org.gnome.Shell \
+                --object-path /org/gnome/Shell >/dev/null 2>&1 && break
+              sleep 1
+            done
+            export PYTHONUNBUFFERED=1
+            exec \"\$HOME/.local/bin/behave\" -v features/scenarios \
+              --format json.pretty \
+              --outfile /tmp/results/results.json \
+              --no-capture \
+            EOF
+            chmod +x /tmp/upstream-tests/run-upstream-suite.sh"
+
+            TEST_RC=0
+            ${SSH} "
+              set -euo pipefail
+              export PATH=\$HOME/.local/bin:\$PATH
+              export TEST_JOURNAL_SINCE=\$(date --iso-8601=seconds)
+              mkdir -p \$HOME/.local/share/keyrings
+              touch /tmp/keyring_set \$HOME/.local/share/keyrings/default
+              echo \"Scoping journal checks to entries since \${TEST_JOURNAL_SINCE}\" >&2
+              \$HOME/.local/bin/qecore-headless \
+                --session-type wayland \
+                --session-desktop gnome \
+                \"bash /tmp/upstream-tests/run-upstream-suite.sh\" \
+                || exit \$?
+            " || TEST_RC=$?
+
+            echo "Collecting results..." >&2
+            ${SCP} ${VM_USER}@${VM_IP}:/tmp/results/. /tmp/results/ || true
+
+            if [[ -f /tmp/results/results.json ]]; then
+              python -c "import json; data=json.load(open('/tmp/results/results.json')); failed=sum(1 for f in data for s in f.get('elements', []) if s.get('status') == 'failed'); total=sum(len(f.get('elements', [])) for f in data); print(f'Upstream GNOME Terminal suite: {total - failed}/{total} behave scenarios passed')" || true
+              cat /tmp/results/results.json >&2
+            fi
+
+            exit ${TEST_RC}

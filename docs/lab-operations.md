@@ -261,20 +261,25 @@ Reconcile interval ~3 min. Force sync only when you need it immediately and can 
 ```
 1. Did you push to main?
      - git log -1 origin/main -- argo/workflow-templates/<file>
-     - If your commit isn't on origin/main, you didn't push. Stop here.
+     - Expected: the top commit is the one you just pushed.
+     - If your commit is missing, you did not push the change. Push first and stop here.
 2. Has ArgoCD seen the commit?
      - argocd app get testing-lab     # check 'Revision' field
-     - If older than your commit, wait 2 min or `just argocd-sync`.
+     - Expected: `Revision:` is at or newer than your commit SHA.
+     - If `Revision:` is older, run `just argocd-sync`, then re-run `argocd app get testing-lab`.
 3. Is the Application healthy/synced?
      - just argocd-status
-     - If OutOfSync but Healthy: harmless drift; sync.
-     - If Degraded: read the message — usually a YAML schema break.
+     - Expected: both applications show `Synced` and `Healthy`.
+     - If `OutOfSync` and `Healthy`, run `just argocd-sync`, then re-run `just argocd-status`.
+     - If `Degraded`, run `argocd app get testing-lab`, copy the first rejection/error message from `.status.conditions`, fix the YAML it names, push again, and restart at step 1.
 4. Is the live WorkflowTemplate updated?
      - kubectl get workflowtemplate <name> -n argo -o yaml | grep <field>
-     - If still the old value, ArgoCD didn't apply — force sync + watch.
+     - Expected: the field you changed matches your new value.
+     - If the live template still shows the old value, run `just argocd-sync`, then `argocd app wait testing-lab --health`, then re-run the `kubectl get workflowtemplate ...` command.
 5. Did you submit a workflow created BEFORE the template change?
      - Workflows snapshot the template at submission time.
-     - Submit a NEW workflow; the old run still shows the old behaviour.
+     - Expected: the workflow `CREATED` time is after the template was synced.
+     - If the workflow was submitted earlier, submit a new workflow. The old run will keep the old behavior.
 ```
 
 ### 6.3 When NOT to force-sync
@@ -443,11 +448,12 @@ shred -u "${ssh_key}" "${ssh_key}.pub"
 just patch-disk latest
 just patch-disk lts
 
-# 5. Re-provision titan disks if they have the old key baked in
-#    (titans use a different mechanism; check by running):
+# 5. Titans use a separate persistent disk path. There is no automated titan
+#    authorized_keys refresh workflow today, so treat titan SSH failure as a
+#    human-gated escalation. Check by running:
 just run-titan-smoke
-#    If SSH fails on the titan, the titan disk needs its authorized_keys updated —
-#    open an issue rather than SSH-ing in.
+#    If titan SSH fails with `Permission denied (publickey)`, open an issue and
+#    stop. Do not SSH to the host and do not patch titan disks by hand.
 
 # 6. Verify the new fingerprint, update RUNBOOK.md ("Current fingerprint" line),
 #    commit, push:

@@ -39,17 +39,41 @@ spec:
           source: |
             set -euo pipefail
             NAMESPACES="bluefin-test bluefin-lts-test flatcar-test"
-            # Delete VMs older than 3 hours — use kubectl with age filter
-            # The argo-workflow label links a VM to its parent workflow
+            # Delete VMs whose parent argo-workflow no longer exists.
+            # SAFETY RULES (do not relax without updating docs):
+            #   1. Skip any VM labelled app=titan-* — these are the persistent
+            #      ArgoCD-managed test VMs (manifests/titan-{bluefin,lts}.yaml).
+            #      Titans have NO argo-workflow label, so the original logic
+            #      would have deleted them on every run.
+            #   2. Skip VMs whose argo-workflow label points to a live workflow.
+            #   3. Skip VMs newer than 3 hours so we don't race a still-booting
+            #      workflow that hasn't yet stamped its label.
             for NS in ${NAMESPACES}; do
               echo "Checking namespace: ${NS}" >&2
               while IFS= read -r VM; do
                 [[ -z "${VM}" ]] && continue
+                APP_LABEL=$(kubectl get vm "${VM}" -n "${NS}" \
+                  -o jsonpath='{.metadata.labels.app}' 2>/dev/null || true)
+                if [[ "${APP_LABEL}" == titan-* ]]; then
+                  echo "SKIP ${NS}/${VM}: titan VM (app=${APP_LABEL})" >&2
+                  continue
+                fi
                 WF_LABEL=$(kubectl get vm "${VM}" -n "${NS}" \
                   -o jsonpath='{.metadata.labels.argo-workflow}' 2>/dev/null || true)
                 if [[ -n "${WF_LABEL}" ]]; then
                   if kubectl get workflow "${WF_LABEL}" -n argo &>/dev/null; then
                     echo "SKIP ${NS}/${VM}: workflow ${WF_LABEL} still active" >&2
+                    continue
+                  fi
+                fi
+                CREATED=$(kubectl get vm "${VM}" -n "${NS}" \
+                  -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || true)
+                if [[ -n "${CREATED}" ]]; then
+                  CREATED_EPOCH=$(date -d "${CREATED}" +%s 2>/dev/null || echo 0)
+                  NOW_EPOCH=$(date +%s)
+                  AGE_SECONDS=$(( NOW_EPOCH - CREATED_EPOCH ))
+                  if (( AGE_SECONDS < 10800 )); then
+                    echo "SKIP ${NS}/${VM}: younger than 3h (age=${AGE_SECONDS}s)" >&2
                     continue
                   fi
                 fi

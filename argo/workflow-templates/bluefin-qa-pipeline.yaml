@@ -67,7 +67,7 @@ spec:
                 - name: namespace
                   value: "{{workflow.parameters.namespace}}"
 
-          # 3a. Phase 1 — smoke (behave + qecore, every PR)
+          # 3a. Phase 1 — smoke (qecore-backed behave/pytest, every PR)
           - name: run-smoke
             dependencies: [provision]
             when: "'{{workflow.parameters.suites}}' contains 'smoke'"

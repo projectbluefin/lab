@@ -2,6 +2,7 @@
 Phase 1 — Notification System Smoke Test
 Validates GNOME notification infrastructure is functional.
 """
+import os
 import subprocess
 import time
 
@@ -45,16 +46,20 @@ class TestNotifications:
         """No notification daemon crashes in boot journal."""
         shell = root.application("gnome-shell")
         assert shell is not None, "gnome-shell not found in AT-SPI tree"
+        journal_since = os.environ.get("TEST_JOURNAL_SINCE")
+        cmd = [
+            "journalctl",
+            "-b",
+            "--no-pager",
+            "-u",
+            "gnome-shell",
+            "--grep",
+            "notification.*error|GDBus.*Error",
+        ]
+        if journal_since:
+            cmd.extend(["--since", journal_since])
         result = subprocess.run(
-            [
-                "journalctl",
-                "-b",
-                "--no-pager",
-                "-u",
-                "gnome-shell",
-                "--grep",
-                "notification.*error|GDBus.*Error",
-            ],
+            cmd,
             capture_output=True,
             text=True,
             timeout=10,

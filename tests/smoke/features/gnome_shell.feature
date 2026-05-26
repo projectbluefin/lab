@@ -173,6 +173,58 @@ Feature: GNOME Shell smoke tests
     * Close Quick Settings via Shell.Eval
     * Quick Settings panel is closed via Shell.Eval
 
+  # ── Bluefin extension workflows (#91) ────────────────────────────────────
+
+  @extension_behavior @ding @regression @bluefin_91
+  Scenario: Desktop Icons NG (ding) is enabled and desktop icon area exists
+    * GNOME Shell is accessible via AT-SPI
+    * Extension "ding@rastersoft.com" is enabled
+    * AT-SPI root contains a desktop canvas or icon surface
+
+  @extension_behavior @dash_to_dock @regression @bluefin_91
+  Scenario: Dash to Dock keeps a visible dock actor outside the overview
+    * GNOME Shell is accessible via AT-SPI
+    * Extension "dash-to-dock@micxgx.gmail.com" is enabled
+    * Dash to Dock exposes a visible dock actor
+
+  @extension_behavior @blur_my_shell @regression @bluefin_91
+  Scenario: Blur My Shell applies an overview blur effect
+    * GNOME Shell is accessible via AT-SPI
+    * Extension "blur-my-shell@aunetx" is enabled
+    * Open Activities overview via Shell.Eval
+    * Overview is open
+    * Overview blur effect is active via Shell.Eval
+    * Close Activities overview via Shell.Eval
+    * Overview is closed
+
+  @extension_behavior @app_indicators @regression @bluefin_91
+  Scenario: App Indicators registers a tray host in the shell panel
+    * GNOME Shell is accessible via AT-SPI
+    * Extension "appindicatorsupport@rgcjonas.gmail.com" is enabled
+    * App Indicators registers a panel tray host
+
+  @extension_behavior @windows_navigator @regression @bluefin_91
+  Scenario: Windows Navigator shows workspace navigation hints in the overview
+    * GNOME Shell is accessible via AT-SPI
+    * Extension "windowsNavigator@gnome-shell-extensions.gcampax.github.com" is enabled
+    * Open Activities overview via Shell.Eval
+    * Overview is open
+    * Windows Navigator shows workspace navigation hints via Shell.Eval
+    * Close Activities overview via Shell.Eval
+    * Overview is closed
+
+  # ── Notifications (#68) ───────────────────────────────────────────────────
+
+  @calendar @notifications @regression @bluefin_68
+  Scenario: Date menu shows a delivered desktop notification
+    * GNOME Shell is accessible via AT-SPI
+    * Send desktop notification "Test notification" "QA probe"
+    * Open date menu via Shell.Eval
+    * Date menu panel is open via Shell.Eval
+    * Date menu shows notification "Test notification" with body "QA probe"
+    * Close date menu via Shell.Eval
+    * Date menu panel is closed via Shell.Eval
+
   # ── Regressions ───────────────────────────────────────────────────────────
 
   @regression @bluefin_4612

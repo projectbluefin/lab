@@ -16,6 +16,8 @@ Instead we use a distinct step name: 'GNOME Shell is accessible via AT-SPI'.
 Step patterns sourced from: modehnal/GNOMETerminalAutomation steps.py
 dogtail API: root.application(), Node.findChild(), Node.child(roleName=)
 """
+import json
+import subprocess
 from time import sleep
 
 from behave import step
@@ -28,6 +30,65 @@ _APP_ID_ALIASES = {
     "org.gnome.Nautilus": ("org.gnome.nautilus", "nautilus", "files"),
     "org.gnome.Settings": ("org.gnome.settings", "gnome-control-center", "settings"),
 }
+
+
+def _enabled_extensions(context) -> set[str]:
+    enabled = getattr(context, "_enabled_extensions", None)
+    if enabled is not None:
+        return enabled
+
+    result = subprocess.run(
+        ["gnome-extensions", "list", "--enabled"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr.strip() or result.stdout.strip() or "gnome-extensions list failed")
+
+    enabled = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    context._enabled_extensions = enabled
+    return enabled
+
+
+def _shell_eval_json(js: str):
+    inner = _shell_eval_inner(js)
+    try:
+        return json.loads(inner)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"Shell.Eval did not return JSON: {inner!r}") from exc
+
+
+def _dbus_name_has_owner(name: str) -> bool:
+    result = subprocess.run(
+        [
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.DBus",
+            "--object-path",
+            "/org/freedesktop/DBus",
+            "--method",
+            "org.freedesktop.DBus.NameHasOwner",
+            name,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr.strip() or result.stdout.strip() or f"NameHasOwner failed for {name}")
+    return "(true,)" in result.stdout
+
+
+def _node_text(node) -> str:
+    parts = []
+    for attr in ("name", "text", "description"):
+        value = getattr(node, attr, None)
+        if value:
+            parts.append(str(value))
+    return " ".join(parts)
 
 
 @step("Dump panel children to log")
@@ -532,3 +593,170 @@ def dark_style_setting_changed(context) -> None:
     assert previous is not None, "dark style toggle was not called"
     assert current is not None, "dark style state was not recorded"
     assert current != previous, f"Dark style did not change: still {current!r}"
+
+
+# ── Extension behavior + notifications (#91, #68) ──────────────────────────
+
+
+@step('Extension "{uuid}" is enabled')
+def extension_is_enabled(context, uuid) -> None:
+    enabled = _enabled_extensions(context)
+    assert uuid in enabled, f"Extension {uuid!r} not enabled. Enabled extensions: {sorted(enabled)}"
+
+
+@step("AT-SPI root contains a desktop canvas or icon surface")
+def atspi_root_contains_desktop_surface(context) -> None:
+    needles = ("desktop icons", "ding", "desktop", "trash", "home")
+    role_names = {"application", "desktop frame", "canvas", "icon", "layered pane", "frame", "list"}
+
+    for _ in range(6):
+        matches = tree.root.findChildren(
+            lambda n: (n.roleName or "").lower() in role_names
+            and any(needle in _node_text(n).lower() for needle in needles)
+        )
+        if matches:
+            return
+        sleep(1)
+
+    top_level = [(child.roleName, child.name) for child in tree.root.children[:20]]
+    raise AssertionError(
+        "Desktop Icons NG surface not found in AT-SPI tree. "
+        f"Top-level nodes: {top_level}"
+    )
+
+
+@step("Dash to Dock exposes a visible dock actor")
+def dash_to_dock_exposes_visible_dock(context) -> None:
+    data = _shell_eval_json(
+        "JSON.stringify((() => {"
+        "const ext = Main.extensionManager.lookup('dash-to-dock@micxgx.gmail.com');"
+        "const manager = ext && ext.stateObj ? ext.stateObj.dockManager : null;"
+        "const docks = manager && manager._allDocks ? manager._allDocks : [];"
+        "const dock = docks.find(candidate => candidate && (candidate.visible || candidate.mapped)) || docks[0] || null;"
+        "return {"
+        "dockCount: docks.length,"
+        "visible: !!(dock && (dock.visible || dock.mapped)),"
+        "hasDash: !!(dock && dock.dash),"
+        "hasShowApps: !!(dock && dock.dash && dock.dash.showAppsButton),"
+        "name: dock && dock.name ? dock.name : null"
+        "};"
+        "})())"
+    )
+    assert data["dockCount"] > 0, f"Dash to Dock did not register any dock actors: {data}"
+    assert data["visible"], f"Dash to Dock dock actor is not visible: {data}"
+    assert data["hasDash"] and data["hasShowApps"], f"Dash to Dock dash surface missing expected children: {data}"
+
+
+@step("Overview blur effect is active via Shell.Eval")
+def overview_blur_effect_is_active(context) -> None:
+    data = _shell_eval_json(
+        "JSON.stringify((() => {"
+        "const matches = [];"
+        "const visit = (actor, depth = 0) => {"
+        "  if (!actor || depth > 4) return;"
+        "  let effects = [];"
+        "  if (typeof actor.get_effects === 'function') {"
+        "    effects = actor.get_effects().map(effect => {"
+        "      try {"
+        "        return effect.constructor && effect.constructor.name ? effect.constructor.name : String(effect);"
+        "      } catch (error) {"
+        "        return String(effect);"
+        "      }"
+        "    });"
+        "  }"
+        "  if (effects.some(name => String(name).toLowerCase().includes('blur'))) {"
+        "    matches.push({name: actor.name || null, effects});"
+        "  }"
+        "  const children = typeof actor.get_children === 'function' ? actor.get_children() : [];"
+        "  for (const child of children) visit(child, depth + 1);"
+        "};"
+        "visit(Main.layoutManager.overviewGroup || (Main.overview && Main.overview._overview) || global.stage);"
+        "return {count: matches.length, matches: matches.slice(0, 8)};"
+        "})())"
+    )
+    assert data["count"] > 0, f"No overview blur effects detected: {data}"
+
+
+@step("App Indicators registers a panel tray host")
+def app_indicators_registers_panel_tray_host(context) -> None:
+    data = _shell_eval_json(
+        "JSON.stringify((() => {"
+        "const actors = Main.panel._rightBox.get_children().map(actor => ({"
+        "  name: actor.name || '',"
+        "  style: actor.style_class || '',"
+        "  visible: !!actor.visible,"
+        "  hasIndicatorChild: typeof actor.get_children === 'function' && actor.get_children().some(child => !!(child && (child._indicator || (child._delegate && child._delegate._indicator))))"
+        "}));"
+        "const indicatorActors = actors.filter(actor => actor.visible && (actor.hasIndicatorChild || actor.name.toLowerCase().includes('indicator') || actor.style.toLowerCase().includes('indicator')));"
+        "const statusAreaKeys = Object.keys(Main.panel.statusArea).filter(key => ['indicator', 'statusnotifier', 'tray'].some(needle => key.toLowerCase().includes(needle)));"
+        "return {indicatorActors, statusAreaKeys};"
+        "})())"
+    )
+    watcher_owner = _dbus_name_has_owner("org.kde.StatusNotifierWatcher")
+    assert watcher_owner, "App Indicators DBus watcher is not owned"
+    assert data["indicatorActors"] or data["statusAreaKeys"], f"App Indicators tray host not exposed in panel: {data}"
+
+
+@step("Windows Navigator shows workspace navigation hints via Shell.Eval")
+def windows_navigator_shows_workspace_hints(context) -> None:
+    data = _shell_eval_json(
+        "JSON.stringify((() => {"
+        "const overview = Main.overview && Main.overview._overview ? Main.overview._overview : Main.overview;"
+        "const controls = overview && overview._controls ? overview._controls : (overview && overview.controls ? overview.controls : null);"
+        "const display = controls && controls._workspacesDisplay ? controls._workspacesDisplay : null;"
+        "const views = display && display._workspacesViews ? display._workspacesViews : [];"
+        "const view = views.length > 0 ? views[0] : null;"
+        "const workspace = view && view._workspaces && view._workspaces.length > 0 ? view._workspaces[0] : null;"
+        "if (workspace && typeof workspace.showTooltip === 'function') workspace.showTooltip();"
+        "const result = {"
+        "  hasView: !!view,"
+        "  pickWindowPatched: typeof (view && view._pickWindow) === 'boolean',"
+        "  pickWorkspacePatched: typeof (view && view._pickWorkspace) === 'boolean',"
+        "  hintVisible: !!(workspace && workspace._tip && workspace._tip.visible),"
+        "  hintText: workspace && workspace._tip ? workspace._tip.text : null"
+        "};"
+        "if (workspace && typeof workspace.hideTooltip === 'function') workspace.hideTooltip();"
+        "return result;"
+        "})())"
+    )
+    assert data["hasView"], f"Overview workspaces view not found: {data}"
+    assert data["pickWindowPatched"] and data["pickWorkspacePatched"], f"Windows Navigator did not patch overview state: {data}"
+    assert data["hintVisible"], f"Windows Navigator workspace hint is not visible: {data}"
+    assert data["hintText"] == "1", f"Unexpected Windows Navigator workspace hint text: {data}"
+
+
+@step('Send desktop notification "{title}" "{body}"')
+def send_desktop_notification(context, title, body) -> None:
+    result = subprocess.run(
+        ["notify-send", "--app-name=bluefin-test", "--icon=dialog-information", title, body],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr.strip() or result.stdout.strip() or "notify-send failed")
+    context.last_notification = {"title": title, "body": body}
+    sleep(1)
+
+
+@step('Date menu shows notification "{title}" with body "{body}"')
+def date_menu_shows_notification(context, title, body) -> None:
+    shell = context.sandbox.shell
+    expected = {title.lower(), body.lower()}
+
+    for _ in range(10):
+        matches = shell.findChildren(
+            lambda n: any(needle in _node_text(n).lower() for needle in expected)
+        )
+        combined = " ".join(_node_text(node).lower() for node in matches)
+        if all(needle in combined for needle in expected):
+            return
+        sleep(0.5)
+
+    visible = [
+        (node.roleName, _node_text(node))
+        for node in shell.findChildren(lambda n: any(needle in _node_text(n).lower() for needle in expected))[:20]
+    ]
+    raise AssertionError(
+        f"Notification title/body not found in date menu AT-SPI tree. Matches: {visible}"
+    )

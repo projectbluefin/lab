@@ -287,6 +287,30 @@ def last_command_output_stripped_contains(context, expected) -> None:
     assert expected in actual, f"Expected {expected!r} in output: {actual!r}"
 
 
+@step('xdg-settings default browser is ready')
+def xdg_settings_default_browser_ready(context) -> None:
+    """Wait for xdg-settings to return a .desktop entry.
+
+    In a fresh headless session the GNOME session bus services (xdg-desktop-portal,
+    xdg-settings backends) can take a few seconds to start.  Poll until the command
+    returns a non-empty result before the main step checks the stored output.
+    """
+    for _ in range(20):
+        result = subprocess.run(
+            ["xdg-settings", "get", "default-web-browser"],
+            capture_output=True, text=True, timeout=5,
+        )
+        output = result.stdout.strip()
+        if output:
+            # Store so the follow-on "Last command output stripped contains" step sees it
+            context.command_stdout = output
+            context.last_command_output = output
+            print(f"xdg-settings default browser: {output!r}", flush=True)
+            return
+        sleep(1.5)
+    raise AssertionError("xdg-settings get default-web-browser returned no output after 30 s")
+
+
 @step("No gnome-shell journal errors since test start")
 def no_gnome_shell_journal_errors_since_start(context) -> None:
     import subprocess
@@ -367,9 +391,17 @@ def close_overview_eval(context) -> None:
 
 @step('Open Quick Settings via Shell.Eval')
 def open_quick_settings_eval(context) -> None:
-    # menu.toggle() is stable across GNOME 49/50
-    _shell_eval('Main.panel.statusArea.quickSettings.menu.toggle()')
-    sleep(1)  # GNOME Shell 50 may need >0.5 s for the menu to open
+    # In a fresh headless session the shell may need extra time to become
+    # interactive.  Also guard against toggle() closing an already-open menu
+    # (state leftover from session init or a prior scenario).
+    # Check first; only toggle if the menu is not already open.
+    for _ in range(10):
+        inner = _shell_eval_inner('Main.panel.statusArea.quickSettings.menu.isOpen.toString()')
+        if inner == 'true':
+            return  # already open — don't toggle again
+        _shell_eval('Main.panel.statusArea.quickSettings.menu.toggle()')
+        sleep(1.5)
+    # Leave the final state for the "is open" step to assert
 
 
 @step('Quick Settings panel is open via Shell.Eval')
@@ -394,9 +426,13 @@ def quick_settings_closed_eval(context) -> None:
 
 @step('Open date menu via Shell.Eval')
 def open_date_menu_eval(context) -> None:
-    # menu.toggle() is stable across GNOME 49/50; _toggleMenu() is GNOME 50+ only
-    _shell_eval('Main.panel.statusArea.dateMenu.menu.toggle()')
-    sleep(1)  # GNOME Shell 50 may need >0.5 s for the menu to open
+    # Same retry pattern as Quick Settings: check first, only toggle if closed.
+    for _ in range(10):
+        inner = _shell_eval_inner('Main.panel.statusArea.dateMenu.menu.isOpen.toString()')
+        if inner == 'true':
+            return
+        _shell_eval('Main.panel.statusArea.dateMenu.menu.toggle()')
+        sleep(1.5)
 
 
 @step('Close Quick Settings via Shell.Eval')
@@ -414,8 +450,12 @@ def close_date_menu_eval(context) -> None:
 
 @step('Date menu panel is open via Shell.Eval')
 def date_menu_open_eval(context) -> None:
-    inner = _shell_eval_inner('Main.panel.statusArea.dateMenu.menu.isOpen.toString()')
-    assert inner == 'true', f"Date menu not open — Shell.Eval inner: {inner!r}"
+    for _ in range(8):
+        inner = _shell_eval_inner('Main.panel.statusArea.dateMenu.menu.isOpen.toString()')
+        if inner == 'true':
+            return
+        sleep(0.5)
+    raise AssertionError(f"Date menu not open after 4s — Shell.Eval inner: {inner!r}")
 
 
 @step('Date menu panel is closed via Shell.Eval')
@@ -779,21 +819,27 @@ def atspi_root_contains_desktop_surface(context) -> None:
 
 @step("Dash to Dock exposes a visible dock actor")
 def dash_to_dock_exposes_visible_dock(context) -> None:
-    data = _shell_eval_json(
-        "JSON.stringify((() => {"
-        "const ext = Main.extensionManager.lookup('dash-to-dock@micxgx.gmail.com');"
-        "const manager = ext && ext.stateObj ? ext.stateObj.dockManager : null;"
-        "const docks = manager && manager._allDocks ? manager._allDocks : [];"
-        "const dock = docks.find(candidate => candidate && (candidate.visible || candidate.mapped)) || docks[0] || null;"
-        "return {"
-        "dockCount: docks.length,"
-        "visible: !!(dock && (dock.visible || dock.mapped)),"
-        "hasDash: !!(dock && dock.dash),"
-        "hasShowApps: !!(dock && dock.dash && dock.dash.showAppsButton),"
-        "name: dock && dock.name ? dock.name : null"
-        "};"
-        "})())"
-    )
+    # Fresh headless sessions may need up to 30 s for extension stateObj to load.
+    data = None
+    for _ in range(20):
+        data = _shell_eval_json(
+            "JSON.stringify((() => {"
+            "const ext = Main.extensionManager.lookup('dash-to-dock@micxgx.gmail.com');"
+            "const manager = ext && ext.stateObj ? ext.stateObj.dockManager : null;"
+            "const docks = manager && manager._allDocks ? manager._allDocks : [];"
+            "const dock = docks.find(candidate => candidate && (candidate.visible || candidate.mapped)) || docks[0] || null;"
+            "return {"
+            "dockCount: docks.length,"
+            "visible: !!(dock && (dock.visible || dock.mapped)),"
+            "hasDash: !!(dock && dock.dash),"
+            "hasShowApps: !!(dock && dock.dash && dock.dash.showAppsButton),"
+            "name: dock && dock.name ? dock.name : null"
+            "};"
+            "})())"
+        )
+        if data["dockCount"] > 0:
+            break
+        sleep(1.5)
     assert data["dockCount"] > 0, f"Dash to Dock did not register any dock actors: {data}"
     assert data["visible"], f"Dash to Dock dock actor is not visible: {data}"
     assert data["hasDash"] and data["hasShowApps"], f"Dash to Dock dash surface missing expected children: {data}"
@@ -831,20 +877,27 @@ def overview_blur_effect_is_active(context) -> None:
 
 @step("App Indicators registers a panel tray host")
 def app_indicators_registers_panel_tray_host(context) -> None:
-    data = _shell_eval_json(
-        "JSON.stringify((() => {"
-        "const actors = Main.panel._rightBox.get_children().map(actor => ({"
-        "  name: actor.name || '',"
-        "  style: actor.style_class || '',"
-        "  visible: !!actor.visible,"
-        "  hasIndicatorChild: typeof actor.get_children === 'function' && actor.get_children().some(child => !!(child && (child._indicator || (child._delegate && child._delegate._indicator))))"
-        "}));"
-        "const indicatorActors = actors.filter(actor => actor.visible && (actor.hasIndicatorChild || actor.name.toLowerCase().includes('indicator') || actor.style.toLowerCase().includes('indicator')));"
-        "const statusAreaKeys = Object.keys(Main.panel.statusArea).filter(key => ['indicator', 'statusnotifier', 'tray'].some(needle => key.toLowerCase().includes(needle)));"
-        "return {indicatorActors, statusAreaKeys};"
-        "})())"
-    )
-    watcher_owner = _dbus_name_has_owner("org.kde.StatusNotifierWatcher")
+    # Fresh sessions: extension may need time to populate statusArea.
+    data = None
+    watcher_owner = False
+    for _ in range(15):
+        data = _shell_eval_json(
+            "JSON.stringify((() => {"
+            "const actors = Main.panel._rightBox.get_children().map(actor => ({"
+            "  name: actor.name || '',"
+            "  style: actor.style_class || '',"
+            "  visible: !!actor.visible,"
+            "  hasIndicatorChild: typeof actor.get_children === 'function' && actor.get_children().some(child => !!(child && (child._indicator || (child._delegate && child._delegate._indicator))))"
+            "}));"
+            "const indicatorActors = actors.filter(actor => actor.visible && (actor.hasIndicatorChild || actor.name.toLowerCase().includes('indicator') || actor.style.toLowerCase().includes('indicator')));"
+            "const statusAreaKeys = Object.keys(Main.panel.statusArea).filter(key => ['indicator', 'statusnotifier', 'tray'].some(needle => key.toLowerCase().includes(needle)));"
+            "return {indicatorActors, statusAreaKeys};"
+            "})())"
+        )
+        watcher_owner = _dbus_name_has_owner("org.kde.StatusNotifierWatcher")
+        if watcher_owner and (data["indicatorActors"] or data["statusAreaKeys"]):
+            break
+        sleep(1.5)
     assert watcher_owner, "App Indicators DBus watcher is not owned"
     assert data["indicatorActors"] or data["statusAreaKeys"], f"App Indicators tray host not exposed in panel: {data}"
 

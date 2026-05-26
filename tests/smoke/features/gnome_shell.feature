@@ -155,7 +155,8 @@ Feature: GNOME Shell smoke tests
     * Close application "org.mozilla.firefox" via Shell.Eval
 
   @browser @default_browser
-  Scenario: xdg-settings reports a default browser    * Run and save command output: "xdg-settings get default-web-browser"
+  Scenario: xdg-settings reports a default browser
+    * xdg-settings default browser is ready
     * Last command output stripped contains ".desktop"
 
   # ── Quick Settings state change (#90) ───────────────────────────────────

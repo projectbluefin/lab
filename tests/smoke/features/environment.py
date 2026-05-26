@@ -174,6 +174,19 @@ def before_scenario(context, scenario) -> None:
             _ensure_unsafe_mode("before_scenario post-sandbox")
             _wait_for_panel(context)
             context.shell_ready = True
+        # Close any panel menus left open by a previous scenario so each
+        # scenario starts with a clean shell state (fresh or persistent session).
+        try:
+            _shell_eval_inner(
+                "Main.panel.statusArea.quickSettings && Main.panel.statusArea.quickSettings.menu.isOpen"
+                " ? (Main.panel.statusArea.quickSettings.menu.close(0), 'closed') : 'ok'"
+            )
+            _shell_eval_inner(
+                "Main.panel.statusArea.dateMenu && Main.panel.statusArea.dateMenu.menu.isOpen"
+                " ? (Main.panel.statusArea.dateMenu.menu.close(0), 'closed') : 'ok'"
+            )
+        except Exception:  # noqa: BLE001
+            pass  # Non-fatal — best effort cleanup only
     except Exception as error:
         tb = traceback.format_exc()
         raise RuntimeError(

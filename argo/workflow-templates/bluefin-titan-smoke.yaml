@@ -143,10 +143,14 @@ spec:
           fi
 
           echo "Reclaiming disk space on ${LABEL}..." >&2
-          ${SSH} "journalctl --vacuum-size=100M 2>/dev/null || true" || true
+          ${SSH} "sudo journalctl --vacuum-size=50M 2>/dev/null || true" || true
           ${SSH} "sudo dnf clean all 2>/dev/null || true" || true
-          ${SSH} "podman image prune -f 2>/dev/null || true" || true
+          ${SSH} "podman system prune -af 2>/dev/null || true" || true
           ${SSH} "sudo flatpak uninstall --unused -y 2>/dev/null || true" || true
+          ${SSH} "sudo rm -rf /tmp/bluefin-tests /tmp/results 2>/dev/null || true" || true
+          ${SSH} "sudo rm -rf /var/log/audit/audit.log.* 2>/dev/null || true" || true
+          ${SSH} "sudo find /var/cache -type f -delete 2>/dev/null || true" || true
+          ${SSH} "df -h / 2>/dev/null || true" || true
           echo "Disk reclaim complete." >&2
 
           # Reclaim runs before enforcing the 2GB free-space gate.

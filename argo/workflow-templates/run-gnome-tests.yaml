@@ -171,6 +171,7 @@ spec:
                 else
                   echo 'Installing test dependencies...' >&2
                   sudo ostree admin unlock 2>/dev/null || true
+                  sudo dnf clean packages -q 2>/dev/null || true
                   sudo dnf install -y --quiet gnome-ponytail-daemon python3-gnome-ponytail-daemon 2>&1 | tail -3
                   pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
                   python3 -m pip install --quiet --user qecore behave dogtail python-uinput 2>&1 | tail -3
@@ -222,6 +223,12 @@ spec:
                 > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
               ${SSH} "
                 export PATH=\$HOME/.local/bin:\$PATH
+                # Kill any stale qecore-headless/gnome-session from a prior aborted run
+                # so we don't get 'Exiting the duplicate of headless script.'
+                for pid in \$(ps aux | grep -F qecore-headless | grep -v grep | awk '{print \$2}'); do kill \"\$pid\" 2>/dev/null || true; done
+                for pid in \$(ps aux | grep -F gnome-session | grep -v grep | awk '{print \$2}'); do kill \"\$pid\" 2>/dev/null || true; done
+                sleep 2
+                rm -f /tmp/headless* /tmp/qecore* /tmp/.headless* 2>/dev/null || true
                 \$HOME/.local/bin/qecore-headless \
                   --session-type wayland \
                   --session-desktop gnome \

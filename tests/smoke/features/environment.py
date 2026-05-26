@@ -185,6 +185,12 @@ def before_scenario(context, scenario) -> None:
                 "Main.panel.statusArea.dateMenu && Main.panel.statusArea.dateMenu.menu.isOpen"
                 " ? (Main.panel.statusArea.dateMenu.menu.close(0), 'closed') : 'ok'"
             )
+            # Close the Overview if open — stale AT-SPI accessible objects from a
+            # previous run live in the overview's search results; hiding forces a
+            # fresh AT-SPI subtree for the next scenario that opens the overview.
+            _shell_eval_inner(
+                "Main.overview.visible ? (Main.overview.hide(), 'hidden') : 'ok'"
+            )
         except Exception:  # noqa: BLE001
             pass  # Non-fatal — best effort cleanup only
     except Exception as error:

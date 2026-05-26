@@ -337,9 +337,14 @@ def xdg_settings_default_browser_ready(context) -> None:
         return
 
     # Method 4: check whether any browser .desktop is installed on the system
+    # Covers both RPM-installed apps (/usr/share/applications) and Flatpaks
     result = subprocess.run(
         ["bash", "-c",
-         "grep -rl 'x-scheme-handler/http' /usr/share/applications/ 2>/dev/null"
+         "grep -rl 'x-scheme-handler/http'"
+         " /usr/share/applications/"
+         " /var/lib/flatpak/exports/share/applications/"
+         " \"${XDG_DATA_HOME:-$HOME/.local/share}/applications/\""
+         " 2>/dev/null"
          " | grep '\\.desktop$' | head -1"],
         capture_output=True, text=True, timeout=5,
     )
@@ -554,14 +559,31 @@ def overview_is_closed(context) -> None:
 
 @step('Overview search bar contains "{text}"')
 def overview_search_bar_contains(context, text) -> None:
-    shell = tree.root.application("gnome-shell")
-    entries = shell.findChildren(lambda n: n.roleName == "text")
-    # Filter to entries that have text content matching the search query
-    text_entries = [e for e in entries if e.text]
-    assert text_entries, "Search bar text entry not found"
-    texts = [e.text for e in text_entries]
-    found = any(text.lower() in t.lower() for t in texts)
-    assert found, f"'{text}' not found in any search bar entry. Entry texts: {texts}"
+    # AT-SPI nodes can become stale between discovery and property access when
+    # the previous test run left the session with old accessible objects.
+    # Retry on atspi_error to get a fresh snapshot of the tree each attempt.
+    last_error = None
+    for attempt in range(6):
+        try:
+            shell = tree.root.application("gnome-shell")
+            entries = shell.findChildren(lambda n: n.roleName == "text")
+            text_entries = [e for e in entries if e.text]
+            assert text_entries, "Search bar text entry not found"
+            texts = [e.text for e in text_entries]
+            found = any(text.lower() in t.lower() for t in texts)
+            assert found, f"'{text}' not found in any search bar entry. Entry texts: {texts}"
+            return
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            msg = str(exc)
+            # Stale AT-SPI object — wait briefly for the tree to settle and retry
+            if "does not exist" in msg or "atspi_error" in msg:
+                sleep(2.0)
+                continue
+            raise
+    raise AssertionError(
+        f"Overview search bar check for {text!r} failed after retries: {last_error}"
+    )
 
 
 # ── App launch helpers (#65, #87, #88) ───────────────────────────────────

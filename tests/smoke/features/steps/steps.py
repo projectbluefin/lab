@@ -118,23 +118,25 @@ def clock_toggle_visible(context) -> None:
     panels = shell.findChildren(lambda n: n.roleName == "panel")
     assert panels, "Panel not found"
     panel = panels[0]
-    toggles = panel.findChildren(lambda n: n.roleName == "toggle button" and n.showing)
-    # Clock names: time string (digits + colon), 'clock', or a formatted date
+    # dogtail.config.searchShowingOnly = True (set in before_all) makes the
+    # implicit `.showing` filter redundant here.
+    toggles = panel.findChildren(lambda n: n.roleName == "toggle button")
     SYSTEM_NAMES = {"Activities", "System", "System Menu", "System menu"}
     time_re = re.compile(r'\d{1,2}:\d{2}|clock', re.IGNORECASE)
     clock = next(
         (t for t in toggles
-         if t.name not in SYSTEM_NAMES and time_re.search(t.name)),
+         if t.name and t.name not in SYSTEM_NAMES and time_re.search(t.name)),
         None,
     )
+    # No lax fallback: accepting "any non-system toggle" caused silent false
+    # passes when the actual clock was missing — see issue #5. If the time
+    # pattern is absent, fail with full toggle inventory for diagnosis.
     if clock is None:
-        # Fallback: accept any non-Activities, non-System toggle in the panel
-        candidates = [t for t in toggles if t.name not in SYSTEM_NAMES]
         toggle_info = [(t.name, t.roleName) for t in toggles]
-        assert len(candidates) > 0, (
-            f"No clock-like toggle button found in panel.\nAll panel toggles: {toggle_info}"
+        raise AssertionError(
+            f"Clock toggle (time-pattern in accessible-name) not found.\n"
+            f"All panel toggles: {toggle_info}"
         )
-        clock = candidates[0]  # first non-system toggle is likely the clock
     context.clock_toggle = clock
     print(f"Clock toggle found: name={clock.name!r}", flush=True)
 
@@ -151,19 +153,16 @@ def system_menu_toggle_visible(context) -> None:
     assert panels, "Panel not found"
     panel = panels[0]
     CANDIDATE_NAMES = {"System", "System menu", "System Menu"}
-    toggles = panel.findChildren(lambda n: n.roleName == "toggle button" and n.showing)
+    toggles = panel.findChildren(lambda n: n.roleName == "toggle button")
     system = next((t for t in toggles if t.name in CANDIDATE_NAMES), None)
+    # No "first non-clock toggle" fallback: it accepted unrelated buttons
+    # (e.g. notification indicator) and produced silent false passes — issue #5.
     if system is None:
-        # Fallback: look for a toggle that is NOT Activities and NOT a clock
-        import re
-        time_re = re.compile(r'\d{1,2}:\d{2}|clock', re.IGNORECASE)
-        non_clock = [t for t in toggles
-                     if t.name != "Activities" and not time_re.search(t.name)]
         toggle_info = [(t.name, t.roleName) for t in toggles]
-        assert len(non_clock) > 0, (
-            f"System menu toggle not found.\nPanel toggles: {toggle_info}"
+        raise AssertionError(
+            f"System menu toggle not found (looked for {sorted(CANDIDATE_NAMES)}).\n"
+            f"All panel toggles: {toggle_info}"
         )
-        system = non_clock[0]
     context.system_toggle = system
     print(f"System menu toggle found: name={system.name!r}", flush=True)
 

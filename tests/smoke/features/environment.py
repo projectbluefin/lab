@@ -10,21 +10,29 @@ qecore-headless (invoked by the Argo runner) handles:
   - gnome-ponytail-daemon activation
   - AT-SPI bus bridge
 """
+import re
+import subprocess
 import sys
+import time
 import traceback
 
+from dogtail.config import config as dogtail_config
 from qecore.sandbox import TestSandbox
 from qecore.common_steps import *  # noqa: F401,F403 — registers all common @step definitions
 
 
 def before_all(context) -> None:
-    import time
-    import subprocess
+    # searchShowingOnly=True: all dogtail searches implicitly filter to .showing
+    # nodes — removes need for redundant `.showing` predicates in step code.
+    dogtail_config.searchShowingOnly = True
 
     # Give GDM/GNOME Shell time to start the session
     time.sleep(5)
 
-    # Enable unsafe_mode to expose clock and system-status in AT-SPI tree
+    # Enable unsafe_mode to expose clock and system-status in AT-SPI tree.
+    # Hard-fail if all attempts fail — tests downstream depend on this and
+    # silently proceeding hides the real cause of later AT-SPI lookup failures.
+    last_err = "unknown"
     for attempt in range(3):
         try:
             r = subprocess.run(
@@ -38,14 +46,24 @@ def before_all(context) -> None:
             if r.returncode == 0:
                 print(f"unsafe_mode set (attempt {attempt+1})", flush=True)
                 break
-            print(f"unsafe_mode attempt {attempt+1} failed (exit {r.returncode}): {r.stderr.decode()[:200]}", flush=True)
+            last_err = f"exit {r.returncode}: {r.stderr.decode('utf-8', errors='replace')[:200]}"
+            print(f"unsafe_mode attempt {attempt+1} failed ({last_err})", flush=True)
             time.sleep(2)
         except Exception as e:  # noqa: BLE001
+            last_err = str(e)
             print(f"unsafe_mode attempt {attempt+1} failed: {e}", flush=True)
             time.sleep(2)
+    else:
+        raise RuntimeError(
+            f"unsafe_mode activation failed after 3 attempts ({last_err}). "
+            "Clock and system-menu toggles will not be reachable via AT-SPI."
+        )
 
-    # Poll until clock + system toggles appear in AT-SPI (up to 15s)
+    # Poll until a clock-like toggle (time string in name) appears in AT-SPI.
+    # Accepting "any non-Activities toggle" silently masked a broken shell setup
+    # where unsafe_mode hadn't taken effect — see issue #5.
     from dogtail import tree as dtree
+    time_re = re.compile(r'\d{1,2}:\d{2}|clock', re.IGNORECASE)
     deadline = time.time() + 15
     while time.time() < deadline:
         try:
@@ -53,19 +71,18 @@ def before_all(context) -> None:
             panels = shell.findChildren(lambda n: n.roleName == 'panel')
             if panels:
                 toggles = panels[0].findChildren(
-                    lambda n: n.roleName == 'toggle button' and n.showing)
+                    lambda n: n.roleName == 'toggle button')
                 toggle_names = [t.name for t in toggles]
-                print(f"Panel toggles: {toggle_names}", flush=True)
-                # Need more than just Activities + Show Apps
-                non_activities = [t for t in toggles if t.name != 'Activities']
-                if len(non_activities) >= 1:
-                    print("Clock/System toggles visible — proceeding", flush=True)
+                if any(n and time_re.search(n) for n in toggle_names):
+                    print(f"Panel toggles ready: {toggle_names}", flush=True)
                     break
         except Exception as e:  # noqa: BLE001
             print(f"AT-SPI poll: {e}", flush=True)
         time.sleep(1)
     else:
-        print("WARNING: clock/system toggles not found after 15s — proceeding anyway", flush=True)
+        # Do not raise — some sessions are slow to populate the panel and the
+        # individual @step checks will surface the failure with proper context.
+        print("WARNING: clock toggle not visible after 15s — step-level checks will diagnose", flush=True)
 
     # Initialize sandbox
     try:

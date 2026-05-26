@@ -143,7 +143,7 @@ Feature: GNOME Shell smoke tests
     * Open Settings panel "About"
     * Settings panel "About" shows "Operating System"
     * Open Settings panel "Appearance"
-    * Settings panel "Appearance" shows "Background"
+    * Settings panel "Appearance" shows "Light"
     * Close application "org.gnome.Settings" via Shell.Eval
 
   @browser @app_launch @wip

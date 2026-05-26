@@ -10,21 +10,20 @@ qecore-headless (invoked by the Argo runner) handles:
   - gnome-ponytail-daemon activation
   - AT-SPI bus bridge
 """
+import re
+import subprocess
 import sys
+import time
 import traceback
 
+from dogtail.config import config as dogtail_config
 from qecore.sandbox import TestSandbox
 from qecore.common_steps import *  # noqa: F401,F403 — registers all common @step definitions
 
 
 def before_all(context) -> None:
-    import re
-    import time
-    import subprocess
-
     # searchShowingOnly=True: all dogtail searches implicitly filter to .showing
     # nodes — removes need for redundant `.showing` predicates in step code.
-    from dogtail.config import config as dogtail_config
     dogtail_config.searchShowingOnly = True
 
     # Give GDM/GNOME Shell time to start the session
@@ -47,7 +46,7 @@ def before_all(context) -> None:
             if r.returncode == 0:
                 print(f"unsafe_mode set (attempt {attempt+1})", flush=True)
                 break
-            last_err = f"exit {r.returncode}: {r.stderr.decode()[:200]}"
+            last_err = f"exit {r.returncode}: {r.stderr.decode('utf-8', errors='replace')[:200]}"
             print(f"unsafe_mode attempt {attempt+1} failed ({last_err})", flush=True)
             time.sleep(2)
         except Exception as e:  # noqa: BLE001
@@ -74,7 +73,7 @@ def before_all(context) -> None:
                 toggles = panels[0].findChildren(
                     lambda n: n.roleName == 'toggle button')
                 toggle_names = [t.name for t in toggles]
-                if any(time_re.search(n or '') for n in toggle_names):
+                if any(n and time_re.search(n) for n in toggle_names):
                     print(f"Panel toggles ready: {toggle_names}", flush=True)
                     break
         except Exception as e:  # noqa: BLE001

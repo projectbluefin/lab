@@ -125,7 +125,7 @@ def clock_toggle_visible(context) -> None:
     time_re = re.compile(r'\d{1,2}:\d{2}|clock', re.IGNORECASE)
     clock = next(
         (t for t in toggles
-         if t.name not in SYSTEM_NAMES and time_re.search(t.name or '')),
+         if t.name and t.name not in SYSTEM_NAMES and time_re.search(t.name)),
         None,
     )
     # No lax fallback: accepting "any non-system toggle" caused silent false

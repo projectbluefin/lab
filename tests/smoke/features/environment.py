@@ -46,7 +46,10 @@ def _shell_eval_inner(js: str) -> str:
     match = re.search(r"\((?:true|false),\s*'(.*)'\)", result.stdout.strip())
     if match is None:
         raise RuntimeError(f"unexpected Shell.Eval output: {result.stdout.strip()[:200]}")
-    return match.group(1)
+    inner = match.group(1)
+    if inner.startswith('"') and inner.endswith('"'):
+        return inner[1:-1]
+    return inner
 
 
 def _shell_snapshot(shell) -> str:

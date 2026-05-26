@@ -242,7 +242,10 @@ def _shell_eval_inner(js: str) -> str:
     m = re.search(r"\((?:true|false),\s*'(.*)'\)", out.strip())
     if m is None:
         raise AssertionError(f"Unexpected Shell.Eval output for {js!r}: {out.strip()!r}")
-    return m.group(1)
+    inner = m.group(1)
+    if inner.startswith('"') and inner.endswith('"'):
+        return inner[1:-1]
+    return inner
 
 
 @step('Open Activities overview via Shell.Eval')

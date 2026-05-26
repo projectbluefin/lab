@@ -202,6 +202,12 @@ spec:
           limits:
             cpu: 500m
             memory: 256Mi
+        env:
+          - name: SSH_PUBKEY
+            valueFrom:
+              secretKeyRef:
+                name: bluefin-test-ssh-key
+                key: id_ed25519.pub
         source: |
           set -euo pipefail
           exec 3>&1
@@ -209,7 +215,8 @@ spec:
           NS="{{inputs.parameters.namespace}}"
           VM="{{inputs.parameters.vm-name}}"
           LABEL="kubevirt.io/vm=${VM}"
-          PUBKEY='{{inputs.parameters.ssh-pubkey}}'
+          # Use pubkey from secret (parameter kept for API compat but ignored)
+          PUBKEY="${SSH_PUBKEY}"
 
           echo "Waiting for VMI ready..." >&2
           kubectl wait vmi -n "${NS}" "${VM}" \

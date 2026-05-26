@@ -65,13 +65,13 @@ Feature: GNOME Shell smoke tests
   # NOTE: Clock/System toggle buttons have AT-SPI position INT_MIN on GNOME 50.
   # Drive via Shell.Eval; verify via isOpen JS property.
 
-  @quick_settings @wip
+  @quick_settings
   Scenario: Clicking System menu opens Quick Settings
     * GNOME Shell is accessible via AT-SPI
     * Open Quick Settings via Shell.Eval
     * Quick Settings panel is open via Shell.Eval
 
-  @quick_settings @wip
+  @quick_settings
   Scenario: Escape closes Quick Settings
     * GNOME Shell is accessible via AT-SPI
     * Open Quick Settings via Shell.Eval
@@ -81,13 +81,13 @@ Feature: GNOME Shell smoke tests
 
   # ── Calendar popup ────────────────────────────────────────────────────────
 
-  @calendar @wip
+  @calendar
   Scenario: Clicking clock opens calendar popup
     * GNOME Shell is accessible via AT-SPI
     * Open date menu via Shell.Eval
     * Date menu panel is open via Shell.Eval
 
-  @calendar @wip
+  @calendar
   Scenario: Escape closes calendar popup
     * GNOME Shell is accessible via AT-SPI
     * Open date menu via Shell.Eval
@@ -154,13 +154,13 @@ Feature: GNOME Shell smoke tests
     * Application "org.mozilla.firefox" is open in AT-SPI
     * Close application "org.mozilla.firefox" via Shell.Eval
 
-  @browser @default_browser @wip
+  @browser @default_browser
   Scenario: xdg-settings reports a default browser    * Run and save command output: "xdg-settings get default-web-browser"
     * Last command output stripped contains ".desktop"
 
   # ── Quick Settings state change (#90) ───────────────────────────────────
 
-  @quick_settings @state_change @wip
+  @quick_settings @state_change
   Scenario: Quick Settings dark style toggle changes desktop theme
     * GNOME Shell is accessible via AT-SPI
     * Open Quick Settings via Shell.Eval
@@ -173,18 +173,18 @@ Feature: GNOME Shell smoke tests
 
   # ── Bluefin extension workflows (#91) ────────────────────────────────────
 
-  @extension_behavior @ding @regression @bluefin_91 @wip
+  @extension_behavior @ding @regression @bluefin_91
   Scenario: Desktop Icons NG (ding) is enabled and desktop icon area exists    * GNOME Shell is accessible via AT-SPI
     * Extension "ding@rastersoft.com" is enabled
     * AT-SPI root contains a desktop canvas or icon surface
 
-  @extension_behavior @dash_to_dock @regression @bluefin_91 @wip
+  @extension_behavior @dash_to_dock @regression @bluefin_91
   Scenario: Dash to Dock keeps a visible dock actor outside the overview
     * GNOME Shell is accessible via AT-SPI
     * Extension "dash-to-dock@micxgx.gmail.com" is enabled
     * Dash to Dock exposes a visible dock actor
 
-  @extension_behavior @blur_my_shell @regression @bluefin_91 @wip
+  @extension_behavior @blur_my_shell @regression @bluefin_91
   Scenario: Blur My Shell applies an overview blur effect
     * GNOME Shell is accessible via AT-SPI
     * Extension "blur-my-shell@aunetx" is enabled
@@ -194,13 +194,13 @@ Feature: GNOME Shell smoke tests
     * Close Activities overview via Shell.Eval
     * Overview is closed
 
-  @extension_behavior @app_indicators @regression @bluefin_91 @wip
+  @extension_behavior @app_indicators @regression @bluefin_91
   Scenario: App Indicators registers a tray host in the shell panel
     * GNOME Shell is accessible via AT-SPI
     * Extension "appindicatorsupport@rgcjonas.gmail.com" is enabled
     * App Indicators registers a panel tray host
 
-  @extension_behavior @windows_navigator @regression @bluefin_91 @wip
+  @extension_behavior @windows_navigator @regression @bluefin_91
   Scenario: Windows Navigator shows workspace navigation hints in the overview    * GNOME Shell is accessible via AT-SPI
     * Extension "windowsNavigator@gnome-shell-extensions.gcampax.github.com" is enabled
     * Open Activities overview via Shell.Eval
@@ -211,7 +211,7 @@ Feature: GNOME Shell smoke tests
 
   # ── Notifications (#68) ───────────────────────────────────────────────────
 
-  @calendar @notifications @regression @bluefin_68 @wip
+  @calendar @notifications @regression @bluefin_68
   Scenario: Date menu shows a delivered desktop notification    * GNOME Shell is accessible via AT-SPI
     * Send desktop notification "Test notification" "QA probe"
     * Open date menu via Shell.Eval

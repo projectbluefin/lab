@@ -32,11 +32,8 @@ _APP_ID_ALIASES = {
 }
 
 
-def _enabled_extensions(context) -> set[str]:
-    enabled = getattr(context, "_enabled_extensions", None)
-    if enabled is not None:
-        return enabled
-
+def _enabled_extensions() -> set[str]:
+    """Query live enabled extension list — never cached so each step reflects current state."""
     result = subprocess.run(
         ["gnome-extensions", "list", "--enabled"],
         capture_output=True,
@@ -45,10 +42,7 @@ def _enabled_extensions(context) -> set[str]:
     )
     if result.returncode != 0:
         raise AssertionError(result.stderr.strip() or result.stdout.strip() or "gnome-extensions list failed")
-
-    enabled = {line.strip() for line in result.stdout.splitlines() if line.strip()}
-    context._enabled_extensions = enabled
-    return enabled
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
 
 def _shell_eval_json(js: str):
@@ -137,18 +131,18 @@ def dump_atspi_tree(context) -> None:
 
 @step("GNOME Shell is accessible via AT-SPI")
 def gnome_shell_is_accessible(context) -> None:
-    """Retrying gnome-shell AT-SPI check via qecore's built-in shell getter.
+    """Live AT-SPI check — queries the accessibility tree on every call.
 
-    The common 'Application "{name}" is running' step calls is_open() which
-    does not work for gnome-shell (compositor, not a regular window).
-    context.sandbox.shell uses qecore's own retry path and is the recommended
-    way to access gnome-shell per qecore docs.
+    Uses tree.root.application() for a fresh lookup each invocation so that
+    a crashed or restarted shell is detected rather than silently returning
+    a cached stale node.  Also verifies the node has children (panel visible).
     """
     last_exc = None
     for attempt in range(6):   # up to 30 s total
         try:
-            shell = context.sandbox.shell
+            shell = tree.root.application("gnome-shell")
             assert shell is not None, "gnome-shell not registered in AT-SPI tree"
+            assert shell.children, "gnome-shell AT-SPI node has no children — shell may be unresponsive"
             return
         except Exception as exc:   # noqa: BLE001
             last_exc = exc
@@ -775,9 +769,8 @@ def toggle_dark_style(context) -> None:
 @step("Dark style setting changed")
 def dark_style_setting_changed(context) -> None:
     previous = getattr(context, "_color_scheme_previous", None)
-    current = getattr(context, "_color_scheme_current", None)
     assert previous is not None, "dark style toggle was not called"
-    assert current is not None, "dark style state was not recorded"
+    current = _desktop_color_scheme()
     assert current != previous, f"Dark style did not change: still {current!r}"
 
 
@@ -786,7 +779,7 @@ def dark_style_setting_changed(context) -> None:
 
 @step('Extension "{uuid}" is enabled')
 def extension_is_enabled(context, uuid) -> None:
-    enabled = _enabled_extensions(context)
+    enabled = _enabled_extensions()
     assert uuid in enabled, f"Extension {uuid!r} not enabled. Enabled extensions: {sorted(enabled)}"
 
 

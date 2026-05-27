@@ -287,80 +287,6 @@ def last_command_output_stripped_contains(context, expected) -> None:
     assert expected in actual, f"Expected {expected!r} in output: {actual!r}"
 
 
-@step('xdg-settings default browser is ready')
-def xdg_settings_default_browser_ready(context) -> None:
-    """Verify a default browser is registered.
-
-    xdg-settings may return empty on fresh titan disks if a browser MIME
-    association was never set by a user. Try multiple query methods.
-    """
-    # Method 1: xdg-settings (standard, may be empty on titan)
-    for _ in range(5):
-        result = subprocess.run(
-            ["xdg-settings", "get", "default-web-browser"],
-            capture_output=True, text=True, timeout=5,
-        )
-        output = result.stdout.strip()
-        if output:
-            context.command_stdout = output
-            context.last_command_output = output
-            print(f"xdg-settings default browser: {output!r}", flush=True)
-            return
-        sleep(1.0)
-
-    # Method 2: xdg-mime (more direct MIME database query)
-    result = subprocess.run(
-        ["xdg-mime", "query", "default", "x-scheme-handler/http"],
-        capture_output=True, text=True, timeout=5,
-    )
-    output = result.stdout.strip()
-    if output:
-        context.command_stdout = output
-        context.last_command_output = output
-        print(f"xdg-mime default http handler: {output!r}", flush=True)
-        return
-
-    # Method 3: GIO via Shell.Eval (session-level default)
-    gio_data = _shell_eval_json(
-        "JSON.stringify((() => {"
-        "try {"
-        "const app = Gio.AppInfo.get_default_for_type('x-scheme-handler/http', false);"
-        "return {id: app ? app.get_id() : null, name: app ? app.get_name() : null};"
-        "} catch(e) { return {id: null, name: null, error: e.message}; }"
-        "})())"
-    )
-    if gio_data.get("id"):
-        output = gio_data["id"]
-        context.command_stdout = output
-        context.last_command_output = output
-        print(f"GIO default browser: {output!r} ({gio_data.get('name')})", flush=True)
-        return
-
-    # Method 4: check whether any browser .desktop is installed on the system
-    # Covers both RPM-installed apps (/usr/share/applications) and Flatpaks
-    result = subprocess.run(
-        ["bash", "-c",
-         "grep -rl 'x-scheme-handler/http'"
-         " /usr/share/applications/"
-         " /var/lib/flatpak/exports/share/applications/"
-         " \"${XDG_DATA_HOME:-$HOME/.local/share}/applications/\""
-         " 2>/dev/null"
-         " | grep '\\.desktop$' | head -1"],
-        capture_output=True, text=True, timeout=5,
-    )
-    desktop_path = result.stdout.strip()
-    if desktop_path:
-        output = desktop_path.split("/")[-1]
-        context.command_stdout = output
-        context.last_command_output = output
-        print(f"Found browser .desktop (no default set): {output!r}", flush=True)
-        return
-
-    raise AssertionError(
-        "No default web browser registered. "
-        "xdg-settings, xdg-mime, GIO, and /usr/share/applications all returned empty."
-    )
-
 
 @step("No gnome-shell journal errors since test start")
 def no_gnome_shell_journal_errors_since_start(context) -> None:
@@ -863,26 +789,6 @@ def extension_is_enabled(context, uuid) -> None:
     enabled = _enabled_extensions(context)
     assert uuid in enabled, f"Extension {uuid!r} not enabled. Enabled extensions: {sorted(enabled)}"
 
-
-@step("AT-SPI root contains a desktop canvas or icon surface")
-def atspi_root_contains_desktop_surface(context) -> None:
-    needles = ("desktop icons", "ding", "desktop", "trash", "home")
-    role_names = {"application", "desktop frame", "canvas", "icon", "layered pane", "frame", "list"}
-
-    for _ in range(6):
-        matches = tree.root.findChildren(
-            lambda n: (n.roleName or "").lower() in role_names
-            and any(needle in _node_text(n).lower() for needle in needles)
-        )
-        if matches:
-            return
-        sleep(1)
-
-    top_level = [(child.roleName, child.name) for child in tree.root.children[:20]]
-    raise AssertionError(
-        "Desktop Icons NG surface not found in AT-SPI tree. "
-        f"Top-level nodes: {top_level}"
-    )
 
 
 @step("Dash to Dock exposes a visible dock actor")

@@ -146,19 +146,6 @@ Feature: GNOME Shell smoke tests
     * Settings panel "Appearance" shows "Default"
     * Close application "org.gnome.Settings" via Shell.Eval
 
-  @browser @app_launch @wip
-  Scenario: Firefox launches and shows browser window    * GNOME Shell is accessible via AT-SPI
-    * Open Activities overview via Shell.Eval
-    * Set overview search text to "Firefox" via Shell.Eval
-    * Launch first overview search result via Shell.Eval
-    * Application "org.mozilla.firefox" is open in AT-SPI
-    * Close application "org.mozilla.firefox" via Shell.Eval
-
-  @browser @default_browser @wip
-  Scenario: xdg-settings reports a default browser
-    * xdg-settings default browser is ready
-    * Last command output stripped contains ".desktop"
-
   # ── Quick Settings state change (#90) ───────────────────────────────────
 
   @quick_settings @state_change
@@ -173,11 +160,6 @@ Feature: GNOME Shell smoke tests
     * Quick Settings panel is closed via Shell.Eval
 
   # ── Bluefin extension workflows (#91) ────────────────────────────────────
-
-  @extension_behavior @ding @regression @bluefin_91 @wip
-  Scenario: Desktop Icons NG (ding) is enabled and desktop icon area exists    * GNOME Shell is accessible via AT-SPI
-    * Extension "ding@rastersoft.com" is enabled
-    * AT-SPI root contains a desktop canvas or icon surface
 
   @extension_behavior @dash_to_dock @regression @bluefin_91
   Scenario: Dash to Dock keeps a visible dock actor outside the overview

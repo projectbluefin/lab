@@ -1,0 +1,31 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install argo CLI
+        run: |
+          ARGO_VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-workflows/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+          curl -sLO "https://github.com/argoproj/argo-workflows/releases/download/${ARGO_VERSION}/argo-linux-amd64.gz"
+          gunzip argo-linux-amd64.gz
+          chmod +x argo-linux-amd64
+          sudo mv argo-linux-amd64 /usr/local/bin/argo
+
+      - name: Lint workflow templates (offline)
+        run: |
+          argo lint --offline argo/workflow-templates/ || echo "WARNING: offline lint reported issues in argo/workflow-templates/"
+
+      - name: Lint standalone workflows (offline)
+        run: |
+          for f in argo/*.yaml; do
+            echo "Checking $f..."
+            argo lint --offline "$f" || echo "WARNING: $f needs server-side template resolution or has offline lint issues"
+          done

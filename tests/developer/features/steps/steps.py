@@ -190,6 +190,62 @@ def homebrew_profile_integration_is_configured(context) -> None:
     raise AssertionError(f"No Homebrew shell integration found in: {searched}")
 
 
+@step('A fixture Brewfile exists at "{path}" with formula "{formula}"')
+def fixture_brewfile_exists_at_with_formula(context, path, formula) -> None:
+    brewfile = Path(path)
+    brewfile.write_text(f'brew "{formula}"\n', encoding="utf-8")
+    context.fixture_brewfile = brewfile
+
+
+@step('Running "{command}" with the fixture Brewfile succeeds')
+def running_brew_bundle_install_with_the_fixture_brewfile_succeeds(
+    context, command
+) -> None:
+    assert hasattr(context, "fixture_brewfile"), "Fixture Brewfile was not created"
+    env = os.environ | {"HOMEBREW_NO_ANALYTICS": "1"}
+    result = subprocess.run(
+        [*command.split(), f"--file={context.fixture_brewfile}"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, (
+        f"{command} failed with exit code {result.returncode}:\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+
+
+@step('The formula "{formula}" is installed via Homebrew')
+def the_formula_is_installed_via_homebrew(context, formula) -> None:
+    brew = _require_command("brew")
+    result = _run_command([brew, "list", formula])
+    assert result.returncode == 0, (
+        f"Expected Homebrew formula {formula!r} to be installed:\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+
+
+@step('Running "{command}" a second time exits cleanly with no changes')
+def running_brew_bundle_install_a_second_time_exits_cleanly_with_no_changes(
+    context, command
+) -> None:
+    assert hasattr(context, "fixture_brewfile"), "Fixture Brewfile was not created"
+    env = os.environ | {"HOMEBREW_NO_ANALYTICS": "1"}
+    result = subprocess.run(
+        [*command.split(), f"--file={context.fixture_brewfile}"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, (
+        f"Second {command} run failed with exit code {result.returncode}:\n"
+        f"stdout:\n{result.stdout}\n"
+        f"stderr:\n{result.stderr}"
+    )
+
+
 @step("Podman info reports rootless execution")
 def podman_info_reports_rootless_execution(context) -> None:
     podman = _require_command("podman")
@@ -322,3 +378,38 @@ def homebrew_docker_runtime_mapping_is_valid_when_docker_is_installed(context) -
 
     socket_path = Path(effective_host.removeprefix("unix://"))
     assert socket_path.exists(), f"Docker socket is missing: {socket_path}"
+
+
+@step("Podman user socket is accessible")
+def podman_user_socket_is_accessible(context) -> None:
+    uid = os.getuid()
+    runtime_dir = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{uid}"))
+    candidates = [
+        runtime_dir / "podman" / "podman.sock",
+        Path(f"/run/user/{uid}/podman/podman.sock"),
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            assert candidate.is_socket(), f"Expected a socket at {candidate}"
+            return
+
+    context.scenario.skip("podman socket not present — rootless daemon not running")
+
+
+@step("Colima Docker context is registered when colima is installed")
+def colima_docker_context_is_registered_when_colima_is_installed(context) -> None:
+    if not shutil.which("colima"):
+        context.scenario.skip("colima is not installed")
+        return
+
+    docker = shutil.which("docker")
+    if not docker:
+        context.scenario.skip("docker is not installed")
+        return
+
+    result = _run_command([docker, "context", "list"])
+    assert result.returncode == 0, result.stderr
+    assert "colima" in result.stdout, (
+        f"Expected Docker context list to include 'colima':\n{result.stdout}"
+    )

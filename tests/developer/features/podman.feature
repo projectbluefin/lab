@@ -42,3 +42,11 @@ Feature: Podman desktop and rootless runtime coverage
   @podman_cli @docker
   Scenario: Homebrew Docker runtime mapping uses a supported user-space socket
     * Homebrew Docker runtime mapping is valid when docker is installed
+
+  @podman_cli @socket
+  Scenario: Podman socket is accessible for user-space tooling
+    * Podman user socket is accessible
+
+  @podman_cli @colima
+  Scenario: Colima context is registered when colima is installed
+    * Colima Docker context is registered when colima is installed

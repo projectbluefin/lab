@@ -10,6 +10,9 @@
 > - [`docs/dogtail-testing.md`](dogtail-testing.md) — writing GUI tests
 > - [`AGENTS.md`](../AGENTS.md) — hard policy and tenets
 
+> [!WARNING]
+> **NO SSH TO NODES.** All workstation-to-cluster reads and mutations are MCP-first via the Kubernetes MCP and Argo MCP servers (or the `just` recipes that wrap them). The only allowed SSH pattern in this repo is **in-cluster** access from workflow/probe pods into test VMs such as titan for post-mortem artifact reads.
+
 ---
 
 ## 1. Command selector — what should I run?

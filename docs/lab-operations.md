@@ -10,6 +10,9 @@ Pair with:
 - [`dogtail-testing.md`](dogtail-testing.md) — GUI test authoring
 - [`vanguard-report-template.md`](vanguard-report-template.md) — PR verification report
 
+> [!WARNING]
+> **No workstation SSH to ghost or exo-1.** Use Kubernetes MCP, Argo MCP, or the `just` wrappers for all cluster inspection and mutations. The only acceptable SSH path in this repo is **in-cluster** access from workflow/probe pods into test VMs when the test harness or post-mortem artifact collection requires it.
+
 ---
 
 ## 1. The 60-second mental model
@@ -129,6 +132,16 @@ Loki is at <http://192.168.1.102:30100>. Pods carry `app.kubernetes.io/part-of=b
 The runner echoes `results.json`, `pytest-results.xml`, and `atspi_tree.txt` into pod stderr before exit.
 Use Argo logs or Loki instead of `kubectl exec`.
 
+### 4.4 Updating files without workstation `scp`
+
+If you need to push helper files or test content into the cluster, do **not** `scp` them to ghost or exo-1 from a workstation. Use a ConfigMap plus a short-lived Job created through Kubernetes MCP (`kubernetes-mcp-resources_create_or_update`) or the equivalent `kubectl` flow:
+
+1. Create or update a ConfigMap containing the files.
+2. Create a Job pinned to the target node that mounts the ConfigMap and copies its contents into the required hostPath or workload volume.
+3. Wait for the Job to complete, then clean it up if it was ad hoc.
+
+This keeps file staging API-driven and works even when node SSH is unavailable.
+
 ---
 
 ## 5. Failure triage
@@ -170,7 +183,7 @@ Every branch in this section is **command → expected output → next command**
 
 1. `just logs | grep -n "wait_for_shell.py"`
    - **Expected:** the runner copied and invoked `wait_for_shell.py`.
-   - **If missing:** fix the runner/template so the file is SCP'd, then rerun.
+   - **If missing:** fix the runner/template so the workflow copies the file into the VM, then rerun.
 2. `just logs | grep -n "unsafe_mode"`
    - **Expected:** the session enabled `global.context.unsafe_mode = true`.
    - **If missing:** fix the runner or environment hook, then rerun `just run-titan-smoke`.

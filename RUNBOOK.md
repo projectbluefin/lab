@@ -45,6 +45,13 @@ All KubeVirt VMs are pinned to ghost. Workflow pods may land on ghost or exo-1 d
 
 The repo is intentionally GitOps-first: cluster state should converge from git, not from manual template applies or node SSH.
 
+## Operator access model
+
+- Use Kubernetes MCP and Argo MCP for workstation-side cluster reads and mutations.
+- Prefer the `just` entrypoints when they exist; they are the human-facing wrappers around the same API-driven workflow.
+- Do not SSH from a workstation into `ghost` or `exo-1` for inspection, recovery, or file transfer.
+- In-workflow SSH into test VMs and probe-pod-to-titan SSH remain valid because they originate inside the cluster and are part of the test harness, not node administration.
+
 ## Image, disk, and VM model
 
 | Object | Backing location | Used by | Notes |
@@ -56,7 +63,7 @@ The repo is intentionally GitOps-first: cluster state should converge from git, 
 | Per-run hostDisk clone | `/var/tmp/bluefin-golden/*-runs/...` | Provisioned fresh VMs | Removed by teardown or orphan cleanup |
 
 The SSH secret lives in the `bluefin-test-ssh-key` Kubernetes secret in namespace `argo`.
-Golden disks can be patched by workflow after key rotation; titan disk key refresh is intentionally human-gated.
+Golden disks can be patched by workflow after key rotation; titan disk key refresh is intentionally human-gated. <!-- TODO: replace with MCP tool when available -->
 
 ## Test execution stack
 

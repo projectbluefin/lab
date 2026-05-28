@@ -50,3 +50,30 @@ data:
             target_label: __path__
             regex: (.*)
             separator: /
+      - job_name: bluefin-test-pods-static
+        static_configs:
+          - targets: [localhost]
+            labels:
+              app_kubernetes_io_part_of: bluefin-test-suite
+              namespace: argo
+              __path__: /var/log/pods/argo_bluefin-*/*/*.log
+          - targets: [localhost]
+            labels:
+              app_kubernetes_io_part_of: bluefin-test-suite
+              namespace: argo
+              __path__: /var/log/pods/argo_dakota-*/*/*.log
+          - targets: [localhost]
+            labels:
+              app_kubernetes_io_part_of: bluefin-test-suite
+              namespace: argo
+              __path__: /var/log/pods/argo_flatcar-*/*/*.log
+          - targets: [localhost]
+            labels:
+              app_kubernetes_io_part_of: bluefin-test-suite
+              namespace: argo
+              __path__: /var/log/pods/argo_knuckle-*/*/*.log
+          - targets: [localhost]
+            labels:
+              app_kubernetes_io_part_of: bluefin-test-suite
+              namespace: argo
+              __path__: /var/log/pods/argo_homelab-*/*/*.log

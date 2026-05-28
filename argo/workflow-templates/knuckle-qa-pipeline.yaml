@@ -1,0 +1,809 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: knuckle-qa-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      Argo-native Knuckle installer QA pipeline: resolve branch → build installer ISO →
+      provision blank KubeVirt target VM → boot live installer → run headless install with
+      explicit completion signal → reboot from installed disk → rediscover IP → run smoke tests.
+
+      All kubectl/virtctl actions run inside workflow pods scheduled on ghost. The only SSH is
+      in-cluster pod → VM test execution.
+  labels:
+    app.kubernetes.io/component: qa-pipeline
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  entrypoint: pipeline
+  onExit: teardown
+  arguments:
+    parameters:
+      - name: branch
+        value: "main"
+      - name: namespace
+        value: "knuckle-test"
+      - name: suite
+        value: "smoke"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
+      - name: tests-branch
+        value: "main"
+
+  templates:
+    - name: pipeline
+      dag:
+        tasks:
+          - name: clone-source
+            template: resolve-source
+            arguments:
+              parameters:
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+
+          - name: build-installer
+            dependencies: [clone-source]
+            template: build-installer
+            arguments:
+              parameters:
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+                - name: commit-sha
+                  value: "{{tasks.clone-source.outputs.parameters.commit-sha}}"
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+
+          - name: provision-target-vm
+            dependencies: [build-installer]
+            template: provision-target-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+
+          - name: boot-installer
+            dependencies: [provision-target-vm]
+            template: boot-installer
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+
+          - name: wait-install-complete
+            dependencies: [boot-installer]
+            template: wait-install-complete
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+
+          - name: transition-to-installed
+            dependencies: [wait-install-complete]
+            template: transition-to-installed
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+
+          - name: discover-ip
+            dependencies: [transition-to-installed]
+            template: discover-installed-ip
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+
+          - name: run-smoke-tests
+            dependencies: [discover-ip]
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{tasks.discover-ip.outputs.parameters.vm-ip}}"
+                - name: suite
+                  value: "{{workflow.parameters.suite}}"
+                - name: variant
+                  value: "bluefin"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+                - name: branch
+                  value: "{{workflow.parameters.tests-branch}}"
+
+    - name: resolve-source
+      inputs:
+        parameters:
+          - name: branch
+      outputs:
+        parameters:
+          - name: commit-sha
+            valueFrom:
+              path: /work/commit-sha
+      volumes:
+        - name: work
+          emptyDir: {}
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        volumeMounts:
+          - name: work
+            mountPath: /work
+        source: |
+          set -euo pipefail
+          dnf install -y --quiet git 2>&1 | tail -2
+          git ls-remote https://github.com/projectbluefin/knuckle \
+            "refs/heads/{{inputs.parameters.branch}}" | awk '{print $1}' > /work/commit-sha
+          if [[ ! -s /work/commit-sha ]]; then
+            echo "ERROR: branch {{inputs.parameters.branch}} not found" >&2
+            exit 1
+          fi
+          echo "Resolved {{inputs.parameters.branch}} -> $(cat /work/commit-sha)" >&2
+
+    - name: build-installer
+      inputs:
+        parameters:
+          - name: branch
+          - name: commit-sha
+          - name: vm-name
+      synchronization:
+        mutexes:
+          - name: ghost-heavy-compute
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 3600
+      volumes:
+        - name: knuckle-test
+          hostPath:
+            path: /var/tmp/knuckle-test
+            type: DirectoryOrCreate
+        - name: src
+          emptyDir: {}
+      initContainers:
+        - name: git-clone
+          image: quay.io/fedora/fedora:latest
+          command: [bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              dnf install -y --quiet git 2>&1 | tail -2
+              git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
+                https://github.com/projectbluefin/knuckle /src
+          volumeMounts:
+            - name: src
+              mountPath: /src
+      container:
+        image: quay.io/fedora/fedora:latest
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            dnf install -y --quiet \
+              git golang xorriso mtools cpio systemd-boot-unsigned squashfs-tools curl 2>&1 | tail -4
+            cd /src
+            ./scripts/build-iso.sh --channel stable --arch amd64
+
+            ISO_SRC="/src/output/knuckle-installer-stable-amd64.iso"
+            ISO_DEST="/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso"
+            BIN_SRC="/src/bin/knuckle-amd64"
+            BIN_DEST="/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-knuckle"
+
+            cp "${ISO_SRC}" "${ISO_DEST}"
+            cp "${BIN_SRC}" "${BIN_DEST}"
+            chmod 664 "${ISO_DEST}"
+            chmod 755 "${BIN_DEST}"
+            chown 107:107 "${ISO_DEST}"
+            chcon -t container_file_t "${ISO_DEST}" 2>/dev/null || true
+            chcon -t container_file_t "${BIN_DEST}" 2>/dev/null || true
+
+            echo "Built {{inputs.parameters.commit-sha}}" >&2
+            echo "ISO ready: ${ISO_DEST}" >&2
+            echo "Binary ready: ${BIN_DEST}" >&2
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
+        volumeMounts:
+          - name: knuckle-test
+            mountPath: /var/tmp/knuckle-test
+          - name: src
+            mountPath: /src
+
+    - name: provision-target-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+          - name: ssh-key-secret
+      steps:
+        - - name: write-ignition
+            template: write-ignition
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: ssh-key-secret
+                  value: "{{inputs.parameters.ssh-key-secret}}"
+        - - name: prepare-target-disk
+            template: prepare-target-disk
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+        - - name: apply-installer-vm
+            template: apply-installer-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+                - name: ignition-json
+                  value: "{{steps.write-ignition.outputs.parameters.ignition-json}}"
+
+    - name: write-ignition
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: ssh-key-secret
+      outputs:
+        parameters:
+          - name: ignition-json
+            valueFrom:
+              path: /work/ignition.json
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: knuckle-test
+          hostPath:
+            path: /var/tmp/knuckle-test
+            type: DirectoryOrCreate
+        - name: work
+          emptyDir: {}
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        env:
+          - name: SSH_PUBKEY
+            valueFrom:
+              secretKeyRef:
+                name: "{{inputs.parameters.ssh-key-secret}}"
+                key: id_ed25519.pub
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        volumeMounts:
+          - name: knuckle-test
+            mountPath: /var/tmp/knuckle-test
+          - name: work
+            mountPath: /work
+        source: |
+          set -euo pipefail
+          python3 - <<'PY' > /work/ignition.json
+          import json
+          import os
+
+          print(json.dumps({
+              "ignition": {"version": "3.4.0"},
+              "passwd": {"users": [{"name": "core", "sshAuthorizedKeys": [os.environ["SSH_PUBKEY"]]}]},
+              "systemd": {"units": [{"name": "sshd.service", "enabled": True}]},
+          }, separators=(",", ":")))
+          PY
+          install -D -m 600 /work/ignition.json \
+            "/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-installer.ign"
+          echo "Wrote ignition for {{inputs.parameters.vm-name}}" >&2
+
+    - name: prepare-target-disk
+      inputs:
+        parameters:
+          - name: vm-name
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: knuckle-test
+          hostPath:
+            path: /var/tmp/knuckle-test
+            type: DirectoryOrCreate
+      script:
+        image: quay.io/kubevirt/virt-launcher:v1.8.2
+        command: [bash]
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+        volumeMounts:
+          - name: knuckle-test
+            mountPath: /var/tmp/knuckle-test
+        source: |
+          set -euo pipefail
+          TARGET="/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}.raw"
+          if [[ -f "${TARGET}" ]]; then
+            rm -f "${TARGET}"
+          fi
+          qemu-img create -f raw "${TARGET}" 20G
+          chown 107:107 "${TARGET}"
+          chmod 664 "${TARGET}"
+          chcon -t container_file_t "${TARGET}" 2>/dev/null || true
+          echo "Prepared target disk: ${TARGET}" >&2
+
+    - name: apply-installer-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+          - name: ignition-json
+      resource:
+        action: apply
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+            labels:
+              app: knuckle-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Manual
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+                annotations:
+                  kubevirt.io/ignitiondata: >-
+                    {{inputs.parameters.ignition-json}}
+              spec:
+                nodeSelector:
+                  kubernetes.io/hostname: ghost
+                domain:
+                  firmware:
+                    bootloader:
+                      efi:
+                        secureBoot: false
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: 8Gi
+                  devices:
+                    disks:
+                      - name: installeriso
+                        cdrom:
+                          bus: sata
+                        bootOrder: 1
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                        bootOrder: 2
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                  machine:
+                    type: q35
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: installeriso
+                    hostDisk:
+                      path: /var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso
+                      type: Disk
+                  - name: rootdisk
+                    hostDisk:
+                      path: /var/tmp/knuckle-test/{{inputs.parameters.vm-name}}.raw
+                      type: Disk
+
+    - name: boot-installer
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+          - name: ssh-key-secret
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 1200
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+        - name: knuckle-test
+          hostPath:
+            path: /var/tmp/knuckle-test
+            type: DirectoryOrCreate
+        - name: ssh-key
+          secret:
+            secretName: "{{inputs.parameters.ssh-key-secret}}"
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: "1"
+            memory: 1Gi
+          limits:
+            cpu: "2"
+            memory: 2Gi
+        volumeMounts:
+          - name: knuckle-test
+            mountPath: /var/tmp/knuckle-test
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+        env:
+          - name: SSH_PUBKEY
+            valueFrom:
+              secretKeyRef:
+                name: "{{inputs.parameters.ssh-key-secret}}"
+                key: id_ed25519.pub
+        source: |
+          set -euo pipefail
+          dnf install -y --quiet kubernetes-client openssh-clients curl 2>&1 | tail -4
+          curl -fsSL -o /usr/local/bin/virtctl \
+            https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
+          chmod +x /usr/local/bin/virtctl
+
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+          KEY="/etc/ssh/test-key/id_ed25519"
+          BIN="/var/tmp/knuckle-test/${VM}-knuckle"
+          SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+
+          virtctl -n "${NS}" start "${VM}"
+          kubectl wait vmi -n "${NS}" "${VM}" --for=condition=Ready --timeout=300s >&2
+
+          INSTALLER_IP=""
+          for _ in $(seq 1 60); do
+            INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
+            if [[ -n "${INSTALLER_IP}" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ -z "${INSTALLER_IP}" ]]; then
+            echo "ERROR: installer VM never reported an IP" >&2
+            exit 1
+          fi
+
+          for _ in $(seq 1 60); do
+            if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true 2>/dev/null; then
+              break
+            fi
+            sleep 5
+          done
+          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true >/dev/null
+
+          scp ${SSH_OPTS} "${BIN}" core@"${INSTALLER_IP}":/tmp/knuckle >/dev/null
+          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'chmod +x /tmp/knuckle'
+
+          TARGET_DISK=$(ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "lsblk -dpno NAME,TYPE | awk '\$2 == \"disk\" {print \$1; exit}'")
+          if [[ -z "${TARGET_DISK}" ]]; then
+            echo "ERROR: unable to resolve target install disk" >&2
+            exit 1
+          fi
+
+          cat > /var/tmp/knuckle-test/${VM}-qa.json <<EOF
+          {"channel":"stable","hostname":"${VM}","timezone":"UTC","network":{"mode":"dhcp"},"users":[{"username":"bluefin-test","ssh_keys":["${SSH_PUBKEY}"]}],"disk":"${TARGET_DISK}","update_strategy":"off","reboot":false}
+          EOF
+          scp ${SSH_OPTS} /var/tmp/knuckle-test/${VM}-qa.json core@"${INSTALLER_IP}":/tmp/qa.json >/dev/null
+
+          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "sudo systemd-run --unit knuckle-headless-install --collect /bin/bash -lc 'set -euo pipefail; trap \"touch /install-failed\" ERR; /tmp/knuckle --headless --config /tmp/qa.json --log-file /tmp/knuckle-install.log; touch /install-complete'"
+          echo "Installer booted and headless install launched against ${TARGET_DISK}" >&2
+
+    - name: wait-install-complete
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+          - name: ssh-key-secret
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 600
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: "{{inputs.parameters.ssh-key-secret}}"
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+        source: |
+          set -euo pipefail
+          dnf install -y --quiet kubernetes-client openssh-clients 2>&1 | tail -3
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+          KEY="/etc/ssh/test-key/id_ed25519"
+          SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+
+          for _ in $(seq 1 60); do
+            INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
+            if [[ -z "${INSTALLER_IP}" ]]; then
+              sleep 5
+              continue
+            fi
+            if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-complete' 2>/dev/null; then
+              echo "Install complete on ${INSTALLER_IP}" >&2
+              exit 0
+            fi
+            if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-failed' 2>/dev/null; then
+              echo "Installer reported failure" >&2
+              ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo cat /tmp/knuckle-install.log 2>/dev/null || sudo journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
+              exit 1
+            fi
+            sleep 5
+          done
+
+          INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
+          if [[ -n "${INSTALLER_IP}" ]]; then
+            ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo cat /tmp/knuckle-install.log 2>/dev/null || sudo journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
+          fi
+          echo "ERROR: timed out waiting for /install-complete" >&2
+          exit 1
+
+    - name: transition-to-installed
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 600
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        source: |
+          set -euo pipefail
+          dnf install -y --quiet kubernetes-client curl 2>&1 | tail -3
+          curl -fsSL -o /usr/local/bin/virtctl \
+            https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
+          chmod +x /usr/local/bin/virtctl
+
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+
+          virtctl -n "${NS}" stop "${VM}" || true
+          for _ in $(seq 1 60); do
+            if ! kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+          if kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
+            echo "ERROR: installer VMI did not stop" >&2
+            exit 1
+          fi
+
+          kubectl apply -f - <<EOF
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: ${VM}
+            namespace: ${NS}
+            labels:
+              app: knuckle-test
+              argo-workflow: {{workflow.name}}
+          spec:
+            runStrategy: Manual
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: ${VM}
+              spec:
+                nodeSelector:
+                  kubernetes.io/hostname: ghost
+                domain:
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: 8Gi
+                  devices:
+                    disks:
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                  machine:
+                    type: q35
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: rootdisk
+                    hostDisk:
+                      path: /var/tmp/knuckle-test/${VM}.raw
+                      type: Disk
+          EOF
+
+          virtctl -n "${NS}" start "${VM}"
+          echo "Transitioned ${VM} to installed-disk boot" >&2
+
+    - name: discover-installed-ip
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+          - name: ssh-key-secret
+      outputs:
+        parameters:
+          - name: vm-ip
+            valueFrom:
+              path: /work/vm-ip
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 600
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: "{{inputs.parameters.ssh-key-secret}}"
+        - name: work
+          emptyDir: {}
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+          - name: work
+            mountPath: /work
+        source: |
+          set -euo pipefail
+          dnf install -y --quiet kubernetes-client openssh-clients 2>&1 | tail -3
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+          KEY="/etc/ssh/test-key/id_ed25519"
+          SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+
+          VM_IP=""
+          for _ in $(seq 1 60); do
+            VM_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
+            if [[ -n "${VM_IP}" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ -z "${VM_IP}" ]]; then
+            echo "ERROR: installed VM never reported an IP" >&2
+            exit 1
+          fi
+
+          for _ in $(seq 1 60); do
+            if ssh ${SSH_OPTS} bluefin-test@"${VM_IP}" true 2>/dev/null; then
+              printf '%s' "${VM_IP}" > /work/vm-ip
+              echo "Installed VM reachable at ${VM_IP}" >&2
+              exit 0
+            fi
+            sleep 5
+          done
+
+          echo "ERROR: installed VM never became SSH reachable at ${VM_IP}" >&2
+          exit 1
+
+    - name: teardown
+      dag:
+        tasks:
+          - name: teardown-vm
+            templateRef:
+              name: teardown-bluefin-vm
+              template: teardown-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: test-root
+                  value: "/var/tmp/knuckle-test"
+
+          - name: cleanup-installer-artifacts
+            dependencies: [teardown-vm]
+            template: cleanup-installer-artifacts
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "knuckle-test-{{workflow.uid}}"
+
+    - name: cleanup-installer-artifacts
+      inputs:
+        parameters:
+          - name: vm-name
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: knuckle-test
+          hostPath:
+            path: /var/tmp/knuckle-test
+            type: DirectoryOrCreate
+      script:
+        image: cgr.dev/chainguard/bash:latest
+        command: [bash]
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+          - name: knuckle-test
+            mountPath: /var/tmp/knuckle-test
+        source: |
+          set -euo pipefail
+          VM="{{inputs.parameters.vm-name}}"
+          rm -f \
+            "/var/tmp/knuckle-test/${VM}-installer.iso" \
+            "/var/tmp/knuckle-test/${VM}-installer.ign" \
+            "/var/tmp/knuckle-test/${VM}-knuckle" \
+            "/var/tmp/knuckle-test/${VM}-qa.json"
+          echo "Cleaned installer artifacts for ${VM}" >&2

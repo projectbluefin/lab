@@ -40,6 +40,28 @@ argo submit --from workflowtemplate/bluefin-qa-pipeline \
   -p image-tag=latest -p suites=smoke --wait
 ```
 
+### `knuckle-qa-pipeline`
+
+Builds the Knuckle installer ISO from source, boots a blank KubeVirt VM in
+`knuckle-test`, runs a headless install with an explicit `/install-complete`
+signal, reboots from the installed disk, rediscovers the new VMI IP, then runs
+smoke tests against the installed system.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `branch` | `main` | Knuckle source branch to clone and build. |
+| `namespace` | `knuckle-test` | KubeVirt namespace for the ephemeral installer VM. |
+| `suite` | `smoke` | Single GNOME test suite to run after install. |
+| `ssh-key-secret` | `bluefin-test-ssh-key` | Secret in `argo` ns used for installer access and installed-system SSH. |
+| `tests-branch` | `main` | `testing-lab` branch cloned by `run-gnome-tests`. |
+
+Wall-clock: ~12–20 min depending on ISO build cache and Flatcar download time.
+
+```
+argo submit --from workflowtemplate/knuckle-qa-pipeline \
+  -p branch=main -p suite=smoke --wait
+```
+
 ### `bluefin-titan-smoke`
 
 Runs smoke tests against the **persistent** titan VMs (`titan-bluefin`,
@@ -156,7 +178,7 @@ Lives in `manifests/`, applied via the `testing-lab-infra` ArgoCD app:
 |---|---|---|---|
 | `nightly-smoke` | 02:00 UTC | `bluefin-qa-pipeline` (latest) | Catch upstream regressions |
 | `nightly-smoke-lts` | 02:30 UTC | `bluefin-qa-pipeline` (lts)    | Same, for LTS branch; first fire builds the missing golden disk |
-| `orphan-vm-cleanup` | hourly | inline | GC stale per-run hostDisks |
+| `orphan-vm-cleanup` | every 2h | inline | GC stale per-run hostDisks in bluefin, flatcar, and knuckle namespaces |
 
 ---
 

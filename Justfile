@@ -282,6 +282,13 @@ run-dakota-build variant="default" branch="main":
       -p branch={{ branch }} \
       -n {{ argo_ns }} --watch
 
+# Full Dakota QA pipeline: BST build → BIB disk → VM → smoke tests
+run-dakota-qa variant="default" branch="main":
+    argo submit --from workflowtemplate/dakota-qa-pipeline \
+      -p variant={{ variant }} \
+      -p branch={{ branch }} \
+      -n {{ argo_ns }} --watch
+
 # ── Validation ───────────────────────────────────────────────────────────────
 
 # Lint all Argo YAML manifests.

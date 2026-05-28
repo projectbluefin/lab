@@ -1,0 +1,332 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: dakota-iso-pr-test
+  namespace: argo
+  annotations:
+    description: |
+      Build a dakota-iso PR branch → boot in KubeVirt CDROM VM (EFI) → SSH smoke test.
+      Pipeline: build-iso → create-vm → wait-for-live → smoke-test → teardown-vm
+      ISO output: /var/mnt/ghost-data/iso-builds/<label>/dakota-live.iso (hostPath on ghost)
+      Live session SSH: liveuser@<vm-pod-ip> / password: live (debug=1 build)
+  labels:
+    app.kubernetes.io/component: dakota-iso
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  entrypoint: pipeline
+  arguments:
+    parameters:
+      - name: pr
+        value: "0"
+      - name: branch
+        value: "main"
+      - name: label
+        value: "pr-0"
+      - name: variant
+        value: "dakota"
+
+  templates:
+
+    # ── Pipeline ────────────────────────────────────────────────────────────
+    - name: pipeline
+      steps:
+        - - name: build-iso
+            template: build-iso
+            arguments:
+              parameters:
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+                - name: label
+                  value: "{{workflow.parameters.label}}"
+                - name: variant
+                  value: "{{workflow.parameters.variant}}"
+        - - name: create-vm
+            template: create-vm
+            arguments:
+              parameters:
+                - name: label
+                  value: "{{workflow.parameters.label}}"
+                - name: variant
+                  value: "{{workflow.parameters.variant}}"
+        - - name: wait-for-live
+            template: wait-for-live
+            arguments:
+              parameters:
+                - name: label
+                  value: "{{workflow.parameters.label}}"
+        - - name: smoke-test
+            template: smoke-test
+            arguments:
+              parameters:
+                - name: label
+                  value: "{{workflow.parameters.label}}"
+                - name: pr
+                  value: "{{workflow.parameters.pr}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+        - - name: teardown-vm
+            template: teardown-vm
+            arguments:
+              parameters:
+                - name: label
+                  value: "{{workflow.parameters.label}}"
+
+    # ── Build ISO ────────────────────────────────────────────────────────────
+    - name: build-iso
+      inputs:
+        parameters:
+          - name: branch
+          - name: label
+          - name: variant
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: bluefin-test-suite
+          dakota.io/step: build-iso
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 7200
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: containers-storage
+          hostPath:
+            path: /var/mnt/ghost-data/containers-iso-build
+            type: DirectoryOrCreate
+        - name: iso-output
+          hostPath:
+            path: /var/mnt/ghost-data/iso-builds
+            type: DirectoryOrCreate
+        - name: src
+          emptyDir: {}
+      initContainers:
+        - name: git-clone
+          image: quay.io/fedora/fedora:latest
+          command: [bash, -c]
+          args:
+            - |
+              dnf install -y --quiet git 2>&1 | tail -2
+              git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
+                https://github.com/projectbluefin/dakota-iso /src
+          volumeMounts:
+            - name: src
+              mountPath: /src
+      container:
+        image: quay.io/podman/stable:latest
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            dnf install -y --quiet just squashfs-tools xorriso dosfstools mtools isomd5sum 2>&1 | tail -3
+
+            LABEL="{{inputs.parameters.label}}"
+            VARIANT="{{inputs.parameters.variant}}"
+            OUTPUT="/var/mnt/ghost-data/iso-builds/${LABEL}"
+            mkdir -p "${OUTPUT}"
+
+            echo "→ Building ${VARIANT} ISO from branch {{inputs.parameters.branch}}"
+            cd /src
+            just debug=1 installer_channel=stable output_dir="${OUTPUT}" iso-sd-boot "${VARIANT}"
+
+            ISO="${OUTPUT}/${VARIANT}-live.iso"
+            echo "✓ ISO built: $(ls -lh ${ISO})"
+
+            # Quick GPT sanity check
+            xorriso -indev "${ISO}" -report_system_area plain 2>/dev/null | grep "GPT type GUID" || true
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "8"
+            memory: 8Gi
+          limits:
+            cpu: "16"
+            memory: 16Gi
+        volumeMounts:
+          - name: dev
+            mountPath: /dev
+          - name: containers-storage
+            mountPath: /var/lib/containers/storage
+          - name: iso-output
+            mountPath: /var/mnt/ghost-data/iso-builds
+          - name: src
+            mountPath: /src
+
+    # ── Create KubeVirt VM (CDROM, EFI) ────────────────────────────────────
+    - name: create-vm
+      inputs:
+        parameters:
+          - name: label
+          - name: variant
+      resource:
+        action: apply
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "dakota-iso-{{inputs.parameters.label}}"
+            namespace: argo
+            labels:
+              app: dakota-iso-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Always
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: "dakota-iso-{{inputs.parameters.label}}"
+              spec:
+                nodeSelector:
+                  kubernetes.io/hostname: ghost
+                domain:
+                  firmware:
+                    bootloader:
+                      efi:
+                        secureBoot: false
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: 4Gi
+                  devices:
+                    disks:
+                      - name: live-cdrom
+                        cdrom:
+                          bus: sata
+                        bootOrder: 1
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: live-cdrom
+                    hostDisk:
+                      path: /var/mnt/ghost-data/iso-builds/{{inputs.parameters.label}}/{{inputs.parameters.variant}}-live.iso
+                      type: Disk
+
+    # ── Wait for live session SSH ────────────────────────────────────────────
+    - name: wait-for-live
+      inputs:
+        parameters:
+          - name: label
+      metadata:
+        labels:
+          dakota.io/step: wait-for-live
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 900
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        source: |
+          set -e
+          VM="dakota-iso-{{inputs.parameters.label}}"
+          NS="argo"
+
+          echo "Waiting for VMI Ready..."
+          kubectl wait vmi -n "${NS}" "${VM}" \
+            --for=condition=Ready --timeout=600s
+
+          POD_IP=$(kubectl get pod -n "${NS}" \
+            -l "kubevirt.io/vm=${VM}" \
+            -o jsonpath='{.items[0].status.podIP}')
+
+          echo "VMI pod IP: ${POD_IP}"
+          echo "Waiting for SSH (live session boots in ~2-3 min)..."
+          timeout 300 bash -c \
+            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 10; done"
+
+          echo "${POD_IP}"
+
+    # ── Smoke test via SSH ──────────────────────────────────────────────────
+    - name: smoke-test
+      inputs:
+        parameters:
+          - name: label
+          - name: pr
+          - name: branch
+      metadata:
+        labels:
+          dakota.io/step: smoke-test
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      activeDeadlineSeconds: 600
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        source: |
+          set -euo pipefail
+          dnf install -y --quiet openssh-clients sshpass 2>&1 | tail -1
+
+          VM="dakota-iso-{{inputs.parameters.label}}"
+          NS="argo"
+
+          # Resolve pod IP (we're on hostNetwork)
+          POD_IP=$(kubectl get pod -n "${NS}" \
+            -l "kubevirt.io/vm=${VM}" \
+            -o jsonpath='{.items[0].status.podIP}' 2>/dev/null || true)
+
+          # Fallback: kubectl not in this image — use already-known IP from previous step
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10"
+
+          run_check() {
+            local name="$1"; local cmd="$2"
+            local result
+            if result=$(sshpass -p live ssh $SSH_OPTS liveuser@"${POD_IP}" "$cmd" 2>&1); then
+              printf "✅ %-30s %s\n" "${name}" "${result}"
+              return 0
+            else
+              printf "❌ %-30s FAILED: %s\n" "${name}" "${result}"
+              return 1
+            fi
+          }
+
+          PASS=0; FAIL=0
+          check() { run_check "$@" && PASS=$((PASS+1)) || FAIL=$((FAIL+1)); }
+
+          echo "=== Dakota ISO Smoke Test — {{inputs.parameters.label}} ==="
+          echo "Branch: {{inputs.parameters.branch}}  PR: {{inputs.parameters.pr}}"
+          echo ""
+
+          check "gdm active"       "systemctl is-active gdm"
+          check "gnome-shell"      "pgrep -x gnome-shell && echo running"
+          check "wayland socket"   "test -S /run/user/1000/wayland-0 && echo present"
+          check "fisherman binary" "test -x /usr/local/bin/fisherman && echo present"
+          check "installer config" "test -f /etc/bootc-installer/recipe.json && echo present"
+          check "live-iso-mode"    "test -f /etc/bootc-installer/live-iso-mode && echo present"
+          check "bootc installed"  "bootc --version 2>/dev/null | head -1"
+          check "os-release"      "grep ^NAME= /etc/os-release"
+
+          echo ""
+          echo "Result: ${PASS} passed, ${FAIL} failed"
+          [ "${FAIL}" -eq 0 ] && echo "VERDICT: PASS" || { echo "VERDICT: FAIL"; exit 1; }
+
+    # ── Teardown VM ─────────────────────────────────────────────────────────
+    - name: teardown-vm
+      inputs:
+        parameters:
+          - name: label
+      resource:
+        action: delete
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "dakota-iso-{{inputs.parameters.label}}"
+            namespace: argo

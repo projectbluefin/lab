@@ -106,8 +106,16 @@ spec:
           args:
             - |
               dnf install -y --quiet git 2>&1 | tail -2
-              git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
-                https://github.com/projectbluefin/dakota-iso /src
+              PR="{{inputs.parameters.pr}}"
+              BRANCH="{{inputs.parameters.branch}}"
+              git clone --depth 1 https://github.com/projectbluefin/dakota-iso /src
+              cd /src
+              if [ "${PR}" != "0" ] && [ -n "${PR}" ]; then
+                git fetch --depth 1 origin "refs/pull/${PR}/head"
+                git checkout FETCH_HEAD
+              else
+                git checkout "${BRANCH}"
+              fi
           volumeMounts:
             - name: src
               mountPath: /src

@@ -5,6 +5,8 @@
   - [bluefin-qa-pipeline](#bluefin-qa-pipeline)
   - [dakota-qa-pipeline](#dakota-qa-pipeline)
   - [knuckle-qa-pipeline](#knuckle-qa-pipeline)
+- [Homelab Lanes](#homelab-lanes)
+- [Ghost Maintenance](#ghost-maintenance)
 - [Supporting Templates](#supporting-templates)
 - [Nightly Schedule](#nightly-schedule)
 - [Ghost-Heavy-Compute Mutex](#ghost-heavy-compute-mutex)
@@ -42,7 +44,48 @@
 | `provision-bluefin-vm` | Shared Bluefin/Dakota VM bring-up. `reflink-disk` clones `disk.raw`, `create-vm` defines a 4 vCPU / 8 GiB KubeVirt VM, and `wait-for-vm-ready` returns the pod IP once SSH is reachable. |
 | `teardown-bluefin-vm` | Shared Bluefin/Dakota/Knuckle VM cleanup. Deletes the KubeVirt VM and removes the matching hostDisk from the pipeline test root. |
 | `run-gnome-tests` | Shared test runner. Clones `testing-lab`, waits for SSH, installs test dependencies in the VM, copies `tests/<suite>`, and runs `behave` (GUI suites via `qecore-headless`). |
+| `run-incluster-tests` | Shared in-cluster pytest runner. Git-syncs `testing-lab`, runs a pytest module against a live k8s workload, emits JUnit XML. Used by homelab lanes. |
 | `dakota-bst` | Dakota-specific build path. `bst-validate` performs a fast graph check; `bst-build-export-push` builds on ghost, pushes `192.168.1.102:5000/dakota:<tag>`, and returns `image-ref` to `dakota-qa-pipeline`. |
+
+## Homelab Lanes
+
+In-cluster workload validation that proves the k3s substrate, local-path
+storage, and service-access model. These lanes do not require a KubeVirt VM;
+they spin up ephemeral namespaced deployments on the cluster itself.
+
+See [docs/homelab-contracts.md](homelab-contracts.md) for the full workload
+matrix, RWX blocker details, storage artifact reference, and fleet-client
+contract.
+
+| Lane WorkflowTemplate | Test module | What it proves | Just recipe |
+|---|---|---|---|
+| `homelab-substrate` | `tests/homelab_substrate/` | k3s scheduling, in-cluster HTTP reachability, pod lifecycle | `just run-homelab-substrate` |
+| `homelab-storage` | `tests/homelab_storage/` | `local-path` PVC lifecycle, data persists across restart, storage observability artifacts | `just run-homelab-storage` |
+| `homelab-access-probe` | `tests/homelab_access/` | Cluster-DNS resolution, TLS handshake, SNI-based routing | `just run-homelab-access` |
+
+### Storage observability artifacts
+
+`homelab-storage` emits the following artifacts to `/tmp/results/` on every run:
+
+| Artifact | Content |
+|---|---|
+| `storage-pvc.json` | PVC phase, capacity, access modes, storage class |
+| `storage-disk-usage.txt` | `df -h` output for the mount path |
+| `storage-ownership.txt` | `stat` output for the mount directory |
+| `storage-findmnt.txt` | `findmnt` output — filesystem type and mount options |
+| `storage-statfs.txt` | `stat -f` output — block-level capacity |
+| `storage-lsblk.txt` | `lsblk -f` — all block devices and filesystems |
+| `storage-zpool.txt` | `zpool status -x` (ZFS nodes only; empty otherwise) |
+| `storage-zfs.txt` | `zfs list` (ZFS nodes only; empty otherwise) |
+| `storage-pods-before.json` | Pod snapshot before rollout restart |
+| `storage-pods-after.json` | Pod snapshot after rollout restart |
+
+## Ghost Maintenance
+
+| WorkflowTemplate | Purpose | Just recipe |
+|---|---|---|
+| `ghost-otel-patch` | Patch ghost OTel collector config to remove noisy `process:` scraper; restarts `otelcol-agent.service` via DBUS; idempotent | `just run-otel-patch` |
+
 
 ## Nightly Schedule
 

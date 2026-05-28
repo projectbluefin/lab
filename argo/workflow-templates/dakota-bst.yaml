@@ -184,7 +184,7 @@ spec:
             cd /src
 
             # Derive a short build tag from the workflow UID.
-            # Argo expr syntax {{=...}} is not available in bash args — use
+            # Argo expr substitution is not available in bash args — use
             # a substring of the workflow name which is always unique.
             TAG=$(echo "{{workflow.uid}}" | cut -c1-8)
             IMAGE_REF="192.168.1.102:5000/dakota:${TAG}"

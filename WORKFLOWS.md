@@ -124,6 +124,30 @@ hostDisk clone. Invoked as `onExit` from the pipeline templates.
 
 ---
 
+## Dakota BST builds
+
+### `dakota-bst`
+
+Drives dakota BuildStream builds on ghost via the existing `just` recipes.
+Mounts jorge's BST cache for warm builds (~2–5 min warm, ~60–90 min cold).
+No changes to the dakota repo — this is purely an orchestration wrapper.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `variant` | `default` | `default`, `nvidia`, or `all` |
+| `branch` | `main` | dakota branch to clone |
+
+Pipeline: `bst-validate` (fast graph check) → `bst-build` (build + lint).
+
+```
+just run-dakota-validate              # bst show only, ~5 min
+just run-dakota-build                 # default variant
+just run-dakota-build nvidia          # nvidia variant
+just run-dakota-build all             # both variants sequentially
+```
+
+---
+
 ## CronWorkflows
 
 Lives in `manifests/`, applied via the `testing-lab-infra` ArgoCD app:

@@ -11,7 +11,7 @@
 > - [`AGENTS.md`](../AGENTS.md) — hard policy and tenets
 
 > [!WARNING]
-> **NO SSH TO NODES.** All workstation-to-cluster reads and mutations are MCP-first via the Kubernetes MCP and Argo MCP servers (or the `just` recipes that wrap them). The only allowed SSH pattern in this repo is **in-cluster** access from workflow/probe pods into test VMs such as titan for post-mortem artifact reads.
+> **NO SSH FROM WORKSTATIONS — EVER.** All reads and mutations go through the Kubernetes API and MCP servers (or the `just` recipes that wrap them). The only SSH in this system is **in-cluster**: workflow pods and probe pods SSH into test VMs as the test execution mechanism. Workstation operators and agents have no SSH path to anything.
 
 ---
 
@@ -26,6 +26,8 @@
 | Validate a single Bluefin tag end-to-end | `just run-tests-tag <latest\|lts>` |
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
 | Validate the Flatcar lane | `just run-flatcar-smoke` |
+| Validate the dakota BST element graph (fast, no build) | `just run-dakota-validate` |
+| Build a dakota variant via BST on ghost | `just run-dakota-build [variant=default\|nvidia\|all]` |
 | Tail the most recent workflow's logs | `just logs` |
 | List workflows / VMs | `just list-workflows` · `just list-vms` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |
@@ -165,7 +167,9 @@ Any patch that must survive beyond a short debug session also needs a matching g
 
 ---
 
-## 7. SSH key rotation — deliberate, high-risk
+## 7. Test-VM key rotation — deliberate, high-risk
+
+This rotates the SSH key used **in-cluster** by workflow pods to reach test VMs. It is not SSH from a workstation — `ssh-keygen` runs locally only to generate key material, which is then stored in a k8s Secret.
 
 ```bash
 # 1. Generate a new key locally (do not commit it):

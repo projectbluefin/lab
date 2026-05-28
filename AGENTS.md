@@ -31,10 +31,12 @@ When deciding what to test or prioritize:
 
 ## Core Tenet: All Agent Operations Are API-Driven
 
-**Agents must use the Kubernetes API and MCP servers. Never SSH to nodes. Never kubectl from outside the cluster.**
+**No SSH from workstations — ever. All reads and mutations go through the Kubernetes API and MCP servers.**
+
+The only SSH in this system is **in-cluster**: workflow pods and probe pods SSH into test VMs (titan, fresh VMs) as the test execution mechanism. That is not an operator access pattern — it is how behave/qecore delivers tests. Workstation operators and agents have no SSH path to anything; they submit workflows and query the API.
 
 For canonical commands — workflow submission, ArgoCD actions, titan recovery, CronWorkflow operations,
-SSH rotation, PR queue steps, safe cleanup, bootstrap, and live fact lookup — see
+key secret rotation, PR queue steps, safe cleanup, bootstrap, and live fact lookup — see
 [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md).
 
 If an MCP tool doesn't exist for an operation, the right fix is to build or deploy that capability — not to fall back to SSH.
@@ -91,6 +93,7 @@ argo/
     bluefin-titan-smoke.yaml      smoke against persistent titan VMs
     bluefin-qa-pipeline.yaml      full pipeline: ensure-disk + provision + tests
     patch-golden-disk.yaml        retroactively fix SSH auth on existing disk
+    dakota-bst.yaml               drive dakota `just validate` / `just build` / `just lint` on ghost
   bluefin-smoke-test.yaml         submit: full BIB+provision+test run (latest)
   bluefin-test-matrix.yaml        submit: parallel latest+lts matrix
   flatcar-smoke-test.yaml         submit: Flatcar test run

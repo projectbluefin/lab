@@ -634,11 +634,25 @@ shape for new suites.
      -p vm-ip-latest=... -p vm-ip-lts=... \
      -p behave-tags="--tags @bluefin_4612" -n argo --watch
    ```
-5. **Local sanity** on a one-shot AT-SPI predicate:
+5. **In-cluster sanity** on a one-shot AT-SPI predicate (no workstation SSH — use a probe pod):
    ```bash
-   ssh bluefin-test@<vm-ip> \
-     'qecore-headless --session-type wayland --session-desktop gnome \
-      "python3 -c \"from dogtail.tree import root; shell=root.application(\\\"gnome-shell\\\"); print([(c.roleName,c.name) for c in shell.children[:20]])\""'
+   # 1. Spin up a probe pod with the SSH key and wait for it to be Ready
+   kubectl run probe -n argo --image=quay.io/fedora/fedora:latest \
+     --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"ghost"},"volumes":[{"name":"k","secret":{"secretName":"bluefin-test-ssh-key","defaultMode":384}}],"containers":[{"name":"probe","image":"quay.io/fedora/fedora:latest","command":["sleep","600"],"volumeMounts":[{"name":"k","mountPath":"/root/.ssh","readOnly":true}]}]}}'
+   kubectl wait -n argo pod/probe --for=condition=Ready --timeout=60s
+
+   # 2. Run the AT-SPI check from inside the probe pod
+   VM_IP=$(kubectl get vmi titan-bluefin -n bluefin-test -o jsonpath='{.status.interfaces[0].ipAddress}')
+   kubectl exec -n argo probe -- bash -c "
+     dnf install -y --quiet openssh-clients python3-pip 2>&1 | tail -2
+     pip install dogtail -q
+     ssh -o StrictHostKeyChecking=no -i /root/.ssh/id_ed25519 bluefin-test@${VM_IP} \
+       'qecore-headless --session-type wayland --session-desktop gnome \
+        \"python3 -c \\\"from dogtail.tree import root; shell=root.application(\\\\\\\"gnome-shell\\\\\\\"); print([(c.roleName,c.name) for c in shell.children[:20]])\\\"\"'
+   "
+
+   # 3. Clean up
+   kubectl delete pod -n argo probe
    ```
 6. **Common root causes**, in order: stale dogtail kwarg, GNOME 50 INT_MIN toggle,
    missing `unsafe_mode`, app a11y name drift, qecore version variable rename

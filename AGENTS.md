@@ -115,7 +115,7 @@ argo/
     run-flatcar-tests.yaml        SSH into Flatcar VM, run tests
     teardown-vm.yaml              delete VM + hostDisk
     teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
-    bluefin-titan-smoke.yaml      smoke against persistent titan VMs
+    bluefin-titan-smoke.yaml      deprecated manual smoke against operator-managed persistent VMs
     bluefin-qa-pipeline.yaml      full pipeline: ensure-disk + provision + tests
     patch-golden-disk.yaml        retroactively fix SSH auth on existing disk
     dakota-bst.yaml               drive dakota `just validate` / `just build` / `just lint` on ghost
@@ -124,8 +124,6 @@ argo/
   flatcar-smoke-test.yaml         submit: Flatcar test run
 manifests/                     ← ArgoCD (testing-lab-infra App) syncs these
   argo-server-nodeport.yaml       NodePort 32746 for external Argo API access
-  titan-bluefin.yaml              persistent titan VM (latest)
-  titan-lts.yaml                  persistent titan VM (lts)
   orphan-vm-cleanup.yaml          CronWorkflow: clean orphaned VMs every 2h
   nightly-smoke.yaml              CronWorkflow: nightly smoke latest @ 02:00 UTC
   nightly-smoke-lts.yaml          CronWorkflow: nightly smoke lts @ 02:30 UTC
@@ -155,19 +153,11 @@ Justfile                         Local shortcuts (require kubectl/argo access)
 
 `gts` and `lts-hwe` do NOT exist. Never use these tags.
 
-## Persistent (Titan) VMs
+## VM Lifecycle
 
-Two always-on VMs provide the fast test-iteration path — no BIB build and no VM provisioning wait:
+All Bluefin test VMs are now ephemeral. Nightlies and ad hoc validation runs provision fresh VMs through `bluefin-qa-pipeline` and tear them down on workflow exit; GitOps no longer manages persistent titan VM manifests in this repo.
 
-| VM | Namespace | Disk |
-|---|---|---|
-| `titan-bluefin` | `bluefin-test` | `/var/home/jorge/VMs/titans/titan-bluefin/image/disk.raw` |
-| `titan-lts` | `bluefin-lts-test` | `/var/home/jorge/VMs/titans/image/disk.raw` |
-
-Managed by ArgoCD via `manifests/titan-bluefin.yaml` and `manifests/titan-lts.yaml`.
-SSH key secret: `bluefin-test-ssh-key` in the `argo` namespace.
-Titan IPs drift; use the live lookup commands in [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md) instead of hardcoding them.
-Titan `authorized_keys` refresh remains human-gated; if titan SSH fails after rotation, file an issue for a human operator.
+The SSH key secret remains `bluefin-test-ssh-key` in the `argo` namespace for in-cluster test access.
 
 ## Test Stack
 
@@ -236,10 +226,10 @@ Loki captures workflow pod logs. Use the commands in [docs/agent-cheatsheet.md](
 | `bib-disk-check` | 100m / 500m | 128Mi / 512Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
 | `reflink-disk` | 100m / 500m | 128Mi / 512Mi |
-| `preflight` (titan) | 100m / 200m | 64Mi / 128Mi |
+| `preflight` (deprecated manual titan smoke) | 100m / 200m | 64Mi / 128Mi |
 
 ## Canonical Command Reference
 
 See [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md) for the canonical command reference.
-Use it for workflow run commands, ArgoCD commands, titan recovery, CronWorkflow operations,
+Use it for workflow run commands, ArgoCD commands, CronWorkflow operations,
 SSH rotation, PR queue steps, safe cleanup, bootstrap, self-check commands, and live cluster facts.

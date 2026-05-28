@@ -141,7 +141,8 @@ setup-titan-fixtures:
         -n {{ argo_ns }} \
         --wait --log
 
-# Run smoke against persistent titan VMs (no BIB build, instant start)
+# DEPRECATED: persistent titan VMs are no longer GitOps-managed in this repo.
+# This recipe only works if titan-bluefin and titan-lts were created manually.
 run-titan-smoke:
     #!/usr/bin/env bash
     set -euo pipefail

@@ -1,3 +1,5 @@
+# DEPRECATED: persistent titan VMs were removed from the GitOps-managed lab.
+# This template only works against manually-created titan-bluefin/titan-lts VMs.
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
@@ -5,9 +7,9 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Runs smoke tests against persistent titan VMs (no BIB build needed).
-      Use when: iterating on tests, CI is slow, or BIB is broken.
-      Prerequisites: titan-bluefin and titan-lts VMs must be running.
+      DEPRECATED: GitOps-managed titan VMs were removed from this repo.
+      This template only works when operators have manually created titan-bluefin and titan-lts VMs.
+      Use when: validating against those manually-managed persistent VMs.
 spec:
   arguments:
     parameters:

@@ -19,10 +19,10 @@
 
 | Situation | Run |
 |---|---|
-| Validate a smoke test or step change | `just run-titan-smoke` |
-| Validate atomic OS contract checks | `just run-titan-system` |
-| Validate developer or software suites | `just run-titan-developer` · `just run-titan-software` |
-| Pre-merge gate / promote a passing titan run | `just run-tests-matrix` |
+| Validate a smoke test or step change | `just run-tests-tag latest` |
+| Validate atomic OS contract checks | `argo submit --from workflowtemplate/bluefin-qa-pipeline -p image=ghcr.io/ublue-os/bluefin:latest -p image-tag=latest -p namespace=bluefin-test -p suites=system -p variant=latest -n argo --watch` |
+| Validate developer or software suites | `argo submit --from workflowtemplate/bluefin-qa-pipeline ... -p suites=developer\|software ... --watch` |
+| Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate a single Bluefin tag end-to-end | `just run-tests-tag <latest\|lts>` |
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
 | Validate the Flatcar lane | `just run-flatcar-smoke` |
@@ -32,7 +32,7 @@
 | List workflows / VMs | `just list-workflows` · `just list-vms` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |
 | Lint Argo YAML | `just lint` |
-| Bootstrap a fresh workstation-to-cluster connection | §10 |
+| Bootstrap a fresh workstation-to-cluster connection | §9 |
 
 Rule: **if a `just` recipe exists, use it.** Submit a `workflowtemplate/...` directly only when the situation is not in this table.
 
@@ -53,7 +53,6 @@ Run `just logs` first. Then match a row:
 | VM stuck `Terminating` | `kubectl delete pod virt-launcher-<vm> -n <ns> --force` |
 | `qemu-img: command not found` (Flatcar prep) | Use `quay.io/fedora/fedora:latest` for the Flatcar prep image |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
-| Titan has no IP | Run §5 |
 | Workflow stuck `Pending` | Run §3 |
 | Template change did not take effect | Run §4 |
 
@@ -120,27 +119,7 @@ Do **not** `kubectl apply` a rejected WorkflowTemplate.
 
 ---
 
-## 5. Titan recovery — fast path is down
-
-```bash
-just argocd-sync
-kubectl get vmi titan-bluefin -n bluefin-test -w
-kubectl get vmi titan-lts     -n bluefin-lts-test -w
-just run-titan-smoke
-```
-
-Expected sequence:
-1. `argocd-sync` finishes with both applications Healthy.
-2. Each `kubectl get vmi ... -w` stream eventually shows an IP in `.status.interfaces[0].ipAddress`.
-3. `just run-titan-smoke` completes successfully.
-
-**Do not rebuild a golden disk to fix a titan.** Titans use separate persistent disks under `/var/home/jorge/VMs/titans/...`.
-
-If titan SSH fails after key rotation, the titan `authorized_keys` refresh path is human-gated — file an issue for a human operator to run the manual key-injection procedure.
-
----
-
-## 6. CronWorkflow ops — pause / resume / backfill
+## 5. CronWorkflow ops — pause / resume / backfill
 
 ```bash
 # Suspend during a debugging session:
@@ -167,7 +146,7 @@ Any patch that must survive beyond a short debug session also needs a matching g
 
 ---
 
-## 7. Test-VM key rotation — deliberate, high-risk
+## 6. Test-VM key rotation — deliberate, high-risk
 
 This rotates the SSH key used **in-cluster** by workflow pods to reach test VMs. It is not SSH from a workstation — `ssh-keygen` runs locally only to generate key material, which is then stored in a k8s Secret.
 
@@ -188,8 +167,8 @@ just patch-disk latest
 just patch-disk lts
 
 # 4. Confirm via real runs:
-just run-tests-matrix
-just run-titan-smoke
+just run-tests-tag latest
+just run-tests-tag lts
 
 # 5. Verify the new fingerprint:
 kubectl get secret bluefin-test-ssh-key -n argo \
@@ -198,15 +177,15 @@ kubectl get secret bluefin-test-ssh-key -n argo \
 
 If `patch-disk` fails because the old key can no longer SSH into the golden disk, rebuild that golden disk with `just ensure-disk <tag>`.
 
-If `run-titan-smoke` fails after the secret rotation, stop there: titan `authorized_keys` refresh is human-gated — file an issue for a human operator to run the manual key-injection procedure on the titan disk.
+If `patch-disk` succeeds but fresh workflows still fail SSH, file an issue with the failing workflow name, pod name, and log excerpt.
 
 ---
 
-## 8. PR queue mode — Vanguard Lab Strike Report
+## 7. PR queue mode — Vanguard Lab Strike Report
 
 Mandatory gate for `knuckle`, `dakota`, and this repo's PRs.
 
-1. Run the lab loop end-to-end — `just run-titan-smoke` minimum, `just run-tests-matrix` for high-risk changes.
+1. Run the lab loop end-to-end — `just run-tests-tag latest` minimum, `just run-tests-matrix` for high-risk changes.
 2. Collect **real evidence** using **MCP tools only** — not bash `argo`/`kubectl` commands:
    - Workflow status/steps → `argo-mcp-get_workflow` / `argo-mcp-list_workflows`
    - Log output → `argo-mcp-get_workflow_logs`
@@ -224,63 +203,57 @@ Hard exit checklist:
 
 ---
 
-## 9. Safe cleanup — what you may delete
+## 8. Safe cleanup — what you may delete
 
 | Resource | Safe? |
 |---|---|
-| VM in `bluefin-test` labelled `app=titan-bluefin` | **No.** Never. |
-| VM in `bluefin-lts-test` labelled `app=titan-lts` | **No.** Never. |
-| Non-titan VM in `bluefin-test` / `bluefin-lts-test` / `flatcar-test`, with no live workflow | Yes — delete the single VM after the label preflight below, or run `orphan-vm-cleanup` |
+| VM in `bluefin-test` / `bluefin-lts-test` / `flatcar-test`, with no live workflow | Yes — delete the single VM or run `orphan-vm-cleanup` |
 | `just delete-vms` | Only for full teardown when you intentionally accept that all test VMs in those namespaces will be deleted |
 | Workflows in `argo` | Yes — `just delete-workflows` |
 
-Single-VM deletion preflight:
+Single-VM deletion:
 
 ```bash
-kubectl get vm <name> -n <ns> -o jsonpath='{.metadata.labels.app}{"\n"}'
-# Starts with "titan-"? Stop.
 kubectl delete vm <name> -n <ns> --wait=false
 ```
 
 ---
 
-## 10. Bootstrap — one-time, fresh cluster access
+## 9. Bootstrap — one-time, fresh cluster access
 
 ```bash
 just setup-ssh-secret
 just setup-argocd
 just argocd-sync
 just ensure-disk latest
-just run-titan-smoke
+just run-tests-tag latest
 ```
 
 ---
 
-## 11. Self-check before claiming cluster healthy
+## 10. Self-check before claiming cluster healthy
 
 ```bash
 just argocd-status
 kubectl get cronworkflow -n argo
 just list-vms
 just list-workflows | head -20
-just run-titan-smoke
+just run-tests-tag latest
 ```
 
 Expected steady state:
 - both ArgoCD applications are Synced + Healthy
 - all three CronWorkflows are present
-- titan VMs are Running
-- the most recent fast-path run is green
+- no idle test VMs remain after workflows finish
+- the most recent fresh-VM run is green
 
 ---
 
-## 12. Discover live cluster facts — do not trust stale docs
+## 11. Discover live cluster facts — do not trust stale docs
 
 | Fact | Command |
 |---|---|
 | SSH key fingerprint | `kubectl get secret bluefin-test-ssh-key -n argo -o jsonpath='{.data.id_ed25519\.pub}' \| base64 -d \| ssh-keygen -lf -` |
-| Titan latest IP | `kubectl get vmi titan-bluefin -n bluefin-test -o jsonpath='{.status.interfaces[0].ipAddress}{"\n"}'` |
-| Titan lts IP | `kubectl get vmi titan-lts -n bluefin-lts-test -o jsonpath='{.status.interfaces[0].ipAddress}{"\n"}'` |
 | Live WorkflowTemplate body | `kubectl get workflowtemplate <name> -n argo -o yaml` |
 | CronWorkflow schedules | `kubectl get cronworkflow -n argo` |
 | ArgoCD revision in cluster | `argocd app get testing-lab | grep '^Revision:'` |

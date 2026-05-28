@@ -949,6 +949,76 @@ def date_menu_shows_notification(context, title, body) -> None:
     )
 
 
+def _matching_process_ids(app_id: str) -> list[str]:
+    patterns = {
+        "org.mozilla.firefox": ("org.mozilla.firefox", "firefox"),
+    }.get(app_id, (app_id,))
+    seen = []
+    for pattern in patterns:
+        result = subprocess.run(
+            ["pgrep", "-f", pattern],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        for pid in result.stdout.splitlines():
+            pid = pid.strip()
+            if pid and pid not in seen:
+                seen.append(pid)
+    return seen
+
+
+# ── Browser workflows ────────────────────────────────────────────────────────
+
+@step('Application "{app_id}" process is running')
+def application_process_is_running(context, app_id) -> None:
+    for _ in range(10):
+        pids = _matching_process_ids(app_id)
+        if pids:
+            context.last_command_output = "\n".join(pids)
+            print(f"Application process {app_id!r} running with PIDs: {pids}", flush=True)
+            return
+        sleep(1)
+    raise AssertionError(f"Application process {app_id!r} is not running")
+
+
+@step('Kill application "{app_id}" process')
+def kill_application_process(context, app_id) -> None:
+    pids = _matching_process_ids(app_id)
+    if not pids:
+        raise AssertionError(f"Application process {app_id!r} is not running")
+
+    result = subprocess.run(
+        ["kill", *pids],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr.strip() or result.stdout.strip() or f"kill failed for {app_id}")
+
+    for _ in range(10):
+        remaining = _matching_process_ids(app_id)
+        if not remaining:
+            return
+        sleep(1)
+
+    raise AssertionError(f"Application process {app_id!r} still running after kill: {remaining}")
+
+
+@step('Open URL "{url}" via xdg-open')
+def open_url_via_xdg_open(context, url) -> None:
+    result = subprocess.run(
+        ["xdg-open", url],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if result.returncode != 0:
+        raise AssertionError(result.stderr.strip() or result.stdout.strip() or f"xdg-open failed for {url}")
+    sleep(2)
+
+
 # ── Default browser ──────────────────────────────────────────────────────────
 
 @step("xdg-settings default browser is ready")

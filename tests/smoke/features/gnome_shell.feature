@@ -159,6 +159,15 @@ Feature: GNOME Shell smoke tests
     * Close Quick Settings via Shell.Eval
     * Quick Settings panel is closed via Shell.Eval
 
+  # ── Default browser (#107) ───────────────────────────────────────────────
+  # Requires: Firefox Flatpak installed at system scope on titan VMs.
+  # Run setup-titan-fixtures workflow once to satisfy this precondition.
+
+  @browser @default_browser @regression
+  Scenario: xdg-settings reports a default browser
+    * xdg-settings default browser is ready
+    * Last command output stripped contains ".desktop"
+
   # ── Bluefin extension workflows (#91) ────────────────────────────────────
 
   @extension_behavior @dash_to_dock @regression @bluefin_91

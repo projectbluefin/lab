@@ -110,6 +110,30 @@ run-tests-matrix:
         -n {{ argo_ns }} \
         --watch
 
+# One-time fixture setup for titan VMs: installs Firefox Flatpak and sets default browser.
+# Run this before smoke tests that cover xdg-settings (#107).
+setup-titan-fixtures:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IP_LATEST=$(kubectl get vmi titan-bluefin -n bluefin-test \
+        -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null)
+    IP_LTS=$(kubectl get vmi titan-lts -n bluefin-lts-test \
+        -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null)
+    : "${IP_LATEST:?titan-bluefin VMI not found or has no IP}"
+    : "${IP_LTS:?titan-lts VMI not found or has no IP}"
+    echo "Setting up titan-bluefin (${IP_LATEST})..."
+    argo submit --from workflowtemplate/setup-titan-fixtures \
+        -p vm-ip="${IP_LATEST}" \
+        -p variant=latest \
+        -n {{ argo_ns }} \
+        --wait --log
+    echo "Setting up titan-lts (${IP_LTS})..."
+    argo submit --from workflowtemplate/setup-titan-fixtures \
+        -p vm-ip="${IP_LTS}" \
+        -p variant=lts \
+        -n {{ argo_ns }} \
+        --wait --log
+
 # Run smoke against persistent titan VMs (no BIB build, instant start)
 run-titan-smoke:
     #!/usr/bin/env bash

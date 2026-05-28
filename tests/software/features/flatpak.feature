@@ -31,6 +31,26 @@ Feature: gnome-software (Bazaar) smoke tests
     * Type text: "Firefox" with uinput
     * Wait until "Firefox" "label" appears in "software"
 
+  # ── System-level Flatpak health (#93) ────────────────────────────────────
+  # These scenarios prove the Flatpak substrate is healthy alongside the UI.
+
+  @software @flatpak @system
+  Scenario: Flathub remote is configured at system scope
+    * Run and save command output: "flatpak remote-list --system 2>&1"
+    * Last command output contains "flathub"
+
+  @software @flatpak @system
+  Scenario: System-scoped Flatpak applications are installed
+    * Run and save command output: "flatpak list --system --app 2>/dev/null | grep -q . && echo has_apps || echo no_apps"
+    * Last command output contains "has_apps"
+
+  @software @flatpak @system
+  Scenario: Appstream metadata refresh succeeds without error
+    * Run and save command output: "flatpak update --appstream --noninteractive --system; echo \"appstream:exit:$?\""
+    * Last command output contains "appstream:exit:0"
+
+  # ── Regression coverage ───────────────────────────────────────────────────
+
   @software @regression @bluefin_4062
   Scenario: Flatpak updates section is reachable without crash (bluefin#4062)
     * Left click "Installed" "toggle button" in "software"

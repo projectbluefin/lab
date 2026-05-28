@@ -4,6 +4,7 @@ Custom step definitions for software suite.
 common_steps covers the low-level lifecycle and UI actions; custom aliases here
 map the Bazaar workflow wording onto those shared qecore patterns.
 """
+import subprocess
 
 from behave import step
 from qecore.common_steps import *  # noqa: F401,F403
@@ -11,6 +12,21 @@ from qecore.common_steps import *  # noqa: F401,F403
 
 def _require_bazaar(app_id: str) -> None:
     assert app_id == "org.gnome.Software", f"Unsupported application id: {app_id}"
+
+
+def _last_output(context: object) -> str:
+    return (
+        getattr(context, "command_stdout", None)
+        or getattr(context, "last_command_output", None)
+        or getattr(context, "last_run_output", None)
+        or ""
+    ).strip()
+
+
+@step('Last command output contains "{text}"')
+def last_command_output_contains(context, text) -> None:
+    output = _last_output(context)
+    assert text in output, f"Expected {text!r} in output:\n{output[:500]}"
 
 
 @step('Start "{app_id}" via shell')

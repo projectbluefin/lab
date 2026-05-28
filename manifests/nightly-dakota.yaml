@@ -1,0 +1,40 @@
+# CronWorkflow: runs the dakota QA pipeline nightly at 03:00 UTC.
+# References dakota-qa-pipeline WorkflowTemplate — no DAG duplication.
+# Runs are retained for 24 hours (ttlStrategy) then cleaned up.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: nightly-dakota
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  schedules:
+    - "0 3 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  suspend: false
+  workflowMetadata:
+    labels:
+      app.kubernetes.io/part-of: bluefin-test-suite
+      bluefin.io/trigger: nightly
+      bluefin.io/suite: smoke
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowSuccess
+    ttlStrategy:
+      secondsAfterCompletion: 86400
+    workflowTemplateRef:
+      name: dakota-qa-pipeline
+    arguments:
+      parameters:
+        - name: variant
+          value: "default"
+        - name: branch
+          value: "main"
+        - name: suites
+          value: "smoke"
+        - name: namespace
+          value: "bluefin-test"

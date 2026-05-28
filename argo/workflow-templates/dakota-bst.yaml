@@ -29,9 +29,8 @@ spec:
 
     # ── Pipeline: validate → build-export-push ──────────────────────────────
     - name: pipeline
-      dag:
-        tasks:
-          - name: validate
+      steps:
+        - - name: validate
             template: bst-validate
             arguments:
               parameters:
@@ -39,8 +38,7 @@ spec:
                   value: "{{workflow.parameters.branch}}"
                 - name: repo
                   value: "{{workflow.parameters.repo}}"
-          - name: build-export-push
-            depends: "validate.Succeeded"
+        - - name: build-export-push
             template: bst-build-export-push
             arguments:
               parameters:

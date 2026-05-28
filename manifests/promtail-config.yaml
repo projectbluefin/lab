@@ -1,0 +1,50 @@
+# Patch promtail to scrape CRI pod logs for bluefin-test-suite pods.
+# k3s/containerd stores logs under /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log,
+# so promtail needs a two-level glob after the pod UID.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/component: logging
+    app.kubernetes.io/name: promtail
+    app.kubernetes.io/managed-by: argocd
+    app: promtail
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+    positions:
+      filename: /tmp/positions.yaml
+    clients:
+      - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+    scrape_configs:
+      - job_name: bluefin-test-pods
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_part_of]
+            regex: bluefin-test-suite
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_part_of]
+            target_label: app_kubernetes_io_part_of
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_bluefin_io_suite]
+            target_label: suite
+          - source_labels: [__meta_kubernetes_pod_label_bluefin_io_variant]
+            target_label: variant
+          - source_labels: [__meta_kubernetes_pod_label_bluefin_io_step]
+            target_label: step
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - replacement: /var/log/pods/*$1/*/*.log
+            source_labels: [__meta_kubernetes_pod_uid]
+            target_label: __path__
+            regex: (.*)
+            separator: /

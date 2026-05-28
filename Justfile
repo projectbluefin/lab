@@ -160,6 +160,13 @@ run-titan-smoke:
         -n {{ argo_ns }} \
         --watch
 
+# One-shot cleanup of titan VM disk files after ArgoCD prunes the VMs.
+# dry-run=true by default — pass false to actually delete.
+run-titan-disk-cleanup dry-run="true":
+    argo submit --from workflowtemplate/titan-disk-cleanup \
+      -p dry-run={{ dry-run }} \
+      -n {{ argo_ns }} --watch
+
 # Run system (atomic OS contract) tests on persistent titan VMs (fast path).
 run-titan-system:
     #!/usr/bin/env bash

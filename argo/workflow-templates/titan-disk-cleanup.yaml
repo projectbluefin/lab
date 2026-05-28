@@ -1,0 +1,81 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: titan-disk-cleanup
+  namespace: argo
+  annotations:
+    description: |
+      One-shot cleanup of titan persistent VM disk files after ArgoCD has
+      pruned the titan-bluefin and titan-lts VirtualMachine resources.
+
+      Run ONLY after confirming the VMs are gone:
+        kubectl get vm -n bluefin-test
+        kubectl get vm -n bluefin-lts-test
+
+      Default: dry-run=true (prints what would be deleted).
+      Set dry-run=false to actually delete.
+
+      Usage: just run-titan-disk-cleanup
+             just run-titan-disk-cleanup false   # actually delete
+spec:
+  serviceAccountName: argo
+  entrypoint: cleanup
+  arguments:
+    parameters:
+      - name: dry-run
+        value: "true"
+  templates:
+    - name: cleanup
+      inputs:
+        parameters:
+          - name: dry-run
+            value: "true"
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: titans-bluefin
+          hostPath:
+            path: /var/home/jorge/VMs/titans/titan-bluefin
+            type: DirectoryOrCreate
+        - name: titans-lts
+          hostPath:
+            path: /var/home/jorge/VMs/titans
+            type: DirectoryOrCreate
+      script:
+        image: cgr.dev/chainguard/bash:latest
+        command: [bash]
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+          - name: titans-bluefin
+            mountPath: /var/home/jorge/VMs/titans/titan-bluefin
+          - name: titans-lts
+            mountPath: /var/home/jorge/VMs/titans
+        source: |
+          set -euo pipefail
+          DRY_RUN="{{inputs.parameters.dry-run}}"
+          DISKS=(
+            "/var/home/jorge/VMs/titans/titan-bluefin/image/disk.raw"
+            "/var/home/jorge/VMs/titans/image/disk.raw"
+          )
+          for DISK in "${DISKS[@]}"; do
+            if [[ -f "${DISK}" ]]; then
+              SIZE=$(du -sh "${DISK}" | cut -f1)
+              if [[ "${DRY_RUN}" == "true" ]]; then
+                echo "DRY-RUN: would delete ${DISK} (${SIZE})"
+              else
+                rm -f "${DISK}"
+                echo "Deleted: ${DISK} (was ${SIZE})"
+              fi
+            else
+              echo "Not found (already clean): ${DISK}"
+            fi
+          done
+          echo "Done."

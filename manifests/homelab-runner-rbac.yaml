@@ -1,0 +1,83 @@
+---
+# homelab-runner ServiceAccount — used by all homelab WorkflowTemplates
+# (homelab-substrate, homelab-storage, homelab-access-probe, homelab-restore-drill)
+#
+# Principle of least privilege vs the 'argo' SA:
+#   - No KubeVirt/CDI permissions (no VirtualMachine/DataVolume CRUD)
+#   - No Argo Workflow management permissions
+#   - Only what kubectl needs: namespace lifecycle + namespace-scoped fixtures
+#
+# Dynamic namespaces (homelab-*-test-<id>) are created at workflow start, so
+# namespace-scoped permissions must be cluster-wide via ClusterRoleBinding.
+# This is narrower than argo SA but still cluster-scoped — tracked in issue #146.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-runner
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homelab-runner-role
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+rules:
+  # Namespace lifecycle — create per-run namespaces, delete on cleanup
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  # Workload fixtures — Deployments, ReplicaSets (for rollout status)
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Network fixtures
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Storage fixtures
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Pod access — exec for backup/restore, log capture, kubectl cp, wait readiness
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # ConfigMaps — test fixtures and config payloads
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Events — read-only for diagnostics
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  # Argo workflow result reporting (required by emissary executor)
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-runner-binding
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo

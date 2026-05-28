@@ -31,7 +31,7 @@ When deciding what to test or prioritize:
 
 ## Core Tenet: All Agent Operations Are API-Driven
 
-**No SSH from workstations — ever. All reads and mutations go through the Kubernetes API and MCP servers.**
+**Use Kubernetes MCP tools for all cluster reads/mutations. Never SSH to ghost from a workstation.**
 
 The only SSH in this system is **in-cluster**: workflow pods and probe pods SSH into test VMs (fresh KubeVirt VMs) as the test execution mechanism. That is not an operator access pattern — it is how behave/qecore delivers tests. Workstation operators and agents have no SSH path to anything; they submit workflows and query the API.
 
@@ -39,7 +39,7 @@ For canonical commands — workflow submission, ArgoCD actions, CronWorkflow ope
 key secret rotation, PR queue steps, safe cleanup, bootstrap, and live fact lookup — see
 [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md).
 
-If an MCP tool doesn't exist for an operation, the right fix is to build or deploy that capability — not to fall back to SSH.
+If an MCP tool doesn't exist for an operation, the right fix is to build or deploy that capability — not to fall back to workstation `kubectl`/`argo`, and never to SSH.
 
 ## Core Tenet: Knuckle VM Lifecycle Is Argo-Native
 
@@ -141,7 +141,7 @@ tests/
 AGENTS.md                        This file
 RUNBOOK.md                       Timeless architecture + failure modes
 SECURITY.md                      Accepted homelab trade-offs and risks
-Justfile                         Local shortcuts (require kubectl/argo access)
+Justfile                         Repo-owner convenience wrappers (require kubectl/argo access; agents use MCP)
 ```
 
 ## Image Variants

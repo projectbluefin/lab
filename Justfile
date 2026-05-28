@@ -3,6 +3,9 @@
 #   - WorkflowTemplate changes go via git push to main; ArgoCD auto-syncs.
 #   - Do NOT kubectl apply templates directly. Do NOT SSH to ghost or exo-1.
 #   - Workflow submission and monitoring: use these just targets or Argo MCP tools.
+#   - These recipes are convenience wrappers for the repo owner on a workstation.
+#   - Agents and automated systems should use MCP instead of invoking local kubectl/argo.
+#   - No recipe SSHes to ghost; do NOT add workstation SSH hops.
 #   - Cluster bootstrap (setup-ssh-secret, setup-argocd) runs once from workstation.
 
 image     := env_var_or_default("BLUEFIN_IMAGE", "ghcr.io/ublue-os/bluefin:latest")
@@ -224,6 +227,7 @@ run-flatcar-smoke:
         --watch
 
 # ── Observation ─────────────────────────────────────────────────────────────
+# Repo-owner convenience wrappers only; agents and automation should observe/clean up via MCP, never via SSH.
 
 # List all test workflows
 list-workflows:

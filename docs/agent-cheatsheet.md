@@ -11,7 +11,7 @@
 > - [`AGENTS.md`](../AGENTS.md) — hard policy and tenets
 
 > [!WARNING]
-> **NO SSH FROM WORKSTATIONS — EVER.** All reads and mutations go through the Kubernetes API and MCP servers (or the `just` recipes that wrap them). The only SSH in this system is **in-cluster**: workflow pods and probe pods SSH into test VMs as the test execution mechanism. Workstation operators and agents have no SSH path to anything.
+> **Use Kubernetes MCP tools for all cluster reads/mutations. Never SSH to ghost from a workstation.** Use Argo MCP for workflow and CronWorkflow inspection/control. The only SSH in this system is **in-cluster**: workflow pods and probe pods SSH into test VMs as the test execution mechanism. Workstation operators and agents have no SSH path to anything.
 
 ---
 
@@ -20,8 +20,8 @@
 | Situation | Run |
 |---|---|
 | Validate a smoke test or step change | `just run-tests-tag latest` |
-| Validate atomic OS contract checks | `argo submit --from workflowtemplate/bluefin-qa-pipeline -p image=ghcr.io/ublue-os/bluefin:latest -p image-tag=latest -p namespace=bluefin-test -p suites=system -p variant=latest -n argo --watch` |
-| Validate developer or software suites | `argo submit --from workflowtemplate/bluefin-qa-pipeline ... -p suites=developer\|software ... --watch` |
+| Validate atomic OS contract checks | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=system` |
+| Validate developer or software suites | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=developer` or `suites=software` |
 | Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate a single Bluefin tag end-to-end | `just run-tests-tag <latest\|lts>` |
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
@@ -32,9 +32,9 @@
 | List workflows / VMs | `just list-workflows` · `just list-vms` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |
 | Lint Argo YAML | `just lint` |
-| Bootstrap a fresh workstation-to-cluster connection | §9 |
+| Bootstrap repo-owner workstation access | §9 |
 
-Rule: **if a `just` recipe exists, use it.** Submit a `workflowtemplate/...` directly only when the situation is not in this table.
+Rule: **if a `just` recipe exists, use it.** Otherwise use Kubernetes MCP / Argo MCP recipes from this guide; do not fall back to workstation `kubectl`/`argo`.
 
 ---
 
@@ -50,7 +50,7 @@ Run `just logs` first. Then match a row:
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |
 | `outputs.result` is `Waiting...` or other debug text | Send debug output to `>&2`; keep stdout for the result only |
-| VM stuck `Terminating` | `kubectl delete pod virt-launcher-<vm> -n <ns> --force` |
+| VM stuck `Terminating` | Use `kubernetes-mcp-pods_delete` on the matching `virt-launcher-*` pod |
 | `qemu-img: command not found` (Flatcar prep) | Use `quay.io/fedora/fedora:latest` for the Flatcar prep image |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
 | Workflow stuck `Pending` | Run §3 |
@@ -63,7 +63,7 @@ If no row matches:
 2. Query Loki for "=== BEHAVE RESULTS JSON ==="
 3. Query Loki for "STEP_ERROR"
 4. Query Loki for "AT-SPI tree written"
-5. argo get <workflow-name> -n argo
+5. argo-mcp-get_workflow <workflow-name>
 ```
 
 Loki: <http://192.168.1.102:30100>. Pod label: `app.kubernetes.io/part-of=bluefin-test-suite`.
@@ -72,19 +72,19 @@ Loki: <http://192.168.1.102:30100>. Pod label: `app.kubernetes.io/part-of=bluefi
 
 ## 3. Capacity triage — cluster feels slow
 
-```bash
-just list-workflows
-kubectl top nodes
-kubectl get vmi -A
-kubectl get pods -A --field-selector=status.phase=Pending
-kubectl top pods -A --sort-by=cpu | head -10
+```text
+1. just list-workflows
+2. kubernetes-mcp-nodes_top
+3. kubernetes-mcp-resources_list apiVersion=kubevirt.io/v1 kind=VirtualMachineInstance
+4. kubernetes-mcp-pods_list fieldSelector=status.phase=Pending
+5. kubernetes-mcp-pods_top all_namespaces=true
 ```
 
 | Symptom | Action |
 |---|---|
 | Many `bib-img-*` pods Running | Avoid starting another fresh-VM lane until the current BIB workload finishes |
-| Workflows `Pending` | `kubectl top pods -A --sort-by=cpu | head -10` → identify the hog before submitting more work |
-| Many `virt-launcher-*` pods with no corresponding live workflow | `kubectl create job --from=cronworkflow/orphan-vm-cleanup orphan-$(date +%s) -n argo` |
+| Workflows `Pending` | Use `kubernetes-mcp-pods_top` to identify the current CPU hog before submitting more work |
+| Many `virt-launcher-*` pods with no corresponding live workflow | Use Kubernetes MCP to create a one-shot cleanup Job from `orphan-vm-cleanup` |
 
 Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limits**.
 
@@ -97,18 +97,17 @@ Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limit
    -> expected: your commit is visible on origin/main.
    -> if not: push first.
 
-2. argocd app get testing-lab | grep '^Revision:'
-   -> expected: the revision matches or post-dates your commit.
+2. just argocd-status
+   -> expected: `testing-lab` is synced to a revision that matches or post-dates your commit.
    -> if older: just argocd-sync
 
-3. argocd app get testing-lab | grep '^Health Status:'
-   -> expected: Healthy
-   -> if not Healthy: argocd app get testing-lab | sed -n '/Conditions:/,$p'
-      fix the rejected field in git, push again, then repeat step 2.
+3. just argocd-status
+   -> expected: `testing-lab` is Healthy.
+   -> if not Healthy: inspect the reported condition, fix the rejected field in git, push again, then repeat step 2.
 
-4. kubectl get workflowtemplate <name> -n argo -o yaml | grep <field>
+4. argo-mcp-get_workflow_template <name>
    -> expected: the new field value is live.
-   -> if still old: just argocd-sync && argocd app wait testing-lab --health
+   -> if still old: rerun `just argocd-sync`, wait for health, then re-check.
 
 5. Was the workflow submitted before the reconcile finished?
    -> workflows snapshot the template at submit time.
@@ -121,19 +120,17 @@ Do **not** `kubectl apply` a rejected WorkflowTemplate.
 
 ## 5. CronWorkflow ops — pause / resume / backfill
 
-```bash
-# Suspend during a debugging session:
-kubectl patch cronworkflow nightly-smoke     -n argo --type=merge -p '{"spec":{"suspend":true}}'
-kubectl patch cronworkflow nightly-smoke-lts -n argo --type=merge -p '{"spec":{"suspend":true}}'
+```text
+Suspend during a debugging session:
+- argo-mcp-suspend_cron_workflow nightly-smoke
+- argo-mcp-suspend_cron_workflow nightly-smoke-lts
 
-# Resume:
-kubectl patch cronworkflow nightly-smoke     -n argo --type=merge -p '{"spec":{"suspend":false}}'
-kubectl patch cronworkflow nightly-smoke-lts -n argo --type=merge -p '{"spec":{"suspend":false}}'
+Resume:
+- argo-mcp-resume_cron_workflow nightly-smoke
+- argo-mcp-resume_cron_workflow nightly-smoke-lts
 
-# Backfill / run now:
-kubectl create job --from=cronworkflow/nightly-smoke       backfill-$(date +%s) -n argo
-kubectl create job --from=cronworkflow/nightly-smoke-lts   backfill-lts-$(date +%s) -n argo
-kubectl create job --from=cronworkflow/orphan-vm-cleanup   orphan-$(date +%s) -n argo
+Backfill / run now:
+- Use Kubernetes MCP to create a one-shot Job cloned from `nightly-smoke`, `nightly-smoke-lts`, or `orphan-vm-cleanup`
 ```
 
 | Name | Schedule (UTC) | Purpose |
@@ -188,8 +185,8 @@ Mandatory gate for `knuckle`, `dakota`, and this repo's PRs.
 1. Run the lab loop end-to-end — `just run-tests-tag latest` minimum, `just run-tests-matrix` for high-risk changes.
 2. Collect **real evidence** using **MCP tools only** — not bash `argo`/`kubectl` commands:
    - Workflow status/steps → `argo-mcp-get_workflow` / `argo-mcp-list_workflows`
-   - Log output → `argo-mcp-get_workflow_logs`
-   - Pod/VMI state → `kubectl` MCP tools
+   - Log output → `argo-mcp-logs_workflow`
+   - Pod/VMI state → `kubernetes-mcp-pods_get` / `kubernetes-mcp-resources_list`
 3. Post the report on the PR using [`docs/vanguard-report-template.md`](vanguard-report-template.md).
 4. Only then apply `agent-tested` and approve / queue.
 
@@ -213,8 +210,8 @@ Hard exit checklist:
 
 Single-VM deletion:
 
-```bash
-kubectl delete vm <name> -n <ns> --wait=false
+```text
+Use `kubernetes-mcp-resources_delete` with `apiVersion: kubevirt.io/v1`, `kind: VirtualMachine`, the VM name, and the target namespace.
 ```
 
 ---
@@ -233,12 +230,12 @@ just run-tests-tag latest
 
 ## 10. Self-check before claiming cluster healthy
 
-```bash
-just argocd-status
-kubectl get cronworkflow -n argo
-just list-vms
-just list-workflows | head -20
-just run-tests-tag latest
+```text
+1. just argocd-status
+2. argo-mcp-list_cron_workflows namespace=argo
+3. just list-vms
+4. just list-workflows
+5. just run-tests-tag latest
 ```
 
 Expected steady state:
@@ -253,7 +250,8 @@ Expected steady state:
 
 | Fact | Command |
 |---|---|
-| SSH key fingerprint | `kubectl get secret bluefin-test-ssh-key -n argo -o jsonpath='{.data.id_ed25519\.pub}' \| base64 -d \| ssh-keygen -lf -` |
-| Live WorkflowTemplate body | `kubectl get workflowtemplate <name> -n argo -o yaml` |
-| CronWorkflow schedules | `kubectl get cronworkflow -n argo` |
-| ArgoCD revision in cluster | `argocd app get testing-lab | grep '^Revision:'` |
+| SSH key fingerprint | `kubernetes-mcp-resources_get` the `bluefin-test-ssh-key` Secret, decode `.data.id_ed25519.pub`, then run `ssh-keygen -lf -` locally |
+| Live WorkflowTemplate body | `argo-mcp-get_workflow_template <name>` |
+| CronWorkflow schedules | `argo-mcp-list_cron_workflows namespace=argo` |
+| ArgoCD revision in cluster | `just argocd-status` |
+| Pending pods | `kubernetes-mcp-pods_list fieldSelector=status.phase=Pending` |

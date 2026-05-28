@@ -11,109 +11,69 @@ Pair with:
 - [`vanguard-report-template.md`](vanguard-report-template.md) — PR verification report
 
 > [!WARNING]
-> **No workstation SSH to ghost or exo-1.** Use Kubernetes MCP, Argo MCP, or the `just` wrappers for all cluster inspection and mutations. The only acceptable SSH path in this repo is **in-cluster** access from workflow/probe pods into test VMs when the test harness or post-mortem artifact collection requires it.
+> **Use Kubernetes MCP tools for all cluster reads/mutations. Never SSH to ghost from a workstation.** Use Argo MCP or repo-owner `just` wrappers for workflow control. The only acceptable SSH path in this repo is **in-cluster** access from workflow/probe pods into test VMs when the test harness or post-mortem artifact collection requires it.
 
 ---
 
 ## 1. The 60-second mental model
 
-```
+```text
 You ──submit──► Argo Workflow (argo namespace)
                   │
                   ├─ git-sync clones testing-lab @ <branch>
                   ├─ ensure-disk (optional) builds or validates the golden disk
-                  ├─ provision-vm creates a fresh KubeVirt VM (skipped for titan runs)
+                  ├─ provision-vm creates a fresh KubeVirt VM
                   ├─ run-gnome-tests SSHes into the VM and runs qecore + behave/pytest
                   └─ teardown deletes the VM and per-run hostDisk clone
 ```
 
-Two execution paths:
-
-| Path | Speed | Use when |
-|---|---|---|
-| Titan (persistent) | ~5 min | Iterating on tests or suites |
-| Fresh VM (BIB) | ~10–14 min | Validating image, golden-disk, or pre-merge matrix changes |
+The normal operator path is now **fresh-VM only**. Persistent titan recovery flows are gone.
 
 ---
 
 ## 2. Picking the right path
 
-```text
-Need to validate a test or step change?
-  -> just run-titan-smoke
-  -> if it passes and the change is high risk: just run-tests-matrix
+| Goal | Preferred path |
+|---|---|
+| Validate a smoke test or step change | `just run-tests-tag latest` |
+| Validate atomic OS contract checks | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=system` |
+| Validate developer or software suites | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=developer` or `suites=software` |
+| Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
+| Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
+| Validate Flatcar | `just run-flatcar-smoke` |
+| Validate dakota BST graph | `just run-dakota-validate` |
+| Build a dakota variant on ghost | `just run-dakota-build [variant=default|nvidia|all]` |
 
-Need to validate the system suite?
-  -> just run-titan-system
-
-Need to validate a golden-disk or image change?
-  -> just ensure-disk <tag>
-  -> just run-tests-tag <tag>
-  -> if both latest and lts matter: just run-tests-matrix
-
-Need to validate Flatcar?
-  -> just run-flatcar-smoke
-
-Need to recover a failed titan fast path?
-  -> go to §8
-```
+Rule: if a `just` recipe exists, use it. Otherwise use MCP, not workstation `kubectl`/`argo`.
 
 ---
 
-## 3. Every operator command in current use
+## 3. Repo-owner wrappers vs. agent paths
 
-### 3.1 Test execution
+The `Justfile` intentionally keeps local `kubectl` / `argo` convenience wrappers for the repo owner.
+Those wrappers are acceptable for Jorge on the workstation, but they are **not** the agent/autonomous path.
 
-| Command | Effect |
-|---|---|
-| `just run-tests` | Smoke against `latest` on a fresh VM |
-| `just run-tests-tag <tag>` | Smoke against `latest` or `lts` on a fresh VM |
-| `just run-tests-matrix` | Run `latest` and `lts` in parallel |
-| `just run-titan-smoke` | Smoke against both titan VMs |
-| `just run-titan-system` | Atomic OS contract suite against both titan VMs |
-| `just run-titan-developer` | Developer suite against both titan VMs |
-| `just run-titan-software` | Software suite against both titan VMs |
-| `just run-flatcar-smoke` | Flatcar test lane |
-
-### 3.2 Observation
-
-| Command | Effect |
-|---|---|
-| `just list-workflows` | List workflows in the `argo` namespace |
-| `just list-vms` | List VMs in `bluefin-test`, `bluefin-lts-test`, and `flatcar-test` |
-| `just logs` | Tail logs from the most recent workflow |
-| `just argocd-status` | Show `testing-lab` and `testing-lab-infra` application status |
-
-### 3.3 Maintenance
-
-| Command | Effect |
-|---|---|
-| `just argocd-sync` | Force ArgoCD reconciliation now |
-| `just ensure-disk <tag>` | Build or refresh the golden disk for `latest` or `lts` |
-| `just patch-disk <tag>` | Re-apply SSH auth to an existing golden disk |
-| `just delete-workflows` | Delete all workflows in `argo` |
-| `just delete-vms` | Delete all VMs in `bluefin-test`, `bluefin-lts-test`, and `flatcar-test` |
-| `just teardown` | Run `delete-vms` then `delete-workflows` |
-| `just lint` | Run `argo lint` on tracked workflow YAML |
-
-### 3.4 Bootstrap
-
-| Command | Effect |
-|---|---|
-| `just setup-ssh-secret` | Create `bluefin-test-ssh-key` if it does not already exist |
-| `just setup-argocd` | Deploy the ArgoCD applications |
+For agents and automated systems:
+- Workflow reads / logs / control → Argo MCP
+- Pod, VM, Secret, and node reads / mutations → Kubernetes MCP
+- GitOps changes → edit tracked YAML, push to git, let ArgoCD reconcile
+- No SSH to ghost, exo-1, or any node
 
 ---
 
 ## 4. Retrieving evidence
 
-### 4.1 Argo logs
+### 4.1 Workflow status and logs
 
-```bash
-just logs
-argo logs <workflow-name> -n argo --no-color
-argo logs <workflow-name> -n argo --follow
-```
+Use MCP first:
+- `argo-mcp-list_workflows`
+- `argo-mcp-get_workflow`
+- `argo-mcp-logs_workflow`
+- `argo-mcp-list_workflow_templates`
+
+Repo-owner wrapper when needed:
+- `just logs`
+- `just list-workflows`
 
 ### 4.2 Loki queries
 
@@ -130,11 +90,11 @@ Loki is at <http://192.168.1.102:30100>. Pods carry `app.kubernetes.io/part-of=b
 ### 4.3 Runner artifacts
 
 The runner echoes `results.json`, `pytest-results.xml`, and `atspi_tree.txt` into pod stderr before exit.
-Use Argo logs or Loki instead of `kubectl exec`.
+Use Argo logs or Loki instead of shelling into pods.
 
 ### 4.4 Updating files without workstation `scp`
 
-If you need to push helper files or test content into the cluster, do **not** `scp` them to ghost or exo-1 from a workstation. Use a ConfigMap plus a short-lived Job created through Kubernetes MCP (`kubernetes-mcp-resources_create_or_update`) or the equivalent `kubectl` flow:
+If you need to push helper files or test content into the cluster, do **not** `scp` them to ghost or exo-1 from a workstation. Use a ConfigMap plus a short-lived Job created through Kubernetes MCP (`kubernetes-mcp-resources_create_or_update`):
 
 1. Create or update a ConfigMap containing the files.
 2. Create a Job pinned to the target node that mounts the ConfigMap and copies its contents into the required hostPath or workload volume.
@@ -146,7 +106,7 @@ This keeps file staging API-driven and works even when node SSH is unavailable.
 
 ## 5. Failure triage
 
-Every branch in this section is **command → expected output → next command**. Start with the exact workflow that failed.
+Start with the exact workflow that failed.
 
 ### 5.1 `Permission denied (publickey)` during SSH wait
 
@@ -155,100 +115,80 @@ Every branch in this section is **command → expected output → next command**
    - **Next:** `just patch-disk <tag>` for the tag that failed.
 2. `just patch-disk <tag>`
    - **Expected:** the `patch-golden-disk` workflow exits `Succeeded`.
-   - **Next:** rerun the failing fresh-VM command (`just run-tests-tag <tag>` or `just run-tests-matrix`).
-3. If the retry still fails and the failing target is `just run-titan-*`
-   - **Next:** stop and file an issue; titan `authorized_keys` refresh is human-gated.
+   - **Next:** rerun the failing fresh-VM command.
+3. If the retry still fails:
+   - **Next:** file an issue with workflow name, pod name, and the log excerpt.
 
 ### 5.2 Workflow timed out while waiting for SSH
 
 1. `just list-vms`
-   - **Expected:** the target VM appears in `bluefin-test` or `bluefin-lts-test`.
-   - **If the VM is missing:** `argo get <workflow-name> -n argo` and inspect the provisioning step before rerunning.
-2. `kubectl get vmi <vm-name> -n <namespace> -o jsonpath='{.status.interfaces[0].ipAddress}{"\n"}'`
-   - **Expected:** an IP address.
-   - **If blank:** `kubectl get vmi <vm-name> -n <namespace> -o yaml | grep -n 'phase:'` then go to §8 if the VM is a titan, otherwise rerun after the VM becomes Ready.
-3. If the VM has an IP but the runner still times out
-   - **Next:** `just patch-disk <tag>` and rerun the failing fresh-VM workflow.
+   - **Expected:** the target VM appears in `bluefin-test`, `bluefin-lts-test`, or `flatcar-test`.
+2. Use `kubernetes-mcp-resources_get` for the `VirtualMachineInstance`.
+   - **Expected:** the VMI is Ready and reports an IP address.
+3. If the VMI is Ready but SSH never comes up:
+   - **Next:** `just patch-disk <tag>` and rerun.
 
 ### 5.3 `TypeError` mentioning `requireResult`
 
 1. `just logs | grep -n "requireResult"`
    - **Expected:** a traceback line identifying the failing step file.
-   - **Next:** open that step and replace `findChild(..., requireResult=...)` with `findChildren(...)` or `findChild(..., retry=False)`.
-2. Rerun `just run-titan-smoke`
-   - **Expected:** the traceback disappears.
-   - **Next:** if green, optionally promote to `just run-tests-matrix`.
+2. Replace `findChild(..., requireResult=...)` with `findChildren(...)` or `findChild(..., retry=False)`.
+3. Rerun the relevant fresh-VM workflow.
 
 ### 5.4 All top-bar scenarios fail together
 
 1. `just logs | grep -n "wait_for_shell.py"`
    - **Expected:** the runner copied and invoked `wait_for_shell.py`.
-   - **If missing:** fix the runner/template so the workflow copies the file into the VM, then rerun.
 2. `just logs | grep -n "unsafe_mode"`
    - **Expected:** the session enabled `global.context.unsafe_mode = true`.
-   - **If missing:** fix the runner or environment hook, then rerun `just run-titan-smoke`.
+3. If either check is missing:
+   - **Next:** fix the runner/template in git, push, and submit a new workflow.
 
 ### 5.5 `Application "gnome-shell" is running` fails
 
 1. `just logs | grep -n 'Application "gnome-shell" is running'`
    - **Expected:** the failing step appears in the log.
-   - **Next:** replace that scenario step with `* GNOME Shell is accessible via AT-SPI`.
-2. `just run-titan-smoke`
-   - **Expected:** the shell readiness check now passes.
+2. Replace that scenario step with `* GNOME Shell is accessible via AT-SPI`.
+3. Rerun the affected fresh-VM workflow.
 
 ### 5.6 Workflow stuck `Pending`
 
-1. `kubectl get pods -A --field-selector=status.phase=Pending`
-   - **Expected:** a list of pending pods.
-   - **Next:** identify whether they are `bib-img-*`, `virt-launcher-*`, or runner pods.
-2. `kubectl top pods -A --sort-by=cpu | head -10`
-   - **Expected:** the current CPU hogs.
-   - **Next:** wait for the active BIB workload to finish before submitting more fresh-VM jobs.
-3. If orphaned VMs are consuming capacity
-   - **Next:** `kubectl create job --from=cronworkflow/orphan-vm-cleanup orphan-$(date +%s) -n argo`
+1. `just list-workflows`
+2. `kubernetes-mcp-nodes_top`
+3. `kubernetes-mcp-pods_list fieldSelector=status.phase=Pending`
+4. `kubernetes-mcp-pods_top all_namespaces=true`
+5. If orphaned `virt-launcher-*` capacity is the problem:
+   - **Next:** use Kubernetes MCP to create a one-shot Job cloned from `orphan-vm-cleanup`.
 
 ### 5.7 `outputs.result` contains debug text
 
 1. `just logs | grep -n 'outputs.result'`
    - **Expected:** the polluted result string appears in the workflow log.
-   - **Next:** edit the offending `script:` template so debug goes to `>&2`.
-2. `argo lint argo/workflow-templates/<file>.yaml`
-   - **Expected:** lint succeeds.
-   - **Next:** push and verify ArgoCD reconciliation via §6.
+2. Edit the offending `script:` template so debug goes to `>&2`.
+3. Run `just lint`, push, and verify ArgoCD reconciliation.
 
 ### 5.8 VM stuck `Terminating`
 
-1. `kubectl get pod -n <namespace> | grep virt-launcher`
-   - **Expected:** the launcher pod for the stuck VM is still present.
-   - **Next:** `kubectl delete pod <virt-launcher-pod> -n <namespace> --force`.
-2. `kubectl get vm <vm-name> -n <namespace>`
-   - **Expected:** the VM eventually disappears.
-   - **Next:** rerun the workflow if needed.
+1. Use `kubernetes-mcp-pods_list_in_namespace` to find the matching `virt-launcher-*` pod.
+2. Delete that pod with `kubernetes-mcp-pods_delete`.
+3. Re-check the VM with `kubernetes-mcp-resources_get`.
 
 ### 5.9 `run-gnome-tests` pod errors immediately
 
-1. `argo get <workflow-name> -n argo`
+1. `argo-mcp-get_workflow <workflow-name>`
    - **Expected:** the failing template or pod name is visible.
-   - **Next:** `argo logs <workflow-name> -n argo --no-color | grep -n 'volumes:' -C 2`
-2. If the template error shows `volumes:` nested under `container:`
-   - **Next:** move `volumes:` to template scope in git, push, then run §6.
-3. `argo lint argo/workflow-templates/run-gnome-tests.yaml`
-   - **Expected:** lint succeeds before rerun.
+2. `argo-mcp-logs_workflow <workflow-name>`
+   - **Expected:** enough detail to identify the bad template field.
+3. If `volumes:` is nested under `container:`:
+   - **Next:** move it to template scope in git, push, and run `just lint`.
 
-### 5.10 Titan has no IP
-
-1. `kubectl get vmi titan-bluefin -n bluefin-test -o jsonpath='{.status.interfaces[0].ipAddress}{"\n"}'`
-2. `kubectl get vmi titan-lts -n bluefin-lts-test -o jsonpath='{.status.interfaces[0].ipAddress}{"\n"}'`
-   - **Expected:** both commands print an IP.
-   - **If either is blank:** go to §8 and run the titan recovery path.
-
-### 5.11 Unknown failure class
+### 5.10 Unknown failure class
 
 1. `just logs`
 2. Query Loki for `=== BEHAVE RESULTS JSON ===`
 3. Query Loki for `STEP_ERROR`
 4. Query Loki for `AT-SPI tree written`
-5. `argo get <workflow-name> -n argo`
+5. `argo-mcp-get_workflow <workflow-name>`
 
 Expected outcome: after step 4 or 5 you should have a concrete failing template, step, or VM phase to route back into one of the branches above.
 
@@ -267,77 +207,51 @@ Expected outcome: after step 4 or 5 you should have a concrete failing template,
 
 1. `git log -1 origin/main -- argo/workflow-templates/<file>`
    - **Expected:** the output includes your commit.
-   - **If not:** push first and stop here.
-2. `argocd app get testing-lab | grep '^Revision:'`
-   - **Expected:** the revision matches or is newer than your commit.
+2. `just argocd-status`
+   - **Expected:** `testing-lab` is synced to a revision that matches or post-dates your commit.
    - **If older:** `just argocd-sync`.
-3. `argocd app get testing-lab | grep '^Health Status:'`
-   - **Expected:** `Healthy`.
-   - **If not Healthy:** `argocd app get testing-lab | sed -n '/Conditions:/,$p'`, fix the rejected field in git, push, then repeat step 2.
-4. `kubectl get workflowtemplate <name> -n argo -o yaml | grep <field>`
+3. `just argocd-status`
+   - **Expected:** `testing-lab` is Healthy.
+4. `argo-mcp-get_workflow_template <name>`
    - **Expected:** the new value is live.
-   - **If still old:** `just argocd-sync && argocd app wait testing-lab --health`.
 5. Submit a **new** workflow.
    - **Expected:** the new run sees the new template snapshot.
+
+Do **not** `kubectl apply` a rejected WorkflowTemplate.
 
 ---
 
 ## 7. Load triage
 
-```bash
-just list-workflows
-kubectl top nodes
-kubectl get vmi -A
-kubectl get pods -A --field-selector=status.phase=Pending
-kubectl top pods -A --sort-by=cpu | head -10
-```
+Use these in order:
+1. `just list-workflows`
+2. `kubernetes-mcp-nodes_top`
+3. `kubernetes-mcp-resources_list apiVersion=kubevirt.io/v1 kind=VirtualMachineInstance`
+4. `kubernetes-mcp-pods_list fieldSelector=status.phase=Pending`
+5. `kubernetes-mcp-pods_top all_namespaces=true`
 
-Use the output to answer three questions in order:
+Answer three questions in order:
 1. Are one or more `bib-img-*` builds saturating ghost?
 2. Are `virt-launcher-*` pods consuming capacity with no corresponding live workflow?
 3. Are runner pods pending because CPU or memory is exhausted?
 
-If you answer yes to question 2, run:
+---
 
-```bash
-kubectl create job --from=cronworkflow/orphan-vm-cleanup orphan-$(date +%s) -n argo
-```
+## 8. SSH key rotation
+
+The key rotation flow is still valid because it manages the **in-cluster** test-access secret, not workstation SSH.
+Use the exact command block in [docs/agent-cheatsheet.md](agent-cheatsheet.md) §6.
+
+After rotation:
+1. Run `just patch-disk latest` and `just patch-disk lts`.
+2. Run `just run-tests-tag latest` and `just run-tests-tag lts`.
+3. If fresh workflows still fail SSH, file an issue with workflow name, pod name, and the log excerpt.
 
 ---
 
-## 8. Titan recovery
+## 9. PR queue mode
 
-```bash
-just argocd-sync
-kubectl get vmi titan-bluefin -n bluefin-test -w
-kubectl get vmi titan-lts     -n bluefin-lts-test -w
-just run-titan-smoke
-```
-
-Expected output sequence:
-- ArgoCD sync finishes successfully.
-- Each titan VMI publishes an IP.
-- `just run-titan-smoke` succeeds.
-
-If the VM objects exist but SSH still fails after key rotation, stop and file an issue for a human operator; titan disk key refresh is not automated.
-
----
-
-## 9. SSH key rotation
-
-1. Rotate the `bluefin-test-ssh-key` secret.
-2. Run `just patch-disk latest` and `just patch-disk lts`.
-3. Run `just run-tests-matrix`.
-4. Run `just run-titan-smoke`.
-5. If the titan path still fails, file an issue for human key injection.
-
-Use the exact command block in [docs/agent-cheatsheet.md](agent-cheatsheet.md) §7.
-
----
-
-## 10. PR queue mode
-
-1. Run the minimum required lab loop (`just run-titan-smoke` or `just run-tests-matrix` for high-risk work).
-2. Collect workflow names, behave summaries, and log excerpts.
+1. Run the minimum required lab loop (`just run-tests-tag latest`; use `just run-tests-matrix` for high-risk work).
+2. Collect workflow names, behave summaries, and log excerpts via MCP.
 3. Post [`vanguard-report-template.md`](vanguard-report-template.md) as a PR comment with real evidence.
 4. Only then label / approve / queue.

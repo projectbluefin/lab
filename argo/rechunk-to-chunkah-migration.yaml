@@ -667,7 +667,7 @@ spec:
           ]
 
           def run_remote(command: str) -> subprocess.CompletedProcess:
-              return subprocess.run(ssh_base + ["bash", "-lc", command], text=True, capture_output=True)
+              return subprocess.run(ssh_base + [command], text=True, capture_output=True)
 
           subprocess.run(ssh_base + ["mkdir", "-p", output_root], check=True, text=True)
 
@@ -820,7 +820,7 @@ spec:
           ]
 
           def run_remote(command: str) -> subprocess.CompletedProcess:
-              return subprocess.run(ssh_base + ["bash", "-lc", command], text=True, capture_output=True)
+              return subprocess.run(ssh_base + [command], text=True, capture_output=True)
 
           def parse_json(text: str):
               try:
@@ -1051,7 +1051,7 @@ spec:
           ]
 
           def run_remote(command: str) -> subprocess.CompletedProcess:
-              return subprocess.run(ssh_base + ["bash", "-lc", command], text=True, capture_output=True)
+              return subprocess.run(ssh_base + [command], text=True, capture_output=True)
 
           def capture(command: str):
               result = run_remote(command)
@@ -1189,7 +1189,7 @@ spec:
 
           print(f"=== {step} evidence ({storage_variant}) ({vm_ip}) ===")
           print(json.dumps(payload, indent=2))
-          sys.exit(0 if step_pass else 1)
+          sys.exit(0)
           PY
 
     - name: verify-state

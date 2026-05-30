@@ -113,6 +113,16 @@ run-tests-matrix:
         -n {{ argo_ns }} \
         --watch
 
+# Run rechunk-to-chunkah migration validation against latest + stable in parallel.
+# Usage: just run-migration-test
+# Usage: just run-migration-test stable=stable latest=latest
+run-migration-test latest="latest" stable="stable":
+    argo submit argo/rechunk-to-chunkah-migration.yaml \
+        -p image-tag-latest="{{ latest }}" \
+        -p image-tag-stable="{{ stable }}" \
+        -n {{ argo_ns }} \
+        --watch
+
 # One-time: write SSH banner on ghost warning agents to use the K8s MCP.
 # Runs as a WorkflowTemplate (not a manifest Job) to avoid ArgoCD reconcile loops.
 setup-ghost-ssh-banner:

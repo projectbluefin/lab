@@ -29,6 +29,18 @@ When deciding what to test or prioritize:
 5. **Keep everything VM-backed, GitOps-managed, and operator-friendly.**
    The expected output is durable workflow evidence that another agent or operator can rerun.
 
+## PR Comment Policy
+
+**One comment per PR event, max.** Combine all findings into a single comment. Never post a follow-up comment for a new observation — edit the existing one instead.
+
+**Never duplicate GitHub UI state.** Do not post approval counts, merge queue status, or CI pass/fail summaries — GitHub already surfaces these natively in the PR timeline.
+
+**Test reports: minimal.** Report what ran, pass/fail, and blockers only. No diff summaries. No tables unless comparing ≥3 divergent approaches that require a human decision.
+
+**@ mentions in context only.** Only ping someone if asking them to do something specific. Always inside the combined comment — never as a standalone comment.
+
+**When in doubt, don't post.** If the only thing to report is "tests pass", post nothing.
+
 ## Core Tenet: All Agent Operations Are API-Driven
 
 **Use Kubernetes MCP tools for all cluster reads/mutations. Never SSH to ghost from a workstation.**

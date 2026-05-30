@@ -137,7 +137,7 @@ spec:
                   value: "{{inputs.parameters.aggregate-path}}"
 
           - name: pre-switch
-            depends: "compression-inspect.Succeeded"
+            depends: "compression-inspect"
             template: collect-evidence
             arguments:
               parameters:
@@ -354,7 +354,7 @@ spec:
             secretName: "{{inputs.parameters.ssh-key-secret}}"
             defaultMode: 0400
       script:
-        image: quay.io/podman/stable:latest
+        image: quay.io/skopeo/stable:latest
         command: [bash]
         resources:
           requests:

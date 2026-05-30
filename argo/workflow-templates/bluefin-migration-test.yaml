@@ -369,10 +369,12 @@ spec:
             readOnly: true
         source: |
           set -euo pipefail
-          if ! command -v jq >/dev/null 2>&1; then
-            dnf install -y --quiet jq openssh-clients 2>&1 | tail -2
-          elif ! command -v ssh >/dev/null 2>&1; then
-            dnf install -y --quiet openssh-clients 2>&1 | tail -2
+          pkgs=""
+          command -v jq     >/dev/null 2>&1 || pkgs="$pkgs jq"
+          command -v skopeo >/dev/null 2>&1 || pkgs="$pkgs skopeo"
+          command -v ssh    >/dev/null 2>&1 || pkgs="$pkgs openssh-clients"
+          if [[ -n "$pkgs" ]]; then
+            dnf install -y --quiet $pkgs 2>&1 | tail -3
           fi
 
           VM_IP="{{inputs.parameters.vm-ip}}"
@@ -411,12 +413,19 @@ spec:
           echo "=== compression-state (${VM_IP}) ==="
           cat compression-state.json
 
+          ssh -i "${KEY}" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=10 \
+            -o LogLevel=ERROR \
+            "${SSH_USER}@${VM_IP}" "mkdir -p ${OUTPUT_ROOT}" 2>/dev/null || true
+
           scp -i "${KEY}" \
             -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null \
             -o ConnectTimeout=10 \
             -o LogLevel=ERROR \
-            compression-state.json "${SSH_USER}@${VM_IP}:${OUTPUT_ROOT}/compression-state.json"
+            compression-state.json "${SSH_USER}@${VM_IP}:${OUTPUT_ROOT}/compression-state.json" || true
 
           if scp -i "${KEY}" \
             -o StrictHostKeyChecking=no \
@@ -436,7 +445,7 @@ spec:
             -o UserKnownHostsFile=/dev/null \
             -o ConnectTimeout=10 \
             -o LogLevel=ERROR \
-            migration-evidence.json "${SSH_USER}@${VM_IP}:${AGGREGATE_PATH}"
+            migration-evidence.json "${SSH_USER}@${VM_IP}:${AGGREGATE_PATH}" || true
     - name: prepare-storage-backend
       inputs:
         parameters:

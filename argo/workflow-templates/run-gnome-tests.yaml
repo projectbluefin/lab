@@ -218,6 +218,12 @@ spec:
               ${SSH} "printf '%s\n' '#!/bin/bash' 'set -euo pipefail' \
                 'export PATH=\$HOME/.local/bin:\$PATH' \
                 'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py' \
+                '# Start gnome-ponytail-daemon after GNOME Shell is ready.' \
+                '# D-Bus cannot auto-activate it (ServiceUnknown) in the qecore-headless' \
+                '# session because the service file is installed after first boot.' \
+                '# Starting it explicitly here ensures it registers before behave runs.' \
+                'gnome-ponytail-daemon &' \
+                'sleep 2' \
                 'exec \$(which behave) /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}' \
                 > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
               ${SSH} "

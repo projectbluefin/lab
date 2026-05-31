@@ -405,7 +405,7 @@ spec:
                   value: "{{inputs.parameters.evidence-root}}"
 
           - name: backward-switch
-            depends: "verify-forward.Succeeded || verify-forward.Failed"
+            depends: "verify-forward.Succeeded || verify-forward.Failed || forward-switch.Failed"
             template: run-bootc-switch
             arguments:
               parameters:

@@ -147,6 +147,11 @@ spec:
             dnf install -y cloud-utils-growpart e2fsprogs \
               --quiet --setopt=install_weak_deps=False 2>&1 | tail -3
             truncate -s 40G "${DEST}"
+            # BIB holds loop10 with an exclusive lock; losetup -f fails if all
+            # default loop devices are also occupied. Create high-index devices
+            # (loop50-loop99) so losetup -f always has a free slot. mknod is
+            # idempotent — safe to run on devices that already exist.
+            for _n in $(seq 50 99); do mknod /dev/loop${_n} b 7 ${_n} 2>/dev/null || true; done
             LOOP_EXP=$(losetup -f --show -P "${DEST}")
             # growpart fixes GPT backup header + extends partition 4 (root)
             growpart "${LOOP_EXP}" 4

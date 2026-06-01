@@ -349,7 +349,8 @@ spec:
             BUILD_IMAGE_NAME=dakota BUILD_IMAGE_TAG="${TAG}" just build "{{inputs.parameters.variant}}"
 
             echo "=== Pushing ${IMAGE_REF} ==="
-            podman push --tls-verify=false "docker://${IMAGE_REF}"
+            podman push --tls-verify=false --compression-format=zstd:chunked \
+              "localhost/dakota:${TAG}" "docker://${IMAGE_REF}"
 
             echo "=== Lint ==="
             just lint

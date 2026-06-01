@@ -200,7 +200,7 @@ spec:
             - |
               set -euo pipefail
               dnf install -y --quiet git 2>&1 | tail -2
-              rm -rf /src/*
+              find /src -mindepth 1 -delete
               CLONE_REF="{{inputs.parameters.clone_ref}}"
               CLONE_URL="{{inputs.parameters.clone_url}}"
               if [[ "$CLONE_REF" =~ ^[0-9a-f]{40}$ ]]; then
@@ -315,7 +315,7 @@ spec:
             - |
               set -euo pipefail
               dnf install -y --quiet git 2>&1 | tail -2
-              rm -rf /src/*
+              find /src -mindepth 1 -delete
               CLONE_REF="{{inputs.parameters.clone_ref}}"
               CLONE_URL="{{inputs.parameters.clone_url}}"
               if [[ "$CLONE_REF" =~ ^[0-9a-f]{40}$ ]]; then

@@ -92,6 +92,44 @@ Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limit
 
 ## 4. ArgoCD — my template change did not take effect
 
+### kubernetes-mcp handles ALL Argo/ArgoCD resources
+
+**`kubernetes-mcp-resources_*` tools work for any CRD, including:**
+
+| Resource | apiVersion | kind |
+|---|---|---|
+| ArgoCD Application | `argoproj.io/v1alpha1` | `Application` |
+| Argo Workflow | `argoproj.io/v1alpha1` | `Workflow` |
+| Argo CronWorkflow | `argoproj.io/v1alpha1` | `CronWorkflow` |
+| Argo WorkflowTemplate | `argoproj.io/v1alpha1` | `WorkflowTemplate` |
+
+**Do not guess or fall back to SSH.** Use `kubernetes-mcp-resources_get/list/create_or_update/delete` for all of the above before reaching for any other tool.
+
+**Trigger an ArgoCD sync:**
+```text
+kubernetes-mcp-resources_create_or_update:
+  apiVersion: argoproj.io/v1alpha1
+  kind: Application
+  metadata:
+    name: testing-lab-infra    # or: testing-lab
+    namespace: argocd
+  operation:
+    initiatedBy:
+      username: copilot-mcp
+    sync:
+      syncStrategy:
+        hook: {}
+```
+
+**Read ArgoCD Application state:**
+```text
+kubernetes-mcp-resources_get apiVersion=argoproj.io/v1alpha1 kind=Application name=testing-lab-infra namespace=argocd
+```
+Key fields: `.status.operationState.phase`, `.status.sync.status`, `.status.operationState.message`, `.status.operationState.operation.sync.revision`
+
+**Cancel a stuck operation** (PreSync hook looping):
+Patch the Application with `operation:` field removed — ArgoCD will stop the current sync and re-evaluate.
+
 ```text
 1. git log -1 origin/main -- argo/workflow-templates/<file>
    -> expected: your commit is visible on origin/main.
@@ -277,8 +315,18 @@ curl http://192.168.1.102:32800/v1/chat/completions \
   -d '{"model":"Qwen/Qwen3.6-35B-A3B","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-**If pod is stuck Pending:** AMD ROCm device plugin may not have registered yet.
-Check: `kubernetes-mcp-pods_list namespace=kube-system` for `amdgpu-device-plugin`.
+**If pod is stuck Pending:** Check two things:
+1. AMD ROCm device plugin registered: `kubernetes-mcp-pods_list namespace=kube-system` — look for `amdgpu-device-plugin`. After a k3s restart the plugin needs a pod delete/respawn to re-register with kubelet. Verify `amd.com/gpu` appears in `kubernetes-mcp-resources_get kind=Node name=ghost` allocatable.
+2. Memory fits: ghost has ~62.5Gi allocatable. Manifest requests 48Gi — check for other large pods consuming RAM if you see `Insufficient memory`.
+
+**If k3s is down** (MCP returns "connection refused" on all calls):
+k3s can stop after host sleep/resume. Recovery requires SSH (no API available):
+```bash
+ssh ghost "sudo systemctl start k3s"
+```
+After restart, delete the `amdgpu-device-plugin` pod so it re-registers with the new kubelet socket.
+
+**kubelet device-plugin socket path:** `/var/lib/kubelet/device-plugins/kubelet.sock` (standard path — NOT the rancher/k3s path). Verify with: `ssh ghost "sudo ss -lx | grep kubelet"`.
 
 **If pod is CrashLoopBackOff:** Model weights may not be pre-pulled.
 Pre-pull (run on ghost via an Argo workflow pod or manually):

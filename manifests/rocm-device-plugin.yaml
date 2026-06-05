@@ -7,9 +7,9 @@
 # Digest (sha256): 0555caf9ccc1cf407b353d1aade87d4598059f87a784085aafe3ece19405b612
 # DockerHub tag has no 'v' prefix: 1.31.0.10 (not v1.31.0.10).
 #
-# k3s note: kubelet device-plugin socket is at:
-#   /var/lib/rancher/k3s/agent/kubelet/device-plugins
-# NOT the standard /var/lib/kubelet/device-plugins used by kubeadm/Talos.
+# k3s note: on this install kubelet.sock is at the standard path:
+#   /var/lib/kubelet/device-plugins/kubelet.sock
+# (not /var/lib/rancher/k3s/agent/kubelet/device-plugins — verify with: ss -lx | grep kubelet)
 #
 # Strix Halo is gfx1151 (RDNA 3.5, NOT RDNA 4). The plugin itself is
 # GPU-agnostic — it discovers /dev/kfd + /dev/dri/renderD*. The gfx1151
@@ -62,7 +62,7 @@ spec:
       volumes:
         - name: dp
           hostPath:
-            path: /var/lib/rancher/k3s/agent/kubelet/device-plugins
+            path: /var/lib/kubelet/device-plugins
         - name: sys
           hostPath:
             path: /sys

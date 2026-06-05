@@ -299,7 +299,7 @@ Expected steady state:
 ## 12. llm-d hive node — local model inference
 
 Ghost runs an OpenAI-compatible inference server at **`http://192.168.1.102:30800`**.
-Model: `Qwen/Qwen3.6-35B-A3B` via `ghcr.io/llm-d/llm-d-rocm:v0.7.0` (ROCm, gfx1151).
+Model: `Qwen/Qwen3.6-35B-A3B` Q4_K_M GGUF via `ghcr.io/ggml-org/llama.cpp:server-rocm` (~60 tok/s, gfx1151).
 Namespace: `llm-d`. Managed by GitOps (`testing-lab-infra` ArgoCD app).
 
 **Check status:**
@@ -328,15 +328,15 @@ After restart, delete the `amdgpu-device-plugin` pod so it re-registers with the
 
 **kubelet device-plugin socket path:** `/var/lib/kubelet/device-plugins/kubelet.sock` (standard path — NOT the rancher/k3s path). Verify with: `ssh ghost "sudo ss -lx | grep kubelet"`.
 
-**If pod is CrashLoopBackOff:** Model weights may not be pre-pulled.
-Pre-pull (run on ghost via an Argo workflow pod or manually):
+**If pod is CrashLoopBackOff:** Check init container logs first — it downloads the GGUF on first start:
 ```bash
-huggingface-cli download Qwen/Qwen3.6-35B-A3B \
-  --local-dir /var/tmp/llm-models/Qwen3.6-35B-A3B
+kubernetes-mcp-pods_logs namespace=llm-d container=download-gguf
 ```
+The GGUF (`Qwen3.6-35B-A3B-Q4_K_M.gguf`) is cached at `/var/tmp/llm-models/` on ghost.
+If the file is missing, delete the pod and let the init container re-download it (~21GB from HuggingFace).
 
 **Key constraints:**
-- `--enforce-eager` is mandatory on gfx1151 (vllm#32180) — ~10–30% throughput cost
-- Gemma 4 is broken on vLLM-ROCm/gfx1151 (SWA disabled, vllm#19367) — do not swap the model to Gemma 4
+- `ROCBLAS_USE_HIPBLASLT=1` for best matmul throughput on gfx1151 (strixhalo.wiki)
 - `hostNetwork: true` + `hostIPC: true` required for ROCm IPC
 - `HSA_OVERRIDE_GFX_VERSION=11.5.1` required — gfx1151 is RDNA 3.5, not RDNA 4
+- Qwen3 uses chain-of-thought thinking by default; add `/no_think` prefix or increase `max_tokens`

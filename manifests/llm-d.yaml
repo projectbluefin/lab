@@ -1,0 +1,184 @@
+# llm-d model server — vLLM on ROCm, pinned to ghost (Strix Halo / gfx1151).
+#
+# Stack: ghcr.io/llm-d/llm-d-rocm:v0.7.0 (vLLM + RIXL, AMD ROCm backend)
+# Model: Qwen/Qwen3.6-35B-A3B (~67GB BF16 MoE — same model hanthor runs as
+#   batiai/Qwen3.6-35B-A3B-GGUF:Q6_K; native HF format for vLLM.
+#   35.6B total params, 3B active per token. Fits in 96GB with KV headroom.)
+#
+# Why not Gemma 4:
+#   vLLM-ROCm on gfx1151 has SWA disabled (vllm-project/vllm#19367), which is
+#   fatal for Gemma 4's interleaved local-sliding + global attention layers.
+#
+# Required env vars for gfx1151 (RDNA 3.5 — NOT RDNA 4):
+#   HSA_OVERRIDE_GFX_VERSION=11.5.1  — makes ROCm accept gfx1151
+#   HSA_XNACK=1                      — enables unified memory / page-fault retry
+#   HSA_FORCE_FINE_GRAIN_PCIE=1      — fine-grained virtual memory (UMA benefit)
+#   PYTORCH_ROCM_ARCH=gfx1151        — selects correct HIP kernels
+#   --enforce-eager                  — disables CUDA graphs (required on gfx1151,
+#                                      vllm-project/vllm#32180); ~10-30% throughput
+#                                      cost but necessary for stability
+#
+# hostNetwork + hostIPC: required for ROCm IPC/shared memory.
+# Source: hanthor/dotfiles talos-k8s/lemonade.yaml (production Strix Halo).
+#
+# Model cache: HostPath at /var/tmp/llm-models on ghost. Pre-pull the model:
+#   huggingface-cli download Qwen/Qwen3.6-35B-A3B --local-dir /var/tmp/llm-models/Qwen3.6-35B-A3B
+#
+# NodePort 32800: OpenAI-compatible API endpoint.
+#   curl http://192.168.1.102:32800/v1/models
+#
+# Full llm-d router (KV-cache-aware routing, Gateway API Inference Extension):
+#   Add the standalone Helm chart once the model server is stable.
+#   See: llm-d/llm-d guides/optimized-baseline/router/
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: llm-d
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-d-modelserver
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llm-d-modelserver
+    app.kubernetes.io/part-of: testing-lab
+    llm-d.ai/model: Qwen3.6-35B-A3B
+    llm-d.ai/accelerator-vendor: amd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llm-d-modelserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llm-d-modelserver
+        llm-d.ai/model: Qwen3.6-35B-A3B
+    spec:
+      # Pinned to ghost — only node with AMD Strix Halo GPU.
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      # Required for ROCm IPC and shared memory across processes.
+      hostNetwork: true
+      hostIPC: true
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        # render group (44) — required for /dev/dri access.
+        fsGroup: 44
+        runAsGroup: 44
+        seccompProfile:
+          type: Unconfined
+      containers:
+        - name: modelserver
+          image: ghcr.io/llm-d/llm-d-rocm:v0.7.0
+          imagePullPolicy: IfNotPresent
+          command: ["vllm", "serve"]
+          args:
+            - "Qwen/Qwen3.6-35B-A3B"
+            - "--host=0.0.0.0"
+            - "--port=8000"
+            - "--tensor-parallel-size=1"
+            - "--enforce-eager"
+            - "--max-model-len=16384"
+            - "--gpu-memory-utilization=0.85"
+            - "--disable-access-log-for-endpoints=/health,/metrics,/v1/models"
+          env:
+            # gfx1151 (RDNA 3.5 / Strix Halo) runtime overrides.
+            - name: HSA_OVERRIDE_GFX_VERSION
+              value: "11.5.1"
+            - name: PYTORCH_ROCM_ARCH
+              value: "gfx1151"
+            - name: HSA_XNACK
+              value: "1"
+            - name: HSA_FORCE_FINE_GRAIN_PCIE
+              value: "1"
+            # HuggingFace cache → HostPath volume.
+            - name: HF_HOME
+              value: /models
+            - name: TRANSFORMERS_CACHE
+              value: /models
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          securityContext:
+            capabilities:
+              add: ["SYS_PTRACE"]
+          resources:
+            requests:
+              cpu: "8"
+              memory: 70Gi
+              amd.com/gpu: "1"
+            limits:
+              cpu: "16"
+              memory: 80Gi
+              amd.com/gpu: "1"
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+            - name: models
+              mountPath: /models
+            - name: torch-compile-cache
+              mountPath: /.cache
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            # Up to 60 min startup — model load from disk is slow.
+            failureThreshold: 120
+          readinessProbe:
+            httpGet:
+              path: /v1/models
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Gi
+        - name: models
+          hostPath:
+            path: /var/tmp/llm-models
+            type: DirectoryOrCreate
+        - name: torch-compile-cache
+          emptyDir: {}
+---
+# NodePort service — OpenAI-compatible API reachable at:
+#   http://192.168.1.102:32800/v1/chat/completions
+#   http://192.168.1.102:32800/v1/models
+# hostNetwork: true means the pod is already on host networking,
+# but we still register a Service for in-cluster consumers (hive agents, Argo pods).
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-d-modelserver
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llm-d-modelserver
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: llm-d-modelserver
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 32800
+      protocol: TCP

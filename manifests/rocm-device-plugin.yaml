@@ -1,0 +1,68 @@
+# AMD ROCm Kubernetes Device Plugin — exposes amd.com/gpu resource on ghost.
+#
+# Required before any llm-d / vLLM pod can schedule with GPU access.
+#
+# Image: docker.io/rocm/k8s-device-plugin
+# Release: 1.31.0.10 (2026-05-06) — https://github.com/ROCm/k8s-device-plugin/releases
+# Digest (sha256): 0555caf9ccc1cf407b353d1aade87d4598059f87a784085aafe3ece19405b612
+# DockerHub tag has no 'v' prefix: 1.31.0.10 (not v1.31.0.10).
+#
+# k3s note: kubelet device-plugin socket is at:
+#   /var/lib/rancher/k3s/agent/kubelet/device-plugins
+# NOT the standard /var/lib/kubelet/device-plugins used by kubeadm/Talos.
+#
+# Strix Halo is gfx1151 (RDNA 3.5, NOT RDNA 4). The plugin itself is
+# GPU-agnostic — it discovers /dev/kfd + /dev/dri/renderD*. The gfx1151
+# env vars (HSA_OVERRIDE_GFX_VERSION etc.) go in workload pods, not here.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: amdgpu-device-plugin
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: amdgpu-device-plugin
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  selector:
+    matchLabels:
+      name: amdgpu-dp-ds
+  template:
+    metadata:
+      labels:
+        name: amdgpu-dp-ds
+        app.kubernetes.io/name: amdgpu-device-plugin
+    spec:
+      # Pin to ghost — only node with AMD Strix Halo GPU.
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      priorityClassName: system-node-critical
+      tolerations:
+        - key: CriticalAddonsOnly
+          operator: Exists
+      containers:
+        - name: amdgpu-dp
+          image: docker.io/rocm/k8s-device-plugin:1.31.0.10
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: dp
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: sys
+              mountPath: /sys
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: dp
+          hostPath:
+            path: /var/lib/rancher/k3s/agent/kubelet/device-plugins
+        - name: sys
+          hostPath:
+            path: /sys

@@ -87,6 +87,7 @@ Every pipeline (Bluefin, Bluefin-LTS, Dakota, Knuckle) provisions a fresh VM on 
 | Argo UI | — | http://192.168.1.102:32746 | NodePort; also http://192.168.1.102:2746 on host |
 | Loki | log aggregation | http://192.168.1.102:30100 | Scrapes pods labeled `app.kubernetes.io/part-of=bluefin-test-suite` |
 | ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `testing-lab` + `testing-lab-infra` |
+| llm-d | LLM inference (hive node) | http://192.168.1.102:32800 | OpenAI-compatible API; model: Qwen/Qwen3.6-35B-A3B; namespace: `llm-d` |
 
 All KubeVirt VMs are pinned to ghost via `nodeSelector: kubernetes.io/hostname: ghost`.
 
@@ -141,6 +142,9 @@ manifests/                     ← ArgoCD (testing-lab-infra App) syncs these
   nightly-smoke-lts.yaml          CronWorkflow: nightly smoke lts @ 02:30 UTC
   workflow-controller-configmap.yaml  global TTL patch (7d success, 30d failure)
   flatcar-test-namespace.yaml     Flatcar test namespace
+  rocm-device-plugin.yaml         AMD ROCm k8s device plugin — exposes amd.com/gpu on ghost
+  llm-d-gateway-crds.yaml         PreSync Job: Gateway API Inference Extension CRDs (llm-d router)
+  llm-d.yaml                      llm-d model server: Qwen3.6-35B-A3B on ROCm, NodePort 32800
 argocd/
   application.yaml               ArgoCD Application: testing-lab
   infra-application.yaml         ArgoCD Application: testing-lab-infra
@@ -211,6 +215,8 @@ Loki captures workflow pod logs. Use the commands in [docs/agent-cheatsheet.md](
 | bluefin-test | latest variant test VMs |
 | bluefin-lts-test | lts variant test VMs |
 | flatcar-test | Flatcar test VMs |
+| llm-d | LLM inference hive node (Qwen3.6-35B-A3B via llm-d/vLLM on ROCm) |
+| mcp | Kubernetes MCP server |
 
 **Never delete VMs or resources in namespaces outside this list.**
 

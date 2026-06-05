@@ -255,3 +255,40 @@ Expected steady state:
 | CronWorkflow schedules | `argo-mcp-list_cron_workflows namespace=argo` |
 | ArgoCD revision in cluster | `just argocd-status` |
 | Pending pods | `kubernetes-mcp-pods_list fieldSelector=status.phase=Pending` |
+
+---
+
+## 12. llm-d hive node — local model inference
+
+Ghost runs an OpenAI-compatible inference server at **`http://192.168.1.102:32800`**.
+Model: `Qwen/Qwen3.6-35B-A3B` via `ghcr.io/llm-d/llm-d-rocm:v0.7.0` (ROCm, gfx1151).
+Namespace: `llm-d`. Managed by GitOps (`testing-lab-infra` ArgoCD app).
+
+**Check status:**
+```text
+kubernetes-mcp-pods_list namespace=llm-d
+```
+
+**Test the API:**
+```text
+curl http://192.168.1.102:32800/v1/models
+curl http://192.168.1.102:32800/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"Qwen/Qwen3.6-35B-A3B","messages":[{"role":"user","content":"hello"}]}'
+```
+
+**If pod is stuck Pending:** AMD ROCm device plugin may not have registered yet.
+Check: `kubernetes-mcp-pods_list namespace=kube-system` for `amdgpu-device-plugin`.
+
+**If pod is CrashLoopBackOff:** Model weights may not be pre-pulled.
+Pre-pull (run on ghost via an Argo workflow pod or manually):
+```bash
+huggingface-cli download Qwen/Qwen3.6-35B-A3B \
+  --local-dir /var/tmp/llm-models/Qwen3.6-35B-A3B
+```
+
+**Key constraints:**
+- `--enforce-eager` is mandatory on gfx1151 (vllm#32180) — ~10–30% throughput cost
+- Gemma 4 is broken on vLLM-ROCm/gfx1151 (SWA disabled, vllm#19367) — do not swap the model to Gemma 4
+- `hostNetwork: true` + `hostIPC: true` required for ROCm IPC
+- `HSA_OVERRIDE_GFX_VERSION=11.5.1` required — gfx1151 is RDNA 3.5, not RDNA 4

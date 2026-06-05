@@ -11,7 +11,9 @@ Pair with:
 - [`vanguard-report-template.md`](vanguard-report-template.md) — PR verification report
 
 > [!WARNING]
-> **Use Kubernetes MCP tools for all cluster reads/mutations. Never SSH to ghost from a workstation.** Use Argo MCP or repo-owner `just` wrappers for workflow control. The only acceptable SSH path in this repo is **in-cluster** access from workflow/probe pods into test VMs when the test harness or post-mortem artifact collection requires it.
+> **Use Kubernetes MCP tools for all cluster reads/mutations.** Use Argo MCP or repo-owner `just` wrappers for workflow control. The only acceptable SSH path in this repo is **in-cluster** access from workflow/probe pods into test VMs when the test harness or post-mortem artifact collection requires it.
+>
+> **Exception:** SSH to ghost is permitted exclusively to start or stop the `k3s` service — you cannot stop the API server via the API itself. See [§ Turning k8s on/off](#turning-k8s-onoff).
 
 ---
 
@@ -57,7 +59,7 @@ For agents and automated systems:
 - Workflow reads / logs / control → Argo MCP
 - Pod, VM, Secret, and node reads / mutations → Kubernetes MCP
 - GitOps changes → edit tracked YAML, push to git, let ArgoCD reconcile
-- No SSH to ghost, exo-1, or any node
+- No SSH to ghost, exo-1, or any node — except `sudo systemctl start|stop k3s` on ghost (see below)
 
 ---
 
@@ -255,3 +257,22 @@ After rotation:
 2. Collect workflow names, behave summaries, and log excerpts via MCP.
 3. Post [`vanguard-report-template.md`](vanguard-report-template.md) as a PR comment with real evidence.
 4. Only then label / approve / queue.
+
+---
+
+## 10. Turning k8s on/off
+
+The **only** legitimate reason to SSH from a workstation to ghost is to start or stop the `k3s` service. The API server cannot shut itself down — SSH is required.
+
+```bash
+# Stop all of Kubernetes (API, etcd, all pods go down)
+ssh jorge@192.168.1.102 "sudo systemctl stop k3s"
+
+# Start it back up
+ssh jorge@192.168.1.102 "sudo systemctl start k3s"
+
+# Verify
+ssh jorge@192.168.1.102 "sudo systemctl is-active k3s"
+```
+
+Everything else — pod management, workflow control, ConfigMaps, scaling — goes through MCP. No other workstation SSH to ghost is permitted.

@@ -1,37 +1,23 @@
-# llm-d model server — vLLM on ROCm, pinned to ghost (Strix Halo / gfx1151).
+# llm-d model server — llama.cpp server on ROCm, pinned to ghost (Strix Halo / gfx1151).
 #
-# Stack: ghcr.io/llm-d/llm-d-rocm:v0.7.0 (vLLM + RIXL, AMD ROCm backend)
-# Model: batiai/Qwen3.6-35B-A3B-GGUF Q4_K_M (~21GB) via vLLM GGUF loader.
+# Stack: ghcr.io/ggml-org/llama.cpp:server-rocm (llama-server, HIP/ROCm backend)
+# Model: batiai/Qwen3.6-35B-A3B-GGUF Q4_K_M (~21GB GGUF).
 #   BF16 native weights (~67GB) exceed ghost's 64GB unified memory.
+#   vLLM rejected: qwen35moe architecture unsupported in vLLM's GGUF loader.
 #   Q4_K_M fits in ~21GB, leaving ~40GB headroom for KV cache + system.
-#   hanthor uses Q6_K (~28.5GB); Q4_K_M chosen here to maximize KV headroom.
-#   Tokenizer pulled separately from Qwen/Qwen3.6-35B-A3B (base model HF repo).
-#
-# Why not Gemma 4:
-#   vLLM-ROCm on gfx1151 has SWA disabled (vllm-project/vllm#19367), which is
-#   fatal for Gemma 4's interleaved local-sliding + global attention layers.
 #
 # Required env vars for gfx1151 (RDNA 3.5 — NOT RDNA 4):
 #   HSA_OVERRIDE_GFX_VERSION=11.5.1  — makes ROCm accept gfx1151
 #   HSA_XNACK=1                      — enables unified memory / page-fault retry
 #   HSA_FORCE_FINE_GRAIN_PCIE=1      — fine-grained virtual memory (UMA benefit)
-#   PYTORCH_ROCM_ARCH=gfx1151        — selects correct HIP kernels
-#   --enforce-eager                  — disables CUDA graphs (required on gfx1151,
-#                                      vllm-project/vllm#32180); ~10-30% throughput
-#                                      cost but necessary for stability
+#   ROCBLAS_USE_HIPBLASLT=1          — faster matmul via hipBLASlt (strixhalo.wiki)
 #
 # hostNetwork + hostIPC: required for ROCm IPC/shared memory.
-# Source: hanthor/dotfiles talos-k8s/lemonade.yaml (production Strix Halo).
-#
-# Model cache: HostPath at /var/tmp/llm-models on ghost. Pre-pull the model:
-#   huggingface-cli download Qwen/Qwen3.6-35B-A3B --local-dir /var/tmp/llm-models/Qwen3.6-35B-A3B
+# GGUF cache: HostPath at /var/tmp/llm-models on ghost.
+#   Init container downloads Q4_K_M on first start (idempotent check).
 #
 # NodePort 30800: OpenAI-compatible API endpoint.
 #   curl http://192.168.1.102:30800/v1/models
-#
-# Full llm-d router (KV-cache-aware routing, Gateway API Inference Extension):
-#   Add the standalone Helm chart once the model server is stable.
-#   See: llm-d/llm-d guides/optimized-baseline/router/
 ---
 apiVersion: v1
 kind: Namespace
@@ -105,35 +91,31 @@ spec:
               memory: 512Mi
       containers:
         - name: modelserver
-          image: ghcr.io/llm-d/llm-d-rocm:v0.7.0
+          image: ghcr.io/ggml-org/llama.cpp:server-rocm
           imagePullPolicy: IfNotPresent
-          command: ["vllm", "serve"]
+          command: ["/app/llama-server"]
           args:
-            - "/models/Qwen3.6-35B-A3B-Q4_K_M.gguf"
+            - "--model=/models/Qwen3.6-35B-A3B-Q4_K_M.gguf"
+            - "--alias=Qwen/Qwen3.6-35B-A3B"
             - "--host=0.0.0.0"
             - "--port=8000"
-            - "--tokenizer=Qwen/Qwen3.6-35B-A3B"
-            - "--load-format=gguf"
-            - "--tensor-parallel-size=1"
-            - "--enforce-eager"
-            - "--max-model-len=32768"
-            - "--gpu-memory-utilization=0.90"
-            - "--disable-access-log-for-endpoints=/health,/metrics,/v1/models"
+            - "--ctx-size=32768"
+            - "-ngl=99"
+            - "--flash-attn"
+            - "--threads=8"
+            - "--parallel=4"
+            - "--log-disable"
           env:
             # gfx1151 (RDNA 3.5 / Strix Halo) runtime overrides.
             - name: HSA_OVERRIDE_GFX_VERSION
               value: "11.5.1"
-            - name: PYTORCH_ROCM_ARCH
-              value: "gfx1151"
             - name: HSA_XNACK
               value: "1"
             - name: HSA_FORCE_FINE_GRAIN_PCIE
               value: "1"
-            # HuggingFace cache → HostPath volume.
-            - name: HF_HOME
-              value: /models
-            - name: TRANSFORMERS_CACHE
-              value: /models
+            # hipBLASlt for faster matmul on gfx1151 (strixhalo.wiki).
+            - name: ROCBLAS_USE_HIPBLASLT
+              value: "1"
           ports:
             - name: http
               containerPort: 8000
@@ -155,17 +137,15 @@ spec:
               mountPath: /dev/shm
             - name: models
               mountPath: /models
-            - name: torch-compile-cache
-              mountPath: /.cache
           startupProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 60
-            periodSeconds: 30
-            timeoutSeconds: 10
-            # Up to 60 min startup — model load from disk is slow.
-            failureThreshold: 120
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            # Up to 10 min for model load from hostPath.
+            failureThreshold: 40
           readinessProbe:
             httpGet:
               path: /v1/models
@@ -189,8 +169,6 @@ spec:
           hostPath:
             path: /var/tmp/llm-models
             type: DirectoryOrCreate
-        - name: torch-compile-cache
-          emptyDir: {}
 ---
 # NodePort service — OpenAI-compatible API reachable at:
 #   http://192.168.1.102:30800/v1/chat/completions

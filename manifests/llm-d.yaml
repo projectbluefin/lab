@@ -73,18 +73,47 @@ spec:
         fsGroup: 44
         seccompProfile:
           type: Unconfined
+      # Init container downloads the GGUF file if not already present.
+      # --gguf-filename is not supported by this vLLM build; we download to
+      # the hostPath volume and pass the local path to vllm serve instead.
+      initContainers:
+        - name: download-gguf
+          image: docker.io/alpine:3
+          command: ["sh", "-c"]
+          args:
+            - |
+              DEST=/models/Qwen3.6-35B-A3B-Q4_K_M.gguf
+              if [ -f "$DEST" ]; then
+                echo "GGUF already present, skipping download"
+                exit 0
+              fi
+              echo "Downloading Q4_K_M GGUF (~21GB)..."
+              apk add --no-cache wget
+              wget -q --show-progress -O "${DEST}.tmp" \
+                "https://huggingface.co/batiai/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen-Qwen3.6-35B-A3B-Q4_K_M.gguf"
+              mv "${DEST}.tmp" "$DEST"
+              echo "Download complete."
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            requests:
+              cpu: "1"
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
       containers:
         - name: modelserver
           image: ghcr.io/llm-d/llm-d-rocm:v0.7.0
           imagePullPolicy: IfNotPresent
           command: ["vllm", "serve"]
           args:
-            - "batiai/Qwen3.6-35B-A3B-GGUF"
+            - "/models/Qwen3.6-35B-A3B-Q4_K_M.gguf"
             - "--host=0.0.0.0"
             - "--port=8000"
             - "--tokenizer=Qwen/Qwen3.6-35B-A3B"
             - "--load-format=gguf"
-            - "--gguf-filename=Qwen-Qwen3.6-35B-A3B-Q4_K_M.gguf"
             - "--tensor-parallel-size=1"
             - "--enforce-eager"
             - "--max-model-len=32768"

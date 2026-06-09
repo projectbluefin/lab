@@ -1,10 +1,9 @@
 # llm-d model server — llama.cpp server on ROCm, pinned to ghost (Strix Halo / gfx1151).
 #
 # Stack: ghcr.io/ggml-org/llama.cpp:server-rocm (llama-server, HIP/ROCm backend)
-# Model: batiai/Qwen3.6-35B-A3B-GGUF Q4_K_M (~21GB GGUF).
-#   BF16 native weights (~67GB) exceed ghost's 64GB unified memory.
-#   vLLM rejected: qwen35moe architecture unsupported in vLLM's GGUF loader.
-#   Q4_K_M fits in ~21GB, leaving ~40GB headroom for KV cache + system.
+# Model: unsloth/gemma-4-31B-it-GGUF Q8_0 (~33GB GGUF).
+#   Q8_0 is near-lossless and fits comfortably in ghost's 64GB unified memory.
+#   Leaves ~25GB headroom for KV cache + system overhead.
 #
 # Required env vars for gfx1151 (RDNA 3.5 — NOT RDNA 4):
 #   HSA_OVERRIDE_GFX_VERSION=11.5.1  — makes ROCm accept gfx1151
@@ -12,9 +11,18 @@
 #   HSA_FORCE_FINE_GRAIN_PCIE=1      — fine-grained virtual memory (UMA benefit)
 #   ROCBLAS_USE_HIPBLASLT=1          — faster matmul via hipBLASlt (strixhalo.wiki)
 #
+# Performance flags (per kyuz0/amd-strix-halo-toolboxes):
+#   -fa (flash attention): required on Strix Halo to avoid crashes/slowdowns.
+#   --no-mmap: required on Strix Halo to avoid crashes/slowdowns.
+#   Avoid rocm7-nightlies image tag: has a bug capping allocation to 64GB.
+#
+# Host-level kernel params recommended for best performance (human action required):
+#   amd_iommu=off amdgpu.gttsize=61440 ttm.pages_limit=15728640
+#   (amd_iommu=off is 5-12% faster than iommu=pt per kyuz0/amd-strix-halo-toolboxes#66)
+#
 # hostNetwork + hostIPC: required for ROCm IPC/shared memory.
 # GGUF cache: HostPath at /var/tmp/llm-models on ghost.
-#   Init container downloads Q4_K_M on first start (idempotent check).
+#   Init container downloads Q8_0 on first start (idempotent check).
 #
 # NodePort 30800: OpenAI-compatible API endpoint.
 #   curl http://192.168.1.102:30800/v1/models
@@ -34,7 +42,7 @@ metadata:
   labels:
     app.kubernetes.io/name: llm-d-modelserver
     app.kubernetes.io/part-of: testing-lab
-    llm-d.ai/model: Qwen3.6-35B-A3B
+    llm-d.ai/model: gemma-4-31B-it
     llm-d.ai/accelerator-vendor: amd
 spec:
   replicas: 1
@@ -45,7 +53,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: llm-d-modelserver
-        llm-d.ai/model: Qwen3.6-35B-A3B
+        llm-d.ai/model: gemma-4-31B-it
     spec:
       # Pinned to ghost — only node with AMD Strix Halo GPU.
       nodeSelector:
@@ -68,15 +76,15 @@ spec:
           command: ["sh", "-c"]
           args:
             - |
-              DEST=/models/Qwen3.6-35B-A3B-Q4_K_M.gguf
+              DEST=/models/gemma-4-31B-it-Q8_0.gguf
               if [ -f "$DEST" ]; then
                 echo "GGUF already present, skipping download"
                 exit 0
               fi
-              echo "Downloading Q4_K_M GGUF (~21GB)..."
+              echo "Downloading Q8_0 GGUF (~33GB)..."
               apk add --no-cache wget
               wget -q --show-progress -O "${DEST}.tmp" \
-                "https://huggingface.co/batiai/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen-Qwen3.6-35B-A3B-Q4_K_M.gguf"
+                "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF/resolve/main/gemma-4-31B-it-Q8_0.gguf"
               mv "${DEST}.tmp" "$DEST"
               echo "Download complete."
           volumeMounts:
@@ -96,9 +104,9 @@ spec:
           command: ["/app/llama-server"]
           args:
             - "--model"
-            - "/models/Qwen3.6-35B-A3B-Q4_K_M.gguf"
+            - "/models/gemma-4-31B-it-Q8_0.gguf"
             - "--alias"
-            - "Qwen/Qwen3.6-35B-A3B"
+            - "google/gemma-4-31B-it"
             - "--host"
             - "0.0.0.0"
             - "--port"
@@ -107,6 +115,8 @@ spec:
             - "32768"
             - "-ngl"
             - "99"
+            - "-fa"
+            - "--no-mmap"
             - "--threads"
             - "8"
             - "--parallel"
@@ -133,11 +143,11 @@ spec:
           resources:
             requests:
               cpu: "8"
-              memory: 32Gi
+              memory: 40Gi
               amd.com/gpu: "1"
             limits:
               cpu: "16"
-              memory: 48Gi
+              memory: 58Gi
               amd.com/gpu: "1"
           volumeMounts:
             - name: shm

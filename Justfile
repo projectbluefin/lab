@@ -299,6 +299,11 @@ run-otel-patch:
     argo submit --from workflowtemplate/ghost-otel-patch \
       -n {{ argo_ns }} --wait --log
 
+# Set Strix Halo performance kernel args on ghost via rpm-ostree (reboot required after)
+run-kernel-args:
+    argo submit --from workflowtemplate/ghost-kernel-args \
+      -n {{ argo_ns }} --wait --log
+
 # ── Dakota BST builds ────────────────────────────────────────────────────────
 
 # Report lab build result as a GitHub commit status (updates in-place, no comment spam).

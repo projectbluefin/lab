@@ -2,10 +2,11 @@
 name: skill-improvement
 description: >
   Self-learning and skill-maintenance loop for the testing-lab. Run at the
-  end of every session that produces non-trivial work. Enforces the
+  end of every session that produces non-trivial work, and at the **start**
+  of any session to check unanalyzed nightly failures. Enforces the
   write-back loop so the next agent starts smarter than this one did.
-  Use when wrapping up any session, before creating a PR, or when a pattern
-  was discovered through trial and error.
+  Use when wrapping up any session, before creating a PR, at session start
+  to check failures, or when a pattern was discovered through trial and error.
 ---
 
 # Skill Improvement — testing-lab Self-Learning Loop
@@ -19,6 +20,7 @@ Output 1 without Output 2 leaves the lab no smarter than before you arrived.
 
 ## When to Use
 
+- **Start of session**: check nightly failures from the past 7 days before doing new work
 - End of any session that produced non-trivial code, config, or ops work
 - Before creating a PR or marking work done
 - When a pattern was discovered by trial and error
@@ -33,6 +35,24 @@ Output 1 without Output 2 leaves the lab no smarter than before you arrived.
 
 ## Core Process
 
+### Step 0 — Check for unanalyzed nightly failures (session start)
+
+Nightly failures are retained for 7 days. Check before starting new work:
+
+```text
+argo-mcp-list_workflows namespace=argo status=Failed
+```
+
+For each failed workflow:
+1. `argo-mcp-logs_workflow <name>` — find the failing step and error message
+2. Route to the relevant skill file (Step 1 routing table below)
+3. If pattern is already in the skill — the fix may be straightforward; do it now
+4. If pattern is new — fix it, then update the skill file before ending the session
+5. File a GitHub issue for infra work that goes beyond this session
+
+> Failures older than 7 days are gone. The self-improving loop only works if
+> someone runs Step 0 before Argo cleans them up.
+
 ### Step 1 — Skill routing
 
 Route by area changed:
@@ -46,6 +66,7 @@ Route by area changed:
 | Bootstrap cluster setup, `argo/bootstrap/` | `docs/bootstrap.md` |
 | Cluster topology, namespaces, RBAC | `AGENTS.md` |
 | Agent operations, MCP tools | `docs/agent-cheatsheet.md` |
+| MCP RBAC, permissions model | `manifests/mcp-kubernetes-mcp-server.yaml` + `manifests/mcp-README.md` |
 | Failure modes, architecture | `RUNBOOK.md` |
 
 Ask: *"If this finding had been in the skill file when I started, would I have avoided the trial-and-error?"* If yes — update the skill file.

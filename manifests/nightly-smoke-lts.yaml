@@ -25,9 +25,10 @@ spec:
   workflowSpec:
     serviceAccountName: argo
     podGC:
-      strategy: OnWorkflowSuccess
+      strategy: OnWorkflowCompletion
     ttlStrategy:
-      secondsAfterCompletion: 86400
+      secondsAfterSuccess: 86400   # 24h — success runs cleaned up quickly
+      secondsAfterFailure: 604800  # 7d  — failures retained for agent analysis
     workflowTemplateRef:
       name: bluefin-qa-pipeline
     arguments:

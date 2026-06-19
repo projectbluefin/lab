@@ -12,6 +12,9 @@ spec:
           - name: vm-name
           - name: namespace
             value: "flatcar-test"
+          # Must match the test-root used in provision-flatcar-vm to locate the disk.
+          - name: test-root
+            value: "/var/tmp/flatcar-test"
       steps:
         - - name: delete-vm
             template: delete-vm
@@ -27,6 +30,8 @@ spec:
               parameters:
                 - name: vm-name
                   value: "{{inputs.parameters.vm-name}}"
+                - name: test-root
+                  value: "{{inputs.parameters.test-root}}"
 
     - name: delete-vm
       inputs:
@@ -46,12 +51,14 @@ spec:
       inputs:
         parameters:
           - name: vm-name
+          - name: test-root
+            value: "/var/tmp/flatcar-test"
       nodeSelector:
         kubernetes.io/hostname: ghost
       volumes:
-        - name: flatcar-vms
+        - name: test-disks
           hostPath:
-            path: /var/tmp/flatcar-test
+            path: "{{inputs.parameters.test-root}}"
       script:
         image: cgr.dev/chainguard/bash:latest
         securityContext:
@@ -65,10 +72,10 @@ spec:
             cpu: 200m
             memory: 128Mi
         volumeMounts:
-          - name: flatcar-vms
-            mountPath: /var/tmp/flatcar-test
+          - name: test-disks
+            mountPath: "{{inputs.parameters.test-root}}"
         source: |
-          DISK="/var/tmp/flatcar-test/{{inputs.parameters.vm-name}}.raw"
-          TARGET="/var/tmp/flatcar-test/{{inputs.parameters.vm-name}}-target.raw"
+          DISK="{{inputs.parameters.test-root}}/{{inputs.parameters.vm-name}}.raw"
+          TARGET="{{inputs.parameters.test-root}}/{{inputs.parameters.vm-name}}-target.raw"
           rm -f "${DISK}" "${TARGET}"
           echo "Cleaned: ${DISK}, ${TARGET}"

@@ -155,7 +155,70 @@ resources:
     memory: 512Mi
 ```
 
-### 7. Lint before every commit
+### 7. Conditional chains: use `dag` + `depends` instead of repeating `when`
+
+When multiple sequential steps are all guarded by the same `when` condition, convert from `steps` to `dag` and put the `when` only on the first task. Subsequent tasks use `depends: "prior.Succeeded"` — if the first task is Skipped, downstream tasks are automatically Omitted:
+
+```yaml
+# ✗ VERBOSE — same when condition repeated on every step
+steps:
+  - - name: check
+      template: check-disk
+  - - name: pull
+      when: "{{steps.check.outputs.result}} != exists"
+      template: pull-image
+  - - name: build
+      when: "{{steps.check.outputs.result}} != exists"  # redundant
+      template: build-image
+  - - name: configure
+      when: "{{steps.check.outputs.result}} != exists"  # redundant
+      template: configure-disk
+
+# ✅ CLEAN — one when, cascade-omit via depends chain
+dag:
+  tasks:
+    - name: check
+      template: check-disk
+    - name: pull
+      depends: "check.Succeeded"
+      when: "{{tasks.check.outputs.result}} != exists"
+      template: pull-image
+    - name: build
+      depends: "pull.Succeeded"   # Omitted if pull was Skipped
+      template: build-image
+    - name: configure
+      depends: "build.Succeeded"  # Omitted if build was Omitted
+      template: configure-disk
+```
+
+Argo DAG semantics: a task with `depends: "X.Succeeded"` is **Omitted** (not an error) when X is Skipped. The overall DAG succeeds if all non-Omitted tasks succeeded.
+
+### 8. File names must match `metadata.name`
+
+WorkflowTemplate file names in `argo/workflow-templates/` must match the resource's `metadata.name`. Divergence (e.g. `provision-vm.yaml` containing `name: provision-bluefin-vm`) confuses ArgoCD tracking and grep-based navigation:
+
+```
+# ✗ WRONG — file name diverged from resource name
+argo/workflow-templates/provision-vm.yaml  →  metadata.name: provision-bluefin-vm
+
+# ✅ CORRECT — file name matches resource name
+argo/workflow-templates/provision-bluefin-vm.yaml  →  metadata.name: provision-bluefin-vm
+```
+
+ArgoCD tracks by GVK + resource name, not filename. A rename is safe — just git mv and push.
+
+### 9. Dead templates: prune promptly, don't leave DEPRECATED annotations
+
+When a WorkflowTemplate is superseded:
+1. Delete the file from `argo/workflow-templates/` in the same PR that removes the dependency
+2. `prune: true` on the ArgoCD Application will delete it from the cluster automatically on next sync
+3. Do not leave templates with `DEPRECATED` annotations in git — they accumulate and confuse agents
+
+One-shot bootstrap templates (`install-*`, `setup-*`, `titan-disk-cleanup`) should not persist indefinitely in the cluster. If they have no git backing, `kubectl delete workflowtemplate -n argo <name>` is safe since ArgoCD won't recreate what isn't in git.
+
+Two CronWorkflows at the same schedule covering overlapping namespaces → consolidate into one. Check `kubectl get cronworkflows -n argo` before adding a new cleanup job.
+
+### 10. Lint before every commit
 
 ```bash
 # Lint workflow-templates (offline, cross-file refs resolve)
@@ -200,6 +263,8 @@ spec:
 | "The sub-template will see workflow.parameters directly." | It will not. Argo Workflows scopes parameters per-template. Always pass explicitly. |
 | "I applied the template with kubectl — it's fine." | ArgoCD selfHeal will overwrite it within minutes. Use git. |
 | "The lint passed locally, I'll skip CI." | CI runs against the same offline linter. If it passed locally, it passes in CI. |
+| "The template is DEPRECATED, I'll clean it up later." | It will never get cleaned up. Delete it now — `prune: true` handles the rest. |
+| "I need each step in the chain to have its own `when` guard." | Use a `dag` with `depends: "prior.Succeeded"` — downstream tasks cascade-omit automatically. |
 
 ## Red Flags
 
@@ -210,6 +275,10 @@ spec:
 - Templates in `argo/workflow-templates/` applied with `kubectl apply` (not via git)
 - `generateName:` in `manifests/` (ArgoCD needs stable names)
 - Python inside bash inside YAML (colons + quotes cause parse errors — use `kubectl jsonpath` instead)
+- A WorkflowTemplate file name that doesn't match its `metadata.name` (confuses ArgoCD tracking)
+- Templates annotated `DEPRECATED` that haven't been deleted from git
+- Two CronWorkflows with the same schedule covering overlapping namespaces
+- A `steps` template with the same `when` condition on 3+ sequential steps (convert to `dag` + `depends` chain)
 
 ## Verification
 
@@ -221,3 +290,6 @@ Before marking any WorkflowTemplate change done:
 - [ ] All pod-running templates have `resources:` requests and limits
 - [ ] Change is committed and pushed — not manually applied to cluster
 - [ ] `description:` annotation present on the new/modified template
+- [ ] File name matches `metadata.name` (e.g. `provision-bluefin-vm.yaml` for `name: provision-bluefin-vm`)
+- [ ] No DEPRECATED templates left in git
+- [ ] `kubectl get workflowtemplate -n argo` shows no cluster-only templates (not in git) unless they're intentional bootstrap one-shots

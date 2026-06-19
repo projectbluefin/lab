@@ -22,13 +22,16 @@ spec:
           # for dakota builds. Default keeps Bluefin pipelines unchanged.
           - name: golden-root
             value: "/var/tmp/bluefin-golden"
-      steps:
-        # `check` outputs "missing" | "stale" | "exists".
-        #   missing — no disk.raw on disk; build path runs
-        #   stale   — disk.raw exists but the remote image digest differs from
-        #             the stored marker (issue #1); build path runs to refresh
-        #   exists  — disk.raw and digest match the remote; build path skipped
-        - - name: check
+      dag:
+        tasks:
+          # `check` outputs "missing" | "stale" | "exists".
+          #   missing — no disk.raw on disk; build path runs
+          #   stale   — disk.raw exists but the remote image digest differs from
+          #             the stored marker (issue #1); build path runs to refresh
+          #   exists  — disk.raw and digest match the remote; pull-image is
+          #             skipped via `when`; build+configure cascade-omit via
+          #             `depends` (no redundant `when` needed on each).
+          - name: check
             template: bib-disk-check
             arguments:
               parameters:
@@ -39,17 +42,18 @@ spec:
                 - name: golden-root
                   value: "{{inputs.parameters.golden-root}}"
 
-        - - name: pull-image
+          - name: pull-image
+            depends: "check.Succeeded"
+            when: "{{tasks.check.outputs.result}} != exists"
             template: bib-img-pull
-            when: "{{steps.check.outputs.result}} != exists"
             arguments:
               parameters:
                 - name: image
                   value: "{{inputs.parameters.image}}"
 
-        - - name: build
+          - name: build
+            depends: "pull-image.Succeeded"
             template: bib-img-build
-            when: "{{steps.check.outputs.result}} != exists"
             arguments:
               parameters:
                 - name: image
@@ -57,9 +61,9 @@ spec:
                 - name: image-tag
                   value: "{{inputs.parameters.image-tag}}"
 
-        - - name: configure
+          - name: configure
+            depends: "build.Succeeded"
             template: bib-disk-configure
-            when: "{{steps.check.outputs.result}} != exists"
             arguments:
               parameters:
                 - name: image

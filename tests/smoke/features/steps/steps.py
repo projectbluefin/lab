@@ -17,6 +17,7 @@ Step patterns sourced from: modehnal/GNOMETerminalAutomation steps.py
 dogtail API: root.application(), Node.findChild(), Node.child(roleName=)
 """
 import json
+import re
 import subprocess
 from time import sleep
 
@@ -329,8 +330,6 @@ def _shell_eval_inner(js: str) -> str:
     layer so the gdbus variant contains ``'"{\\"key\\":val}"'``.  We must use
     ``json.loads`` to properly unescape, not a simple slice.
     """
-    import json as _json
-    import re
     out = _shell_eval(js)
     m = re.search(r"\((?:true|false),\s*'(.*)'\)", out.strip())
     if not m:
@@ -341,8 +340,8 @@ def _shell_eval_inner(js: str) -> str:
         # JSON.stringify output arrives double-escaped: first undo the
         # GVariant layer (\\→\), then JSON-decode the shell-level encoding.
         try:
-            return _json.loads(inner.replace('\\\\', '\\'))
-        except _json.JSONDecodeError:
+            return json.loads(inner.replace('\\\\', '\\'))
+        except json.JSONDecodeError:
             return inner[1:-1]          # fallback: dumb slice
     return inner
 
@@ -602,8 +601,6 @@ def app_is_open_in_atspi(context, app_id) -> None:
 
 @step('Close application "{app_id}" via Shell.Eval')
 def close_app_via_shell_eval(context, app_id) -> None:
-    import json
-
     aliases = json.dumps(list(_app_aliases(app_id)))
     # Close windows AND quit the application process so the next test scenario
     # gets a clean cold-start launch (avoids stale AT-SPI registration on re-activate).
@@ -661,7 +658,6 @@ def files_sidebar_contains(context, item) -> None:
 
 @step('Open Settings panel "{panel_name}"')
 def open_settings_panel(context, panel_name) -> None:
-    import json
     import subprocess as _subprocess
 
     # GNOME 46+ panel ID mapping (positional arg names changed between GCC versions)

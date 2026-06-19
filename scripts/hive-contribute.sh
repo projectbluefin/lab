@@ -34,40 +34,6 @@ else
   git -C "$HIVE_DIR" pull -q --ff-only
 fi
 
-# ── Patch relay: prepend guardrails to every task prompt ───────────────
-python3 - << 'PYEOF'
-import sys, os
-relay_path = os.environ.get("HIVE_DIR", "/tmp/hive") + "/bin/contributor-relay.sh"
-relay = open(relay_path).read()
-
-guardrail_js = (
-    "const GUARDRAILS = ["
-    "'HIVE CONTRIBUTOR RULES — OBEY BEFORE EVERY ACTION:\\n',"
-    "'1. COMMENTS: ONE comment per issue/PR max. If you already commented, EDIT it — never post a new one.\\n',"
-    "'2. NO MERGES: Never merge or approve a PR. Open PRs for human review only.\\n',"
-    "'3. NO SPAM: No status updates or progress comments. Only comment with a concrete complete result.\\n',"
-    "'4. CONSERVATIVE: Propose over act. When uncertain, comment with findings and suggested fix only.\\n',"
-    "'5. CLOSING: Only close an issue if your PR was already merged by a maintainer and directly fixes it.\\n',"
-    "'6. SCOPE: Work only on the assigned repo/issue.\\n',"
-    "].join('');\n"
-)
-
-old = "      const taskPrompt = msg.prompt || `Work on ${msg.kind} ${msg.repo}#${msg.number}: ${msg.title}`;"
-new = guardrail_js + "      const taskPrompt = GUARDRAILS + (msg.prompt || `Work on ${msg.kind} ${msg.repo}#${msg.number}: ${msg.title}`);"
-
-old_review = "        const reviewPrompt = `Check your open PRs on ${completedRepo} for review comments. ` +"
-new_review = "        const reviewPrompt = GUARDRAILS + `Check your open PRs on ${completedRepo} for review comments. ` +"
-
-if "GUARDRAILS" in relay:
-    print("relay already patched")
-    sys.exit(0)
-
-assert old in relay, "taskPrompt anchor not found — hive v2 may have changed, check relay manually"
-assert old_review in relay, "reviewPrompt anchor not found"
-relay = relay.replace(old, new).replace(old_review, new_review)
-open(relay_path, "w").write(relay)
-print("relay patched with guardrails")
-PYEOF
 
 # ── First-time setup (idempotent) ──────────────────────────────────────
 cd "$HIVE_DIR"

@@ -147,7 +147,6 @@ argo/
     run-flatcar-tests.yaml        SSH into Flatcar VM, run tests
     teardown-vm.yaml              delete VM + hostDisk
     teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
-    bluefin-titan-smoke.yaml      deprecated manual smoke against operator-managed persistent VMs
     bluefin-qa-pipeline.yaml      full pipeline: ensure-disk + provision + tests
     patch-golden-disk.yaml        retroactively fix SSH auth on existing disk
     dakota-bst.yaml               drive dakota `just validate` / `just build` / `just lint` on ghost
@@ -263,7 +262,7 @@ Loki captures workflow pod logs. Use the commands in [docs/agent-cheatsheet.md](
 | `bib-disk-check` | 100m / 500m | 128Mi / 512Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
 | `reflink-disk` | 100m / 500m | 128Mi / 512Mi |
-| `preflight` (deprecated manual titan smoke) | 100m / 200m | 64Mi / 128Mi |
+
 
 ## Hive Contributor
 

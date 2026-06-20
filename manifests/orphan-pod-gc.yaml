@@ -1,0 +1,76 @@
+# CronWorkflow: cleans up orphan pods left by node reboots every 30 minutes.
+# ContainerStatusUnknown pods (running when ghost rebooted) are invisible to
+# Argo's podGC and the k8s TTL controller — they accumulate without this sweep.
+# Also cleans Failed pods older than 1 hour that Argo podGC missed.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: orphan-pod-gc
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  schedules:
+    - "*/30 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  workflowSpec:
+    serviceAccountName: argo
+    entrypoint: gc
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterCompletion: 300
+    templates:
+      - name: gc
+        nodeSelector:
+          kubernetes.io/hostname: ghost
+        script:
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          command: [bash]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          source: |
+            set -uo pipefail
+
+            echo "=== orphan-pod-gc $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+
+            # 1. ContainerStatusUnknown — pods running when the node rebooted.
+            #    phase=Unknown is not handled by Argo podGC or k8s TTL controller.
+            UNKNOWN=$(kubectl get pods -A \
+              --field-selector=status.phase=Unknown \
+              --no-headers 2>/dev/null | wc -l)
+            echo "Unknown pods: ${UNKNOWN}"
+            if [[ "${UNKNOWN}" -gt 0 ]]; then
+              kubectl delete pods -A \
+                --field-selector=status.phase=Unknown \
+                --force --grace-period=0 2>/dev/null || true
+              echo "Deleted ${UNKNOWN} Unknown pods"
+            fi
+
+            # 2. Failed pods older than 1 hour that Argo podGC missed
+            #    (e.g. pods from workflows deleted before Argo could GC them).
+            NOW=$(date -u +%s)
+            CUTOFF=$((NOW - 3600))
+            DELETED_FAILED=0
+            while IFS=' ' read -r NS POD CREATED; do
+              [[ -z "${POD}" ]] && continue
+              CT=$(date -u -d "${CREATED}" +%s 2>/dev/null || echo 0)
+              if [[ "${CT}" -lt "${CUTOFF}" ]]; then
+                kubectl delete pod "${POD}" -n "${NS}" --ignore-not-found 2>/dev/null || true
+                DELETED_FAILED=$((DELETED_FAILED + 1))
+              fi
+            done < <(kubectl get pods -A \
+              --field-selector=status.phase=Failed \
+              --no-headers \
+              -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,CREATED:.metadata.creationTimestamp' \
+              2>/dev/null || true)
+            echo "Deleted ${DELETED_FAILED} stale Failed pods (>1h)"
+
+            echo "=== gc complete ==="

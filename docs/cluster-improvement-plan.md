@@ -296,7 +296,7 @@ Phase 2 is complete would fail on every current PR.
 
 ---
 
-## Phase 4 — LLM float + all model artifacts in Zot
+## Phase 4 — LLM float + all model artifacts in Zot ✅ DONE 2026-06-20
 
 **Why here:** Depends on the writable Zot registry (port 30500) being stable and trusted.
 Floating llm-d frees ghost's 48 GB RAM for the full 7-VM concurrent test capacity.
@@ -353,7 +353,7 @@ Zot instance for model artifacts.
 
 ---
 
-## Phase 5 — ARC runner improvements
+## Phase 5 — ARC runner improvements ✅ DONE 2026-06-20
 
 **Why here:** Depends on the hummingbird images from Phase 2 (for the custom runner base)
 and Zot being solid (to store and serve the custom runner image).
@@ -424,7 +424,9 @@ steer excess runners away.
 
 ---
 
-## Phase 6 — PR pipeline wiring
+## Phase 6 — PR pipeline wiring ✅ PARTIALLY DONE 2026-06-20
+
+> 6b and 6c implemented. Ops prereq: `kubectl create secret generic github-token --from-literal=token=<PAT> -n argo`. 6d (ARC trigger workflow in projectbluefin/bluefin) is a separate task.
 
 **Why last:** Depends on everything above: Zot (images), ARC runner (custom image + toolchain),
 and the bib-build-and-push fix.
@@ -564,7 +566,7 @@ jobs:
 
 ---
 
-## Phase 7 — System contract tests in the nightly pipeline ✅ PARTIALLY DONE 2026-06-20
+## Phase 7 — System contract tests in the nightly pipeline ✅ DONE 2026-06-20
 
 **Finding:** `run-gnome-tests` WorkflowTemplate already handles `suite=system` natively (behave only,
 no qecore-headless). No new WorkflowTemplate needed.

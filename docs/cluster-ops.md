@@ -198,3 +198,76 @@ workflows simultaneously.
 | Argo Workflows UI | `http://192.168.1.102:32746` | HTTP |
 
 Port 3333 (superlocalmemory) has been decommissioned.
+
+## ARC runner operations
+
+The ghost cluster runs GitHub Actions Runner Controller (ARC) to replicate the GitHub Actions environment locally for developer testing.
+
+### Architecture
+
+| Component | Namespace | Pod | Notes |
+|---|---|---|---|
+| Controller | `arc-systems` | `arc-systems-gha-rs-controller-*` | Manages runner lifecycle |
+| Listener | `arc-systems` | `ghost-runners-*-listener` | Long-polls GitHub for job assignments |
+| Runner pods | `arc-runners` | `ghost-runners-*-runner-*` | Ephemeral — spawned per job, die after |
+
+Scale set: `ghost-runners`, registered at org level `https://github.com/projectbluefin`, `minRunners: 0`, `maxRunners: 4`.
+
+### Empty arc-runners namespace is HEALTHY
+
+`minRunners: 0` means no idle runner pods sit around. The listener wakes up the scale set when GitHub dispatches a job with `runs-on: ghost-runners`. An empty namespace means no jobs are queued — this is correct.
+
+### Common failure modes
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Pod has failed to start more than 5 times` on EphemeralRunners | Stale failed runners blocking new ones | `kubectl delete ephemeralrunners -n arc-runners --all` |
+| Runner pods complete in 2s with no logs | Missing `command: ["/home/runner/run.sh"]` — image default CMD is `/bin/bash` | Add command to `arc-runners-app.yaml` template |
+| `Jobs without a job container are forbidden` | `containerMode: kubernetes` sets `ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER=true` — incompatible with workflows without `container:` field | Remove `containerMode` from Helm values |
+| Runners all land on ghost, none on bazzite | No nodeSelector; scheduler prefers ghost | Add `nodeSelector: node-location: lan` + toleration for `node-role.kubernetes.io/gaming` |
+| Runners Pending with `didn't match node affinity/selector` | bazzite taint not tolerated | Add `tolerations: [{key: node-role.kubernetes.io/gaming, operator: Exists, effect: NoSchedule}]` |
+
+### Routing local dev to ghost ARC runners
+
+A pre-push git hook at `~/.git-hooks/pre-push` (global via `~/.config/git/config: core.hooksPath`) transparently mirrors pushes to `projectbluefin/*` repos:
+
+1. Creates `ghost/<branch>` with `ubuntu-latest` → `ghost-runners` patched in workflow files (git plumbing — no working tree changes)
+2. Force-pushes the ghost branch
+3. Auto-dispatches `workflow_dispatch` workflows (skips `manual.yml` — needs specific inputs)
+4. Cleans up ghost branches after 2 hours
+
+To run the full test matrix manually against ghost runners:
+```bash
+GHOST_REF="ghost/<branch>"
+for image in testing stable; do
+  gh workflow run manual.yml --repo projectbluefin/testsuite \
+    --ref "${GHOST_REF}" \
+    --field image="ghcr.io/projectbluefin/bluefin:${image}" \
+    --field suites="smoke,developer,dx,software,vanilla-gnome,bazzite,lifecycle"
+done
+```
+
+### Bazzite sleep prevention
+
+Bazzite is a gaming PC and will suspend if idle. Prevent with:
+```bash
+# Via privileged pod (survives without SSH):
+kubectl run nosleep --image=busybox:latest --restart=Never \
+  --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"bazzite"},"hostPID":true,"containers":[{"name":"n","image":"busybox:latest","securityContext":{"privileged":true},"command":["nsenter","-t","1","-m","-u","-i","-n","-p","--","bash","-c","systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target && echo DONE"]}]}}' \
+  && sleep 10 && kubectl logs nosleep && kubectl delete pod nosleep
+```
+Masks survive reboots but NOT OS updates. Re-run after Bazzite updates.
+
+### Registry mirrors (Zot)
+
+`zot-ghcr` (port 30501) and `zot-docker` (port 30502) are on-demand pull-through caches in `local-registry` namespace. For nodes to use them, `/etc/rancher/k3s/registries.yaml` must include:
+```yaml
+mirrors:
+  "ghcr.io":
+    endpoint:
+      - "http://192.168.1.102:30501"
+  "docker.io":
+    endpoint:
+      - "http://192.168.1.102:30502"
+```
+After updating, restart k3s: `systemctl restart k3s` (ghost) or `systemctl restart k3s-agent` (bazzite).

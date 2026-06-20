@@ -21,10 +21,11 @@ to be reachable. If the extensions show `offline`, run `/argo-reconnect` and
 
 ## Cluster configuration
 
-| Node | Role | Schedulable |
-|---|---|---|
-| `ghost` | control-plane + master | Yes (all workloads) |
-| `exo-1` | worker | Yes (workflow pods only — no critical system pods) |
+| Node | Role | Schedulable | Notes |
+|---|---|---|---|
+| `ghost` | control-plane + master | Yes (all workloads) | — |
+| `exo-1` | worker | Yes (workflow pods only — no critical system pods) | — |
+| `bazzite` | worker | Yes (on demand) | Gaming machine — k3s disabled at boot; `ujust toggle-k8s` to start/stop |
 
 `/etc/rancher/k3s/config.yaml` on ghost:
 

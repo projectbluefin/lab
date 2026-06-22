@@ -234,6 +234,9 @@ spec:
           operator: Exists
           effect: NoSchedule
       volumes:
+        - name: dev
+          hostPath:
+            path: /dev
         - name: staging
           hostPath:
             path: /var/mnt/ghost-data/bluefin-cd-build
@@ -258,11 +261,13 @@ spec:
                 name: bluefin-test-ssh-key
                 key: id_ed25519.pub
         volumeMounts:
+          - name: dev
+            mountPath: /dev
           - name: staging
             mountPath: /mnt/staging
         source: |
           set -euo pipefail
-          dnf install -y --quiet util-linux btrfs-progs >/dev/null 2>&1
+          dnf install -y util-linux btrfs-progs
 
           TAG="{{inputs.parameters.containerdisk-tag}}"
           DISK="/mnt/staging/${TAG}/disk.raw"
@@ -277,16 +282,16 @@ spec:
 
           cleanup() {
             umount /mnt/btroot 2>/dev/null || true
-            umount /mnt/btboot 2>/dev/null || true
             losetup -d "${LOOP}" 2>/dev/null || true
           }
           trap cleanup EXIT
 
-          mkdir -p /mnt/btroot /mnt/btboot
-          mount -o subvol=root "${LOOP}p4" /mnt/btroot
-          mount "${LOOP}p3" /mnt/btboot
+          # bootc install to-disk creates: p1=BIOS(1M) p2=EFI(512M) p3=btrfs-root
+          # There is NO separate /boot partition; /boot lives inside the btrfs root.
+          mkdir -p /mnt/btroot
+          mount -o subvol=root "${LOOP}p3" /mnt/btroot
 
-          # Locate the active ostree deploy directory
+          # Locate the active ostree deploy directory (stateroot varies by image)
           DEPLOY=$(find /mnt/btroot/ostree/deploy/*/deploy/ \
             -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -1)
           if [[ -z "${DEPLOY}" ]]; then
@@ -345,10 +350,11 @@ spec:
           chmod 440 "${ETC}/sudoers.d/bluefin-test"
 
           # ── selinux=0 in bootloader entries ───────────────────────────────
+          # Entries are inside the btrfs root at /boot/loader/entries/ (no separate /boot partition)
           while IFS= read -r -d '' entry; do
             sed -i 's/\(^options .*\)$/\1 selinux=0/' "${entry}"
             echo "Patched selinux=0 in: ${entry}"
-          done < <(find /mnt/btboot/loader/entries/ -name "*.conf" -print0 2>/dev/null)
+          done < <(find /mnt/btroot/boot/loader/entries/ -name "*.conf" -print0 2>/dev/null)
 
           echo "configure-disk complete"
           # trap cleanup EXIT handles unmount + losetup -d

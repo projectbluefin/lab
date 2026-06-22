@@ -277,8 +277,12 @@ spec:
             exit 1
           fi
 
-          LOOP=$(losetup -f -P --show "${DISK}")
+          LOOP=$(losetup -f --show "${DISK}")
           echo "Loop: ${LOOP} for ${DISK}"
+          # Force kernel to enumerate partitions (losetup -P alone may not work in k8s /dev bind-mount)
+          partx -a "${LOOP}" 2>/dev/null || partx -u "${LOOP}" 2>/dev/null || true
+          sleep 0.5
+          echo "Partition devices: $(ls ${LOOP}p* 2>/dev/null || echo 'none')"
 
           cleanup() {
             umount /mnt/btroot 2>/dev/null || true

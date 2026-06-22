@@ -1,0 +1,39 @@
+# CronWorkflow: polls ghcr.io/projectbluefin/bluefin:testing hourly.
+# Triggers bluefin-qa-pipeline only when OCI digest changes vs ConfigMap state.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-bluefin-testing
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+    bluefin.io/trigger: digest-poll
+spec:
+  schedules:
+    - "0 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    workflowTemplateRef:
+      name: image-poller
+    arguments:
+      parameters:
+        - name: image
+          value: "ghcr.io/projectbluefin/bluefin"
+        - name: image-tag
+          value: "testing"
+        - name: state-key
+          value: "digest-bluefin-testing"
+        - name: namespace
+          value: "bluefin-test"
+        - name: suites
+          value: "smoke,developer,system"
+        - name: variant
+          value: "bluefin"

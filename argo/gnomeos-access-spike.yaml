@@ -1,0 +1,92 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: gnomeos-access-spike-
+  namespace: argo
+spec:
+  entrypoint: gnomeos-spike
+  serviceAccountName: argo
+  onExit: cleanup
+
+  arguments:
+    parameters:
+      - name: image-url
+        value: "https://os.gnome.org/download/latest/installer_x86_64.iso"
+      - name: image-sha256
+        value: ""
+      - name: image-format
+        value: "raw"
+      - name: namespace
+        value: "gnomeos-test"
+      - name: console-hook-config-map
+        value: ""
+
+  templates:
+    - name: gnomeos-spike
+      dag:
+        tasks:
+          - name: provision
+            templateRef:
+              name: provision-gnomeos-vm
+              template: provision-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "gnomeos-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: image-url
+                  value: "{{workflow.parameters.image-url}}"
+                - name: image-sha256
+                  value: "{{workflow.parameters.image-sha256}}"
+                - name: image-format
+                  value: "{{workflow.parameters.image-format}}"
+                - name: console-hook-config-map
+                  value: "{{workflow.parameters.console-hook-config-map}}"
+
+          - name: observe
+            dependencies: [provision]
+            template: observe-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "gnomeos-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
+                - name: vm-ip
+                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+
+    - name: observe-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+          - name: vm-ip
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        source: |
+          set -euo pipefail
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+          echo "GNOME OS VM pod IP: {{inputs.parameters.vm-ip}}"
+          kubectl get vm -n "${NS}" "${VM}" -o wide
+          kubectl get vmi -n "${NS}" "${VM}" -o wide
+
+    - name: cleanup
+      steps:
+        - - name: teardown
+            templateRef:
+              name: teardown-gnomeos-vm
+              template: teardown-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "gnomeos-test-{{workflow.uid}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"

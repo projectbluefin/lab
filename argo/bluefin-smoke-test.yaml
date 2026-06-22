@@ -15,6 +15,7 @@ spec:
     annotations:
       bluefin.io/image-tag: "{{workflow.parameters.image-tag}}"
       bluefin.io/variant: "bluefin"
+      bluefin.io/branch: "{{workflow.parameters.branch}}"
       bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
       bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
       bluefin.io/workflow: "{{workflow.name}}"
@@ -27,6 +28,7 @@ spec:
     annotations:
       bluefin.io/image-tag: "{{workflow.parameters.image-tag}}"
       bluefin.io/variant: "bluefin"
+      bluefin.io/branch: "{{workflow.parameters.branch}}"
       bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
       bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
   onExit: cleanup
@@ -41,6 +43,8 @@ spec:
         value: ""
       - name: pr-number
         value: ""
+      - name: branch
+        value: "main"
 
   templates:
     - name: bluefin-test-pipeline
@@ -73,7 +77,7 @@ spec:
                 - name: namespace
                   value: "bluefin-test"
 
-          # behave + qecore GNOME smoke tests
+          # qecore GNOME smoke tests (behave + suite-local pytest)
           - name: run-tests
             dependencies: [provision]
             templateRef:
@@ -87,6 +91,8 @@ spec:
                   value: "smoke"
                 - name: variant
                   value: "{{workflow.parameters.image-tag}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
 
     # onExit: delete VM + hostDisk regardless of outcome
     - name: cleanup

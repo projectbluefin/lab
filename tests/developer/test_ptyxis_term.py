@@ -3,6 +3,7 @@ Phase 2 — Terminal and Developer Environment Tests
 Validates Ptyxis launch, Homebrew path, and shell environment on Bluefin.
 Fixtures (launch_ptyxis, launch_ghostty) are in conftest.py.
 """
+import os
 import time
 import subprocess
 from dogtail.rawinput import pressKey, typeText
@@ -90,9 +91,10 @@ class TestPtyxisRegressions:
         except Exception:
             pass  # resize not available in all AT-SPI implementations
 
+        journal_since = os.environ.get("TEST_JOURNAL_SINCE", "1 minute ago")
         result = subprocess.run(
             ["journalctl", "-b", "--no-pager", "-g", "vkAcquireNextImageKHR",
-             "--since", "1 minute ago"],
+             "--since", journal_since],
             capture_output=True, text=True, timeout=10
         )
         vulkan_errors = [l for l in result.stdout.splitlines()
@@ -100,5 +102,4 @@ class TestPtyxisRegressions:
         assert len(vulkan_errors) < 5, \
             f"Ptyxis flooding journal with Vulkan errors ({len(vulkan_errors)} lines):\n" \
             + "\n".join(vulkan_errors[:10])
-
 

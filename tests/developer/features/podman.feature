@@ -16,6 +16,18 @@ Feature: Podman desktop and rootless runtime coverage
     * Wait until "Podman Desktop" "frame" appears in "podman_desktop"
     * Item "Dashboard" "label" is "showing" in "podman_desktop"
 
+  @podman_desktop @ui
+  Scenario: Podman Desktop exposes the Containers navigation item
+    * Start application "podman_desktop" via "command"
+    * Wait until "Podman Desktop" "frame" appears in "podman_desktop"
+    * Podman Desktop shows a Containers navigation item
+
+  @podman_desktop @stability
+  Scenario: Podman Desktop launch shows no permission error dialog
+    * Start application "podman_desktop" via "command"
+    * Wait until "Podman Desktop" "frame" appears in "podman_desktop"
+    * No Podman Desktop permission error dialog appears
+
   @podman_desktop @close
   Scenario: Podman Desktop closes cleanly
     * Start application "podman_desktop" via "command"

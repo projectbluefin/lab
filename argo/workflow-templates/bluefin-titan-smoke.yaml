@@ -1,0 +1,152 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: bluefin-titan-smoke
+  namespace: argo
+  annotations:
+    description: |
+      Runs smoke tests against persistent titan VMs (no BIB build needed).
+      Use when: iterating on tests, CI is slow, or BIB is broken.
+      Prerequisites: titan-bluefin and titan-lts VMs must be running.
+spec:
+  arguments:
+    parameters:
+      - name: vm-ip-latest
+        # kubectl get vmi titan-bluefin -n bluefin-test -o jsonpath='{.status.interfaces[0].ipAddress}'
+        value: ""
+      - name: vm-ip-lts
+        # kubectl get vmi titan-lts -n bluefin-lts-test -o jsonpath='{.status.interfaces[0].ipAddress}'
+        value: ""
+      - name: suite
+        value: "smoke"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
+      - name: issue-title
+        value: "titan smoke run"
+      # git ref the test runner clones. Default `main`; override to test a PR
+      # branch against persistent titan VMs without merging.
+      - name: branch
+        value: "main"
+
+  serviceAccountName: argo
+  entrypoint: run-smoke
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 1800
+    secondsAfterFailure: 7200
+    secondsAfterSuccess: 1800
+
+  templates:
+    - name: run-smoke
+      steps:
+        - - name: preflight-latest
+            template: preflight
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-latest}}"
+                - name: label
+                  value: "titan-bluefin"
+          - name: preflight-lts
+            template: preflight
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-lts}}"
+                - name: label
+                  value: "titan-lts"
+        - - name: smoke-latest
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-latest}}"
+                - name: suite
+                  value: "{{workflow.parameters.suite}}"
+                - name: variant
+                  value: "latest"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+                - name: issue-title
+                  value: "{{workflow.parameters.issue-title}} - titan-bluefin"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+
+          - name: smoke-lts
+            templateRef:
+              name: run-gnome-tests
+              template: run-gnome-tests
+            arguments:
+              parameters:
+                - name: vm-ip
+                  value: "{{workflow.parameters.vm-ip-lts}}"
+                - name: suite
+                  value: "{{workflow.parameters.suite}}"
+                - name: variant
+                  value: "lts"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+                - name: issue-title
+                  value: "{{workflow.parameters.issue-title}} - titan-lts"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+
+    - name: preflight
+      inputs:
+        parameters:
+          - name: vm-ip
+          - name: label
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      podSpecPatch: |
+        hostNetwork: true
+        dnsPolicy: ClusterFirstWithHostNet
+        securityContext:
+          runAsUser: 0
+      volumes:
+        - name: ssh-key
+          secret:
+            secretName: "{{workflow.parameters.ssh-key-secret}}"
+            defaultMode: 0400
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+          - name: ssh-key
+            mountPath: /etc/ssh/test-key
+            readOnly: true
+        source: |
+          set -euo pipefail
+          VM_IP="{{inputs.parameters.vm-ip}}"
+          LABEL="{{inputs.parameters.label}}"
+          SSH="ssh -i /etc/ssh/test-key/id_ed25519 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR bluefin-test@${VM_IP}"
+
+          if ! command -v ssh &>/dev/null; then
+            dnf install -y --quiet openssh-clients 2>&1 | tail -2
+          fi
+
+          echo "Preflight ${LABEL} (${VM_IP})..." >&2
+          STATE=$(${SSH} "systemctl is-system-running 2>/dev/null || true" | tail -n1)
+          if [[ -z "${STATE}" ]]; then
+            STATE="unknown"
+          fi
+          if [[ "${STATE}" != "running" && "${STATE}" != "degraded" ]]; then
+            echo "ERROR: systemd state '${STATE}' on ${LABEL}" >&2
+            exit 1
+          fi
+          FREE=$(${SSH} "df -BG / | awk 'NR==2{print \$4}' | tr -d G")
+          if [[ "${FREE}" -lt 2 ]]; then
+            echo "ERROR: only ${FREE}GB free on ${LABEL} root — need ≥ 2GB" >&2
+            exit 1
+          fi
+          echo "Preflight passed: ${LABEL} systemd=${STATE}, disk=${FREE}GB free" >&2

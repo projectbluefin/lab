@@ -9,6 +9,7 @@ import pytest
 from dogtail.tree import root
 from dogtail.rawinput import pressKey, typeText
 from dogtail.utils import run
+import os
 import subprocess
 
 
@@ -155,8 +156,12 @@ class TestExtensions:
 
     def test_no_extension_errors_in_journal(self):
         """No JS errors from extensions in the current boot journal."""
+        journal_since = os.environ.get("TEST_JOURNAL_SINCE")
+        cmd = ["journalctl", "-b", "--no-pager", "-g", "Extension.*error|GNOME Shell.*crashed"]
+        if journal_since:
+            cmd.extend(["--since", journal_since])
         result = subprocess.run(
-            ["journalctl", "-b", "--no-pager", "-g", "Extension.*error|GNOME Shell.*crashed"],
+            cmd,
             capture_output=True, text=True, timeout=10
         )
         errors = [l for l in result.stdout.splitlines() if "error" in l.lower() or "crash" in l.lower()]
@@ -199,8 +204,9 @@ class TestLogoutFlow:
             pass
 
         # Assert no coredump was produced
+        journal_since = os.environ.get("TEST_JOURNAL_SINCE", "1 minute ago")
         result = subprocess.run(
-            ["coredumpctl", "list", "--no-pager", "--since", "1 minute ago"],
+            ["coredumpctl", "list", "--no-pager", "--since", journal_since],
             capture_output=True, text=True, timeout=10
         )
         coredumps = [l for l in result.stdout.splitlines() if "gnome-shell" in l]

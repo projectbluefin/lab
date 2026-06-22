@@ -13,6 +13,7 @@ spec:
     annotations:
       bluefin.io/image-latest: "{{workflow.parameters.image-latest}}"
       bluefin.io/image-lts: "{{workflow.parameters.image-lts}}"
+      bluefin.io/branch: "{{workflow.parameters.branch}}"
       bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
       bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
       bluefin.io/workflow: "{{workflow.name}}"
@@ -21,6 +22,7 @@ spec:
       app.kubernetes.io/part-of: bluefin-test-suite
       bluefin.io/suite: qa-matrix
     annotations:
+      bluefin.io/branch: "{{workflow.parameters.branch}}"
       bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
       bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
   onExit: cleanup
@@ -39,6 +41,8 @@ spec:
         value: ""
       - name: pr-number
         value: ""
+      - name: branch
+        value: "main"
 
   templates:
     - name: matrix
@@ -109,6 +113,8 @@ spec:
                   value: "latest"
                 - name: issue-title
                   value: "matrix smoke - latest - PR{{workflow.parameters.pr-number}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
 
           - name: test-lts
             templateRef:
@@ -124,6 +130,8 @@ spec:
                   value: "lts"
                 - name: issue-title
                   value: "matrix smoke - lts - PR{{workflow.parameters.pr-number}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
 
     # onExit: always teardown both VMs regardless of outcome
     - name: cleanup

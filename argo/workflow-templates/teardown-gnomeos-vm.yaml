@@ -1,0 +1,72 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: teardown-gnomeos-vm
+  namespace: argo
+spec:
+  templates:
+    - name: teardown-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+            value: "gnomeos-test"
+      steps:
+        - - name: delete-vm
+            template: delete-vm
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+                - name: namespace
+                  value: "{{inputs.parameters.namespace}}"
+        - - name: delete-hostdisk
+            template: delete-hostdisk
+            arguments:
+              parameters:
+                - name: vm-name
+                  value: "{{inputs.parameters.vm-name}}"
+
+    - name: delete-vm
+      inputs:
+        parameters:
+          - name: vm-name
+          - name: namespace
+      resource:
+        action: delete
+        manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+
+    - name: delete-hostdisk
+      inputs:
+        parameters:
+          - name: vm-name
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: gnomeos-vms
+          hostPath:
+            path: /var/tmp/gnomeos-test
+      script:
+        image: cgr.dev/chainguard/bash:latest
+        securityContext:
+          runAsUser: 0
+        command: [bash]
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        volumeMounts:
+          - name: gnomeos-vms
+            mountPath: /var/tmp/gnomeos-test
+        source: |
+          DISK="/var/tmp/gnomeos-test/{{inputs.parameters.vm-name}}.raw"
+          rm -f "${DISK}"
+          echo "Cleaned: ${DISK}"

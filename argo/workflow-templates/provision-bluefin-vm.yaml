@@ -207,7 +207,7 @@ spec:
       script:
         image: registry.k8s.io/kubectl:v1.32.0
         command:
-          - sh
+          - bash
         resources:
           requests:
             cpu: 100m
@@ -230,6 +230,6 @@ spec:
 
           echo "Waiting for SSH on ${POD_IP}..." >&2
           timeout 120 bash -c \
-            "until nc -z ${POD_IP} 22 2>/dev/null; do sleep 5; done"
+            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
 
           echo "${POD_IP}"

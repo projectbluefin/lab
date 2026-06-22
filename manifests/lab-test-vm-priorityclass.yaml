@@ -1,0 +1,13 @@
+# High-priority class for KubeVirt virt-launcher pods.
+# Preempts bst-build pods (value: 100) when a VM needs to schedule on ghost.
+# Ensures test VMs always win ghost resources over background build work.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-test-vm
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+value: 1000000
+preemptionPolicy: PreemptLowerPriority
+globalDefault: false
+description: "KubeVirt virt-launcher pods. Preempts build workloads on resource contention."

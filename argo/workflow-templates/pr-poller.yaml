@@ -1,0 +1,121 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: pr-poller
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: pr-poller
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  entrypoint: poll-labeled-prs
+  templates:
+    - name: poll-labeled-prs
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: bluefin-test-suite
+          bluefin.io/step: pr-poller
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
+        source: |
+          set -euo pipefail
+          dnf install -y --quiet jq curl 2>/dev/null | tail -1 >&2
+
+          ORG="projectbluefin"
+          LABEL="test-in-lab"
+          CONTEXT="ghost-lab"
+          API="https://api.github.com"
+
+          QUERY=$(jq -rn --arg q "org:${ORG} is:pr is:open label:${LABEL}" '$q|@uri')
+          RESULTS=$(curl -sf \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API}/search/issues?q=${QUERY}")
+
+          COUNT=$(echo "$RESULTS" | jq '.total_count // 0')
+          echo "Found ${COUNT} PR(s) labeled '${LABEL}' in org '${ORG}'" >&2
+          [[ "$COUNT" -eq 0 ]] && exit 0
+
+          echo "$RESULTS" | jq -c '.items[]' | while read -r item; do
+            PR_URL=$(echo "$item" | jq -r '.pull_request.url')
+            PR=$(curl -sf \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "$PR_URL")
+
+            REPO=$(echo "$PR" | jq -r '.base.repo.full_name')
+            SHA=$(echo "$PR"  | jq -r '.head.sha')
+            PR_NUM=$(echo "$PR" | jq -r '.number')
+            BRANCH=$(echo "$PR" | jq -r '.head.ref')
+
+            # Idempotency: skip if ghost-lab status already posted for this SHA
+            EXISTING=$(curl -sf \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${API}/repos/${REPO}/statuses/${SHA}" \
+              | jq -r --arg ctx "$CONTEXT" \
+                '.[] | select(.context == $ctx) | .state' | head -1)
+
+            if [[ -n "$EXISTING" ]]; then
+              echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: status=${EXISTING}, skip" >&2
+              continue
+            fi
+
+            # Lock: post pending before dispatching to prevent duplicate runs
+            curl -sf -X POST \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              "${API}/repos/${REPO}/statuses/${SHA}" \
+              -d "$(jq -n --arg ctx "$CONTEXT" \
+                '{state:"pending",context:$ctx,description:"Ghost lab queued"}')" \
+              > /dev/null
+            echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: locked + dispatching" >&2
+
+            # Route to matching WorkflowTemplate
+            case "$REPO" in
+              */dakota)  TMPL="dakota-qa-pipeline" ;;
+              */knuckle) TMPL="knuckle-qa-pipeline" ;;
+              *)         TMPL="bluefin-qa-pipeline" ;;
+            esac
+
+            # Dispatch child Workflow via kubectl resource create
+            kubectl create -f - <<EOF
+          apiVersion: argoproj.io/v1alpha1
+          kind: Workflow
+          metadata:
+            generateName: "pr-test-${PR_NUM}-"
+            namespace: argo
+            labels:
+              bluefin.io/trigger: pr-label
+              bluefin.io/pr-number: "${PR_NUM}"
+          spec:
+            workflowTemplateRef:
+              name: ${TMPL}
+            arguments:
+              parameters:
+                - name: sha
+                  value: "${SHA}"
+                - name: repo
+                  value: "${REPO}"
+                - name: branch
+                  value: "${BRANCH}"
+                - name: pr-number
+                  value: "${PR_NUM}"
+          EOF
+            echo "PR #${PR_NUM}: dispatched ${TMPL}" >&2
+          done

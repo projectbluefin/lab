@@ -7,6 +7,6 @@ Keep only these repo-specific inline reminders:
 - Use `just` entrypoints first; do not duplicate command tables here.
 - No SSH to ghost or exo-1.
 - No `kubectl apply` for `argo/workflow-templates/` or `manifests/`; edit git-tracked YAML and let ArgoCD reconcile it.
-- Prefer titan workflows for test-only iteration and fresh-VM workflows for image or golden-disk validation.
-- PR queue work is only complete with real lab evidence in [`../docs/vanguard-report-template.md`](../docs/vanguard-report-template.md).
-- Titan `authorized_keys` refresh is human-gated; if titan SSH breaks after key rotation, file an issue for a human operator to run the manual key-injection procedure.
+- All test runs use ephemeral KubeVirt VMs — no persistent titan VMs. `just list-vms` should show empty when no workflows run.
+- After pushing a fix, verify the live template via `argo-mcp-get_workflow_template` before resubmitting — templates snapshot at submit time.
+- PR queue work is only complete with real lab evidence.

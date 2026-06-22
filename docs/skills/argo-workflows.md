@@ -120,6 +120,8 @@ For steps that produce a value consumed by downstream steps, write the result to
 
 Then consume via `{{steps.wait-for-vm.outputs.result}}`.
 
+**`cgr.dev/chainguard/kubectl:latest-dev`** is the correct image for any step that needs both `kubectl` and `bash`. `registry.k8s.io/kubectl` is distroless (no shell — `nc`, `bash /dev/tcp` all fail). Add `cgr.dev` to the registry lint allowlist when using it.
+
 ### 5. Always use `onExit` for teardown
 
 Every pipeline that provisions a VM must have a guaranteed teardown:
@@ -228,7 +230,46 @@ One-shot bootstrap templates (`install-*`, `setup-*`, `titan-disk-cleanup`) shou
 
 Two CronWorkflows at the same schedule covering overlapping namespaces → consolidate into one. Check `kubectl get cronworkflows -n argo` before adding a new cleanup job.
 
-### 10. Lint before every commit
+### 11. BIB build failures — stale containers-storage locks
+
+When a BIB workflow is force-killed mid-run, podman lock files remain at
+`/var/lib/containers/storage/overlay-containers/*/userdata/*.lock`. Subsequent
+BIB runs fail immediately with:
+
+```
+acquiring lock N for container <sha>: file exists
+Error: ghcr.io/projectbluefin/bluefin-lts: image not known
+```
+
+Fix: submit the `ghost-cleanup` WorkflowTemplate before resubmitting:
+```bash
+just run-ghost-cleanup
+```
+
+This is safe to run any time no active BIB workflows are running. The `ghost-heavy-compute`
+Argo mutex serializes BIB builds but does not clean stale locks from killed workflows.
+
+### 12. Templates snapshot at submit time — always sync before resubmit
+
+Argo snapshots the full WorkflowTemplate body into the Workflow object at submit time.
+A workflow submitted before ArgoCD synced a fix will run the **old** template, even if
+the live cluster template has since been updated.
+
+**Always verify ArgoCD has synced before resubmitting after a template fix:**
+
+```bash
+# Confirm revision on cluster matches your push
+just argocd-status   # check both apps show Synced + Healthy
+
+# Then verify the live template has your change
+argo-mcp-get_workflow_template name=<template> namespace=argo
+# grep for the specific changed value
+
+# Only then submit
+```
+
+If you report a fix is deployed without verifying the live template, you will waste the
+next run on the same bug. Verification is not optional.
 
 ```bash
 # Lint workflow-templates (offline, cross-file refs resolve)
@@ -284,7 +325,8 @@ spec:
 - Any `script:` template without `resources:` limits
 - Templates in `argo/workflow-templates/` applied with `kubectl apply` (not via git)
 - `generateName:` in `manifests/` (ArgoCD needs stable names)
-- Python inside bash inside YAML (colons + quotes cause parse errors — use `kubectl jsonpath` instead)
+- Python inside bash inside YAML (colons + quotes cause parse errors — use `kubectl jsonpath` or `jq` instead, never inline python3 -c)
+- `registry.k8s.io/kubectl` used as a shell-capable image — it is distroless, has no bash, nc, or any shell utilities. Use `cgr.dev/chainguard/kubectl:latest-dev` when you need kubectl + bash together
 - A WorkflowTemplate file name that doesn't match its `metadata.name` (confuses ArgoCD tracking)
 - Templates annotated `DEPRECATED` that haven't been deleted from git
 - Two CronWorkflows with the same schedule covering overlapping namespaces

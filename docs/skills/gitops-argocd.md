@@ -197,7 +197,34 @@ Pattern:
 > ⚠️ If you change the image or spec while adopting, ArgoCD will roll the pod. Safe for stateless
 > workloads; for stateful ones (writable registries, DBs) verify data path continuity first.
 
-## Common Rationalizations
+### 10. Verify live state before reporting — the four-step check
+
+After pushing a fix and forcing sync, **always** verify the live template before
+reporting the fix is deployed or resubmitting a workflow:
+
+```bash
+# 1. Confirm git push landed
+git log -1 origin/main -- <file>
+
+# 2. Confirm ArgoCD synced the revision
+just argocd-status   # both apps: Synced + Healthy
+
+# 3. Confirm the live template has your change
+argo-mcp-get_workflow_template name=<template> namespace=argo
+# grep for the exact changed value — don't assume
+
+# 4. Submit NEW workflow (templates snapshot at submit time)
+# A workflow submitted before step 3 runs the OLD template
+```
+
+Reporting "fix deployed" after steps 1-2 only — without step 3 — is a false report.
+Submitting a workflow before step 3 wastes a run on the old bug.
+
+This protocol was established after multiple sessions where:
+- A fix was pushed and ArgoCD appeared synced, but a field manager conflict meant
+  the live Deployment still had the old value
+- A new workflow was submitted immediately after push but before ArgoCD synced,
+  running the stale template for the full pipeline duration
 
 | Rationalization | Reality |
 |---|---|
@@ -213,7 +240,8 @@ Pattern:
 - `generateName:` in any file under `manifests/`
 - A template that was `kubectl apply`d and is showing as OutOfSync in ArgoCD
 - Bootstrap templates accidentally placed in `argo/workflow-templates/` (ArgoCD will prune them if removed from git)
-- ArgoCD Application in `Degraded` state after a template deletion
+- Reporting a fix as deployed without verifying `argo-mcp-get_workflow_template` shows the new value live
+- Submitting a new workflow immediately after a push without waiting for ArgoCD sync confirmation
 
 ## Verification
 
@@ -225,4 +253,5 @@ Before merging a GitOps change:
 - [ ] No `generateName:` in `manifests/`
 - [ ] Pushed to `main` (not a feature branch)
 - [ ] After push: `just argocd-status` shows both Applications as `Synced` and `Healthy`
-- [ ] `kubectl get workflowtemplate -n argo <name>` confirms the template is live
+- [ ] `argo-mcp-get_workflow_template name=<template> namespace=argo` confirms the exact changed value is live (not just that sync completed)
+- [ ] Any new workflow submitted AFTER the above two checks pass

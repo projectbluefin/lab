@@ -165,6 +165,43 @@ Golden disks live at `/var/tmp/bluefin-golden/<tag>/disk.raw` on ghost.
 The `golden-disk-gc` CronWorkflow keeps the newest disk per tag and any disk modified
 in the last 14 days. GC runs weekly.
 
+### 10. Node inotify limits — required for KubeVirt
+
+KubeVirt virt-handler, containerd, and podman together consume thousands of inotify
+watches. When exhausted, VM boot fails silently (SSH never becomes ready) and container
+errors appear. The `inotify-tuning` DaemonSet in `manifests/` raises limits on all nodes:
+
+```
+fs.inotify.max_user_watches=1048576
+fs.inotify.max_user_instances=512
+```
+
+If you see VM boot timeouts that aren't explained by disk or network issues, check:
+```bash
+cat /proc/sys/fs/inotify/max_user_watches   # should be >= 1048576
+```
+
+The DaemonSet applies this on every node restart. Do not remove it.
+
+### 11. BIB image and PCRE2 — fully containerized, no host coupling
+
+The BIB container (`quay.io/centos-bootc/bootc-image-builder:latest`) uses its own
+`setfiles` binary from the container's `/usr/sbin/setfiles`, linked against the
+container's own `/lib64/libpcre2-8.so.0`. There is **no host PCRE2 involvement**.
+
+If you see:
+```
+setfiles: Regex version mismatch, expected: 10.46 actual: 10.44
+```
+
+This means the **container image's cached layer** on ghost is stale (pre-update pull).
+The fix is to force a fresh pull of the BIB image — not to change the host. Verify with:
+```bash
+podman run --rm quay.io/centos-bootc/bootc-image-builder:latest \
+  rpm -q --queryformat '%{VERSION}\n' pcre2
+```
+Expected: `10.46` or higher with current `centos-bootc:latest`.
+
 ## Common Rationalizations
 
 | Rationalization | Reality |
@@ -173,6 +210,8 @@ in the last 14 days. GC runs weekly.
 | "The teardown step can be optional." | A missing `onExit` handler leaks VMs and disk clones on failure. Always required. |
 | "I can skip the `nodeSelector`." | KubeVirt VMs can only schedule on ghost. Without the selector, the pod will stay Pending. |
 | "HostDisk feature gate is probably already on." | Verify with `kubectl get kubevirt kubevirt -n kubevirt -o jsonpath='{.spec.configuration}'`. Don't assume. |
+| "The PCRE2 mismatch means the host needs upgrading." | BIB is fully containerized — stale cached image layer, not the host. Force-pull the image. |
+| "inotify limits are a kernel concern, not a k8s concern." | KubeVirt virt-handler + containerd exhaust defaults at scale. The `inotify-tuning` DaemonSet is required. |
 
 ## Red Flags
 
@@ -182,6 +221,9 @@ in the last 14 days. GC runs weekly.
 - VMs in namespaces other than the four test namespaces
 - Hardcoded IPs in VM templates (use pod IP from `kubectl get pod -l kubevirt.io/vm=...`)
 - A `wait-for-vm` step that writes debug text to stdout (breaks output parameter capture)
+- `registry.k8s.io/kubectl` used as image for a step that needs bash — it is distroless, use `cgr.dev/chainguard/kubectl:latest-dev`
+- SSH wait using `nc -z` — `nc` is not available in distroless or minimal images; use `bash -c 'echo >/dev/tcp/${IP}/22'`
+- VM boot timeout with no disk or network explanation — check `cat /proc/sys/fs/inotify/max_user_watches` (should be >= 1048576)
 
 ## Verification
 

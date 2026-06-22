@@ -175,10 +175,7 @@ spec:
 
           # Configure podman to use cgroupfs (not systemd) to avoid cgroup/PID conflict in k8s.
           mkdir -p /etc/containers
-          cat > /etc/containers/containers.conf << 'PODMANEOF'
-[engine]
-cgroup_manager = "cgroupfs"
-PODMANEOF
+          printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
 
           # Run bootc install to-disk inside the Bluefin container via podman.
           # --pid=host is required by bootc; cgroupfs manager avoids the systemd cgroup conflict.

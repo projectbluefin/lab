@@ -163,7 +163,9 @@ spec:
           LOOP=$(losetup -f --show "${DISK}")
           echo "Loop device: ${LOOP}"
 
-          bootc install to-disk --generic-image "${LOOP}" 2>&1 | tee /proc/self/fd/2 || {
+          bootc install to-disk --generic-image \
+            --source-imgref "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}" \
+            "${LOOP}" 2>&1 | tee /proc/self/fd/2 || {
             EXIT=$?
             # bootc#2246: EBUSY on unmount of large images — disk may still be intact.
             LAST_LOG=$(tail -20 /proc/self/fd/2 2>/dev/null || true)

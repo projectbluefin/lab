@@ -221,7 +221,7 @@ spec:
           VM="{{inputs.parameters.vm-name}}"
           LABEL="kubevirt.io/vm=${VM}"
 
-          echo "Waiting for VMI ready..." >&2
+          echo "Waiting for VMI ${VM} Ready..." >&2
           kubectl wait vmi -n "${NS}" "${VM}" \
             --for=condition=Ready --timeout=600s >&2
 

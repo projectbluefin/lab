@@ -174,8 +174,8 @@ spec:
           podman pull --tls-verify=true "${IMAGE}"
 
           # Run bootc install to-disk inside the Bluefin container via podman.
-          # --pid=host and /dev mount are required for loop device visibility.
-          podman run --rm --privileged --pid=host \
+          # --privileged and /dev mount are required for loop device visibility.
+          podman run --rm --privileged \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "/mnt/staging:/mnt/staging" \

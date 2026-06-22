@@ -6,25 +6,6 @@ metadata:
 spec:
   entrypoint: matrix
   serviceAccountName: argo
-  podMetadata:
-    labels:
-      app.kubernetes.io/part-of: bluefin-test-suite
-      bluefin.io/suite: qa-matrix
-    annotations:
-      bluefin.io/image-latest: "{{workflow.parameters.image-latest}}"
-      bluefin.io/image-lts: "{{workflow.parameters.image-lts}}"
-      bluefin.io/branch: "{{workflow.parameters.branch}}"
-      bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
-      bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
-      bluefin.io/workflow: "{{workflow.name}}"
-  workflowMetadata:
-    labels:
-      app.kubernetes.io/part-of: bluefin-test-suite
-      bluefin.io/suite: qa-matrix
-    annotations:
-      bluefin.io/branch: "{{workflow.parameters.branch}}"
-      bluefin.io/pr-title: "{{workflow.parameters.pr-title}}"
-      bluefin.io/pr-number: "{{workflow.parameters.pr-number}}"
   onExit: cleanup
   ttlStrategy:
     secondsAfterCompletion: 3600
@@ -33,55 +14,51 @@ spec:
 
   arguments:
     parameters:
-      - name: image-latest
-        value: "ghcr.io/ublue-os/bluefin:latest"
-      - name: image-lts
-        value: "ghcr.io/ublue-os/bluefin:lts"
-      - name: pr-title
-        value: ""
-      - name: pr-number
-        value: ""
       - name: branch
         value: "main"
 
   templates:
     - name: matrix
       steps:
-        # Phase 0a: ensure latest golden disk (serialized to avoid containers-storage race)
-        - - name: ensure-disk-latest
+        # Phase 0a: build containerDisk for testing (serialized — both need loop devices)
+        - - name: build-cd-testing
             templateRef:
-              name: bib-build-and-push
-              template: ensure-disk
+              name: build-containerdisk
+              template: build-containerdisk
             arguments:
               parameters:
                 - name: image
-                  value: "{{workflow.parameters.image-latest}}"
+                  value: "ghcr.io/projectbluefin/bluefin"
                 - name: image-tag
-                  value: "latest"
+                  value: "testing"
+                - name: containerdisk-tag
+                  value: "testing"
 
-        # Phase 0b: ensure lts golden disk (after latest to avoid containers-storage race)
-        - - name: ensure-disk-lts
+        # Phase 0b: build containerDisk for lts-testing
+        - - name: build-cd-lts
             templateRef:
-              name: bib-build-and-push
-              template: ensure-disk
+              name: build-containerdisk
+              template: build-containerdisk
             arguments:
               parameters:
                 - name: image
-                  value: "{{workflow.parameters.image-lts}}"
+                  value: "ghcr.io/projectbluefin/bluefin-lts"
                 - name: image-tag
-                  value: "lts"
+                  value: "lts-testing"
+                - name: containerdisk-tag
+                  value: "lts-testing"
 
-        # Phase 1: provision both VMs in parallel (btrfs reflink ~24ms each)
-        - - name: bluefin-latest
+        # Phase 1: provision both VMs in parallel
+        - - name: bluefin-testing
             templateRef:
               name: provision-bluefin-vm
               template: provision-vm
             arguments:
               parameters:
                 - name: image-tag
-                  value: "latest"
+                  value: "testing"
                 - name: vm-name
-                  value: "bluefin-latest-{{workflow.uid}}"
+                  value: "bluefin-testing-{{workflow.uid}}"
                 - name: namespace
                   value: "bluefin-test"
 
@@ -92,27 +69,25 @@ spec:
             arguments:
               parameters:
                 - name: image-tag
-                  value: "lts"
+                  value: "lts-testing"
                 - name: vm-name
                   value: "bluefin-lts-{{workflow.uid}}"
                 - name: namespace
                   value: "bluefin-lts-test"
 
         # Phase 2: run smoke tests against both VMs in parallel
-        - - name: test-latest
+        - - name: test-testing
             templateRef:
               name: run-gnome-tests
               template: run-gnome-tests
             arguments:
               parameters:
                 - name: vm-ip
-                  value: "{{steps.bluefin-latest.outputs.parameters.vm-ip}}"
+                  value: "{{steps.bluefin-testing.outputs.parameters.vm-ip}}"
                 - name: suite
                   value: "smoke"
                 - name: variant
-                  value: "latest"
-                - name: issue-title
-                  value: "matrix smoke - latest - PR{{workflow.parameters.pr-number}}"
+                  value: "bluefin"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
 
@@ -127,23 +102,21 @@ spec:
                 - name: suite
                   value: "smoke"
                 - name: variant
-                  value: "lts"
-                - name: issue-title
-                  value: "matrix smoke - lts - PR{{workflow.parameters.pr-number}}"
+                  value: "bluefin"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
 
-    # onExit: always teardown both VMs regardless of outcome
+    # onExit: teardown both VMs regardless of outcome
     - name: cleanup
       steps:
-        - - name: teardown-latest
+        - - name: teardown-testing
             templateRef:
               name: teardown-bluefin-vm
               template: teardown-vm
             arguments:
               parameters:
                 - name: vm-name
-                  value: "bluefin-latest-{{workflow.uid}}"
+                  value: "bluefin-testing-{{workflow.uid}}"
                 - name: namespace
                   value: "bluefin-test"
 

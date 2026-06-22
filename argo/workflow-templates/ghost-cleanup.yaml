@@ -1,0 +1,66 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: ghost-cleanup
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: ghost-maintenance
+    app.kubernetes.io/part-of: bluefin-test-suite
+  annotations:
+    bluefin.io/description: |
+      Clears stale podman containers-storage lock files left behind by killed
+      BIB build workflows. These locks block subsequent podman/BIB runs with
+      "acquiring lock N for container ...: file exists". Safe to run when no
+      BIB workflows are actively executing (ghost-heavy-compute mutex is free).
+spec:
+  entrypoint: clear-locks
+  serviceAccountName: argo
+  arguments:
+    parameters:
+      - name: storage-root
+        value: /var/mnt/ghost-data/containers-storage
+
+  volumes:
+    - name: ghost-storage
+      hostPath:
+        path: /var/mnt/ghost-data/containers-storage
+        type: Directory
+
+  templates:
+    - name: clear-locks
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: bluefin-test-suite
+          bluefin.io/step: ghost-cleanup
+      script:
+        image: registry.fedoraproject.org/fedora:latest
+        command: [bash, -c]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+          - name: ghost-storage
+            mountPath: /var/mnt/ghost-data/containers-storage
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        source: |
+          set -euo pipefail
+          STORAGE="/var/mnt/ghost-data/containers-storage"
+
+          echo "=== Clearing stale lock files under ${STORAGE} ==="
+          count=$(find "${STORAGE}" -name "*.lock" | wc -l)
+          echo "Found ${count} lock files"
+
+          if [[ "${count}" -eq 0 ]]; then
+            echo "No stale locks. Nothing to do."
+            exit 0
+          fi
+
+          find "${STORAGE}" -name "*.lock" -print -delete
+          echo "=== Cleared ${count} lock files ==="

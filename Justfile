@@ -212,6 +212,11 @@ run-otel-patch:
     argo submit --from workflowtemplate/ghost-otel-patch \
       -n {{ argo_ns }} --wait --log
 
+# Clear stale podman containers-storage lock files on ghost (run when no BIB workflows active)
+run-ghost-cleanup:
+    argo submit --from workflowtemplate/ghost-cleanup \
+      -n {{ argo_ns }} --wait --log
+
 # Set Strix Halo performance kernel args on ghost via rpm-ostree (reboot required after)
 run-kernel-args:
     argo submit --from workflowtemplate/ghost-kernel-args \

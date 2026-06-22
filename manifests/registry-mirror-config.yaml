@@ -114,4 +114,10 @@ spec:
           configMap:
             name: registry-mirror-hosts
       tolerations:
-        - operator: Exists
+        # Allow scheduling on the bazzite gaming node (NoSchedule taint).
+        # Intentionally omit unreachable/not-ready tolerations so the DaemonSet
+        # does not schedule on exo-1 when it is unreachable, keeping desiredCount
+        # equal to the number of reachable nodes and ArgoCD health checks green.
+        - key: node-role.kubernetes.io/gaming
+          operator: Exists
+          effect: NoSchedule

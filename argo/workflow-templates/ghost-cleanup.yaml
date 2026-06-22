@@ -18,12 +18,12 @@ spec:
   arguments:
     parameters:
       - name: storage-root
-        value: /var/mnt/ghost-data/containers-storage
+        value: /var/lib/containers/storage
 
   volumes:
     - name: ghost-storage
       hostPath:
-        path: /var/mnt/ghost-data/containers-storage
+        path: /var/lib/containers/storage
         type: Directory
 
   templates:
@@ -41,7 +41,7 @@ spec:
           runAsUser: 0
         volumeMounts:
           - name: ghost-storage
-            mountPath: /var/mnt/ghost-data/containers-storage
+            mountPath: /var/lib/containers/storage
         resources:
           requests:
             cpu: 100m
@@ -51,7 +51,7 @@ spec:
             memory: 256Mi
         source: |
           set -euo pipefail
-          STORAGE="/var/mnt/ghost-data/containers-storage"
+          STORAGE="/var/lib/containers/storage"
 
           echo "=== Clearing stale lock files under ${STORAGE} ==="
           count=$(find "${STORAGE}" -name "*.lock" | wc -l)

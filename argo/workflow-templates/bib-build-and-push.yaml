@@ -53,8 +53,23 @@ spec:
                 - name: image-tag
                   value: "{{inputs.parameters.image-tag}}"
 
+          # Strip pre-compiled PCRE2 binary SELinux policy files (.bin) from the
+          # pulled image so osbuild's setfiles regenerates them. Required when the
+          # BIB container's setfiles PCRE2 version differs from the version that
+          # compiled the policy in the target image (testing-lab#220).
+          - name: selinux-prep
+            depends: "pull-image.Succeeded || pull-image.Skipped"
+            when: "{{tasks.check.outputs.result}} != exists"
+            template: bib-selinux-prep
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{inputs.parameters.image}}"
+                - name: image-tag
+                  value: "{{inputs.parameters.image-tag}}"
+
           - name: build
-            depends: "pull-image.Succeeded"
+            depends: "selinux-prep.Succeeded || selinux-prep.Skipped"
             template: bib-img-build
             arguments:
               parameters:
@@ -205,6 +220,56 @@ spec:
               PULL_ARGS+=(--tls-verify=false)
             fi
             podman pull "${PULL_ARGS[@]}" "${IMAGE}"
+
+    # Strip pre-compiled PCRE2 binary SELinux policy (.bin) files from the
+    # pulled container image in containers-storage. When the PCRE2 version
+    # that compiled the .bin files in the target image (e.g. 10.46) differs
+    # from the version setfiles in the BIB container was linked against (e.g.
+    # 10.44), osbuild's org.osbuild.selinux stage fails with "Regex version
+    # mismatch". Deleting the .bin files forces setfiles to recompile from
+    # the text file_contexts, which is always compatible.
+    - name: bib-selinux-prep
+      inputs:
+        parameters:
+          - name: image
+          - name: image-tag
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: containers-storage
+          hostPath:
+            path: /var/lib/containers/storage
+      container:
+        image: quay.io/podman/stable:latest
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+          - name: containers-storage
+            mountPath: /var/lib/containers/storage
+        command: [bash, -c]
+        args:
+          - |
+            set -euo pipefail
+            IMAGE="{{inputs.parameters.image}}"
+            TAG="{{inputs.parameters.image-tag}}"
+            if [[ "${IMAGE}" != *:* ]]; then
+              IMAGE="${IMAGE}:${TAG}"
+            fi
+            echo "Stripping pre-compiled SELinux .bin files from ${IMAGE}"
+            CID=$(podman container create "${IMAGE}" /bin/true)
+            MOUNT=$(podman mount "${CID}")
+            find "${MOUNT}/etc/selinux" -name "*.bin" -print -delete 2>/dev/null || true
+            podman unmount "${CID}"
+            podman container rm "${CID}"
+            echo "SELinux prep complete"
 
     - name: bib-img-build
       inputs:

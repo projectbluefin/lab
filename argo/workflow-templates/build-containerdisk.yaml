@@ -173,9 +173,16 @@ spec:
           # Pull image (uses zot-ghcr mirror if cached)
           podman pull --tls-verify=true "${IMAGE}"
 
+          # Configure podman to use cgroupfs (not systemd) to avoid cgroup/PID conflict in k8s.
+          mkdir -p /etc/containers
+          cat > /etc/containers/containers.conf << 'PODMANEOF'
+[engine]
+cgroup_manager = "cgroupfs"
+PODMANEOF
+
           # Run bootc install to-disk inside the Bluefin container via podman.
-          # --pid=host required by bootc; --cgroupns=host avoids cgroup/PID conflict in k8s.
-          podman run --rm --privileged --pid=host --cgroupns=host \
+          # --pid=host is required by bootc; cgroupfs manager avoids the systemd cgroup conflict.
+          podman run --rm --privileged --pid=host \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             "${IMAGE}" \

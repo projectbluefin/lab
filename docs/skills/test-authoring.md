@@ -156,7 +156,63 @@ Common failure table from RUNBOOK.md:
 | `outputs.result` has debug text | Script wrote to stdout | Move debug to `>&2` |
 | Test hangs on `qecore-headless` | Missing Wayland session flag | Add `--session-type wayland --session-desktop gnome` |
 
-### 8. Writing bootc-contract tests (system/ suite)
+### 9. qecore `context.failed_setup` — check `is not None`, not `hasattr`
+
+qecore's `TestSandbox` initializes `context.failed_setup = None` during setup.
+Using `hasattr(context, 'failed_setup')` in `before_scenario` will **always** be
+`True` — every scenario will be skipped with "Suite setup failed: None" even when
+setup succeeded.
+
+```python
+# ✗ WRONG — fires even when setup succeeded (qecore sets to None)
+def before_scenario(context, scenario):
+    if hasattr(context, 'failed_setup'):
+        scenario.skip(f"Suite setup failed: {context.failed_setup}")
+
+# ✅ CORRECT — only fires when setup recorded an actual traceback
+def before_scenario(context, scenario):
+    if getattr(context, 'failed_setup', None) is not None:
+        scenario.skip(f"Suite setup failed: {context.failed_setup}")
+```
+
+In `before_all`, set `context.failed_setup` to the traceback string (not `True` or `1`):
+
+```python
+def before_all(context):
+    try:
+        context.sandbox = TestSandbox("ptyxis", context=context)
+        # ... rest of setup
+    except Exception:
+        context.failed_setup = traceback.format_exc()  # non-None string on failure
+        return
+```
+
+### 10. Optional dependencies — decouple from the critical path
+
+When a suite depends on an optional app (e.g. Podman Desktop), failure to find it
+must NOT block all other tests in the suite.
+
+```python
+# In before_all — optional dependency pattern
+try:
+    context.podman_desktop = context.sandbox.get_flatpak(
+        flatpak_id="io.podman_desktop.PodmanDesktop"
+    )
+except Exception as e:
+    print(f"Warning: optional dependency not found: {e}")
+    context.podman_desktop = None  # mark absent, not a fatal error
+
+# In before_scenario — skip only tagged scenarios
+def before_scenario(context, scenario):
+    if getattr(context, 'podman_desktop', None) is None \
+            and 'podman_desktop' in scenario.tags:
+        scenario.skip("Podman Desktop not found")
+        return
+```
+
+Tag scenarios that require the optional app with `@podman_desktop` (or equivalent).
+Never put optional app initialization in the main try/except — it will make the entire
+suite appear to have a setup failure.
 
 When choosing between a new UI test and a new bootc contract test — prefer the
 contract test. Bias toward:
@@ -184,7 +240,8 @@ See `docs/homelab-contracts.md` for the full contract specification.
 - Clicking the clock or system-status area without Shell.Eval on GNOME Shell 50
 - New UI scenarios added while zero `system/` bootc contract coverage exists
 - Test that only passes in smoke/developer suites but never validates bootc behavior
-- `qecore-headless` invoked without `--session-type wayland --session-desktop gnome`
+- `hasattr(context, 'failed_setup')` in `before_scenario` — qecore sets this to `None` by default, so `hasattr` always returns True; use `getattr(...) is not None`
+- Optional dependency (e.g. Podman Desktop) initialized inside the main try/except — causes ALL tests to appear as setup failures when the optional app is absent
 
 ## Verification
 
@@ -194,5 +251,6 @@ Before marking a test change done:
 - [ ] All AT-SPI traversal uses `findChildren()` or `findChild(retry=False)` — no `requireResult`
 - [ ] Top-bar interactions use Shell.Eval (no direct AT-SPI click on clock/system-status)
 - [ ] Step definition file is in `tests/<suite>/features/steps/`
-- [ ] `python -m pytest --collect-only tests/` passes (CI collection check)
-- [ ] `python -m ruff check tests/` passes
+- [ ] `qecore-headless` invoked with `--session-type wayland --session-desktop gnome`
+- [ ] `before_scenario` uses `getattr(context, 'failed_setup', None) is not None` (not `hasattr`)
+- [ ] Optional dependencies (Flatpaks, etc.) are outside the main try/except with their own skip tag

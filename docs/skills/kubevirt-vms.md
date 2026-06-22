@@ -183,24 +183,49 @@ cat /proc/sys/fs/inotify/max_user_watches   # should be >= 1048576
 
 The DaemonSet applies this on every node restart. Do not remove it.
 
-### 11. BIB image and PCRE2 — fully containerized, no host coupling
+### 11. Golden disk build — use `bootc install to-disk`, not BIB
 
-The BIB container (`quay.io/centos-bootc/bootc-image-builder:latest`) uses its own
-`setfiles` binary from the container's `/usr/sbin/setfiles`, linked against the
-container's own `/lib64/libpcre2-8.so.0`. There is **no host PCRE2 involvement**.
+**Do not use `bootc-image-builder` (BIB) for bluefin/bluefin-lts golden disk builds.**
 
-If you see:
+BIB invokes osbuild internally, which spawns a Fedora 38 runner chroot to execute
+build stages (`org.osbuild.selinux`). That runner's `setfiles` is linked against
+PCRE2 10.44, but bluefin images ship SELinux `.bin` policy files compiled for PCRE2 10.46+.
+This mismatch breaks every time the Fedora base advances. BIB has no way to override
+the internal runner version.
+
+**The correct approach:** the bootc image IS the installer.
+
+```yaml
+container:
+  image: "ghcr.io/projectbluefin/bluefin-lts:testing"  # the real image
+  securityContext:
+    privileged: true
+    runAsUser: 0
+  nodeSelector:
+    kubernetes.io/hostname: ghost
+  command: [bash, -c]
+  args:
+  - |
+    mkdir -p /var/tmp/bluefin-golden/lts-testing
+    truncate -s 40G /var/tmp/bluefin-golden/lts-testing/disk.raw
+    bootc install to-disk \
+      --generic-image \
+      --skip-fetch-check \
+      /var/tmp/bluefin-golden/lts-testing/disk.raw
+    chown 107:107 /var/tmp/bluefin-golden/lts-testing/disk.raw
+    chcon -t svirt_sandbox_file_t /var/tmp/bluefin-golden/lts-testing/disk.raw 2>/dev/null || true
+```
+
+- No osbuild, no runner chroot, no PCRE2 version mismatch — ever
+- The image installs itself; all binaries are internally consistent
+- Build time: ~12 min (vs ~5 min BIB, but BIB was broken)
+- Cache hit: unchanged — reflink still ~1 sec
+
+If you see the error:
 ```
 setfiles: Regex version mismatch, expected: 10.46 actual: 10.44
 ```
-
-This means the **container image's cached layer** on ghost is stale (pre-update pull).
-The fix is to force a fresh pull of the BIB image — not to change the host. Verify with:
-```bash
-podman run --rm quay.io/centos-bootc/bootc-image-builder:latest \
-  rpm -q --queryformat '%{VERSION}\n' pcre2
-```
-Expected: `10.46` or higher with current `centos-bootc:latest`.
+That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to-disk`.
 
 ## Common Rationalizations
 
@@ -224,6 +249,7 @@ Expected: `10.46` or higher with current `centos-bootc:latest`.
 - `registry.k8s.io/kubectl` used as image for a step that needs bash — it is distroless, use `cgr.dev/chainguard/kubectl:latest-dev`
 - SSH wait using `nc -z` — `nc` is not available in distroless or minimal images; use `bash -c 'echo >/dev/tcp/${IP}/22'`
 - VM boot timeout with no disk or network explanation — check `cat /proc/sys/fs/inotify/max_user_watches` (should be >= 1048576)
+- Using BIB (`bib-build-and-push`) for bluefin/bluefin-lts golden disk builds — BIB's osbuild Fedora 38 runner has a PCRE2 mismatch with current bluefin images. Use `bootc install to-disk` instead.
 
 ## Verification
 

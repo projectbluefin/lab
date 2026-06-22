@@ -92,8 +92,8 @@ spec:
           set -euo pipefail
           TAG="{{inputs.parameters.containerdisk-tag}}"
           CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
-          EXISTS=$(skopeo inspect --tls-verify=false "docker://${CD_IMAGE}" 2>/dev/null \
-            | jq -r '.Digest' || echo "")
+          EXISTS=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
+            "docker://${CD_IMAGE}" 2>/dev/null || echo "")
           if [[ -n "$EXISTS" ]]; then
             echo "exists"
           else
@@ -164,7 +164,7 @@ spec:
           echo "Loop device: ${LOOP}"
 
           bootc install to-disk --generic-image \
-            --source-imgref "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}" \
+            --source-imgref "containers-storage:{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}" \
             "${LOOP}" 2>&1 | tee /proc/self/fd/2 || {
             EXIT=$?
             # bootc#2246: EBUSY on unmount of large images — disk may still be intact.

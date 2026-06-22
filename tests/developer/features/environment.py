@@ -58,7 +58,7 @@ def before_all(context) -> None:
 
 
 def before_scenario(context, scenario) -> None:
-    if hasattr(context, 'failed_setup'):
+    if getattr(context, 'failed_setup', None) is not None:
         scenario.skip(f"Suite setup failed: {context.failed_setup}")
         return
     if getattr(context, 'podman_desktop', None) is None and 'podman_desktop' in scenario.tags:

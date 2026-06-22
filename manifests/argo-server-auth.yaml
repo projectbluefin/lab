@@ -1,0 +1,14 @@
+# Disables Argo UI login on LAN — server uses its own SA token, no login screen.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-server
+  namespace: argo
+spec:
+  template:
+    spec:
+      containers:
+        - name: argo-server
+          args:
+            - server
+            - --auth-mode=server

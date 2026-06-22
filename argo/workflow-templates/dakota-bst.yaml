@@ -15,7 +15,7 @@ metadata:
       All large I/O lands on /var/mnt/ghost-data/ — root filesystem is not touched
       by builds. src, tmp, bst-cache, and containers-storage are all hostPath mounts.
 
-      Outputs: bst-build-export-push emits `image-ref` (192.168.1.102:30500/dakota:<tag>)
+      Outputs: bst-build-export-push emits `image-ref` (192.168.1.102:5000/dakota:<tag>)
       which dakota-qa-pipeline passes as `image` to ensure-disk.
   labels:
     app.kubernetes.io/component: dakota-bst
@@ -200,7 +200,7 @@ spec:
             - |
               set -euo pipefail
               dnf install -y --quiet git 2>&1 | tail -2
-              find /src -mindepth 1 -delete
+              rm -rf /src/*
               CLONE_REF="{{inputs.parameters.clone_ref}}"
               CLONE_URL="{{inputs.parameters.clone_url}}"
               if [[ "$CLONE_REF" =~ ^[0-9a-f]{40}$ ]]; then
@@ -315,7 +315,7 @@ spec:
             - |
               set -euo pipefail
               dnf install -y --quiet git 2>&1 | tail -2
-              find /src -mindepth 1 -delete
+              rm -rf /src/*
               CLONE_REF="{{inputs.parameters.clone_ref}}"
               CLONE_URL="{{inputs.parameters.clone_url}}"
               if [[ "$CLONE_REF" =~ ^[0-9a-f]{40}$ ]]; then

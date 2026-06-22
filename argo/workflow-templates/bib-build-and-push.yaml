@@ -94,9 +94,10 @@ spec:
             path: "{{inputs.parameters.golden-root}}"
             type: DirectoryOrCreate
       script:
-        # podman/stable already cached on ghost for bib-img-pull; ships skopeo
-        # so we avoid a per-run `dnf install` from a Fedora mirror.
-        image: quay.io/podman/stable:latest
+        # quay.io/skopeo/stable ships skopeo. quay.io/podman/stable was used
+        # previously but dropped skopeo from its image; using it caused silent
+        # command-not-found failures that always returned "stale" (testing-lab#222).
+        image: quay.io/skopeo/stable:latest
         command: [bash]
         resources:
           requests:

@@ -240,25 +240,14 @@ run-dakota-validate ref_type="branch" ref_value="main":
       --entrypoint bst-validate \
       -n {{ argo_ns }} --watch
 
-# Build a dakota variant (default | nvidia | all) and lint the result.
-# Automatically reports build result as a commit status when ref_type=pr.
+# Build a dakota variant (default | nvidia | all) and lint the result
 # ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA
 run-dakota-build variant="default" ref_type="branch" ref_value="main":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    WF=$(argo submit --from workflowtemplate/dakota-bst \
+    argo submit --from workflowtemplate/dakota-bst \
       -p variant={{ variant }} \
       -p ref_type={{ ref_type }} \
       -p ref_value={{ ref_value }} \
-      -n {{ argo_ns }} \
-      --output name)
-    echo "Submitted: ${WF}"
-    argo watch "${WF}" -n {{ argo_ns }} && RC=0 || RC=$?
-    if [ "{{ ref_type }}" = "pr" ]; then
-        [ "${RC}" -eq 0 ] && STATUS=pass || STATUS=fail
-        just lab-report {{ ref_value }} "${STATUS}" "${WF}"
-    fi
-    exit "${RC}"
+      -n {{ argo_ns }} --watch
 
 # Full Dakota QA pipeline: BST build → BIB disk → VM → smoke tests
 # ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA

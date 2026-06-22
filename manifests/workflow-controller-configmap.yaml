@@ -1,18 +1,61 @@
-# Patch workflow-controller-configmap with workflow retention defaults.
-# ServerSideApply (configured in testing-lab-infra Application) merges only
-# the keys defined here — Helm-owned keys are left intact.
+# Patch workflow-controller-configmap with workflow retention defaults and
+# anti-spam limits. ServerSideApply (configured in testing-lab-infra Application)
+# merges only the keys defined here — Helm-owned keys are left intact.
 #
-# workflowDefaults: sets TTL for all workflows that don't specify their own.
-# 7 days for success, 30 days for failure — lets agents answer
-# "did the last 10 runs pass?" without a separate archive database.
+# Anti-spam rationale (added 2026-06-22):
+#   A rogue agent submitting workflows in a tight loop previously saturated the
+#   cluster. The following limits bound the blast radius without affecting normal
+#   nightly and ad-hoc test runs:
+#
+#   parallelism / namespaceParallelism — hard cap on concurrently RUNNING
+#     workflows. Excess submissions queue in Pending state (cheap) rather than
+#     spin up pods (expensive). Ghost has 16c/64GB; 8 concurrent pipelines is
+#     generous (each BIB+VM run uses ~4c/8GB peak).
+#
+#   resourceRateLimit — token-bucket throttle on how fast the controller
+#     creates k8s resources (pods, PVCs) across all running workflows. Prevents
+#     a single burst from exhausting the API server or scheduler.
+#
+#   workflowDefaults.spec.activeDeadlineSeconds — hard 2-hour kill on any
+#     workflow that has not completed. The longest legitimate pipeline
+#     (BIB build + boot + full test suite) finishes in ~25 min; 2 h is a
+#     generous buffer that still kills truly stuck or runaway workflows.
+#
+#   workflowDefaults.spec.parallelism — cap on concurrent nodes (pods) within
+#     a single workflow. Normal pipelines have at most 3–4 parallel nodes.
+#
+# workflowDefaults TTL: 7 days for success, 30 days for failure — lets agents
+# answer "did the last 10 runs pass?" without a separate archive database.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: workflow-controller-configmap
   namespace: argo
 data:
+  # Max concurrent running workflows cluster-wide. Submissions beyond this
+  # queue in Pending state until a slot opens — no resources consumed.
+  # Ghost has 64 GB RAM; each VM pipeline consumes ~8 GB peak. 6 concurrent
+  # workflows → ≤6 VMs → ~48 GB RAM, leaving 16 GB headroom for system +
+  # workflow pods. Bazzite handles overflow workflow pods (non-VM steps).
+  parallelism: "6"
+
+  # Same cap scoped to the argo namespace.
+  namespaceParallelism: "6"
+
+  # Token-bucket rate limit on k8s resource creation by the controller.
+  # limit: 10 ops/s, burst: 10 — allows a fresh workflow to spin up its
+  # first batch of pods promptly, then throttles sustained creation.
+  resourceRateLimit: |
+    limit: 10
+    burst: 10
+
   workflowDefaults: |
     spec:
+      # Hard kill after 2 hours. Prevents stuck/runaway workflows from
+      # holding cluster resources indefinitely.
+      activeDeadlineSeconds: 7200
+      # Max parallel nodes within a single workflow. Normal pipelines use 3–4.
+      parallelism: 10
       ttlStrategy:
         secondsAfterCompletion: 604800
         secondsAfterSuccess: 604800

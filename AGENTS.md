@@ -222,8 +222,10 @@ via `manifests/zot-cache.yaml` (pull-through) and `manifests/zot-writable.yaml` 
 **Image policy:** all `image:` references in `argo/` and `manifests/` must use a cached registry.
 Enforced by the registry allowlist lint step in `.github/workflows/lint.yaml`.
 Allowlist: `ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`,
-`registry.k8s.io`, `192.168.1.102`, `localhost`.
+`registry.k8s.io`, `cgr.dev`, `192.168.1.102`, `localhost`.
 Exception: `docker.io/rocm/k8s-device-plugin` — annotate `# registry-lint-ignore`.
+**Rule:** for kubectl+shell in workflow templates, use `cgr.dev/chainguard/kubectl:latest-dev`
+(has bash; `registry.k8s.io/kubectl` is distroless — no shell).
 **Rule:** upstream k8s/CNCF registries (`registry.k8s.io`, `quay.io`) always preferred over
 distro-specific replacements when an upstream image exists.
 

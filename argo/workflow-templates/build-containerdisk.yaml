@@ -353,15 +353,31 @@ spec:
           chown -R 1001:1001 "${HOME_DIR}"
           echo "SSH key injected: $(ls -la ${HOME_DIR}/.ssh/)"
 
-          # ── sshd: enable + PermitUserEnvironment ─────────────────────────
+          # ── sshd: enable + key auth config ───────────────────────────────
           WANTS="${ETC}/systemd/system/multi-user.target.wants"
           mkdir -p "${WANTS}"
           ln -sf /usr/lib/systemd/system/sshd.service "${WANTS}/sshd.service" \
             2>/dev/null || true
 
           mkdir -p "${ETC}/ssh/sshd_config.d"
-          printf 'PermitUserEnvironment yes\n' \
-            > "${ETC}/ssh/sshd_config.d/10-test.conf"
+          # StrictModes no: bypass file-permission checks (avoids SELinux context issues).
+          # PubkeyAuthentication yes: explicit — some distro configs override the default.
+          # AuthorizedKeysFile: explicit path relative to home dir.
+          cat > "${ETC}/ssh/sshd_config.d/10-test.conf" << 'SSHDEOF'
+PermitUserEnvironment yes
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+StrictModes no
+SSHDEOF
+          echo "sshd config written: $(cat ${ETC}/ssh/sshd_config.d/10-test.conf)"
+
+          # ── SELinux: disable via config file (belt-and-suspenders) ────────
+          # The kernel arg selinux=0 is also added below, but the config file
+          # is more reliable when bootloader entry patching misses an entry.
+          mkdir -p "${ETC}/selinux"
+          printf 'SELINUX=disabled\nSELINUXTYPE=targeted\n' \
+            > "${ETC}/selinux/config"
+          echo "SELinux config: $(cat ${ETC}/selinux/config)"
 
           # ── GDM autologin ─────────────────────────────────────────────────
           mkdir -p "${ETC}/gdm"
@@ -379,10 +395,17 @@ spec:
 
           # ── selinux=0 in bootloader entries ───────────────────────────────
           # Entries are inside the btrfs root at /boot/loader/entries/ (no separate /boot partition)
+          ENTRIES_FOUND=0
           while IFS= read -r -d '' entry; do
             sed -i 's/\(^options .*\)$/\1 selinux=0/' "${entry}"
             echo "Patched selinux=0 in: ${entry}"
+            ENTRIES_FOUND=$((ENTRIES_FOUND + 1))
           done < <(find /mnt/btroot/boot/loader/entries/ -name "*.conf" -print0 2>/dev/null)
+          echo "Boot entries patched: ${ENTRIES_FOUND}"
+          if [[ "${ENTRIES_FOUND}" -eq 0 ]]; then
+            echo "WARNING: no bootloader entries found — selinux=0 kernel arg NOT applied" >&2
+            echo "Boot dir contents: $(find /mnt/btroot/boot/ -maxdepth 3 2>/dev/null | head -20)"
+          fi
 
           echo "configure-disk complete"
           # trap cleanup EXIT handles unmount + losetup -d

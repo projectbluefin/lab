@@ -78,11 +78,36 @@ spec:
              > /dev/null
            echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: locked + dispatching" >&2
 
-           # Route to matching WorkflowTemplate
+          # Route to matching WorkflowTemplate + derive per-repo params
            case "$REPO" in
-             */dakota)  TMPL="dakota-qa-pipeline" ;;
-             */knuckle) TMPL="knuckle-qa-pipeline" ;;
-             *)         TMPL="bluefin-qa-pipeline" ;;
+             */dakota)       TMPL="dakota-qa-pipeline"
+                             EXTRA_PARAMS="" ;;
+             */knuckle)      TMPL="knuckle-qa-pipeline"
+                             EXTRA_PARAMS="" ;;
+             */bluefin-lts)  TMPL="bluefin-qa-pipeline"
+                             # LTS: correct image, 4Gi VM, smoke only
+                             EXTRA_PARAMS="
+               - name: image
+                 value: ghcr.io/projectbluefin/bluefin-lts
+               - name: image-tag
+                 value: testing
+               - name: containerdisk-tag
+                 value: lts-testing
+               - name: namespace
+                 value: bluefin-lts-test
+               - name: suites
+                 value: smoke
+               - name: vm-memory
+                 value: 4Gi" ;;
+             *)              TMPL="bluefin-qa-pipeline"
+                             # bluefin/common: smoke only to limit VM count
+                             EXTRA_PARAMS="
+               - name: image-tag
+                 value: testing
+               - name: containerdisk-tag
+                 value: testing
+               - name: suites
+                 value: smoke" ;;
            esac
 
            kubectl create -f - <<EOF
@@ -106,7 +131,7 @@ spec:
                - name: branch
                  value: "${BRANCH}"
                - name: pr-number
-                 value: "${PR_NUM}"
+                 value: "${PR_NUM}"${EXTRA_PARAMS}
          EOF
            echo "PR #${PR_NUM} ${REPO}: dispatched ${TMPL}" >&2
          }

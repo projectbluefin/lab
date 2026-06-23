@@ -21,7 +21,7 @@
 #   (amd_iommu=off is 5-12% faster than iommu=pt per kyuz0/amd-strix-halo-toolboxes#66)
 #
 # hostNetwork + hostIPC: required for ROCm IPC/shared memory.
-# GGUF cache: HostPath at /var/tmp/llm-models on ghost.
+# GGUF cache: HostPath at /var/mnt/ghost-data/llm-models on ghost.
 #   Init container downloads Q8_0 on first start (idempotent check).
 #
 # NodePort 30800: OpenAI-compatible API endpoint.
@@ -186,7 +186,7 @@ spec:
             sizeLimit: 16Gi
         - name: models
           hostPath:
-            path: /var/tmp/llm-models
+            path: /var/mnt/ghost-data/llm-models
             type: DirectoryOrCreate
 ---
 # NodePort service — OpenAI-compatible API reachable at:

@@ -220,15 +220,23 @@ spec:
             '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,"security.",9)==0){errno=0;return 0;}' \
             '  return r;}' \
             > /tmp/fsetxattr_wrap.c
-          gcc -shared -fPIC -o "${STAGING}/fsetxattr_wrapper.so" /tmp/fsetxattr_wrap.c -ldl
-          echo "[OUTER] fsetxattr wrapper compiled: $(ls -lh "${STAGING}/fsetxattr_wrapper.so")"
+          # Compile to a non-hostPath tmpfs directory so the inner container's ld.so
+          # can open it cleanly. The hostPath-mounted /output directory may have a
+          # SELinux file label (svirt_sandbox_file_t) that blocks ld.so in the inner
+          # LTS container even though the file permissions are 777.
+          mkdir -p /tmp/bluefin-cd-preload
+          gcc -shared -fPIC -o /tmp/bluefin-cd-preload/fsetxattr_wrapper.so /tmp/fsetxattr_wrap.c -ldl
+          # Ensure the .so has no SELinux deny label that would block ld.so
+          chcon -t lib_t /tmp/bluefin-cd-preload/fsetxattr_wrapper.so 2>/dev/null || true
+          echo "[OUTER] fsetxattr wrapper compiled: $(ls -lhZ /tmp/bluefin-cd-preload/fsetxattr_wrapper.so)"
 
           PODMAN_EXIT=0
           podman run --rm --privileged --pid=host --ipc=host \
-            -e LD_PRELOAD=/output/fsetxattr_wrapper.so \
+            -e LD_PRELOAD=/preload/fsetxattr_wrapper.so \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "${STAGING}:/output" \
+            -v /tmp/bluefin-cd-preload:/preload \
             -v /var/lib/containers:/var/lib/containers \
             -e "SSH_AUTHORIZED_KEYS=${SSH_AUTHORIZED_KEYS}" \
             "${IMAGE}" \
@@ -237,6 +245,7 @@ spec:
 
               echo \"[INNER] SSH_AUTHORIZED_KEYS prefix: \${SSH_AUTHORIZED_KEYS:0:30}...\"
               echo \"[INNER] LD_PRELOAD: \${LD_PRELOAD:-unset}\"
+              echo \"[INNER] wrapper exists: \$(ls -lhZ /preload/fsetxattr_wrapper.so 2>&1)\"
 
               # --via-loopback: upstream recommended pattern for VM disk creation.
               # --root-ssh-authorized-keys: bootc-native root SSH key injection —

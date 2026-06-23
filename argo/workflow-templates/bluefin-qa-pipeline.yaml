@@ -32,6 +32,11 @@ spec:
         value: "bluefin"
       - name: ssh-key-secret
         value: "bluefin-test-ssh-key"
+      # Tag for the containerDisk image in the local Zot registry.
+      # Defaults to image-tag for bluefin (testing → bluefin-containerdisk:testing).
+      # Override for lts: image-tag=testing (ghcr.io tag) + containerdisk-tag=lts-testing (zot tag).
+      - name: containerdisk-tag
+        value: "{{workflow.parameters.image-tag}}"
       # git ref the test runner clones (test code + step defs). Default `main`;
       # override to test a PR branch end-to-end without merging.
       - name: branch
@@ -62,7 +67,7 @@ spec:
                 - name: image-tag
                   value: "{{workflow.parameters.image-tag}}"
                 - name: containerdisk-tag
-                  value: "{{workflow.parameters.image-tag}}"
+                  value: "{{workflow.parameters.containerdisk-tag}}"
 
           # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down
           - name: test-lane
@@ -81,6 +86,8 @@ spec:
                   value: "{{workflow.parameters.variant}}-{{item}}-{{workflow.uid}}"
                 - name: image-tag
                   value: "{{workflow.parameters.image-tag}}"
+                - name: containerdisk-tag
+                  value: "{{workflow.parameters.containerdisk-tag}}"
                 - name: namespace
                   value: "{{workflow.parameters.namespace}}"
                 - name: variant
@@ -97,6 +104,7 @@ spec:
           - name: suite
           - name: vm-name
           - name: image-tag
+          - name: containerdisk-tag
           - name: namespace
           - name: variant
           - name: ssh-key-secret
@@ -109,7 +117,7 @@ spec:
             arguments:
               parameters:
                 - name: image-tag
-                  value: "{{inputs.parameters.image-tag}}"
+                  value: "{{inputs.parameters.containerdisk-tag}}"
                 - name: vm-name
                   value: "{{inputs.parameters.vm-name}}"
                 - name: namespace

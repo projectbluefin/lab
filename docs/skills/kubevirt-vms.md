@@ -65,8 +65,40 @@ provision-bluefin-vm (provision-bluefin-vm.yaml)
 
 Check if a containerDisk exists:
 ```bash
+# Fast check — 0 bytes = image lost, rebuild required
+ssh ghost "wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json"
+# Full check
 skopeo inspect --tls-verify=false docker://192.168.1.102:30500/bluefin-containerdisk:testing
 ```
+
+**Zot data loss:** The `zot-writable` pod (port 30500) loses its `index.json` on every pod or
+k3s restart — the manifest index goes to 0 bytes even though blobs may still exist. Always
+check before running the pipeline; rebuild if the index is empty.
+
+### 2a. Bluefin btrfs disk layout (bootc install to-disk output)
+
+`bootc install to-disk` creates:
+- `p1` = BIOS boot (1M)
+- `p2` = EFI (512M)
+- `p3` = btrfs root (14.5G)
+
+btrfs subvolumes present: **`boot`** and **`ostree`** only. There is NO `root` subvol.
+Mount the toplevel with no `subvol=` option:
+```bash
+mount -t btrfs ${LOOP}p3 /mnt/btroot
+```
+
+**Critical: `var` IS a btrfs subvolume.** The toplevel's `var/` directory is empty.
+At VM runtime, systemd mounts the `var` subvolume to `/var`. To inject SSH keys into
+the correct inode tree during configure-disk:
+```bash
+mkdir -p /mnt/btvar
+mount -t btrfs -o subvol=var ${LOOP}p3 /mnt/btvar
+HOME_DIR="/mnt/btvar/home/bluefin-test"
+# Write authorized_keys to ${HOME_DIR}/.ssh/authorized_keys
+```
+Writing to `/mnt/btroot/var/home/` writes to dead space — the keys will never be visible
+to sshd at runtime.
 
 ### 2. Required KubeVirt feature gates
 
@@ -88,17 +120,36 @@ kubectl patch kubevirt kubevirt -n kubevirt --type=merge --patch='
 
 Persist this in `manifests/` so ArgoCD maintains it.
 
-### 3. All test VMs pinned to ghost
+### 3. VM node scheduling
 
-Every VM and every workflow pod that touches VMs must use:
+**containerDisk VMs** (Bluefin test VMs) do NOT need to be pinned to ghost. They use
+OCI images from the local Zot registry and have no hostPath dependency. They can run on
+any KubeVirt-capable node (ghost or bazzite).
+
+```yaml
+# containerDisk VM — no nodeSelector needed; floats to ghost or bazzite
+spec:
+  domain:
+    devices:
+      disks:
+        - name: containerdisk
+          disk: {}
+  volumes:
+    - name: containerdisk
+      containerDisk:
+        image: 192.168.1.102:30500/bluefin-containerdisk:testing
+```
+
+**hostDisk VMs** (Flatcar, Knuckle, GnomeOS) MUST pin to ghost because hostPath files
+are only accessible on ghost:
 
 ```yaml
 nodeSelector:
   kubernetes.io/hostname: ghost
 ```
 
-KubeVirt VMs only run on `ghost` (the node with the bare-metal disk and hardware access).
-Flatcar and Knuckle workflows also pin to ghost for the same reason.
+KubeVirt nodes: `ghost` (control-plane, primary compute) and `bazzite` (worker, 12 CPU, 30GB RAM).
+Both have `kubevirt.io/schedulable: "true"` and virt-handler running.
 
 ### 4. hwprofile: standard vs full-hw
 
@@ -174,17 +225,13 @@ kubectl delete pod -n <namespace> -l kubevirt.io/vm=<vm-name> --force
 
 ### 9. Golden disk management
 
-Golden disks live at `/var/tmp/bluefin-golden/<tag>/disk.raw` on ghost.
+Bluefin VMs no longer use golden disk hostPath files. They use `containerDisk` (OCI image).
+The disk build pipeline is `build-containerdisk` — see section 2 above.
 
-| Tag | Image | Disk path |
-|---|---|---|
-| `testing` | `ghcr.io/projectbluefin/bluefin:testing` | `/var/tmp/bluefin-golden/testing/disk.raw` |
-| `lts-testing` | `ghcr.io/projectbluefin/bluefin-lts:testing` | `/var/tmp/bluefin-golden/lts-testing/disk.raw` |
+For Flatcar/Knuckle/GnomeOS variants that still use hostDisk, disk files live under
+`/var/mnt/ghost-data/<variant>/` on ghost. Never `/var/tmp`.
 
 `gts` and `lts-hwe` tags do NOT exist. Never use them.
-
-The `golden-disk-gc` CronWorkflow keeps the newest disk per tag and any disk modified
-in the last 14 days. GC runs weekly.
 
 ### 10. Node inotify limits — required for KubeVirt
 
@@ -254,14 +301,16 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 |---|---|
 | "I'll keep the VM up between runs to save time." | No persistent test VMs. The `orphan-vm-cleanup` CronWorkflow will delete it. |
 | "The teardown step can be optional." | A missing `onExit` handler leaks VMs and disk clones on failure. Always required. |
-| "I can skip the `nodeSelector`." | KubeVirt VMs can only schedule on ghost. Without the selector, the pod will stay Pending. |
+| "containerDisk VMs must pin to ghost." | Only hostDisk VMs need ghost. ContainerDisk VMs can schedule on bazzite too. |
+| "The zot image from yesterday is still there." | Zot-writable loses its index.json on pod restart. Always check before running the pipeline. |
 | "HostDisk feature gate is probably already on." | Verify with `kubectl get kubevirt kubevirt -n kubevirt -o jsonpath='{.spec.configuration}'`. Don't assume. |
 | "The PCRE2 mismatch means the host needs upgrading." | BIB is fully containerized — stale cached image layer, not the host. Force-pull the image. |
 | "inotify limits are a kernel concern, not a k8s concern." | KubeVirt virt-handler + containerd exhaust defaults at scale. The `inotify-tuning` DaemonSet is required. |
+| "Writing to /mnt/btroot/var/ injects SSH keys into the live system." | `var` is a btrfs subvolume. Mount it explicitly with `-o subvol=var` to reach the right inode tree. |
 
 ## Red Flags
 
-- A provision template without `nodeSelector: kubernetes.io/hostname: ghost`
+- A hostDisk provision template without `nodeSelector: kubernetes.io/hostname: ghost`
 - An `onExit` handler that doesn't delete both the VM object AND the disk file
 - Using `gts` or `lts-hwe` as image tags (they don't exist)
 - VMs in namespaces other than the four test namespaces
@@ -272,14 +321,45 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 - SSH wait using `nc -z` — `nc` is not available in distroless or minimal images; use `bash -c 'echo >/dev/tcp/${IP}/22'`
 - VM boot timeout with no disk or network explanation — check `cat /proc/sys/fs/inotify/max_user_watches` (should be >= 1048576)
 - Using BIB (`bib-build-and-push`) for bluefin/bluefin-lts builds — BIB's osbuild Fedora 38 runner has a PCRE2 mismatch with current bluefin images. Use `bootc install to-disk` instead.
+- SSH `Permission denied (publickey)` after `configure-disk` — check whether `var` is a btrfs subvolume; writing to `/mnt/btroot/var/` may miss the mounted subvolume.
+- Assuming the containerdisk:testing image persists across sessions — check `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` first; zot-writable loses manifests on pod restart.
 
 ## Verification
 
 Before merging any VM provisioning change:
 
-- [ ] `nodeSelector: kubernetes.io/hostname: ghost` present on all VM-touching steps
+- [ ] hostDisk templates have `nodeSelector: kubernetes.io/hostname: ghost`; containerDisk templates float freely
 - [ ] `onExit` teardown deletes VM object AND disk file
 - [ ] Feature gates checked if adding a new VM capability
 - [ ] `just list-vms` shows empty after workflow completion
 - [ ] **All `hostPath` volume paths under `/var/mnt/ghost-data/`, never `/var/tmp`**
 - [ ] No hardcoded IPs — pod IP derived at runtime via `kubectl get pod`
+- [ ] Zot-writable index checked before running pipeline: `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` > 100 bytes
+
+### Bluefin containerDisk SSH injection checklist
+
+When debugging `Permission denied (publickey)` after configure-disk:
+
+```bash
+# 1. Verify btrfs subvolume layout on the disk
+LOOP=$(losetup -f --show -P /var/mnt/ghost-data/bluefin-cd-build/testing/disk.raw)
+mount -t btrfs ${LOOP}p3 /tmp/btcheck
+btrfs subvolume list /tmp/btcheck        # is 'var' listed as a subvol?
+ls /tmp/btcheck/var/                     # empty if var is a subvol (different inode tree)
+
+# 2. If var IS a subvolume, mount it separately:
+mkdir -p /tmp/btvar
+mount -t btrfs -o subvol=var ${LOOP}p3 /tmp/btvar
+ls /tmp/btvar/home/bluefin-test/.ssh/   # authorized_keys should be here
+
+# 3. Cleanup
+umount /tmp/btvar /tmp/btcheck
+losetup -d ${LOOP}
+```
+
+If `btrfs subvolume list` shows `var` as a subvolume, the configure-disk step must use:
+```bash
+mount -t btrfs -o subvol=var ${LOOP}p3 /mnt/btvar
+HOME_DIR="/mnt/btvar/home/bluefin-test"
+```
+NOT `/mnt/btroot/var/home/bluefin-test` (that directory is empty in the toplevel mount).

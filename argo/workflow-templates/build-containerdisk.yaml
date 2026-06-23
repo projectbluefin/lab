@@ -303,19 +303,23 @@ spec:
               printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=bluefin-test\n' \
                 > \"\${ETC}/gdm/custom.conf\"
 
-              # sshd: enable + permit key auth
-              # Enable sshd.service (standalone daemon) AND sshd.socket (socket activation).
-              # Bluefin/Fedora may use either; enabling both ensures sshd starts.
-              mkdir -p \"\${ETC}/systemd/system/multi-user.target.wants\"
-              ln -sf /usr/lib/systemd/system/sshd.service \
-                \"\${ETC}/systemd/system/multi-user.target.wants/sshd.service\" \
-                && echo '[INNER] sshd.service symlink created' \
-                || echo '[INNER] WARNING: sshd.service symlink failed'
+              # sshd: use socket activation only (sshd.socket, NOT sshd.service).
+              # Reason: sshd.socket has Conflicts=sshd.service — enabling both causes
+              # systemd to stop sshd.socket when sshd.service tries to start, creating a
+              # race where port 22 briefly disappears. sshd.socket alone is the correct
+              # socket-activated pattern: it opens port 22 at sockets.target (before
+              # multi-user.target), which is much earlier in the boot sequence.
               mkdir -p \"\${ETC}/systemd/system/sockets.target.wants\"
               ln -sf /usr/lib/systemd/system/sshd.socket \
                 \"\${ETC}/systemd/system/sockets.target.wants/sshd.socket\" \
                 && echo '[INNER] sshd.socket symlink created' \
                 || echo '[INNER] WARNING: sshd.socket symlink failed'
+              # Remove sshd.service from wants if image had it; mask it so it never
+              # races with sshd.socket. Socket activation handles all connections.
+              rm -f \"\${ETC}/systemd/system/multi-user.target.wants/sshd.service\" 2>/dev/null || true
+              ln -sf /dev/null \"\${ETC}/systemd/system/sshd.service\" \
+                && echo '[INNER] sshd.service masked (socket activation only)' \
+                || echo '[INNER] WARNING: failed to mask sshd.service'
               mkdir -p \"\${ETC}/ssh/sshd_config.d\"
               # Note: 'UsePAM no' is NOT supported in this Fedora openssh build.
               # Use PermitRootLogin yes (most permissive) to allow root pubkey auth.
@@ -344,9 +348,27 @@ spec:
                 > \"\${ETC}/sudoers.d/bluefin-test\"
               chmod 440 \"\${ETC}/sudoers.d/bluefin-test\"
 
-              echo '[INNER] etc/ config done'
+              # Mask services that cause long boot delays in KubeVirt test VMs:
+              # - NetworkManager-wait-online: waits up to 120s for "full" network
+              #   connectivity. Not needed for SSH (which only needs network.target).
+              #   sshd.socket listens before NM-wait-online blocks anything.
+              # - kdump: tries to load a crash kernel; no kdumpctl in KubeVirt VMs.
+              # - insights-client-boot: contacts Red Hat Insights CDN (no account).
+              # - sssd: SSSD without any configured identity provider backends;
+              #   boots then times out trying to reach non-existent domains.
+              # Masking via /dev/null symlink in etc/systemd/system/ takes precedence
+              # over all wants symlinks and preset rules, surviving the ostree merge.
+              for _svc in \
+                NetworkManager-wait-online.service \
+                kdump.service \
+                insights-client-boot.service \
+                sssd.service; do
+                ln -sf /dev/null \"\${ETC}/systemd/system/\${_svc}\" \
+                  && echo \"[INNER] masked \${_svc}\" \
+                  || echo \"[INNER] WARNING: failed to mask \${_svc}\"
+              done
 
-              # Fix fstab: non-root partitions (/boot, /boot/efi) block boot in
+
               # containerDisk VMs — device UUID is never detected because the
               # partitions are part of the containerDisk (not separate block devs).
               # Robust patch: match ANY options string in /boot lines, not just
@@ -482,8 +504,13 @@ spec:
             echo "[VERIFY] authorized_keys/root:"
             cat "${VDP}/etc/ssh/authorized_keys/root" 2>&1 || echo "MISSING"
             echo "[VERIFY] sshd wants symlinks:"
-            ls -la "${VDP}/etc/systemd/system/multi-user.target.wants/sshd.service" 2>&1 || echo "MISSING: sshd.service symlink not found"
             ls -la "${VDP}/etc/systemd/system/sockets.target.wants/sshd.socket" 2>&1 || echo "MISSING: sshd.socket symlink not found"
+            ls "${VDP}/etc/systemd/system/sshd.service" 2>&1 && echo "[VERIFY] sshd.service mask present" || echo "MISSING: sshd.service mask"
+            ls "${VDP}/etc/systemd/system/multi-user.target.wants/sshd.service" 2>&1 && echo "WARNING: sshd.service in multi-user.target.wants (should be absent)" || echo "[VERIFY] sshd.service not in multi-user.target.wants (correct)"
+            echo "[VERIFY] slow-service masks:"
+            for _s in NetworkManager-wait-online.service kdump.service insights-client-boot.service sssd.service; do
+              ls -la "${VDP}/etc/systemd/system/${_s}" 2>&1 || echo "MISSING mask: ${_s}"
+            done
             echo "[VERIFY] fstab (nofail check):"
             grep -v '^#' "${VDP}/etc/fstab" 2>/dev/null | grep -v '^$' || echo "(no fstab entries)"
             echo "[VERIFY] device-timeout drop-in:"

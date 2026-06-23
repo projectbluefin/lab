@@ -83,10 +83,6 @@ spec:
           - name: containerdisk-tag
       nodeSelector:
         kubernetes.io/hostname: ghost
-      tolerations:
-        - key: node-role.kubernetes.io/gaming
-          operator: Exists
-          effect: NoSchedule
       script:
         image: quay.io/skopeo/stable:latest
         command: [bash]
@@ -126,10 +122,6 @@ spec:
             namespace: argo
       nodeSelector:
         kubernetes.io/hostname: ghost
-      tolerations:
-        - key: node-role.kubernetes.io/gaming
-          operator: Exists
-          effect: NoSchedule
       volumes:
         - name: dev
           hostPath:
@@ -251,10 +243,6 @@ spec:
           - name: containerdisk-tag
       nodeSelector:
         kubernetes.io/hostname: ghost
-      tolerations:
-        - key: node-role.kubernetes.io/gaming
-          operator: Exists
-          effect: NoSchedule
       volumes:
         - name: dev
           hostPath:
@@ -307,6 +295,7 @@ spec:
           echo "Partition devices: $(ls ${LOOP}p* 2>/dev/null || echo 'none')"
 
           cleanup() {
+            umount /mnt/btvar 2>/dev/null || true
             umount /mnt/btroot 2>/dev/null || true
             losetup -d "${LOOP}" 2>/dev/null || true
           }
@@ -351,24 +340,19 @@ spec:
           sed -i 's/^\(wheel:x:10:.*\)$/\1,bluefin-test/' "${ETC}/group" 2>/dev/null || true
 
           # ── SSH authorized_keys ───────────────────────────────────────────
-          # ostree/bootc layout: runtime /var is bind-mounted from
-          # /ostree/deploy/<stateroot>/var on the raw btrfs. Writing to
-          # /mnt/btroot/var/ goes to the btrfs root-level var (unused at
-          # runtime). We must write to /mnt/btroot/ostree/deploy/*/var/.
-          VAR_DIR=$(find /mnt/btroot/ostree/deploy/*/var -maxdepth 0 -type d 2>/dev/null | head -1)
-          echo "btrfs ostree var dir: ${VAR_DIR:-NOT FOUND}"
-          echo "btrfs top-level var/: $(ls /mnt/btroot/var/ 2>/dev/null | head -5 || echo EMPTY)"
-          if [[ -z "${VAR_DIR}" ]]; then
-            echo "ERROR: ostree var dir not found under /mnt/btroot/ostree/deploy/" >&2
-            exit 1
-          fi
-          HOME_DIR="${VAR_DIR}/home/bluefin-test"
+          # Bluefin btrfs: 'var' is a btrfs subvolume. Mounting the toplevel
+          # exposes ostree/deploy/*/var as dead inodes — writes never reach
+          # the live inode tree. Mount the subvolume explicitly.
+          mkdir -p /mnt/btvar
+          mount -t btrfs -o subvol=var "${LOOP}p3" /mnt/btvar
+          HOME_DIR="/mnt/btvar/home/bluefin-test"
           mkdir -p "${HOME_DIR}/.ssh"
           printf '%s\n' "${SSH_AUTHORIZED_KEYS}" > "${HOME_DIR}/.ssh/authorized_keys"
           chmod 700 "${HOME_DIR}/.ssh"
           chmod 600 "${HOME_DIR}/.ssh/authorized_keys"
           chown -R 1001:1001 "${HOME_DIR}"
           echo "SSH key injected: $(ls -la ${HOME_DIR}/.ssh/)"
+          umount /mnt/btvar
 
           # ── sshd: enable + key auth config ───────────────────────────────
           WANTS="${ETC}/systemd/system/multi-user.target.wants"
@@ -434,10 +418,6 @@ spec:
           - name: containerdisk-tag
       nodeSelector:
         kubernetes.io/hostname: ghost
-      tolerations:
-        - key: node-role.kubernetes.io/gaming
-          operator: Exists
-          effect: NoSchedule
       volumes:
         - name: staging
           hostPath:

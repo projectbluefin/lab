@@ -27,16 +27,12 @@ spec:
         app.kubernetes.io/part-of: bluefin-test-suite
     spec:
       tolerations:
-        # Allow scheduling on control-plane and gaming nodes.
         # Intentionally exclude unreachable/not-ready so exo-1 (when down)
         # does not inflate desiredNumberScheduled and break ArgoCD health checks.
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
           effect: NoSchedule
         - key: node-role.kubernetes.io/master
-          operator: Exists
-          effect: NoSchedule
-        - key: node-role.kubernetes.io/gaming
           operator: Exists
           effect: NoSchedule
       initContainers:

@@ -344,6 +344,18 @@ spec:
               echo '[INNER] sshd_config AuthorizedKeysFile:' && grep 'AuthorizedKeysFile' \"\${ETC}/ssh/sshd_config\"
               echo '[INNER] Include line:' && grep -n 'Include' \"\${ETC}/ssh/sshd_config\" | head -3
 
+              # Explicitly sync+umount BEFORE the container exits so btrfs commits
+              # all transactions to the backing file (disk.raw).  The cleanup trap
+              # uses '|| true' which silences failures; a lazy namespace teardown on
+              # container exit does NOT flush dirty btrfs pages.  Without this hard
+              # umount the outer verify step sees the original (unmodified) disk.
+              echo '[INNER] syncing btrfs...'
+              btrfs filesystem sync /tmp/installed
+              echo '[INNER] unmounting btrfs...'
+              umount /tmp/installed
+              losetup -d \"\${LOOP}\"
+              echo '[INNER] disk committed.'
+
             " || PODMAN_EXIT=$?
 
           echo "[DIAG] podman exit=${PODMAN_EXIT}"

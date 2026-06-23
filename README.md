@@ -1,18 +1,24 @@
-# Bluefin Testing Lab
+# CNCF Homelab Reference: bootc Image Testing Lab
 
-> CI infrastructure for [Project Bluefin](https://projectbluefin.io). When a new
-> Bluefin image is published, this lab boots it in a real KubeVirt VM and runs
-> acceptance tests — GNOME shell, extensions, bootc contract, uupd, filesystem
-> integrity. Screenshots from passing runs appear in Bluefin GitHub Releases.
+> A production-quality, fully GitOps-driven QA pipeline for testing
+> [bootc](https://containers.github.io/bootc/) (image-based Linux) deployments,
+> built entirely on CNCF projects running on a single homelab node.
+> This instance is deployed as the CI infrastructure for [Project Bluefin](https://projectbluefin.io).
+> The productized form of this pattern ships as [Bluefin Server](https://projectbluefin.io).
 
 ---
 
 ## What This Is
 
-The automated QA pipeline for Project Bluefin and Project Dakota. Every image
-publish triggers: boot a fresh VM from the OCI image, run GUI and system acceptance
-tests, collect screenshots, tear down. Everything is declared in git, reconciled by
-ArgoCD, and orchestrated by Argo Workflows.
+This repo is a reference implementation of a CNCF-native homelab designed for bootc
+image testing. Boot a real VM from a real OCI image, run GUI acceptance tests, tear it
+down, repeat. Everything is declared in git, reconciled by ArgoCD, and orchestrated by
+Argo Workflows.
+
+This instance runs as the CI infrastructure for Project Bluefin — every image
+publication triggers a fully automated test run with zero human intervention, from
+digest detection to screenshot in the release notes. The productized form of this
+pattern ships as Bluefin Server.
 
 **No persistent VMs. No manual `kubectl`. No SSH to the cluster host.**
 

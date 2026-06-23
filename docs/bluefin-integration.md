@@ -1,8 +1,8 @@
 # Bluefin Integration
 
-This lab is the CI backend for Project Bluefin. Every image publish results in a
-full acceptance test run; screenshots from passing runs appear automatically in
-Bluefin GitHub Releases.
+This homelab instance is the CI backend for Project Bluefin. Every image publish
+results in a full acceptance test run with zero human intervention; screenshots from
+passing runs appear automatically in Bluefin GitHub Releases.
 
 ---
 

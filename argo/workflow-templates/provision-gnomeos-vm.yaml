@@ -87,11 +87,11 @@ spec:
       volumes:
         - name: gnomeos-cache
           hostPath:
-            path: /var/tmp/gnomeos-nightly-cache
+            path: /var/mnt/ghost-data/gnomeos-nightly-cache
             type: DirectoryOrCreate
         - name: gnomeos-vms
           hostPath:
-            path: /var/tmp/gnomeos-test
+            path: /var/mnt/ghost-data/gnomeos-test
             type: DirectoryOrCreate
       script:
         image: quay.io/fedora/fedora:latest
@@ -107,17 +107,17 @@ spec:
             memory: 2Gi
         volumeMounts:
           - name: gnomeos-cache
-            mountPath: /var/tmp/gnomeos-nightly-cache
+            mountPath: /var/mnt/ghost-data/gnomeos-nightly-cache
           - name: gnomeos-vms
-            mountPath: /var/tmp/gnomeos-test
+            mountPath: /var/mnt/ghost-data/gnomeos-test
         source: |
           set -euo pipefail
           VM="{{inputs.parameters.vm-name}}"
           URL="{{inputs.parameters.image-url}}"
           SHA="{{inputs.parameters.image-sha256}}"
           FORMAT="{{inputs.parameters.image-format}}"
-          CACHE_DIR="/var/tmp/gnomeos-nightly-cache"
-          DEST="/var/tmp/gnomeos-test/${VM}.raw"
+          CACHE_DIR="/var/mnt/ghost-data/gnomeos-nightly-cache"
+          DEST="/var/mnt/ghost-data/gnomeos-test/${VM}.raw"
 
           if [[ -z "${URL}" ]]; then
             echo "ERROR: image-url is required" >&2
@@ -297,7 +297,7 @@ spec:
                 volumes:
                   - name: rootdisk
                     hostDisk:
-                      path: /var/tmp/gnomeos-test/{{inputs.parameters.vm-name}}.raw
+                      path: /var/mnt/ghost-data/gnomeos-test/{{inputs.parameters.vm-name}}.raw
                       type: Disk
 
     - name: create-gnomeos-vm-with-hook
@@ -355,7 +355,7 @@ spec:
                 volumes:
                   - name: rootdisk
                     hostDisk:
-                      path: /var/tmp/gnomeos-test/{{inputs.parameters.vm-name}}.raw
+                      path: /var/mnt/ghost-data/gnomeos-test/{{inputs.parameters.vm-name}}.raw
                       type: Disk
 
     - name: wait-for-gnomeos-boot

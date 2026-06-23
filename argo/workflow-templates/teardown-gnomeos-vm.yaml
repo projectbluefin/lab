@@ -50,7 +50,7 @@ spec:
       volumes:
         - name: gnomeos-vms
           hostPath:
-            path: /var/tmp/gnomeos-test
+            path: /var/mnt/ghost-data/gnomeos-test
       script:
         image: cgr.dev/chainguard/bash:latest
         securityContext:
@@ -65,8 +65,8 @@ spec:
             memory: 128Mi
         volumeMounts:
           - name: gnomeos-vms
-            mountPath: /var/tmp/gnomeos-test
+            mountPath: /var/mnt/ghost-data/gnomeos-test
         source: |
-          DISK="/var/tmp/gnomeos-test/{{inputs.parameters.vm-name}}.raw"
+          DISK="/var/mnt/ghost-data/gnomeos-test/{{inputs.parameters.vm-name}}.raw"
           rm -f "${DISK}"
           echo "Cleaned: ${DISK}"

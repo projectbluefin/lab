@@ -6,7 +6,7 @@ metadata:
   annotations:
     description: |
       Provisions a Flatcar Container Linux test VM.
-      Converts /var/tmp/knuckle-test/flatcar_base.img to .raw once (cached),
+      Converts /var/mnt/ghost-data/knuckle-test/flatcar_base.img to .raw once (cached),
       then btrfs reflinks per-VM copy. Cloud-init and guest-agent injection seed SSH access.
 spec:
   serviceAccountName: argo
@@ -63,11 +63,11 @@ spec:
       volumes:
         - name: knuckle-test
           hostPath:
-            path: /var/tmp/knuckle-test
+            path: /var/mnt/ghost-data/knuckle-test
             type: DirectoryOrCreate
         - name: flatcar-vms
           hostPath:
-            path: /var/tmp/flatcar-test
+            path: /var/mnt/ghost-data/flatcar-test
             type: DirectoryOrCreate
       script:
         image: quay.io/kubevirt/virt-launcher:v1.8.2
@@ -83,20 +83,20 @@ spec:
             memory: 2Gi
         volumeMounts:
           - name: knuckle-test
-            mountPath: /var/tmp/knuckle-test
+            mountPath: /var/mnt/ghost-data/knuckle-test
           - name: flatcar-vms
-            mountPath: /var/tmp/flatcar-test
+            mountPath: /var/mnt/ghost-data/flatcar-test
         source: |
           set -euo pipefail
           VM="{{inputs.parameters.vm-name}}"
-          BASE="/var/tmp/knuckle-test/flatcar-base.raw"
-          DEST="/var/tmp/flatcar-test/${VM}.raw"
-          TARGET="/var/tmp/flatcar-test/${VM}-target.raw"
+          BASE="/var/mnt/ghost-data/knuckle-test/flatcar-base.raw"
+          DEST="/var/mnt/ghost-data/flatcar-test/${VM}.raw"
+          TARGET="/var/mnt/ghost-data/flatcar-test/${VM}-target.raw"
 
           # One-time: convert qcow2 → raw (cached across runs)
           if [[ ! -f "${BASE}" ]]; then
             echo "Converting Flatcar qcow2 → raw (one-time)..."
-            qemu-img convert -p -f qcow2 -O raw /var/tmp/knuckle-test/flatcar_base.img "${BASE}"
+            qemu-img convert -p -f qcow2 -O raw /var/mnt/ghost-data/knuckle-test/flatcar_base.img "${BASE}"
             chown 107:107 "${BASE}" && chmod 664 "${BASE}"
             chcon -t container_file_t "${BASE}" 2>/dev/null || true
             echo "Conversion complete: $(du -sh ${BASE} | cut -f1)"
@@ -168,11 +168,11 @@ spec:
                 volumes:
                   - name: rootdisk
                     hostDisk:
-                      path: /var/tmp/flatcar-test/{{inputs.parameters.vm-name}}.raw
+                      path: /var/mnt/ghost-data/flatcar-test/{{inputs.parameters.vm-name}}.raw
                       type: Disk
                   - name: targetdisk
                     hostDisk:
-                      path: /var/tmp/flatcar-test/{{inputs.parameters.vm-name}}-target.raw
+                      path: /var/mnt/ghost-data/flatcar-test/{{inputs.parameters.vm-name}}-target.raw
                       type: Disk
                   - name: cloudinit
                     cloudInitNoCloud:

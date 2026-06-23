@@ -14,7 +14,7 @@ spec:
             value: "flatcar-test"
           # Must match the test-root used in provision-flatcar-vm to locate the disk.
           - name: test-root
-            value: "/var/tmp/flatcar-test"
+            value: "/var/mnt/ghost-data/flatcar-test"
       steps:
         - - name: delete-vm
             template: delete-vm
@@ -52,7 +52,7 @@ spec:
         parameters:
           - name: vm-name
           - name: test-root
-            value: "/var/tmp/flatcar-test"
+            value: "/var/mnt/ghost-data/flatcar-test"
       nodeSelector:
         kubernetes.io/hostname: ghost
       volumes:

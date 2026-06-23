@@ -181,7 +181,7 @@ spec:
       volumes:
         - name: knuckle-test
           hostPath:
-            path: /var/tmp/knuckle-test
+            path: /var/mnt/ghost-data/knuckle-test
             type: DirectoryOrCreate
         - name: src
           emptyDir: {}
@@ -210,9 +210,9 @@ spec:
             ./scripts/build-iso.sh --channel stable --arch amd64
 
             ISO_SRC="/src/output/knuckle-installer-stable-amd64.iso"
-            ISO_DEST="/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso"
+            ISO_DEST="/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso"
             BIN_SRC="/src/bin/knuckle-amd64"
-            BIN_DEST="/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-knuckle"
+            BIN_DEST="/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-knuckle"
 
             cp "${ISO_SRC}" "${ISO_DEST}"
             cp "${BIN_SRC}" "${BIN_DEST}"
@@ -234,7 +234,7 @@ spec:
             memory: 8Gi
         volumeMounts:
           - name: knuckle-test
-            mountPath: /var/tmp/knuckle-test
+            mountPath: /var/mnt/ghost-data/knuckle-test
           - name: src
             mountPath: /src
 
@@ -285,7 +285,7 @@ spec:
       volumes:
         - name: knuckle-test
           hostPath:
-            path: /var/tmp/knuckle-test
+            path: /var/mnt/ghost-data/knuckle-test
             type: DirectoryOrCreate
         - name: work
           emptyDir: {}
@@ -307,7 +307,7 @@ spec:
             memory: 256Mi
         volumeMounts:
           - name: knuckle-test
-            mountPath: /var/tmp/knuckle-test
+            mountPath: /var/mnt/ghost-data/knuckle-test
           - name: work
             mountPath: /work
         source: |
@@ -323,7 +323,7 @@ spec:
           }, separators=(",", ":")))
           PY
           install -D -m 600 /work/ignition.json \
-            "/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-installer.ign"
+            "/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.ign"
           echo "Wrote ignition for {{inputs.parameters.vm-name}}" >&2
 
     - name: prepare-target-disk
@@ -335,7 +335,7 @@ spec:
       volumes:
         - name: knuckle-test
           hostPath:
-            path: /var/tmp/knuckle-test
+            path: /var/mnt/ghost-data/knuckle-test
             type: DirectoryOrCreate
       script:
         image: quay.io/kubevirt/virt-launcher:v1.8.2
@@ -351,10 +351,10 @@ spec:
             memory: 2Gi
         volumeMounts:
           - name: knuckle-test
-            mountPath: /var/tmp/knuckle-test
+            mountPath: /var/mnt/ghost-data/knuckle-test
         source: |
           set -euo pipefail
-          TARGET="/var/tmp/knuckle-test/{{inputs.parameters.vm-name}}.raw"
+          TARGET="/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}.raw"
           if [[ -f "${TARGET}" ]]; then
             rm -f "${TARGET}"
           fi
@@ -423,11 +423,11 @@ spec:
                 volumes:
                   - name: installeriso
                     hostDisk:
-                      path: /var/tmp/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso
+                      path: /var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso
                       type: Disk
                   - name: rootdisk
                     hostDisk:
-                      path: /var/tmp/knuckle-test/{{inputs.parameters.vm-name}}.raw
+                      path: /var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}.raw
                       type: Disk
 
     - name: boot-installer
@@ -445,7 +445,7 @@ spec:
       volumes:
         - name: knuckle-test
           hostPath:
-            path: /var/tmp/knuckle-test
+            path: /var/mnt/ghost-data/knuckle-test
             type: DirectoryOrCreate
         - name: ssh-key
           secret:
@@ -462,7 +462,7 @@ spec:
             memory: 2Gi
         volumeMounts:
           - name: knuckle-test
-            mountPath: /var/tmp/knuckle-test
+            mountPath: /var/mnt/ghost-data/knuckle-test
           - name: ssh-key
             mountPath: /etc/ssh/test-key
             readOnly: true
@@ -482,7 +482,7 @@ spec:
           NS="{{inputs.parameters.namespace}}"
           VM="{{inputs.parameters.vm-name}}"
           KEY="/etc/ssh/test-key/id_ed25519"
-          BIN="/var/tmp/knuckle-test/${VM}-knuckle"
+          BIN="/var/mnt/ghost-data/knuckle-test/${VM}-knuckle"
           SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
           virtctl -n "${NS}" start "${VM}"
@@ -518,10 +518,10 @@ spec:
             exit 1
           fi
 
-          cat > /var/tmp/knuckle-test/${VM}-qa.json <<EOF
+          cat > /var/mnt/ghost-data/knuckle-test/${VM}-qa.json <<EOF
           {"channel":"stable","hostname":"${VM}","timezone":"UTC","network":{"mode":"dhcp"},"users":[{"username":"bluefin-test","ssh_keys":["${SSH_PUBKEY}"]}],"disk":"${TARGET_DISK}","update_strategy":"off","reboot":false}
           EOF
-          scp ${SSH_OPTS} /var/tmp/knuckle-test/${VM}-qa.json core@"${INSTALLER_IP}":/tmp/qa.json >/dev/null
+          scp ${SSH_OPTS} /var/mnt/ghost-data/knuckle-test/${VM}-qa.json core@"${INSTALLER_IP}":/tmp/qa.json >/dev/null
 
           ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "sudo systemd-run --unit knuckle-headless-install --collect /bin/bash -lc 'set -euo pipefail; trap \"touch /install-failed\" ERR; /tmp/knuckle --headless --config /tmp/qa.json --log-file /tmp/knuckle-install.log; touch /install-complete'"
           echo "Installer booted and headless install launched against ${TARGET_DISK}" >&2
@@ -669,7 +669,7 @@ spec:
                 volumes:
                   - name: rootdisk
                     hostDisk:
-                      path: /var/tmp/knuckle-test/${VM}.raw
+                      path: /var/mnt/ghost-data/knuckle-test/${VM}.raw
                       type: Disk
           EOF
 
@@ -762,7 +762,7 @@ spec:
                 - name: namespace
                   value: "{{workflow.parameters.namespace}}"
                 - name: test-root
-                  value: "/var/tmp/knuckle-test"
+                  value: "/var/mnt/ghost-data/knuckle-test"
 
           - name: cleanup-installer-artifacts
             depends: "teardown-vm.Succeeded"
@@ -781,7 +781,7 @@ spec:
       volumes:
         - name: knuckle-test
           hostPath:
-            path: /var/tmp/knuckle-test
+            path: /var/mnt/ghost-data/knuckle-test
             type: DirectoryOrCreate
       script:
         image: registry.access.redhat.com/ubi9/ubi-minimal:9.5
@@ -797,13 +797,13 @@ spec:
             memory: 128Mi
         volumeMounts:
           - name: knuckle-test
-            mountPath: /var/tmp/knuckle-test
+            mountPath: /var/mnt/ghost-data/knuckle-test
         source: |
           set -euo pipefail
           VM="{{inputs.parameters.vm-name}}"
           rm -f \
-            "/var/tmp/knuckle-test/${VM}-installer.iso" \
-            "/var/tmp/knuckle-test/${VM}-installer.ign" \
-            "/var/tmp/knuckle-test/${VM}-knuckle" \
-            "/var/tmp/knuckle-test/${VM}-qa.json"
+            "/var/mnt/ghost-data/knuckle-test/${VM}-installer.iso" \
+            "/var/mnt/ghost-data/knuckle-test/${VM}-installer.ign" \
+            "/var/mnt/ghost-data/knuckle-test/${VM}-knuckle" \
+            "/var/mnt/ghost-data/knuckle-test/${VM}-qa.json"
           echo "Cleaned installer artifacts for ${VM}" >&2

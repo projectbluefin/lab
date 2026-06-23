@@ -11,6 +11,15 @@ metadata:
       All build steps are pinned to ghost (loop devices + /var/mnt/ghost-data staging).
 spec:
   serviceAccountName: argo
+  entrypoint: build-containerdisk
+  arguments:
+    parameters:
+      - name: image
+        value: "ghcr.io/projectbluefin/bluefin"
+      - name: image-tag
+        value: "testing"
+      - name: containerdisk-tag
+        value: "testing"
   templates:
 
     # ─── Top-level DAG ────────────────────────────────────────────────────────

@@ -199,9 +199,16 @@ spec:
           echo "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/root-ssh-keys"
 
           # Ref: bootc install docs — use --via-loopback for VM disk creation.
+          # --tmpfs /sys/fs/selinux: masks selinuxfs inside the container so
+          # selinux_is_enabled() returns false → ostree skips fsetxattr(security.selinux)
+          # during layer import. Without this, the host kernel's in-memory SELinux policy
+          # rejects label types from the guest image (bluefin-lts) that differ from the
+          # host image (bluefin), producing fsetxattr EINVAL. The --disable-selinux bootc
+          # flag only disables SELinux in the installed system, not during import.
           PODMAN_EXIT=0
           podman run --rm --privileged --pid=host --ipc=host \
             --security-opt label=type:unconfined_t \
+            --tmpfs /sys/fs/selinux \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "${STAGING}:/output" \

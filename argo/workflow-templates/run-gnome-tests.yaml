@@ -201,16 +201,16 @@ spec:
             echo "SSH ready (bluefin-test)." >&2
 
             # ── Install test dependencies inside the VM ──────────────────────
-            # Titan VMs are persistent, so skip install when dependencies are already present.
-            # GUI suites need qecore/dogtail/ponytail; the system suite only needs behave.
+            # Bluefin VMs are ephemeral bootc images with read-only /usr.
+            # dnf/rpm-ostree are blocked by bootc policy; use pip --user for pure Python deps.
+            # GUI suites need qecore/dogtail/ponytail (already in image); system suite needs behave.
             ${SSH} "
               set -euo pipefail
               if [[ "${SUITE}" == "system" ]]; then
-                if python3 -c 'import behave' 2>/dev/null && command -v pip3 &>/dev/null; then
+                if python3 -c 'import behave' 2>/dev/null; then
                   echo 'System-suite dependencies already installed, skipping.' >&2
                 else
-                  echo 'Installing system-suite dependencies...' >&2
-                  sudo dnf install -y --quiet python3-pip python3-behave 2>&1 | tail -3
+                  echo 'Installing system-suite dependencies via pip...' >&2
                   pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
                   python3 -m pip install --quiet --user behave 2>&1 | tail -3
                 fi

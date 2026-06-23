@@ -347,17 +347,29 @@ spec:
               echo '[INNER] etc/ config done'
 
               # Fix fstab: non-root partitions (/boot, /boot/efi) block boot in
-              # containerDisk VMs if the device UUID isn't detected quickly.
-              # Add nofail + short timeout so boot proceeds even if they're slow.
+              # containerDisk VMs — device UUID is never detected because the
+              # partitions are part of the containerDisk (not separate block devs).
+              # Robust patch: match ANY options string in /boot lines, not just
+              # 'defaults'. RHEL10/el10 /boot/efi uses 'umask=0077,shortname=winnt'
+              # (not 'defaults'), so the old sed would silently skip it.
+              # Groups: \1=device+ws, \2=mountpoint+ws, \3=fstype+ws, \4=options
               if [[ -f \"\${ETC}/fstab\" ]]; then
                 echo '[INNER] original fstab:'
                 cat \"\${ETC}/fstab\"
-                sed -i '/\/boot/s/defaults/defaults,nofail,x-systemd.device-timeout=5s/' \"\${ETC}/fstab\" 2>/dev/null || true
+                sed -i '/[[:space:]]\/boot/{ /nofail/! s/^\([^[:space:]]*[[:space:]]\+\)\([^[:space:]]*[[:space:]]\+\)\([^[:space:]]*[[:space:]]\+\)\([^[:space:]]*\)/\1\2\3\4,nofail,x-systemd.device-timeout=5s/ }' \"\${ETC}/fstab\" 2>/dev/null || true
                 echo '[INNER] patched fstab:'
                 cat \"\${ETC}/fstab\"
               else
                 echo '[INNER] no fstab found (normal for some bootc images)'
               fi
+
+              # Belt-and-suspenders: set global device timeout via systemd config.
+              # This covers any fstab entries the sed above might miss and applies
+              # the same 5s timeout to all device units system-wide.
+              mkdir -p \"\${ETC}/systemd/system.conf.d\"
+              printf '[Manager]\nDefaultDeviceTimeoutSec=5\n' \
+                > \"\${ETC}/systemd/system.conf.d/10-device-timeout.conf\"
+              echo '[INNER] set DefaultDeviceTimeoutSec=5 via drop-in'
 
               # ── Key injection ──────────────────────────────────────────────────
               # btrfs subvolume list returns EMPTY for this bootc layout — there are no
@@ -444,6 +456,8 @@ spec:
             ls -la "${VDP}/etc/systemd/system/sockets.target.wants/sshd.socket" 2>&1 || echo "MISSING: sshd.socket symlink not found"
             echo "[VERIFY] fstab (nofail check):"
             grep -v '^#' "${VDP}/etc/fstab" 2>/dev/null | grep -v '^$' || echo "(no fstab entries)"
+            echo "[VERIFY] device-timeout drop-in:"
+            cat "${VDP}/etc/systemd/system.conf.d/10-device-timeout.conf" 2>&1 || echo "MISSING: drop-in not found"
             echo "[VERIFY] var/roothome/.ssh:"
             STATEROOT_V=$(ls /mnt/verify/ostree/deploy/ 2>/dev/null | head -1)
             ls -la /mnt/verify/ostree/deploy/${STATEROOT_V}/var/roothome/.ssh/ 2>&1 || echo "MISSING"

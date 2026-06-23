@@ -39,7 +39,7 @@ spec:
                 - name: containerdisk-tag
                   value: "{{inputs.parameters.containerdisk-tag}}"
 
-          # Skipped when check=exists; skipped → everything downstream skips too.
+          # Skipped when check=exists.
           - name: install-to-disk
             depends: check.Succeeded
             when: "'{{tasks.check.outputs.result}}' != 'exists'"
@@ -53,8 +53,9 @@ spec:
                 - name: containerdisk-tag
                   value: "{{inputs.parameters.containerdisk-tag}}"
 
+          # Skipped when check=exists (install-to-disk skipped → this skips too).
           - name: convert-and-push
-            depends: install-to-disk.Succeeded || install-to-disk.Skipped
+            depends: install-to-disk.Succeeded
             template: convert-and-push
             arguments:
               parameters:

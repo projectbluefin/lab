@@ -297,7 +297,7 @@ spec:
               echo '[INNER] etc/ config done'
 
               # Key injection via /var (persistent storage, always accessible at boot).
-              # /var lives at ostree/deploy/${STATEROOT}/var regardless of the deployment.
+              # /var lives at ostree/deploy/<stateroot>/var regardless of the deployment.
               STATEROOT=\$(ls /tmp/installed/ostree/deploy/ 2>/dev/null | head -1)
               VAR_DIR=\"/tmp/installed/ostree/deploy/\${STATEROOT}/var\"
 

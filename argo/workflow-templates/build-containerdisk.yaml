@@ -304,31 +304,52 @@ spec:
 
               echo '[INNER] etc/ config done'
 
-              # Key injection via /var (persistent storage, always accessible at boot).
-              # /var lives at ostree/deploy/<stateroot>/var regardless of the deployment.
+              # ── Key injection diagnostics ────────────────────────────────────
+              # Show root home dir, drop-in effective config, and /etc/passwd entry.
+              echo '[INNER] root passwd entry:' && grep '^root:' \"\${ETC}/passwd\"
+              echo '[INNER] bluefin-test passwd entry:' && grep '^bluefin-test:' \"\${ETC}/passwd\" 2>/dev/null || echo '(not found)'
+              echo '[INNER] sshd_config AuthorizedKeysFile:' && grep -i 'AuthorizedKeysFile' \"\${ETC}/ssh/sshd_config\" || echo '(not found in main config)'
+              echo '[INNER] existing sshd_config.d files:' && ls \"\${ETC}/ssh/sshd_config.d/\" 2>/dev/null || echo '(none)'
+
+              # ── Key injection to ALL plausible paths ────────────────────────
+              # inject via /var (persistent), deploy/root (read-only but readable), and /etc
               STATEROOT=\$(ls /tmp/installed/ostree/deploy/ 2>/dev/null | head -1)
               VAR_DIR=\"/tmp/installed/ostree/deploy/\${STATEROOT}/var\"
 
-              # Root: inject directly to /var/roothome (= /root at runtime on Fedora/bootc).
-              # bootc --root-ssh-authorized-keys also injects via tmpfiles.d; writing here
-              # ensures it works even if tmpfiles-setup runs after sshd accepts first conn.
-              ROOT_SSH_DIR=\"\${VAR_DIR}/roothome/.ssh\"
-              mkdir -p \"\${ROOT_SSH_DIR}\"
-              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ROOT_SSH_DIR}/authorized_keys\"
-              chmod 700 \"\${ROOT_SSH_DIR}\"
-              chmod 600 \"\${ROOT_SSH_DIR}/authorized_keys\"
-              echo '[INNER] root authorized_keys written to /var/roothome/.ssh/'
-              echo '[INNER] root authorized_keys content:' && cat \"\${ROOT_SSH_DIR}/authorized_keys\"
+              # 1. /var/roothome (if root home = /var/roothome in /etc/passwd)
+              mkdir -p \"\${VAR_DIR}/roothome/.ssh\"
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${VAR_DIR}/roothome/.ssh/authorized_keys\"
+              chmod 700 \"\${VAR_DIR}/roothome/.ssh\"
+              chmod 600 \"\${VAR_DIR}/roothome/.ssh/authorized_keys\"
+              echo '[INNER] root key -> /var/roothome/.ssh/authorized_keys'
 
-              # bluefin-test: inject to /var/home/bluefin-test
+              # 2. ${DEPLOY}/root (if root home = /root, in ostree tree — readable even if read-only)
+              mkdir -p \"\${DEPLOY}/root/.ssh\"
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${DEPLOY}/root/.ssh/authorized_keys\"
+              chmod 700 \"\${DEPLOY}/root/.ssh\"
+              chmod 600 \"\${DEPLOY}/root/.ssh/authorized_keys\"
+              echo '[INNER] root key -> deploy/root/.ssh/authorized_keys'
+
+              # 3. /etc/ssh/authorized_keys/root — absolute path fallback
+              mkdir -p \"\${ETC}/ssh/authorized_keys\"
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ETC}/ssh/authorized_keys/root\"
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ETC}/ssh/authorized_keys/bluefin-test\"
+              chmod 644 \"\${ETC}/ssh/authorized_keys/root\" \"\${ETC}/ssh/authorized_keys/bluefin-test\"
+              echo '[INNER] keys -> /etc/ssh/authorized_keys/{root,bluefin-test}'
+
+              # 4. /var/home/bluefin-test
               HOME_DIR=\"\${VAR_DIR}/home/bluefin-test\"
               mkdir -p \"\${HOME_DIR}/.ssh\"
               printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${HOME_DIR}/.ssh/authorized_keys\"
               chmod 700 \"\${HOME_DIR}/.ssh\"
               chmod 600 \"\${HOME_DIR}/.ssh/authorized_keys\"
               chown -R 1001:1001 \"\${HOME_DIR}\"
-              echo '[INNER] bluefin-test authorized_keys written to /var/home/bluefin-test/.ssh/'
-              echo '[INNER] bluefin-test authorized_keys content:' && cat \"\${HOME_DIR}/.ssh/authorized_keys\"
+              echo '[INNER] bluefin-test key -> /var/home/bluefin-test/.ssh/authorized_keys'
+
+              # Update drop-in to try BOTH relative path and /etc absolute path.
+              printf 'PubkeyAuthentication yes\nStrictModes no\nPermitRootLogin yes\nAuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%%u\n' \
+                > \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
+              echo '[INNER] updated sshd drop-in:' && cat \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
 
               # Show bootc tmpfiles.d root-ssh conf for diagnostics.
               echo '[INNER] bootc-root-ssh.conf:' && cat \"\${ETC}/tmpfiles.d/bootc-root-ssh.conf\" 2>/dev/null || echo '(not found)'

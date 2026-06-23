@@ -266,8 +266,16 @@ spec:
               ln -sf /usr/lib/systemd/system/sshd.service \
                 \"\${ETC}/systemd/system/multi-user.target.wants/sshd.service\" || true
               mkdir -p \"\${ETC}/ssh/sshd_config.d\"
-              printf 'PubkeyAuthentication yes\nStrictModes no\n' \
+              # UsePAM no: avoids PAM account checks rejecting locked-password accounts.
+              # AuthorizedKeysFile: point to /etc path so it works regardless of /var/home state.
+              printf 'PubkeyAuthentication yes\nStrictModes no\nUsePAM no\nAuthorizedKeysFile /etc/ssh/test-authorized-keys\n' \
                 > \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
+
+              # Write authorized key to /etc (read-only deployment, always present at runtime).
+              # This avoids relying on /var/home being populated before first SSH attempt.
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ETC}/ssh/test-authorized-keys\"
+              chmod 644 \"\${ETC}/ssh/test-authorized-keys\"
+              echo '[INNER] SSH authorized key written to /etc/ssh/test-authorized-keys'
 
               # sudoers
               mkdir -p \"\${ETC}/sudoers.d\"
@@ -277,7 +285,7 @@ spec:
 
               echo '[INNER] etc/ config done'
 
-              # SSH authorized_keys for bluefin-test.
+              # Also inject to /var/home for any tools that check ~/.ssh/authorized_keys.
               # Per bootc filesystem docs: /var is bound from /ostree/deploy/\$stateroot/var
               # NOT a top-level btrfs subvolume. Access it directly via the mounted btrfs root.
               STATEROOT=\$(ls /tmp/installed/ostree/deploy/ 2>/dev/null | head -1)
@@ -287,7 +295,7 @@ spec:
               chmod 700 \"\${HOME_DIR}/.ssh\"
               chmod 600 \"\${HOME_DIR}/.ssh/authorized_keys\"
               chown -R 1001:1001 \"\${HOME_DIR}\"
-              echo '[INNER] SSH keys injected for bluefin-test'
+              echo '[INNER] SSH keys also injected to /var/home/bluefin-test'
 
               # trap cleanup EXIT: umount btvar, umount installed, losetup -d
             " || PODMAN_EXIT=$?

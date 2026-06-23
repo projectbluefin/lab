@@ -200,32 +200,20 @@ spec:
 
           # Ref: bootc install docs — use --via-loopback for VM disk creation.
           # Cross-policy fsetxattr(security.selinux) EINVAL fix:
-          # When building a guest image (e.g. bluefin-lts) on a host with a different
-          # SELinux policy (bluefin), the host kernel rejects label types from the guest
-          # image that aren't in the host's in-memory policy → EINVAL. The --disable-selinux
-          # bootc flag only disables SELinux in the installed system; it does not skip
-          # fsetxattr during the ostree import phase.
-          # Fix: use CAP_MAC_ADMIN (granted by privileged: true) to set SELinux permissive
-          # on the host before the build and restore it after. In permissive mode the kernel
-          # still checks labels but does not reject unknown types — fsetxattr returns 0.
-          # The ghost-heavy-compute mutex ensures no parallel builds race this window.
-          # Ref: bootc-dev/bootc#279; https://bootc-dev.github.io/bootc/bootc-install.html
-          ORIG_SELINUX_ENFORCE=""
-          if [ -f /sys/fs/selinux/enforce ]; then
-            ORIG_SELINUX_ENFORCE=$(cat /sys/fs/selinux/enforce)
-            echo 0 > /sys/fs/selinux/enforce
-            echo "[BUILD] SELinux set to permissive for cross-policy disk install (was ${ORIG_SELINUX_ENFORCE})"
-          fi
-          restore_selinux() {
-            if [[ -n "${ORIG_SELINUX_ENFORCE}" ]] && [ -f /sys/fs/selinux/enforce ]; then
-              echo "${ORIG_SELINUX_ENFORCE}" > /sys/fs/selinux/enforce
-              echo "[BUILD] SELinux restored to enforcing=${ORIG_SELINUX_ENFORCE}"
-            fi
-          }
-          trap restore_selinux EXIT
-
+          # The kernel's selinux_inode_setxattr hook validates label types against the
+          # host's in-memory policy. When building bluefin-lts on a bluefin host, the lts
+          # image may contain label types absent from the host policy → EINVAL.
+          # The kernel code in selinux_inode_setxattr absorbs EINVAL when capable(CAP_MAC_ADMIN):
+          #   rc = security_context_to_sid(value, size, &newsid, GFP_KERNEL);
+          #   if (rc == -EINVAL && !capable(CAP_MAC_ADMIN)) { return rc; }
+          # Fix: explicitly add CAP_MAC_ADMIN to the inner container so the EINVAL is absorbed
+          # and the label is set to unlabeled_t (acceptable since the installed VM uses selinux=0).
+          # This is safe: the ghost-heavy-compute mutex serialises builds, and the VM boots
+          # with selinux=0 karg so the temporary unlabeled_t labels are never used at runtime.
+          # Ref: kernel security/selinux/hooks.c selinux_inode_setxattr; bootc-dev/bootc#279
           PODMAN_EXIT=0
           podman run --rm --privileged --pid=host --ipc=host \
+            --cap-add=CAP_MAC_ADMIN \
             --security-opt label=type:unconfined_t \
             -v /dev:/dev \
             -v /run/udev:/run/udev \

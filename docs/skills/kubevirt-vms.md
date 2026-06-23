@@ -463,6 +463,8 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 - SSH `Permission denied (publickey)` after configure-disk — **do not debug disk injection further**; switch to KubeVirt accessCredentials with qemuGuestAgent (section 2b).
 - Using disk injection for SSH keys when accessCredentials is available — disk injection is fragile; accessCredentials is the canonical KubeVirt pattern.
 - `pip install --user` failing with EACCES inside VM — home directory owned by root; always chown after `install -d .ssh` (section 2c).
+- LTS VM goes `Stopped` immediately after creation — `bluefin-test-ssh-pubkey` secret missing from `bluefin-lts-test` namespace. The manifest must create the secret in **both** `bluefin-test` and `bluefin-lts-test`. Check with `kubectl get secret -n bluefin-lts-test bluefin-test-ssh-pubkey`.
+- Orphaned VMs from a prior workflow consuming ghost resources — run `just list-vms` before submitting a new matrix run; delete orphans with `kubernetes-mcp-resources_delete` if present. Four concurrent VMs on ghost can cause VMI Ready timeouts.
 
 ## Verification
 
@@ -475,7 +477,7 @@ Before merging any VM provisioning change:
 - [ ] **All `hostPath` volume paths under `/var/mnt/ghost-data/`, never `/var/tmp`**
 - [ ] No hardcoded IPs — pod IP derived at runtime via `kubectl get pod`
 - [ ] Zot-writable index checked before running pipeline: `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` > 100 bytes
-- [ ] SSH injection uses KubeVirt accessCredentials (not disk injection) — `bluefin-test-ssh-pubkey` secret exists in VM namespace
+- [ ] `bluefin-test-ssh-pubkey` secret exists in **both** `bluefin-test` and `bluefin-lts-test` namespaces
 - [ ] Runtime user bootstrap sets home dir ownership (`chown 1001:1001 /var/home/bluefin-test`) before pip/pip3 installs
 
 ### Bluefin containerDisk SSH injection checklist (DO NOT USE DISK INJECTION)

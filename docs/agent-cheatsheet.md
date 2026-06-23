@@ -47,6 +47,8 @@ Run `just logs` first. Then match a row:
 |---|---|
 | `Permission denied (publickey)` at SSH wait | Check `kubectl get vm -n bluefin-test <name> -o yaml \| grep -A10 accessCredentials` — secret must exist. Delete orphaned VM + rerun. |
 | Workflow times out at SSH wait | `just list-vms` → confirm VMI is Ready. If SSH port open but auth fails, verify `bluefin-test-ssh-pubkey` secret exists in the VM's namespace: `kubectl get secret -n bluefin-test bluefin-test-ssh-pubkey` |
+| LTS VM goes `Stopped` immediately | `bluefin-test-ssh-pubkey` missing from `bluefin-lts-test` — check `manifests/bluefin-test-ssh-pubkey.yaml` covers both namespaces; force ArgoCD sync |
+| VMI `NotFound` 1 second after VM creation | Same as above — KubeVirt refused to start VM due to missing accessCredentials secret; VM status will be `Stopped` |
 | `TypeError: ... requireResult` | Fix the step per [`docs/dogtail-testing.md`](dogtail-testing.md) §6.2 (`findChildren(...)` / `retry=False`) |
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |

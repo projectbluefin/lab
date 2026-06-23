@@ -79,6 +79,18 @@ spec:
               spec:
                 nodeSelector:
                   kubernetes.io/hostname: ghost
+                # Inject SSH public key at runtime via QEMU guest agent.
+                # This is reliable regardless of disk content — KubeVirt connects
+                # to the running guest agent and writes ~/.ssh/authorized_keys.
+                accessCredentials:
+                  - sshPublicKey:
+                      source:
+                        secret:
+                          secretName: bluefin-test-ssh-pubkey
+                      propagationMethod:
+                        qemuGuestAgent:
+                          users:
+                            - root
                 domain:
                   cpu:
                     cores: 4

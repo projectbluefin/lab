@@ -1,6 +1,6 @@
-# Patch promtail to scrape CRI pod logs for bluefin-test-suite pods.
-# k3s/containerd stores logs under /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log,
-# so promtail needs a two-level glob after the pod UID.
+# Promtail config: scrape all workflow pods in the argo namespace.
+# k3s/containerd stores logs under /var/log/pods/<ns>_<pod>_<uid>/<container>/<n>.log
+# k3s default container log rotation: 10Mi/file, 5 files max = 50Mi per container.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -21,7 +21,36 @@ data:
       filename: /tmp/positions.yaml
     clients:
       - url: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
+        # Back-pressure: drop logs rather than block promtail if Loki is slow
+        backoff_config:
+          min_period: 100ms
+          max_period: 10s
+          max_retries: 5
     scrape_configs:
+      # All argo workflow pods: build, test, provision, teardown, ad-hoc debug.
+      # One broad glob replaces the previous per-prefix static list; promtail
+      # resolves the pod/container names from the directory structure.
+      - job_name: argo-all-pods
+        static_configs:
+          - targets: [localhost]
+            labels:
+              namespace: argo
+              __path__: /var/log/pods/argo_*/*/*.log
+        pipeline_stages:
+          # Extract pod name and container from path:
+          # /var/log/pods/argo_<pod-name>_<uid>/<container>/<n>.log
+          - regex:
+              expression: '/var/log/pods/[^_]+_(?P<pod>[^_]+)_[^/]+/(?P<container>[^/]+)/\d+\.log'
+              source: filename
+          - labels:
+              pod:
+              container:
+          # Drop argo sidecar noise (wait/init containers that just echo timestamps)
+          - drop:
+              expression: "^time=.*level=INFO msg=\"(waiting for|sub-process exited|file signal).*$"
+              drop_counter_reason: argo_sidecar_noise
+
+      # Labeled test-suite pods (virt-launcher, run-gnome-tests, etc.)
       - job_name: bluefin-test-pods
         kubernetes_sd_configs:
           - role: pod
@@ -50,30 +79,3 @@ data:
             target_label: __path__
             regex: (.*)
             separator: /
-      - job_name: bluefin-test-pods-static
-        static_configs:
-          - targets: [localhost]
-            labels:
-              app_kubernetes_io_part_of: bluefin-test-suite
-              namespace: argo
-              __path__: /var/log/pods/argo_bluefin-*/*/*.log
-          - targets: [localhost]
-            labels:
-              app_kubernetes_io_part_of: bluefin-test-suite
-              namespace: argo
-              __path__: /var/log/pods/argo_dakota-*/*/*.log
-          - targets: [localhost]
-            labels:
-              app_kubernetes_io_part_of: bluefin-test-suite
-              namespace: argo
-              __path__: /var/log/pods/argo_flatcar-*/*/*.log
-          - targets: [localhost]
-            labels:
-              app_kubernetes_io_part_of: bluefin-test-suite
-              namespace: argo
-              __path__: /var/log/pods/argo_knuckle-*/*/*.log
-          - targets: [localhost]
-            labels:
-              app_kubernetes_io_part_of: bluefin-test-suite
-              namespace: argo
-              __path__: /var/log/pods/argo_homelab-*/*/*.log

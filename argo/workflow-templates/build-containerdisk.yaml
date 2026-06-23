@@ -312,6 +312,9 @@ spec:
           blkid "${LOOP}p3" || true
           mount -t btrfs "${LOOP}p3" /mnt/btroot
           echo "btrfs root contents: $(ls /mnt/btroot)"
+          echo "[DIAG] btrfs subvolumes:"
+          btrfs subvolume list /mnt/btroot 2>/dev/null || echo "[DIAG] btrfs cmd unavailable"
+          echo "[DIAG] var/ contents: $(ls /mnt/btroot/var/ 2>/dev/null | head -5 || echo EMPTY)"
 
 
           # Locate the active ostree deploy directory (stateroot varies by image)

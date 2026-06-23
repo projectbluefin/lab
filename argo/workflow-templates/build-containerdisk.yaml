@@ -202,8 +202,10 @@ spec:
           # (confirmed: setfattr with unknown label → EINVAL from outer pod context).
           # seLinuxOptions + --security-opt label=type:spc_t both failed — k3s assigns
           # unconfined_service_t regardless. LD_PRELOAD wrapper intercepts
-          # fsetxattr(security.*) EINVAL → ENOTSUP; libglnx skips ENOTSUP silently.
-          dnf install -y gcc 2>&1 | tail -2
+          # fsetxattr(security.*) EINVAL → return 0 (noop); silently drops unknown
+          # security xattrs so ostree/libglnx never sees the error. Safe since the
+          # installed VM boots with selinux=0 and doesn't use SELinux xattrs.
+          dnf install -y gcc glibc-devel 2>&1 | tail -2
           printf '%s\n' \
             '#define _GNU_SOURCE' \
             '#include <dlfcn.h>' \
@@ -215,7 +217,7 @@ spec:
             '  static fn_t real;' \
             '  if(!real)real=(fn_t)dlsym(RTLD_NEXT,"fsetxattr");' \
             '  int r=real(fd,n,v,s,f);' \
-            '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,"security.",9)==0)errno=ENOTSUP;' \
+            '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,"security.",9)==0){errno=0;return 0;}' \
             '  return r;}' \
             > /tmp/fsetxattr_wrap.c
           gcc -shared -fPIC -o "${STAGING}/fsetxattr_wrapper.so" /tmp/fsetxattr_wrap.c -ldl

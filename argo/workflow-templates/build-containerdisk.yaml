@@ -184,11 +184,8 @@ spec:
           podman pull --tls-verify=true "${IMAGE}"
 
           echo "Starting bootc install (via-loopback)..."
-          # SSH_AUTHORIZED_KEYS is passed via -e into the container so the key
-          # is written inside the container at /tmp/authorized_keys.
-          # Writing via staging bind-mount is unreliable: bind-mount source path
-          # is resolved in the pod's mount namespace but the inner container may
-          # see the underlying device, not the overlay, causing ENOENT.
+          # SSH_AUTHORIZED_KEYS is passed via -e into the inner container for
+          # post-install key injection into bluefin-test's home directory.
           # Ref: bootc install docs — use --via-loopback for VM disk creation.
           PODMAN_EXIT=0
           podman run --rm --privileged --pid=host --ipc=host \
@@ -202,19 +199,17 @@ spec:
             bash -c "
               set -euo pipefail
 
-              # Write authorized_keys inside the container (avoids bind-mount ENOENT).
-              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > /tmp/authorized_keys
-              echo '[INNER] key bytes: '\$(wc -c < /tmp/authorized_keys)
-
               # --via-loopback: upstream recommended pattern for VM disk creation.
               # bootc manages the loop device internally and releases it on exit.
+              # SSH key injection for bluefin-test is handled post-install via the
+              # btrfs var subvolume mount; --root-ssh-authorized-keys is not used
+              # because the test framework authenticates as bluefin-test, not root.
               bootc install to-disk \
                 --generic-image \
                 --filesystem=btrfs \
                 --target-no-signature-verification \
                 --disable-selinux \
                 --karg=selinux=0 \
-                --root-ssh-authorized-keys /tmp/authorized_keys \
                 --via-loopback /output/disk.raw
 
               echo '[INNER] bootc done, mounting for post-install'

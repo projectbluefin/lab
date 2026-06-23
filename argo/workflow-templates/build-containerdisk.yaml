@@ -257,6 +257,7 @@ spec:
                 --target-no-signature-verification \
                 --disable-selinux \
                 --karg=selinux=0 \
+                --karg=systemd.device-timeout=5 \
                 --root-ssh-authorized-keys /output/root-ssh-keys \
                 --via-loopback /output/disk.raw
 
@@ -345,6 +346,27 @@ spec:
 
               echo '[INNER] etc/ config done'
 
+              # Fix fstab: non-root partitions (/boot, /boot/efi) block boot in
+              # containerDisk VMs if the device UUID isn't detected quickly.
+              # Add nofail + short timeout so boot proceeds even if they're slow.
+              # The root partition (/) is already mounted by the time systemd starts.
+              if [[ -f "${ETC}/fstab" ]]; then
+                echo '[INNER] original fstab:'
+                cat "${ETC}/fstab"
+                awk '
+                  /^[[:space:]]*#/ { print; next }
+                  /^[[:space:]]*$/ { print; next }
+                  $2 != "/" && $2 != "swap" && $2 != "none" && !/nofail/ {
+                    sub(/defaults/, "defaults,nofail,x-systemd.device-timeout=5s")
+                  }
+                  { print }
+                ' "${ETC}/fstab" > /tmp/fstab.new && mv /tmp/fstab.new "${ETC}/fstab"
+                echo '[INNER] patched fstab:'
+                cat "${ETC}/fstab"
+              else
+                echo '[INNER] no fstab found (normal for some bootc images)'
+              fi
+
               # ── Key injection ──────────────────────────────────────────────────
               # btrfs subvolume list returns EMPTY for this bootc layout — there are no
               # named subvolumes. ostree/deploy/<stateroot>/var/ IS the real /var content.
@@ -428,6 +450,8 @@ spec:
             echo "[VERIFY] sshd wants symlinks:"
             ls -la "${VDP}/etc/systemd/system/multi-user.target.wants/sshd.service" 2>&1 || echo "MISSING: sshd.service symlink not found"
             ls -la "${VDP}/etc/systemd/system/sockets.target.wants/sshd.socket" 2>&1 || echo "MISSING: sshd.socket symlink not found"
+            echo "[VERIFY] fstab (nofail check):"
+            grep -v '^#' "${VDP}/etc/fstab" 2>/dev/null | grep -v '^$' || echo "(no fstab entries)"
             echo "[VERIFY] var/roothome/.ssh:"
             STATEROOT_V=$(ls /mnt/verify/ostree/deploy/ 2>/dev/null | head -1)
             ls -la /mnt/verify/ostree/deploy/${STATEROOT_V}/var/roothome/.ssh/ 2>&1 || echo "MISSING"

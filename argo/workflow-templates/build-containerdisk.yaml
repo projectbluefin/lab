@@ -236,6 +236,7 @@ spec:
               echo '[INNER] post-install loop: '\${LOOP}
 
               cleanup() {
+                umount /tmp/installed-var 2>/dev/null || true
                 umount /tmp/installed 2>/dev/null || true
                 losetup -d \"\${LOOP}\" 2>/dev/null || true
               }
@@ -243,6 +244,13 @@ spec:
 
               mkdir -p /tmp/installed
               mount -t btrfs \"\${LOOP}p3\" /tmp/installed
+
+              # var IS a separate btrfs subvolume — writing to the var/ dir under the default
+              # btrfs mount is dead space (just the mount-point, shadowed at boot). Mount
+              # subvol=var explicitly so keys are visible to sshd at runtime.
+              mkdir -p /tmp/installed-var
+              mount -t btrfs -o subvol=var \"\${LOOP}p3\" /tmp/installed-var
+              echo '[INNER] var subvol mounted at /tmp/installed-var'
 
               DEPLOY=\$(find /tmp/installed/ostree/deploy/*/deploy/ \
                 -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -1)
@@ -305,46 +313,47 @@ spec:
               echo '[INNER] etc/ config done'
 
               # ── Key injection diagnostics ────────────────────────────────────
-              # Show root home dir, drop-in effective config, and /etc/passwd entry.
               echo '[INNER] root passwd entry:' && grep '^root:' \"\${ETC}/passwd\"
-              echo '[INNER] bluefin-test passwd entry:' && grep '^bluefin-test:' \"\${ETC}/passwd\" 2>/dev/null || echo '(not found)'
               echo '[INNER] sshd_config AuthorizedKeysFile:' && grep -i 'AuthorizedKeysFile' \"\${ETC}/ssh/sshd_config\" || echo '(not found in main config)'
-              echo '[INNER] existing sshd_config.d files:' && ls \"\${ETC}/ssh/sshd_config.d/\" 2>/dev/null || echo '(none)'
+              echo '[INNER] sshd_config Include position:' && grep -n 'Include' \"\${ETC}/ssh/sshd_config\" | head -3
 
-              # ── Key injection ────────────────────────────────────────────────
-              # root home is /root, which is a symlink -> /var/roothome in the ostree tree.
-              # Write to /var/roothome directly (= the symlink target at runtime).
-              STATEROOT=\$(ls /tmp/installed/ostree/deploy/ 2>/dev/null | head -1)
-              VAR_DIR=\"/tmp/installed/ostree/deploy/\${STATEROOT}/var\"
+              # ── Key injection ──────────────────────────────────────────────────
+              # CRITICAL: /var is a separate btrfs subvolume, mounted at /tmp/installed-var.
+              # Writing to the default btrfs mount's var/ dir is dead space — it's just the
+              # empty mount-point, shadowed at boot when subvol=var is mounted at /var.
 
-              # 1. /var/roothome/.ssh — symlink target of /root, used by sshd via AuthorizedKeysFile
-              mkdir -p \"\${VAR_DIR}/roothome/.ssh\"
-              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${VAR_DIR}/roothome/.ssh/authorized_keys\"
-              chmod 700 \"\${VAR_DIR}/roothome/.ssh\"
-              chmod 600 \"\${VAR_DIR}/roothome/.ssh/authorized_keys\"
-              echo '[INNER] root key -> /var/roothome/.ssh/authorized_keys (symlink target of /root)'
+              # 1. Root: /var/roothome/.ssh (= symlink target of /root at runtime)
+              mkdir -p /tmp/installed-var/roothome/.ssh
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > /tmp/installed-var/roothome/.ssh/authorized_keys
+              chmod 700 /tmp/installed-var/roothome/.ssh
+              chmod 600 /tmp/installed-var/roothome/.ssh/authorized_keys
+              echo '[INNER] root key -> var-subvol/roothome/.ssh/authorized_keys'
 
-              # 2. /etc/ssh/authorized_keys/root — absolute path fallback (no home dir needed)
+              # 2. bluefin-test: /var/home/bluefin-test/.ssh
+              mkdir -p /tmp/installed-var/home/bluefin-test/.ssh
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > /tmp/installed-var/home/bluefin-test/.ssh/authorized_keys
+              chmod 700 /tmp/installed-var/home/bluefin-test/.ssh
+              chmod 600 /tmp/installed-var/home/bluefin-test/.ssh/authorized_keys
+              chown -R 1001:1001 /tmp/installed-var/home/bluefin-test
+              echo '[INNER] bluefin-test key -> var-subvol/home/bluefin-test/.ssh/authorized_keys'
+
+              # 3. /etc/ssh/authorized_keys/root — absolute-path fallback, in ostree etc
               mkdir -p \"\${ETC}/ssh/authorized_keys\"
               printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ETC}/ssh/authorized_keys/root\"
               printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ETC}/ssh/authorized_keys/bluefin-test\"
               chmod 644 \"\${ETC}/ssh/authorized_keys/root\" \"\${ETC}/ssh/authorized_keys/bluefin-test\"
-              echo '[INNER] keys -> /etc/ssh/authorized_keys/{root,bluefin-test}'
+              echo '[INNER] keys -> etc/ssh/authorized_keys/{root,bluefin-test}'
 
-              # 3. /var/home/bluefin-test — bluefin-test home dir in persistent /var
-              HOME_DIR=\"\${VAR_DIR}/home/bluefin-test\"
-              mkdir -p \"\${HOME_DIR}/.ssh\"
-              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${HOME_DIR}/.ssh/authorized_keys\"
-              chmod 700 \"\${HOME_DIR}/.ssh\"
-              chmod 600 \"\${HOME_DIR}/.ssh/authorized_keys\"
-              chown -R 1001:1001 \"\${HOME_DIR}\"
-              echo '[INNER] bluefin-test key -> /var/home/bluefin-test/.ssh/authorized_keys'
+              # Patch the MAIN sshd_config to add the /etc/ssh/authorized_keys/%u fallback.
+              # The drop-in may not take effect if Include is after AuthorizedKeysFile in the
+              # main file (first-occurrence-wins). Patching the main file guarantees it.
+              sed -i 's|^[[:space:]]*AuthorizedKeysFile.*|AuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%u|' \
+                \"\${ETC}/ssh/sshd_config\"
+              echo '[INNER] main sshd_config AuthorizedKeysFile patched:' \
+                && grep 'AuthorizedKeysFile' \"\${ETC}/ssh/sshd_config\"
 
-              # Update drop-in to try BOTH relative path and /etc absolute path.
-              printf 'PubkeyAuthentication yes\nStrictModes no\nPermitRootLogin yes\nAuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%%u\n' \
-                > \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
-              echo '[INNER] updated sshd drop-in:' && cat \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
-              echo '[INNER] bootc-root-ssh.conf:' && cat \"\${ETC}/tmpfiles.d/bootc-root-ssh.conf\" 2>/dev/null || echo '(not found)'
+              # Verify var subvol write was successful
+              echo '[INNER] var subvol root key:' && cat /tmp/installed-var/roothome/.ssh/authorized_keys | head -c 40
 
               # trap cleanup EXIT: umount btvar, umount installed, losetup -d
             " || PODMAN_EXIT=$?

@@ -126,6 +126,8 @@ spec:
           - name: workspace
             mountPath: /workspace
             readOnly: true
+          - name: results-store
+            mountPath: /var/mnt/ghost-data/test-results
         command: [bash, -c]
         args:
           - |
@@ -317,6 +319,12 @@ spec:
             echo "Collecting results..." >&2
             ${SCP} ${VM_USER}@${VM_IP}:/tmp/results/. /tmp/results/ || true
 
+            # Persist results + screenshots to ghost disk for release evidence
+            RESULT_DIR="/var/mnt/ghost-data/test-results/{{workflow.name}}/${SUITE}"
+            mkdir -p "${RESULT_DIR}"
+            cp -r /tmp/results/. "${RESULT_DIR}/" 2>/dev/null || true
+            echo "Results saved to ${RESULT_DIR}" >&2
+
             echo "Done. Results in /tmp/results/" >&2
             # Print full results JSON to stderr — captured by Loki and Argo MCP get_workflow_logs
             if [[ -f /tmp/results/results.json ]]; then
@@ -344,3 +352,7 @@ spec:
             defaultMode: 0400
         - name: workspace
           emptyDir: {}
+        - name: results-store
+          hostPath:
+            path: /var/mnt/ghost-data/test-results
+            type: DirectoryOrCreate

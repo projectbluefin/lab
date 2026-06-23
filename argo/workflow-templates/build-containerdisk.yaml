@@ -136,6 +136,14 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
+          # spc_t (super-privileged container) is required for has_cap_mac_admin() to return true
+          # inside the inner podman container. container_t (containerd default for privileged pods)
+          # does NOT have capability2 mac_admin in Fedora policy → fsetxattr(security.selinux) EINVAL
+          # propagates even with --cap-add=CAP_MAC_ADMIN + --security-opt label=disable.
+          # With spc_t on the outer pod, --security-opt label=disable in the inner podman inherits
+          # spc_t → has_cap_mac_admin passes both kernel cap + SELinux AVC checks → EINVAL absorbed.
+          seLinuxOptions:
+            type: spc_t
         resources:
           requests:
             cpu: "4"
@@ -229,6 +237,8 @@ spec:
               set -euo pipefail
 
               echo \"[INNER] SSH_AUTHORIZED_KEYS prefix: \${SSH_AUTHORIZED_KEYS:0:30}...\"
+              echo \"[INNER-DIAG] SELinux context: \$(cat /proc/self/attr/current 2>/dev/null || echo 'unavailable')\"
+              echo \"[INNER-DIAG] CapEff: \$(grep CapEff /proc/self/status | awk '{print \$2}')\"
 
               # --via-loopback: upstream recommended pattern for VM disk creation.
               # --root-ssh-authorized-keys: bootc-native root SSH key injection —

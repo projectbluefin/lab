@@ -33,7 +33,7 @@ Feature: Ptyxis terminal smoke tests
 
   @ptyxis @regression @bluefin_4620
   Scenario: No Vulkan validation spam on terminal open (bluefin#4620)
-    * Run and save command output: "journalctl -b --no-pager --since=\"${TEST_JOURNAL_SINCE:-1 minute ago}\" -g 'VUID-' | grep -c 'VUID-' || echo 0"
+    * Run and save command output: "journalctl -b --no-pager --since=\"${TEST_JOURNAL_SINCE:-1 minute ago}\" -g 'VUID-' | grep -c 'VUID-' || true"
     * Last command output "is" "0"
 
   @ptyxis @new_tab

@@ -128,6 +128,7 @@ def terminal_output_contains(context, text) -> None:
 
 @step('Ptyxis has "{number}" tabs')
 def ptyxis_has_n_tabs(context, number) -> None:
+    sleep(1)  # wait for Ptyxis to render the new tab bar after key input
     tab_lists = context.ptyxis.instance.findChildren(
         lambda n: n.roleName == "page tab list" and n.showing
     )

@@ -1,8 +1,8 @@
 """
-Developer test environment — qecore TestSandbox for Bluefin developer tools.
+GNOME test environment — qecore TestSandbox for Ptyxis and other GNOME upstream apps.
 
-AT-SPI app names confirmed in tests/developer/conftest.py:
-  - Podman Desktop: root.application("Podman Desktop")  (Flatpak, check at runtime)
+AT-SPI app names confirmed in tests:
+  - Ptyxis: root.application("ptyxis")
 
 Pattern: modehnal/GNOMETerminalAutomation features/environment.py
 """
@@ -17,11 +17,16 @@ from qecore.common_steps import *  # noqa: F401,F403
 
 def before_all(context) -> None:
     try:
-        context.sandbox = TestSandbox("developer", context=context)
+        context.sandbox = TestSandbox("ptyxis", context=context)
         context.sandbox.attach_faf = False
         context.sandbox.production = False
 
-        # micro is launched via terminal, not registered as a standalone app
+        context.ptyxis = context.sandbox.get_application(
+            name="ptyxis",
+            a11y_app_name="ptyxis",
+            desktop_file_name="org.gnome.Ptyxis.desktop",
+        )
+        context.ptyxis.exit_shortcut = "<Alt>F4"
 
         # Read test start time written by workflow before behave started (issue #6)
         _start_time_file = "/tmp/results/test-start-time.txt"
@@ -37,24 +42,10 @@ def before_all(context) -> None:
         context.failed_setup = traceback.format_exc()
         return
 
-    # Podman Desktop is optional — absence must not block other developer tests
-    # (brew, devmode, distrobox). Tests tagged @podman_desktop are
-    # skipped via before_scenario when this is None.
-    try:
-        context.podman_desktop = context.sandbox.get_flatpak(
-            flatpak_id="io.podman_desktop.PodmanDesktop",
-        )
-    except Exception as e:
-        print(f"Warning: Podman Desktop not found ({e}). @podman_desktop tests will be skipped.")
-        context.podman_desktop = None
-
 
 def before_scenario(context, scenario) -> None:
     if getattr(context, 'failed_setup', None) is not None:
         scenario.skip(f"Suite setup failed: {context.failed_setup}")
-        return
-    if getattr(context, 'podman_desktop', None) is None and 'podman_desktop' in scenario.tags:
-        scenario.skip("Podman Desktop not found — skipping @podman_desktop scenario")
         return
     try:
         context.sandbox.before_scenario(context, scenario)

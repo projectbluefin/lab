@@ -126,6 +126,10 @@ spec:
           hostPath:
             path: /var/mnt/ghost-data/bluefin-cd-build
             type: DirectoryOrCreate
+        - name: containers-lib
+          hostPath:
+            path: /var/mnt/ghost-data/bluefin-cd-build/containers-lib
+            type: DirectoryOrCreate
       script:
         image: quay.io/podman/stable:latest
         command: [bash]
@@ -152,6 +156,8 @@ spec:
             mountPath: /run/udev
           - name: staging
             mountPath: /mnt/staging
+          - name: containers-lib
+            mountPath: /var/lib/containers
         source: |
           set -euo pipefail
           TAG="{{inputs.parameters.containerdisk-tag}}"
@@ -169,19 +175,19 @@ spec:
 
           truncate -s 15G "${DISK}"
 
-          # Configure podman storage to the staging hostPath (large NVMe).
-          # The inner container (bluefin) needs -v pointing at this graph root
-          # so bootc can find the image layers it is running from.
-          # Ref: bootc install docs — "-v /var/lib/containers:/var/lib/containers
-          #   is required in order for the container to access its own underlying image"
-          mkdir -p /mnt/staging/podman-storage
+          # /var/lib/containers is mounted from the ghost SSD hostPath so podman
+          # stores image layers on the data disk, not the pod's ephemeral overlay.
+          # Per bootc install docs: "-v /var/lib/containers:/var/lib/containers is
+          # required in order for the container to access its own underlying image."
+          # (bootc-dev/bootc docs/src/bootc-install.md, via-loopback section)
           mkdir -p /etc/containers
-          printf '[storage]\ndriver = "overlay"\nrunRoot = "/mnt/staging/podman-storage/run"\ngraphRoot = "/mnt/staging/podman-storage/graph"\n' \
-            > /etc/containers/storage.conf
-          printf '[engine]\ncgroup_manager = "cgroupfs"\n' \
-            > /etc/containers/containers.conf
+          printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
 
-          # Pull image into custom storage (avoids filling ephemeral pod overlay).
+          # Clean stale image data from any previous failed build.
+          echo "Cleaning containers storage for fresh pull..."
+          rm -rf /var/lib/containers/* 2>/dev/null || true
+
+          # Pull image — lands in /var/lib/containers/storage (ghost SSD).
           podman pull --tls-verify=true "${IMAGE}"
 
           echo "Starting bootc install (via-loopback)..."
@@ -194,7 +200,7 @@ spec:
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "${STAGING}:/output" \
-            -v "/mnt/staging/podman-storage/graph:/var/lib/containers/storage" \
+            -v /var/lib/containers:/var/lib/containers \
             -e "SSH_AUTHORIZED_KEYS=${SSH_AUTHORIZED_KEYS}" \
             "${IMAGE}" \
             bash -c "
@@ -290,20 +296,19 @@ spec:
           echo "[DIAG] podman exit=${PODMAN_EXIT}"
 
           if [[ "${PODMAN_EXIT}" -ne 0 ]]; then
-            ALLOCATED=$(stat -c%b "${DISK}" 2>/dev/null || echo 0)
-            if [[ "${ALLOCATED}" -gt 0 ]]; then
-              echo "WARNING: bootc exited ${PODMAN_EXIT} but disk has ${ALLOCATED} allocated blocks (bootc#2246) — continuing"
-              umount -l /mnt 2>/dev/null || true
-            else
-              losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
-              rm -f "${DISK}"
-              exit "${PODMAN_EXIT}"
-            fi
+            echo "ERROR: bootc install failed with exit ${PODMAN_EXIT} — deleting disk" >&2
+            losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
+            rm -f "${DISK}"
+            exit "${PODMAN_EXIT}"
           fi
 
           # Clean up any leftover loop devices for this file
           losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
           chown 107:107 "${DISK}"
+
+          echo "Cleaning containers storage after build..."
+          rm -rf /var/lib/containers/* 2>/dev/null || true
+
           echo "install-to-disk complete: ${DISK}"
 
     # ─── convert-and-push ─────────────────────────────────────────────────────

@@ -83,23 +83,100 @@ check before running the pipeline; rebuild if the index is empty.
 - `p2` = EFI (512M)
 - `p3` = btrfs root (14.5G)
 
-btrfs subvolumes present: **`boot`** and **`ostree`** only. There is NO `root` subvol.
-Mount the toplevel with no `subvol=` option:
+**`btrfs subvolume list` returns EMPTY** — there are NO named btrfs subvolumes in a
+bootc-installed Bluefin disk. Mount the toplevel with no `subvol=` option:
 ```bash
 mount -t btrfs ${LOOP}p3 /mnt/btroot
 ```
 
-**Critical: `var` IS a btrfs subvolume.** The toplevel's `var/` directory is empty.
-At VM runtime, systemd mounts the `var` subvolume to `/var`. To inject SSH keys into
-the correct inode tree during configure-disk:
-```bash
-mkdir -p /mnt/btvar
-mount -t btrfs -o subvol=var ${LOOP}p3 /mnt/btvar
-HOME_DIR="/mnt/btvar/home/bluefin-test"
-# Write authorized_keys to ${HOME_DIR}/.ssh/authorized_keys
+The ostree deployment structure at boot:
+- `/etc` is bind-mounted from `ostree/deploy/default/deploy/<hash>.0/etc/` (btrfs)
+- `/var` is the real content at `ostree/deploy/default/var/` (btrfs, NOT a subvolume)
+- `/` is composefs overlay (read-only lower layer from image)
+
+**Post-install etc/ injection caveat (ostree 3-way merge):**
+Files that already exist in the image's `usr/etc/` (e.g. `sshd_config.d/10-test.conf`,
+`sshd_config`) get RESET to image content at first boot by the ostree merge.
+NEW files added to `deploy/.../etc/` (e.g. `etc/passwd` entries, `etc/sudoers.d/`,
+`etc/gdm/custom.conf`) survive if they have no counterpart in the image's `usr/etc/`.
+
+**Do not rely on disk injection for SSH keys.** Use KubeVirt accessCredentials instead
+(see section 2b). Even `var/` writes confirmed by VERIFY may not survive the
+qemu-img raw→qcow2 conversion (sparse block allocation issue).
+
+### 2b. SSH key injection — use KubeVirt accessCredentials (canonical pattern)
+
+**Never bake SSH keys into the disk image.** Use KubeVirt's native mechanism:
+
+```yaml
+# In the VirtualMachine spec:
+spec:
+  template:
+    spec:
+      accessCredentials:
+        - sshPublicKey:
+            source:
+              secret:
+                secretName: bluefin-test-ssh-pubkey
+            propagationMethod:
+              qemuGuestAgent:
+                users:
+                  - root
 ```
-Writing to `/mnt/btroot/var/home/` writes to dead space — the keys will never be visible
-to sshd at runtime.
+
+The secret must exist in the **same namespace as the VM** (e.g. `bluefin-test`) and
+contain only the public key value:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: bluefin-test-ssh-pubkey
+  namespace: bluefin-test
+type: Opaque
+data:
+  key: <base64 of "ssh-ed25519 AAAA...">
+```
+
+KubeVirt virt-controller injects the key via QEMU guest agent after the VM boots.
+The VM must have `qemu-guest-agent` running (Bluefin has it). No disk modifications needed.
+The key is visible to sshd within seconds of the QEMU guest agent starting.
+
+**Requirements:** KubeVirt v1.8+ (confirmed present), qemu-guest-agent in VM (confirmed).
+**Why not disk injection:** ostree resets etc/ files that exist in usr/etc/ at first boot;
+var/ writes may not survive qemu-img sparse conversion.
+
+### 2c. Runtime user creation (more reliable than disk injection)
+
+Even if `bluefin-test` user was added to `etc/passwd` during disk build, never assume
+the home directory has correct ownership. Create the user and home directory at runtime
+via root SSH immediately after root SSH is confirmed working:
+
+```bash
+# In the test runner, after root SSH is ready:
+ROOT_SSH "
+  # Create user if not present (uid 1001, wheel group)
+  id bluefin-test &>/dev/null || \
+    useradd -m -u 1001 -g 1001 -G wheel -s /bin/bash \
+      -d /var/home/bluefin-test bluefin-test
+  # Always fix home dir ownership — install -d creates parent dirs as root
+  mkdir -p /var/home/bluefin-test
+  chown 1001:1001 /var/home/bluefin-test
+  chmod 750 /var/home/bluefin-test
+  # Set sudoers
+  echo 'bluefin-test ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/bluefin-test
+  chmod 440 /etc/sudoers.d/bluefin-test
+  # Set up SSH keys
+  install -d -m 700 -o 1001 -g 1001 /var/home/bluefin-test/.ssh
+  echo '${SSH_PUBKEY}' > /var/home/bluefin-test/.ssh/authorized_keys
+  chown 1001:1001 /var/home/bluefin-test/.ssh/authorized_keys
+  chmod 600 /var/home/bluefin-test/.ssh/authorized_keys
+"
+```
+
+**IMPORTANT:** `install -d -m 700 -o 1001 -g 1001 /var/home/bluefin-test/.ssh` creates
+`.ssh` with the right mode/owner BUT creates the PARENT `/var/home/bluefin-test/` as
+root:root (mode 755). This makes pip install --user fail with EACCES when trying to
+create `.local`. Always explicitly `chown 1001:1001 /var/home/bluefin-test` after.
 
 ### 2. Required KubeVirt feature gates
 
@@ -307,7 +384,9 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 | "HostDisk feature gate is probably already on." | Verify with `kubectl get kubevirt kubevirt -n kubevirt -o jsonpath='{.spec.configuration}'`. Don't assume. |
 | "The PCRE2 mismatch means the host needs upgrading." | BIB is fully containerized — stale cached image layer, not the host. Force-pull the image. |
 | "inotify limits are a kernel concern, not a k8s concern." | KubeVirt virt-handler + containerd exhaust defaults at scale. The `inotify-tuning` DaemonSet is required. |
-| "Writing to /mnt/btroot/var/ injects SSH keys into the live system." | `var` is a btrfs subvolume. Mount it explicitly with `-o subvol=var` to reach the right inode tree. |
+| "Writing to /mnt/btroot/var/ injects SSH keys into the live system." | `btrfs subvolume list` returns EMPTY for bootc disks — there are no named subvolumes. But disk injection is still unreliable: use KubeVirt accessCredentials instead. |
+| "Baking SSH keys into the disk is reliable." | ostree resets etc/ files that exist in image's usr/etc/ at first boot. var/ writes may not survive qemu-img sparse conversion. Use accessCredentials. |
+| "The home directory is writable after install -d creates .ssh." | `install -d` creates parent dirs as root:root. Must explicitly chown/chmod the home dir after, or pip install --user fails with EACCES. |
 
 ## Red Flags
 
@@ -322,8 +401,9 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 - SSH wait using `nc -z` — `nc` is not available in distroless or minimal images; use `bash -c 'echo >/dev/tcp/${IP}/22'`
 - VM boot timeout with no disk or network explanation — check `cat /proc/sys/fs/inotify/max_user_watches` (should be >= 1048576)
 - Using BIB (`bib-build-and-push`) for bluefin/bluefin-lts builds — BIB's osbuild Fedora 38 runner has a PCRE2 mismatch with current bluefin images. Use `bootc install to-disk` instead.
-- SSH `Permission denied (publickey)` after `configure-disk` — check whether `var` is a btrfs subvolume; writing to `/mnt/btroot/var/` may miss the mounted subvolume.
-- Assuming the containerdisk:testing image persists across sessions — check `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` first; zot-writable loses manifests on pod restart.
+- SSH `Permission denied (publickey)` after configure-disk — **do not debug disk injection further**; switch to KubeVirt accessCredentials with qemuGuestAgent (section 2b).
+- Using disk injection for SSH keys when accessCredentials is available — disk injection is fragile; accessCredentials is the canonical KubeVirt pattern.
+- `pip install --user` failing with EACCES inside VM — home directory owned by root; always chown after `install -d .ssh` (section 2c).
 
 ## Verification
 
@@ -336,31 +416,21 @@ Before merging any VM provisioning change:
 - [ ] **All `hostPath` volume paths under `/var/mnt/ghost-data/`, never `/var/tmp`**
 - [ ] No hardcoded IPs — pod IP derived at runtime via `kubectl get pod`
 - [ ] Zot-writable index checked before running pipeline: `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` > 100 bytes
+- [ ] SSH injection uses KubeVirt accessCredentials (not disk injection) — `bluefin-test-ssh-pubkey` secret exists in VM namespace
+- [ ] Runtime user bootstrap sets home dir ownership (`chown 1001:1001 /var/home/bluefin-test`) before pip/pip3 installs
 
-### Bluefin containerDisk SSH injection checklist
+### Bluefin containerDisk SSH injection checklist (DO NOT USE DISK INJECTION)
 
-When debugging `Permission denied (publickey)` after configure-disk:
+**The correct approach is KubeVirt accessCredentials (section 2b), not disk injection.**
+The checklist below is for diagnosing legacy disk injection failures only.
 
-```bash
-# 1. Verify btrfs subvolume layout on the disk
-LOOP=$(losetup -f --show -P /var/mnt/ghost-data/bluefin-cd-build/testing/disk.raw)
-mount -t btrfs ${LOOP}p3 /tmp/btcheck
-btrfs subvolume list /tmp/btcheck        # is 'var' listed as a subvol?
-ls /tmp/btcheck/var/                     # empty if var is a subvol (different inode tree)
+When debugging `Permission denied (publickey)`:
+1. Confirm accessCredentials is in the VM spec: `kubectl get vm -n bluefin-test <name> -o yaml | grep -A15 accessCredentials`
+2. Confirm the secret exists: `kubectl get secret -n bluefin-test bluefin-test-ssh-pubkey`
+3. Check virt-controller logs for key injection: `kubectl logs -n kubevirt -l kubevirt.io=virt-controller | grep -i 'access\|credential\|authorized'`
+4. Confirm qemu-guest-agent is running in VM (required for injection to work)
 
-# 2. If var IS a subvolume, mount it separately:
-mkdir -p /tmp/btvar
-mount -t btrfs -o subvol=var ${LOOP}p3 /tmp/btvar
-ls /tmp/btvar/home/bluefin-test/.ssh/   # authorized_keys should be here
-
-# 3. Cleanup
-umount /tmp/btvar /tmp/btcheck
-losetup -d ${LOOP}
-```
-
-If `btrfs subvolume list` shows `var` as a subvolume, the configure-disk step must use:
-```bash
-mount -t btrfs -o subvol=var ${LOOP}p3 /mnt/btvar
-HOME_DIR="/mnt/btvar/home/bluefin-test"
-```
-NOT `/mnt/btroot/var/home/bluefin-test` (that directory is empty in the toplevel mount).
+**Known disk injection failure modes (do not try to fix these — use accessCredentials):**
+- `sshd_config.d/` files reset at boot: ostree restores files that exist in image's `usr/etc/`
+- `var/` writes missing from running VM: qemu-img sparse conversion may drop newly-written btrfs blocks
+- `authorized_keys` baked into disk missing from VM: same cause as above

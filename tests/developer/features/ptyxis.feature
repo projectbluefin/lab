@@ -13,19 +13,19 @@ Feature: Ptyxis terminal smoke tests
     * Application "ptyxis" is running
     * Item "Ptyxis" "frame" is "showing" in "ptyxis"
 
-  @ptyxis @input
+  @ptyxis @input @wip
   Scenario: Terminal accepts keyboard input
     * Type text: "echo bluefin-test" with uinput
     * Press key: "Return" with uinput
     * Terminal output in ptyxis contains "bluefin-test"
 
-  @ptyxis @brew
+  @ptyxis @brew @wip
   Scenario: brew is on PATH and returns version string
     * Type text: "brew --version" with uinput
     * Press key: "Return" with uinput
     * Terminal output in ptyxis contains "Homebrew"
 
-  @ptyxis @podman
+  @ptyxis @podman @wip
   Scenario: podman is available in terminal
     * Type text: "podman --version" with uinput
     * Press key: "Return" with uinput

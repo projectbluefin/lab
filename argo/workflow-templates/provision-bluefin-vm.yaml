@@ -21,6 +21,8 @@ spec:
           - name: vm-name
           - name: namespace
             value: "bluefin-test"
+          - name: vm-memory
+            value: "8Gi"
       outputs:
         parameters:
           - name: vm-ip
@@ -37,6 +39,8 @@ spec:
                   value: '{{inputs.parameters.vm-name}}'
                 - name: namespace
                   value: '{{inputs.parameters.namespace}}'
+                - name: vm-memory
+                  value: '{{inputs.parameters.vm-memory}}'
         - - name: wait-for-vm
             template: wait-for-vm-ready
             arguments:
@@ -58,6 +62,7 @@ spec:
           - name: image-tag
           - name: vm-name
           - name: namespace
+          - name: vm-memory
       outputs: {}
       resource:
         action: apply
@@ -95,7 +100,7 @@ spec:
                   cpu:
                     cores: 4
                   memory:
-                    guest: 8Gi
+                    guest: "{{inputs.parameters.vm-memory}}"
                   devices:
                     disks:
                       - name: rootdisk

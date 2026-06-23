@@ -49,6 +49,8 @@ spec:
         value: ""
       - name: repo
         value: ""
+      - name: vm-memory
+        value: "8Gi"
 
   # ── pipeline DAG ─────────────────────────────────────────────────────────────
   templates:
@@ -99,6 +101,8 @@ spec:
                   value: "{{workflow.parameters.ssh-key-secret}}"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
+                - name: vm-memory
+                  value: "{{workflow.parameters.vm-memory}}"
 
     # ── lane: provision VM → run suite → teardown (per-suite) ────────────────
     - name: lane
@@ -112,6 +116,7 @@ spec:
           - name: variant
           - name: ssh-key-secret
           - name: branch
+          - name: vm-memory
       steps:
         - - name: provision
             templateRef:
@@ -125,6 +130,8 @@ spec:
                   value: "{{inputs.parameters.vm-name}}"
                 - name: namespace
                   value: "{{inputs.parameters.namespace}}"
+                - name: vm-memory
+                  value: "{{inputs.parameters.vm-memory}}"
         - - name: run-tests
             templateRef:
               name: run-gnome-tests

@@ -199,16 +199,34 @@ spec:
           echo "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/root-ssh-keys"
 
           # Ref: bootc install docs — use --via-loopback for VM disk creation.
-          # --tmpfs /sys/fs/selinux: masks selinuxfs inside the container so
-          # selinux_is_enabled() returns false → ostree skips fsetxattr(security.selinux)
-          # during layer import. Without this, the host kernel's in-memory SELinux policy
-          # rejects label types from the guest image (bluefin-lts) that differ from the
-          # host image (bluefin), producing fsetxattr EINVAL. The --disable-selinux bootc
-          # flag only disables SELinux in the installed system, not during import.
+          # Cross-policy fsetxattr(security.selinux) EINVAL fix:
+          # When building a guest image (e.g. bluefin-lts) on a host with a different
+          # SELinux policy (bluefin), the host kernel rejects label types from the guest
+          # image that aren't in the host's in-memory policy → EINVAL. The --disable-selinux
+          # bootc flag only disables SELinux in the installed system; it does not skip
+          # fsetxattr during the ostree import phase.
+          # Fix: use CAP_MAC_ADMIN (granted by privileged: true) to set SELinux permissive
+          # on the host before the build and restore it after. In permissive mode the kernel
+          # still checks labels but does not reject unknown types — fsetxattr returns 0.
+          # The ghost-heavy-compute mutex ensures no parallel builds race this window.
+          # Ref: bootc-dev/bootc#279; https://bootc-dev.github.io/bootc/bootc-install.html
+          ORIG_SELINUX_ENFORCE=""
+          if [ -f /sys/fs/selinux/enforce ]; then
+            ORIG_SELINUX_ENFORCE=$(cat /sys/fs/selinux/enforce)
+            echo 0 > /sys/fs/selinux/enforce
+            echo "[BUILD] SELinux set to permissive for cross-policy disk install (was ${ORIG_SELINUX_ENFORCE})"
+          fi
+          restore_selinux() {
+            if [[ -n "${ORIG_SELINUX_ENFORCE}" ]] && [ -f /sys/fs/selinux/enforce ]; then
+              echo "${ORIG_SELINUX_ENFORCE}" > /sys/fs/selinux/enforce
+              echo "[BUILD] SELinux restored to enforcing=${ORIG_SELINUX_ENFORCE}"
+            fi
+          }
+          trap restore_selinux EXIT
+
           PODMAN_EXIT=0
           podman run --rm --privileged --pid=host --ipc=host \
             --security-opt label=type:unconfined_t \
-            --tmpfs /sys/fs/selinux \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "${STAGING}:/output" \

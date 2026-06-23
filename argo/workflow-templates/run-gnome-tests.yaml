@@ -162,14 +162,26 @@ spec:
             "
             echo "Root SSH ready." >&2
 
-            # ── Bootstrap bluefin-test SSH keys via root ──────────────────────
-            # Set up bluefin-test's authorized_keys while the VM is running so we
-            # don't have to rely on post-install disk-path injection. This avoids
-            # any ostree etc-merge ambiguity and is guaranteed to use the live /var.
-            echo "Bootstrapping bluefin-test SSH access via root..." >&2
+            # ── Bootstrap bluefin-test user + SSH keys via root ──────────────
+            # Create the test user at runtime so this works even if btrfs
+            # post-install changes did not survive the qcow2/OCI pipeline.
+            # SSH keys are set up here rather than relying on disk injection.
+            echo "Bootstrapping bluefin-test user and SSH access via root..." >&2
             SSH_PUBKEY="$(cat ${SSH_KEY}.pub)"
             ${ROOT_SSH} "
               set -euo pipefail
+              # Create bluefin-test user if not already present (uid 1001, wheel)
+              if ! id bluefin-test &>/dev/null; then
+                useradd -m -u 1001 -g 1001 -G wheel -s /bin/bash \
+                  -d /var/home/bluefin-test bluefin-test
+                echo '[ROOT] bluefin-test user created'
+              else
+                echo '[ROOT] bluefin-test user exists'
+              fi
+              # Ensure sudoers entry
+              echo 'bluefin-test ALL=(ALL) NOPASSWD:ALL' \
+                > /etc/sudoers.d/bluefin-test
+              chmod 440 /etc/sudoers.d/bluefin-test
               install -d -m 700 -o 1001 -g 1001 /var/home/bluefin-test/.ssh
               printf '%s\n' '${SSH_PUBKEY}' > /var/home/bluefin-test/.ssh/authorized_keys
               chown 1001:1001 /var/home/bluefin-test/.ssh/authorized_keys

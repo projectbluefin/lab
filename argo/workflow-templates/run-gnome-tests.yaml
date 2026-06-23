@@ -335,12 +335,19 @@ spec:
             cp -r /tmp/results/. "${RESULT_DIR}/" 2>/dev/null || true
             echo "Results saved to ${RESULT_DIR}" >&2
 
+            # Derive image slug for screenshot tag and results JSON push.
+            # Convention: testing -> bluefin-testing, lts-testing -> bluefin-lts-testing,
+            # dakota-testing -> dakota-testing.
+            VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
+            case "${VARIANT_TAG}" in
+              lts-*)    IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
+              dakota-*) IMG_SLUG="${VARIANT_TAG}" ;;
+              *)        IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
+            esac
+
             # Push desktop screenshot to GHCR as OCI artifact for release notes.
             # Convention matches projectbluefin/testsuite/e2e.yml:
             #   ghcr.io/projectbluefin/testsuite/desktop-screenshot:<slug>-<suite>-latest
-            # where slug = image-tag with : replaced by - (e.g. testing → bluefin-testing,
-            # lts-testing → bluefin-lts-testing, dakota-default → dakota-default).
-            # publish-to-pages.yml in projectbluefin/testsuite polls this every 2h.
             SHOT=$(find /tmp/results/ -name "*.png" | head -1)
             if [[ -n "$SHOT" && -f "$SHOT" ]]; then
               if ! command -v oras &>/dev/null; then
@@ -349,12 +356,6 @@ spec:
                   | tar xz -C /usr/local/bin/ oras 2>/dev/null || true
               fi
               if command -v oras &>/dev/null; then
-                VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
-                case "${VARIANT_TAG}" in
-                  lts-*)    IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
-                  dakota-*) IMG_SLUG="${VARIANT_TAG}" ;;
-                  *)        IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
-                esac
                 SCREENSHOT_IMAGE="ghcr.io/projectbluefin/testsuite/desktop-screenshot"
                 PUSH_TAG="${IMG_SLUG}-${SUITE}-latest"
                 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
@@ -366,9 +367,77 @@ spec:
                     /tmp/desktop-screenshot.png:image/png 2>&1 || true
                   echo "Screenshot pushed to ${SCREENSHOT_IMAGE}:${PUSH_TAG}" >&2
                 else
-                  echo "No GITHUB_TOKEN — skipping GHCR screenshot push" >&2
+                  echo "No GITHUB_TOKEN - skipping GHCR screenshot push" >&2
                 fi
               fi
+            fi
+
+            # Push results JSON to GitHub for Pages dashboard at
+            # https://projectbluefin.github.io/testing-lab/
+            # Uses the GitHub Contents API to create/update docs/results/<slug>-<suite>.json
+            # which triggers a Pages rebuild and is read by the dashboard JS.
+            if [[ -f /tmp/results/results.json && -n "${GITHUB_TOKEN:-}" && -n "${IMG_SLUG:-}" ]]; then
+              python3 -c "
+              import json, os, base64, urllib.request, urllib.error
+              from datetime import datetime, timezone
+              token = os.environ.get('GITHUB_TOKEN', '')
+              slug = '${IMG_SLUG}'
+              suite = '${SUITE}'
+              wf = '{{workflow.name}}'
+              pages_base = 'https://projectbluefin.github.io/testing-lab'
+              try:
+                  data = json.load(open('/tmp/results/results.json'))
+                  n_failed = sum(1 for f in data for s in f.get('elements', []) if s.get('status') == 'failed')
+                  n_total = sum(len(f.get('elements', [])) for f in data)
+                  run_status = 'failed' if n_failed > 0 else 'passed'
+              except Exception as exc:
+                  print('results.json parse error:', exc)
+                  n_failed, n_total, run_status = 0, 0, 'failed'
+              now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+              result = {
+                  'variant': slug, 'suite': suite, 'last_run': now,
+                  'workflow_name': wf, 'status': run_status,
+                  'scenarios': n_total, 'failed': n_failed,
+                  'screenshot_url': pages_base + '/screenshots/' + slug + '-' + suite + '-latest.png',
+                  'history': [],
+              }
+              base_api = 'https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/'
+              api = base_api + slug + '-' + suite + '.json'
+              hdrs = {
+                  'Authorization': 'token ' + token,
+                  'Accept': 'application/vnd.github.v3+json',
+                  'Content-Type': 'application/json',
+                  'User-Agent': 'bluefin-test-runner',
+              }
+              sha = None
+              try:
+                  req = urllib.request.Request(api, headers=hdrs)
+                  with urllib.request.urlopen(req) as resp:
+                      old = json.loads(resp.read())
+                      sha = old.get('sha')
+                      result['history'] = json.loads(
+                          base64.b64decode(old['content']).decode()
+                      ).get('history', [])
+              except urllib.error.HTTPError as exc:
+                  if exc.code != 404:
+                      print('GET failed:', exc.code)
+              entry = {'run_date': now, 'workflow_name': wf,
+                       'status': run_status, 'scenarios': n_total, 'failed': n_failed}
+              result['history'] = ([entry] + result['history'])[:10]
+              payload = {
+                  'message': 'test: update results for ' + slug + '-' + suite,
+                  'content': base64.b64encode(json.dumps(result, indent=2).encode()).decode(),
+              }
+              if sha:
+                  payload['sha'] = sha
+              body = json.dumps(payload).encode()
+              req = urllib.request.Request(api, data=body, headers=hdrs, method='PUT')
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      print('Results pushed for ' + slug + '-' + suite + ': ' + run_status)
+              except urllib.error.HTTPError as exc:
+                  print('PUT failed:', exc.code, exc.read().decode()[:200])
+              " 2>&1 || true
             fi
 
             echo "Done. Results in /tmp/results/" >&2

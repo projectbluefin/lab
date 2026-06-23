@@ -1,0 +1,67 @@
+name: Update test results
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/results/**'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Install oras
+        run: |
+          ORAS_VER="1.2.3"
+          curl -sSfL \
+            "https://github.com/oras-project/oras/releases/download/v${ORAS_VER}/oras_${ORAS_VER}_linux_amd64.tar.gz" \
+            | tar xz -C /usr/local/bin oras
+
+      - name: Pull screenshots from GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | oras login ghcr.io -u github-actions --password-stdin
+          mkdir -p docs/screenshots
+          SLUGS="bluefin-testing bluefin-lts-testing dakota-testing"
+          SUITES="smoke developer system"
+          for slug in $SLUGS; do
+            for suite in $SUITES; do
+              tag="${slug}-${suite}-latest"
+              img="ghcr.io/projectbluefin/testsuite/desktop-screenshot:${tag}"
+              dest="docs/screenshots/${tag}.png"
+              if oras pull "${img}" --output docs/screenshots/ 2>/dev/null; then
+                # oras names the file after the artifact basename used during push
+                pulled="docs/screenshots/desktop-screenshot.png"
+                if [[ -f "${pulled}" ]]; then
+                  mv "${pulled}" "${dest}"
+                  echo "Saved screenshot: ${dest}"
+                fi
+              else
+                echo "No screenshot available for ${tag}"
+              fi
+            done
+          done
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/
+          if git diff --cached --quiet; then
+            echo "No screenshot changes to commit"
+          else
+            git commit \
+              -m 'chore: update test screenshots from GHCR' \
+              -m 'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>'
+            git push origin HEAD:main
+          fi

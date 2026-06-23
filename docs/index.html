@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bluefin QA Dashboard</title>
+  <style>
+    :root {
+      --pass: #3fb950;
+      --fail: #f85149;
+      --pending: #d29922;
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --link: #58a6ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    header { margin-bottom: 24px; }
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+    .subtitle { color: var(--muted); font-size: 13px; }
+    .meta { color: var(--muted); font-size: 12px; margin: 12px 0 24px; }
+    h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+    /* Cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .screenshot-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #21262d;
+      overflow: hidden;
+    }
+    .screenshot-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .screenshot-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .card-body { padding: 12px 16px; }
+    .suites { display: flex; flex-direction: column; gap: 6px; }
+    .suite-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+    .suite-label { text-transform: capitalize; }
+    .suite-right { display: flex; align-items: center; gap: 8px; }
+    .count { color: var(--muted); font-size: 12px; }
+    .badge {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-pass { background: #1c2e1c; color: var(--pass); border: 1px solid #2ea04326; }
+    .badge-fail { background: #2e1c1c; color: var(--fail); border: 1px solid #f8514926; }
+    .badge-pending { background: #2e261c; color: var(--pending); border: 1px solid #d2992226; }
+    .card-footer {
+      padding: 8px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .card-footer a { color: var(--link); text-decoration: none; }
+    .card-footer a:hover { text-decoration: underline; }
+    /* History tables */
+    .history-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .history-block-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th {
+      padding: 8px 12px;
+      text-align: left;
+      color: var(--muted);
+      font-weight: 500;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child td { border-bottom: none; }
+    td a { color: var(--link); text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    .empty-row { color: var(--muted); text-align: center; padding: 16px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Bluefin QA Dashboard</h1>
+    <p class="subtitle">End-to-end test results for projectbluefin image variants</p>
+  </header>
+  <p class="meta" id="meta">Loading...</p>
+
+  <h2>Latest Results</h2>
+  <div class="grid" id="cards"><p style="color:var(--muted)">Loading...</p></div>
+
+  <h2>Run History</h2>
+  <div id="history"><p style="color:var(--muted)">Loading...</p></div>
+
+  <script>
+    const ARGO_UI = 'http://192.168.1.102:32746';
+    const VARIANTS = [
+      { slug: 'bluefin-testing',     label: 'bluefin:testing' },
+      { slug: 'bluefin-lts-testing', label: 'bluefin-lts:testing' },
+      { slug: 'dakota-testing',      label: 'dakota:testing' },
+    ];
+    const SUITES = ['smoke', 'developer', 'system'];
+
+    async function load(url) {
+      try {
+        const r = await fetch(url);
+        return r.ok ? r.json() : null;
+      } catch { return null; }
+    }
+
+    function badge(status) {
+      const s = status || 'pending';
+      const cls = s === 'passed' ? 'badge-pass' : s === 'failed' ? 'badge-fail' : 'badge-pending';
+      const label = s === 'passed' ? 'pass' : s === 'failed' ? 'fail' : 'pending';
+      return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    function fmt(iso) {
+      if (!iso) return 'never';
+      try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }); }
+      catch { return iso; }
+    }
+
+    function argoLink(wf) {
+      if (!wf) return '';
+      return `<a href="${ARGO_UI}/workflows/argo/${wf}" target="_blank" rel="noopener">${wf}</a>`;
+    }
+
+    async function buildCard(v) {
+      const data = {};
+      await Promise.all(SUITES.map(s => load(`results/${v.slug}-${s}.json`).then(d => { data[s] = d; })));
+
+      const lastRun = SUITES.map(s => data[s]?.last_run).filter(Boolean).sort().pop();
+      const wf = SUITES.map(s => data[s]?.workflow_name).filter(Boolean)[0];
+      const shotUrl = `screenshots/${v.slug}-smoke-latest.png`;
+
+      const suiteRows = SUITES.map(s => {
+        const d = data[s];
+        const count = d?.scenarios > 0 ? `<span class="count">${d.scenarios - d.failed}/${d.scenarios}</span>` : '';
+        return `<div class="suite-row">
+          <span class="suite-label">${s}</span>
+          <span class="suite-right">${count}${badge(d?.status)}</span>
+        </div>`;
+      }).join('');
+
+      const footerLeft = lastRun ? `Last run: ${fmt(lastRun)}` : 'No runs yet';
+      const footerRight = wf ? argoLink(wf) : '';
+
+      return `<div class="card">
+        <div class="card-header">${v.label}</div>
+        <div class="screenshot-wrap">
+          <img src="${shotUrl}" alt="Screenshot for ${v.label}"
+               onerror="this.style.display='none'">
+          <div class="screenshot-placeholder">No screenshot yet</div>
+        </div>
+        <div class="card-body"><div class="suites">${suiteRows}</div></div>
+        <div class="card-footer">
+          <span>${footerLeft}</span>
+          <span>${footerRight}</span>
+        </div>
+      </div>`;
+    }
+
+    async function buildHistory(v) {
+      const rows = [];
+      for (const s of SUITES) {
+        const d = await load(`results/${v.slug}-${s}.json`);
+        if (!d?.history?.length) continue;
+        for (const h of d.history) rows.push({ suite: s, ...h });
+      }
+      rows.sort((a, b) => (b.run_date || '').localeCompare(a.run_date || ''));
+      const top = rows.slice(0, 10);
+
+      const tbody = top.length
+        ? top.map(r => {
+            const passed = (r.scenarios || 0) - (r.failed || 0);
+            return `<tr>
+              <td>${fmt(r.run_date)}</td>
+              <td>${r.suite}</td>
+              <td>${badge(r.status)}</td>
+              <td>${r.scenarios > 0 ? `${passed}/${r.scenarios}` : '-'}</td>
+              <td>${argoLink(r.workflow_name)}</td>
+            </tr>`;
+          }).join('')
+        : `<tr><td colspan="5" class="empty-row">No history yet</td></tr>`;
+
+      return `<div class="history-block">
+        <div class="history-block-header">${v.label}</div>
+        <table>
+          <thead><tr><th>Date</th><th>Suite</th><th>Status</th><th>Scenarios</th><th>Workflow</th></tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>`;
+    }
+
+    (async () => {
+      const [cards, histories] = await Promise.all([
+        Promise.all(VARIANTS.map(buildCard)),
+        Promise.all(VARIANTS.map(buildHistory)),
+      ]);
+      document.getElementById('cards').innerHTML = cards.join('');
+      document.getElementById('history').innerHTML = histories.join('');
+      document.getElementById('meta').textContent =
+        `Dashboard updated: ${new Date().toLocaleString()} — data from docs/results/*.json`;
+    })();
+  </script>
+</body>
+</html>

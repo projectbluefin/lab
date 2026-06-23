@@ -280,8 +280,11 @@ spec:
               mkdir -p \"\${ETC}/ssh/sshd_config.d\"
               # Note: 'UsePAM no' is NOT supported in this Fedora openssh build.
               # Use PermitRootLogin yes (most permissive) to allow root pubkey auth.
-              # AuthorizedKeysFile default resolves to root's home (.ssh/authorized_keys).
-              printf 'PubkeyAuthentication yes\nStrictModes no\nPermitRootLogin yes\nAuthorizedKeysFile .ssh/authorized_keys\n' \
+              # AuthorizedKeysFile: check BOTH home-relative and absolute path.
+              # The Include directive at line 15 of sshd_config means drop-ins win
+              # over anything after line 15 in the main file — so set both paths
+              # here in the drop-in. %%u in printf emits the literal %u token.
+              printf 'PubkeyAuthentication yes\nStrictModes no\nPermitRootLogin yes\nAuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%%u\n' \
                 > \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
 
               # Also patch the main sshd_config in case Include is not at the top

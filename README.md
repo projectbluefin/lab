@@ -44,17 +44,17 @@ Git push / manual submit
         ▼
   Argo Workflow (argo namespace)
         │
-        ├─ bib-build-and-push ──────► BIB golden disk on ghost hostPath
-        │   (bootc image builder)       /var/tmp/bluefin-golden/<tag>/disk.raw
-        │                               btrfs reflink (~24ms clone, CoW, ~0 extra space)
+        ├─ build-containerdisk ─────► containerDisk in local Zot registry
+        │   (bootc install-to-disk)     192.168.1.102:30500/bluefin-containerdisk:<tag>
+        │                               digest-checked; skips if already current
         │
-        ├─ provision-variant-vm ────► KubeVirt VM in test namespace
-        │   (reflink clone + VMI)       hw-profile: standard | full-hw (TPM, watchdog)
+        ├─ provision-bluefin-vm ────► KubeVirt VM booting from containerDisk
+        │   (VMI + wait for SSH)        ~2 min from submit to SSH-ready
         │
         ├─ run-gnome-tests ─────────► runner pod (Fedora + qecore-headless)
-        │   (behave + AT-SPI)           git-sync → SSH → VM → behave + Dogtail
+        │   (behave + AT-SPI)           SSH → VM → behave + Dogtail
         │
-        └─ teardown (onExit) ───────► delete VM + hostDisk clone
+        └─ teardown (onExit) ───────► delete VM
             (always runs)               guaranteed cleanup on success or failure
 ```
 
@@ -83,23 +83,35 @@ testing-lab/
 │
 ├── argo/
 │   ├── workflow-templates/           # ← ArgoCD (testing-lab App) auto-syncs these
-│   │   ├── bib-build-and-push.yaml       build / cache golden bootc disk via BIB
-│   │   ├── bluefin-qa-pipeline.yaml      full pipeline: disk + VM + tests
+│   │   ├── build-containerdisk.yaml      build containerDisk from bootc image → Zot registry
+│   │   ├── bluefin-qa-pipeline.yaml      full pipeline: containerDisk + VM + tests
 │   │   ├── bluefin-migration-test.yaml   bootc switch migration validation
-│   │   ├── provision-variant-vm.yaml     reflink golden disk + boot KubeVirt VM
+│   │   ├── bluefin-service-catalog-pipeline.yaml  service catalog smoke lanes
+│   │   ├── provision-bluefin-vm.yaml     boot containerDisk KubeVirt VM
 │   │   ├── run-gnome-tests.yaml          behave + qecore + Dogtail GNOME tests
-│   │   ├── run-variant-tests.yaml        multi-variant test runner
 │   │   ├── run-incluster-tests.yaml      in-cluster (kubectl-based) tests
 │   │   ├── run-flatcar-tests.yaml        Flatcar OS test runner
-│   │   ├── provision-flatcar-vm.yaml     provision Flatcar test VM
-│   │   ├── teardown-vm.yaml              delete Bluefin VM + hostDisk
+│   │   ├── provision-flatcar-vm.yaml     provision Flatcar test VM (hostDisk)
+│   │   ├── provision-gnomeos-vm.yaml     provision GNOME OS test VM
+│   │   ├── teardown-bluefin-vm.yaml      delete Bluefin containerDisk VM
 │   │   ├── teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
+│   │   ├── teardown-gnomeos-vm.yaml      delete GNOME OS VM
+│   │   ├── collect-vm-logs.yaml          gather VM journal logs post-test
 │   │   ├── bst-build.yaml               BuildStream (BST) build + zot push
+│   │   ├── bst-cache-warm.yaml          warm BST cache on ghost
 │   │   ├── dakota-bst.yaml              Dakota BST validate / build pipeline
 │   │   ├── dakota-iso-pr-test.yaml      Dakota ISO PR end-to-end pipeline
-│   │   ├── dakota-qa-pipeline.yaml      Full Dakota QA: BST → BIB → VM → tests
-│   │   ├── knuckle-qa-pipeline.yaml     Knuckle QA pipeline
-│   │   └── patch-golden-disk.yaml       SSH key rotation helper
+│   │   ├── dakota-qa-pipeline.yaml      Full Dakota QA: BST → VM → tests
+│   │   ├── knuckle-qa-pipeline.yaml     Knuckle installer QA pipeline
+│   │   ├── image-poller.yaml            Digest-polling trigger for image-poll CronWorkflows
+│   │   ├── pr-poller.yaml               PR label poller for CI gate
+│   │   ├── ghost-cleanup.yaml           Clear stale podman lock files on ghost
+│   │   ├── ghost-kernel-args.yaml       Set Strix Halo performance kernel args
+│   │   ├── ghost-otel-patch.yaml        Patch otelcol-agent.service config on ghost
+│   │   ├── homelab-access-probe.yaml    Homelab SSH/auth test probe
+│   │   ├── homelab-restore-drill.yaml   Homelab backup restore drill
+│   │   ├── homelab-storage.yaml         Homelab storage tests
+│   │   └── homelab-substrate.yaml       Homelab substrate (networking, DNS) tests
 │   │
 │   ├── bootstrap/                    # ← NOT ArgoCD managed — run once to set up cluster
 │   │   ├── README.md                     bootstrap guide
@@ -108,17 +120,19 @@ testing-lab/
 │   │   ├── install-kubevirt-manager.yaml install KubeVirt Manager web UI
 │   │   ├── install-kubestellar.yaml     install KubeStellar (optional, multi-cluster)
 │   │   ├── install-test-vms.yaml        apply initial test VM manifests
-│   │   ├── ghost-kernel-args.yaml       set Strix Halo performance kernel args
-│   │   ├── setup-ghost-ssh-banner.yaml  install API-only warning banner on ghost
 │   │   └── setup-otel.yaml              deploy OTel observability stack
 │   │
-│   ├── deprecated/                   # Old CDI/PVC v1 and tmt runner — do not use
-│   │
 │   ├── bluefin-smoke-test.yaml       submit: single-image smoke run
-│   ├── bluefin-test-matrix.yaml      submit: parallel latest + lts matrix
+│   ├── bluefin-test-matrix.yaml      submit: parallel testing + lts-testing matrix
+│   ├── bluefin-service-catalog-smoke.yaml  submit: service catalog smoke
 │   ├── flatcar-smoke-test.yaml       submit: Flatcar smoke run
-│   ├── rechunk-to-chunkah-migration.yaml  submit: migration validation
-│   └── zstd-migration-test.yaml      submit: zstd compression validation
+│   ├── gnomeos-access-spike.yaml     submit: GNOME OS accessibility spike
+│   ├── homelab-access-probe.yaml     submit: homelab access probe (no auth)
+│   ├── homelab-auth-probe.yaml       submit: homelab access probe (with auth)
+│   ├── homelab-restore-drill.yaml    submit: homelab restore drill
+│   ├── homelab-storage.yaml          submit: homelab storage tests
+│   ├── homelab-substrate.yaml        submit: homelab substrate tests
+│   └── one-shot-delete-golden-disks.yaml  emergency: delete all golden disks to reclaim space
 │
 ├── manifests/                        # ← ArgoCD (testing-lab-infra App) auto-syncs these
 │   ├── nightly-smoke.yaml                CronWorkflow: nightly latest @ 02:00 UTC

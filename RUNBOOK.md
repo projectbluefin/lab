@@ -10,18 +10,13 @@ Git push / manual submit
         ▼
 Argo Workflow (argo namespace)
         │
-        ├─ ensure-disk (optional) ─► build or verify golden disk on ghost hostPath
-        ├─ provision-vm           ─► reflink golden disk into a per-run KubeVirt VM
-        ├─ run-gnome-tests        ─► runner pod clones repo, SSHes VM, executes qecore + behave
-        └─ teardown (onExit)      ─► delete VM + per-run hostDisk clone
+        ├─ build-containerdisk    ─► containerDisk in local Zot registry (digest-checked)
+        ├─ provision-bluefin-vm   ─► boot KubeVirt VM from containerDisk
+        ├─ run-gnome-tests        ─► runner pod SSHes VM, executes qecore + behave
+        └─ teardown (onExit)      ─► delete VM (always runs, success or failure)
 ```
 
-Two steady-state execution paths exist:
-
-| Path | Purpose | Persistent state |
-|---|---|---|
-| Titan fast path | Test-only iteration against always-on VMs | Titan disk under `/var/home/jorge/VMs/titans/...` |
-| Fresh VM path | Image and golden-disk validation | Golden disk under `/var/tmp/bluefin-golden/<tag>/disk.raw` |
+All pipelines use ephemeral VMs — every run provisions a fresh VM and tears it down on exit. There are no persistent test VMs.
 
 ## Cluster topology
 
@@ -50,20 +45,19 @@ The repo is intentionally GitOps-first: cluster state should converge from git, 
 - Use Kubernetes MCP and Argo MCP for workstation-side cluster reads and mutations.
 - Prefer the `just` entrypoints when they exist; they are the human-facing wrappers around the same API-driven workflow.
 - Do not SSH from a workstation into `ghost` or `exo-1` for inspection, recovery, or file transfer.
-- In-workflow SSH into test VMs and probe-pod-to-titan SSH remain valid because they originate inside the cluster and are part of the test harness, not node administration.
+- In-workflow SSH into test VMs remain valid because they originate inside the cluster and are part of the test harness, not node administration.
 
 ## Image, disk, and VM model
 
 | Object | Backing location | Used by | Notes |
 |---|---|---|---|
-| Golden disk (`latest`) | `/var/tmp/bluefin-golden/latest/disk.raw` | Fresh-VM pipeline | Built by `bib-build-and-push` |
-| Golden disk (`lts`) | `/var/tmp/bluefin-golden/lts/disk.raw` | Fresh-VM pipeline | Built by `bib-build-and-push` |
-| Titan Bluefin disk | `/var/home/jorge/VMs/titans/titan-bluefin/image/disk.raw` | `titan-bluefin` | Persistent fast-path disk |
-| Titan LTS disk | `/var/home/jorge/VMs/titans/image/disk.raw` | `titan-lts` | Persistent fast-path disk |
-| Per-run hostDisk clone | `/var/tmp/bluefin-golden/*-runs/...` | Provisioned fresh VMs | Removed by teardown or orphan cleanup |
+| ContainerDisk (`testing`) | `192.168.1.102:30500/bluefin-containerdisk:testing` | Bluefin QA pipeline | Built by `build-containerdisk` |
+| ContainerDisk (`lts-testing`) | `192.168.1.102:30500/bluefin-containerdisk:lts-testing` | Bluefin QA pipeline | Built by `build-containerdisk` |
+| Flatcar hostDisk | `/var/tmp/flatcar-test/<vm-name>/disk.raw` | Flatcar pipeline | Reflinked from golden, removed by teardown |
+| Knuckle hostDisk | `/var/tmp/knuckle-test/<vm-name>/disk.raw` | Knuckle pipeline | Reflinked from golden, removed by teardown |
 
 The SSH secret lives in the `bluefin-test-ssh-key` Kubernetes secret in namespace `argo`.
-Golden disks can be patched by workflow after key rotation; titan disk key refresh is intentionally human-gated. <!-- TODO: replace with MCP tool when available -->
+Golden disks can be rotated via the `build-containerdisk` template.
 
 ## Test execution stack
 
@@ -88,7 +82,7 @@ Golden disks can be patched by workflow after key rotation; titan disk key refre
 
 | Symptom | Root cause | Durable fix |
 |---|---|---|
-| `Permission denied (publickey)` during SSH wait | Golden disk or titan disk contains an old public key | Re-patch or rebuild the golden disk; escalate titan key refresh to a human operator |
+| `Permission denied (publickey)` during SSH wait | ContainerDisk or hostDisk contains an old public key | Rebuild the containerDisk via `build-containerdisk` |
 | Workflow hangs before GUI steps start | VM boot or SSH readiness never completed | Inspect VMI readiness and runner logs, then re-run the appropriate recovery path |
 | `TypeError` involving `requireResult` | Stale dogtail step pattern | Replace with `findChildren(...)` or `findChild(..., retry=False)` |
 | Clock / quick-settings scenarios miss their targets | GNOME Shell AT-SPI geometry gap | Drive the interaction via `Shell.Eval` |
@@ -102,5 +96,4 @@ Golden disks can be patched by workflow after key rotation; titan disk key refre
 
 ## Historical notes
 
-Date-stamped iteration lessons live in [docs/archive/iteration-notes.md](docs/archive/iteration-notes.md).
 Keep this file timeless: architecture, topology, and durable failure modes only.

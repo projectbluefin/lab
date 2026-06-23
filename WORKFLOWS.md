@@ -9,10 +9,9 @@ Conventions:
 - All templates live in `argo/workflow-templates/*.yaml` and are reconciled
   to namespace `argo` by the ArgoCD `testing-lab` Application.
 - Workflow-level parameters listed below are passed via `-p name=value`.
-- Wall-clock targets are warm-cache numbers; cold-cache figures (BIB build
-  on a missing golden disk) add ~5–10 min.
+- Wall-clock targets are warm-cache numbers; cold-cache figures add ~5–10 min.
 - The agent contract: prefer the **top-level** templates (`bluefin-qa-pipeline`,
-  `bluefin-titan-smoke`). The supporting templates (provision, run, teardown)
+  `knuckle-qa-pipeline`, `dakota-qa-pipeline`). The supporting templates (provision, run, teardown)
   are called as `templateRef` and rarely submitted directly.
 
 ---
@@ -21,7 +20,7 @@ Conventions:
 
 ### `bluefin-qa-pipeline`
 
-Full pipeline: ensure golden disk → reflink + boot a fresh KubeVirt VM →
+Full pipeline: build containerDisk (if digest changed) → boot a fresh KubeVirt VM →
 run test suites → teardown VM on exit.
 
 | Parameter | Default | Notes |
@@ -33,11 +32,11 @@ run test suites → teardown VM on exit.
 | `variant` | `bluefin` | Selects test fixtures (e.g. `dakota` for Ghostty). |
 | `ssh-key-secret` | `bluefin-test-ssh-key` | Secret in `argo` ns with `id_ed25519`. |
 
-Wall-clock: ~5 min (warm), ~10–14 min (cold BIB rebuild).
+Wall-clock: ~5 min (warm, containerDisk cached), ~10–14 min (cold containerDisk build).
 
 ```
 argo submit --from workflowtemplate/bluefin-qa-pipeline \
-  -p image-tag=latest -p suites=smoke --wait
+  -p image-tag=testing -p suites=smoke --wait
 ```
 
 ### `knuckle-qa-pipeline`
@@ -62,63 +61,23 @@ argo submit --from workflowtemplate/knuckle-qa-pipeline \
   -p branch=main -p suite=smoke --wait
 ```
 
-### `bluefin-titan-smoke`
-
-Runs smoke tests against the **persistent** titan VMs (`titan-bluefin`,
-`titan-lts`). Skips BIB and VM provisioning entirely. Use when iterating on
-tests or when BIB is slow/broken.
-
-Prerequisites: both titan VMs running. Fetch IPs:
-
-```
-kubectl get vmi titan-bluefin -n bluefin-test -o jsonpath='{.status.interfaces[0].ipAddress}'
-kubectl get vmi titan-lts    -n bluefin-lts-test -o jsonpath='{.status.interfaces[0].ipAddress}'
-```
-
-| Parameter | Default | Notes |
-|---|---|---|
-| `vm-ip-latest` | *(required)* | titan-bluefin IP |
-| `vm-ip-lts` | *(required)* | titan-lts IP |
-| `suite` | `smoke` | Single suite name. |
-| `ssh-key-secret` | `bluefin-test-ssh-key` | |
-| `issue-title` | `titan smoke run` | Free-text label, appears in pod annotation. |
-
-Wall-clock: ~3 min (test-only, no provisioning).
-
-```
-argo submit --from workflowtemplate/bluefin-titan-smoke \
-  -p vm-ip-latest=10.42.x.y -p vm-ip-lts=10.42.x.z --wait
-```
-
-### `patch-golden-disk`
-
-One-shot maintenance: re-runs the disk configuration step (SSH key,
-selinux=0, sudoers) on an existing golden disk without rebuilding it.
-
-| Parameter | Default | Notes |
-|---|---|---|
-| `image-tag` | `latest` | Disk dir under `/var/tmp/bluefin-golden/`. |
-
 ---
 
 ## Supporting templates (called via `templateRef`)
 
-These are exposed only because they are referenced by the entry points;
+These are exposed because they are referenced by the entry points;
 submit them directly only for diagnosis.
 
-### `bib-build-and-push` (template: `ensure-disk`)
+### `build-containerdisk` (template: `build-containerdisk`)
 
-Builds the golden raw disk via `bootc-image-builder` if missing or stale.
-Stale detection compares the upstream image digest (via skopeo) against the
-`source-digest` marker written next to the disk on hostPath.
-
-Outputs: no `outputs.parameters`; side effect is
-`/var/tmp/bluefin-golden/<image-tag>/disk.raw` and `source-digest` on ghost.
+Builds a KubeVirt containerDisk from a bootc image and pushes it to the local
+Zot registry at `192.168.1.102:30500`. Checks if an up-to-date image already
+exists (digest comparison) and skips the build if so.
 
 ### `provision-bluefin-vm` (template: `provision-vm`)
 
-btrfs `cp --reflink=auto` from the golden disk, applies SVirt label, creates
-a KubeVirt VM, waits for SSH/IP, emits `vm-ip` as an output parameter.
+Creates a KubeVirt VM using the containerDisk from the local Zot registry,
+waits for the VMI to be Ready and SSH to become reachable, emits `vm-ip`.
 
 ### `provision-flatcar-vm` (template: `provision-vm`)
 
@@ -127,12 +86,12 @@ of relying on the bluefin-test secret for cloud-init injection.
 
 ### `run-gnome-tests` (template: `run-gnome-tests`)
 
-`git-sync` initContainer clones testing-lab → main container SSHes to the VM
-IP → installs deps (skipped if present) → runs qecore-headless + behave →
-captures `results.json` to pod stdout (Loki + `argo logs`).
+SSHes into the VM, installs test deps (qecore, behave, dogtail,
+gnome-ponytail-daemon via `ostree admin unlock` + dnf), runs qecore-headless +
+behave, captures results to pod stdout (Loki + `argo logs`).
 
-Resource limits and `hostNetwork: true` are set on the pod (KubeVirt
-masquerade only routes from host netns).
+`hostNetwork: true` is required — KubeVirt masquerade only routes from the host
+network namespace.
 
 ### `run-flatcar-tests` (template: `run-flatcar-tests`)
 
@@ -141,8 +100,8 @@ fixtures from `tests/flatcar/`.
 
 ### `teardown-bluefin-vm` / `teardown-flatcar-vm`
 
-Delete the VM, wait for the VMI object to drain, then `rm` the per-run
-hostDisk clone. Invoked as `onExit` from the pipeline templates.
+Delete the VM and wait for the VMI object to drain. Invoked as `onExit` from
+the pipeline templates — always runs regardless of pipeline outcome.
 
 ---
 
@@ -174,11 +133,19 @@ just run-dakota-build all             # both variants sequentially
 
 Lives in `manifests/`, applied via the `testing-lab-infra` ArgoCD app:
 
-| Schedule | Cron | Template called | Purpose |
+| Name | Schedule | Template called | Purpose |
 |---|---|---|---|
-| `nightly-smoke` | 02:00 UTC | `bluefin-qa-pipeline` (latest) | Catch upstream regressions |
-| `nightly-smoke-lts` | 02:30 UTC | `bluefin-qa-pipeline` (lts)    | Same, for LTS branch; first fire builds the missing golden disk |
-| `orphan-vm-cleanup` | every 2h | inline | GC stale per-run hostDisks in bluefin, flatcar, and knuckle namespaces |
+| `nightly-smoke` | 02:00 UTC | `bluefin-qa-pipeline` (testing) | Catch upstream regressions |
+| `nightly-smoke-lts` | 02:30 UTC | `bluefin-qa-pipeline` (lts-testing) | Same, for LTS branch |
+| `nightly-dakota` | 03:00 UTC | `dakota-qa-pipeline` | Dakota nightly |
+| `nightly-knuckle` | 03:30 UTC | `knuckle-qa-pipeline` | Knuckle installer nightly |
+| `image-poll-bluefin-testing` | hourly | `image-poller` | Trigger on new bluefin:testing digest |
+| `image-poll-lts-testing` | hourly | `image-poller` | Trigger on new bluefin-lts:testing digest |
+| `image-poll-bluefin-stable` | weekly (Sun 01:00) | `image-poller` | Trigger on new bluefin:stable digest |
+| `image-poll-lts-stable` | weekly (Sun 01:30) | `image-poller` | Trigger on new bluefin-lts:stable digest |
+| `orphan-vm-cleanup` | every 2h | inline | GC VMs whose parent workflow was force-deleted |
+| `orphan-pod-gc` | every 30min | inline | Clean ContainerStatusUnknown + failed pods |
+| `golden-disk-gc` | 04:00 UTC | inline | GC stale disk.raw files on ghost |
 
 ---
 

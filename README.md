@@ -1,26 +1,52 @@
-# CNCF Homelab Reference: bootc Image Testing Lab
+# Bluefin Testing Lab
 
-> A production-quality, fully GitOps-driven QA pipeline for testing
-> [bootc](https://containers.github.io/bootc/) (image-based Linux) deployments,
-> built entirely on CNCF projects running on a single homelab node.
+> CI infrastructure for [Project Bluefin](https://projectbluefin.io). When a new
+> Bluefin image is published, this lab boots it in a real KubeVirt VM and runs
+> acceptance tests — GNOME shell, extensions, bootc contract, uupd, filesystem
+> integrity. Screenshots from passing runs appear in Bluefin GitHub Releases.
 
 ---
 
 ## What This Is
 
-A reference architecture for validating bootc atomic OS images — boot a real VM from
-a real OCI image, run GUI acceptance tests, tear it down, repeat. Everything is
-declared in git, reconciled by ArgoCD, and orchestrated by Argo Workflows.
+The automated QA pipeline for Project Bluefin and Project Dakota. Every image
+publish triggers: boot a fresh VM from the OCI image, run GUI and system acceptance
+tests, collect screenshots, tear down. Everything is declared in git, reconciled by
+ArgoCD, and orchestrated by Argo Workflows.
 
 **No persistent VMs. No manual `kubectl`. No SSH to the cluster host.**
 
-Built for and used by [Project Bluefin](https://projectbluefin.io) and
-[Project Dakota](https://github.com/projectbluefin/dakota). Designed to be cloned
-and adapted for any bootc-based OS project.
+See [docs/bluefin-integration.md](docs/bluefin-integration.md) for the full
+image-poll → test → screenshot → release pipeline.
 
 ---
 
-## CNCF Project Stack
+## Bluefin Integration
+
+Three images are under continuous test:
+
+| Image | Tag | Schedule |
+|---|---|---|
+| `ghcr.io/projectbluefin/bluefin` | `testing` | Nightly 02:00 UTC + on every new digest |
+| `ghcr.io/projectbluefin/bluefin-lts` | `testing` | Nightly 02:30 UTC + on every new digest |
+| `ghcr.io/projectbluefin/dakota` | latest | Nightly 03:00 UTC + on every BST build |
+
+**Image-poll trigger:** hourly CronWorkflows check the ghcr.io digest against a stored
+ConfigMap state. When the digest changes, a full `bluefin-qa-pipeline` run fires
+automatically — no human needed.
+
+**Screenshot pipeline:** `run-gnome-tests` captures desktop PNGs, SCPs them to the
+workflow pod, and pushes to `ghcr.io/projectbluefin/testsuite/desktop-screenshot:<slug>-<suite>-latest`
+via oras. `publish-to-pages.yml` in projectbluefin/testsuite pulls every 2h to GitHub
+Pages. `reusable-release.yml` in projectbluefin/actions reads
+`https://projectbluefin.github.io/testsuite/screenshots/<slug>-smoke-latest.png`
+and embeds it in the GitHub Release automatically.
+
+See [docs/bluefin-integration.md](docs/bluefin-integration.md) for full details.
+
+---
+
+
 
 | Layer | Project | CNCF Status | Role |
 |---|---|---|---|
@@ -289,6 +315,7 @@ See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring
 | Doc | Purpose |
 |---|---|
 | [README.md](README.md) | Architecture overview (this file) |
+| [docs/bluefin-integration.md](docs/bluefin-integration.md) | Image-poll → test → screenshot → release pipeline |
 | [docs/bootstrap.md](docs/bootstrap.md) | How to replicate this lab from scratch |
 | [RUNBOOK.md](RUNBOOK.md) | Timeless architecture + failure-mode reference |
 | [AGENTS.md](AGENTS.md) | Agent policy, cluster topology, issue filing rules |
@@ -301,10 +328,12 @@ See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring
 
 ## Related Projects
 
-- [Project Bluefin](https://projectbluefin.io) — primary consumer of this test suite
-- [Project Dakota](https://github.com/projectbluefin/dakota) — BST-built Bluefin variant
+- [Project Bluefin](https://projectbluefin.io) — primary subject under test; this lab validates every image publish
+- [ublue-os/bluefin](https://github.com/ublue-os/bluefin) — upstream Bluefin image builds
+- [Project Dakota](https://github.com/projectbluefin/dakota) — BST-built Bluefin variant; Dakota PRs trigger `dakota-qa-pipeline`
+- [projectbluefin/testsuite](https://github.com/projectbluefin/testsuite) — screenshot hosting + GitHub Pages publishing
+- [projectbluefin/actions](https://github.com/projectbluefin/actions) — `reusable-release.yml` embeds lab screenshots in GitHub Releases
 - [bootc](https://containers.github.io/bootc/) — image-based Linux standard
-- [ublue-os/bluefin](https://github.com/ublue-os/bluefin) — upstream Bluefin images
 - [KubeVirt](https://kubevirt.io) — CNCF Incubating, VM workloads on Kubernetes
 - [Argo Workflows](https://argoproj.github.io/argo-workflows/) — CNCF Graduated
 - [Argo CD](https://argo-cd.readthedocs.io) — CNCF Graduated

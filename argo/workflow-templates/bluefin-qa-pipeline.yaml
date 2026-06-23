@@ -83,7 +83,10 @@ spec:
                 - name: suite
                   value: "{{item}}"
                 - name: vm-name
-                  value: "{{workflow.parameters.variant}}-{{item}}-{{workflow.uid}}"
+                  # workflow.name is short (e.g. bluefin-qa-lts-7rvk5) and unique; using it
+                  # avoids the 63-char Kubernetes label-value limit that full UUID hits with
+                  # long variant names like "bluefin-lts-testing-developer-<36-char-uuid>".
+                  value: "{{workflow.name}}-{{item}}"
                 - name: image-tag
                   value: "{{workflow.parameters.image-tag}}"
                 - name: containerdisk-tag

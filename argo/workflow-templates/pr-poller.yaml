@@ -35,17 +35,17 @@ spec:
           set -euo pipefail
           dnf install -y --quiet jq curl 2>/dev/null | tail -1 >&2
 
-         CONTEXT="ghost-lab"
-         API="https://api.github.com"
+          CONTEXT="ghost-lab"
+          API="https://api.github.com"
 
-         # Repos tested on every PR — no label required.
-         AUTO_REPOS=(
+          # Repos tested on every PR — no label required.
+          AUTO_REPOS=(
            "projectbluefin/common"
            "projectbluefin/bluefin"
            "projectbluefin/bluefin-lts"
-         )
+          )
 
-         dispatch_pr() {
+          dispatch_pr() {
            local PR="$1"
            local REPO SHA PR_NUM BRANCH EXISTING TMPL
 
@@ -111,15 +111,15 @@ spec:
            esac
 
            kubectl create -f - <<EOF
-         apiVersion: argoproj.io/v1alpha1
-         kind: Workflow
-         metadata:
+          apiVersion: argoproj.io/v1alpha1
+          kind: Workflow
+          metadata:
            generateName: "pr-test-${PR_NUM}-"
            namespace: argo
            labels:
              bluefin.io/trigger: pr-auto
              bluefin.io/pr-number: "${PR_NUM}"
-         spec:
+          spec:
            workflowTemplateRef:
              name: ${TMPL}
            arguments:
@@ -132,12 +132,12 @@ spec:
                  value: "${BRANCH}"
                - name: pr-number
                  value: "${PR_NUM}"${EXTRA_PARAMS}
-         EOF
+          EOF
            echo "PR #${PR_NUM} ${REPO}: dispatched ${TMPL}" >&2
-         }
+          }
 
-         # --- Pass 1: every open PR in auto-test repos ---
-         for REPO in "${AUTO_REPOS[@]}"; do
+          # --- Pass 1: every open PR in auto-test repos ---
+          for REPO in "${AUTO_REPOS[@]}"; do
            REPO_QUERY=$(jq -rn --arg q "repo:${REPO} is:pr is:open" '$q|@uri')
            PAGE=1
            while true; do
@@ -160,17 +160,17 @@ spec:
              [[ "$ITEMS" -lt 30 ]] && break
              (( PAGE++ ))
            done
-         done
+          done
 
-         # --- Pass 2: label-based catch-all for other repos (dakota, knuckle, etc.) ---
-         LABEL_QUERY=$(jq -rn --arg q "org:projectbluefin is:pr is:open label:test-on-lab" '$q|@uri')
-         LABEL_RESULTS=$(curl -sf \
+          # --- Pass 2: label-based catch-all for other repos (dakota, knuckle, etc.) ---
+          LABEL_QUERY=$(jq -rn --arg q "org:projectbluefin is:pr is:open label:test-on-lab" '$q|@uri')
+          LABEL_RESULTS=$(curl -sf \
            -H "Authorization: token ${GITHUB_TOKEN}" \
            -H "Accept: application/vnd.github+json" \
            "${API}/search/issues?q=${LABEL_QUERY}")
-         LABEL_COUNT=$(echo "$LABEL_RESULTS" | jq '.total_count // 0')
-         echo "Found ${LABEL_COUNT} PR(s) with test-on-lab label" >&2
-         if [[ "$LABEL_COUNT" -gt 0 ]]; then
+          LABEL_COUNT=$(echo "$LABEL_RESULTS" | jq '.total_count // 0')
+          echo "Found ${LABEL_COUNT} PR(s) with test-on-lab label" >&2
+          if [[ "$LABEL_COUNT" -gt 0 ]]; then
            while read -r item; do
              PR_URL=$(echo "$item" | jq -r '.pull_request.url')
              PR=$(curl -sf \
@@ -179,4 +179,4 @@ spec:
                "$PR_URL")
              dispatch_pr "$PR"
            done < <(echo "$LABEL_RESULTS" | jq -c '.items[]')
-         fi
+          fi

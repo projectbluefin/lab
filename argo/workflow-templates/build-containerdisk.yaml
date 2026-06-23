@@ -279,9 +279,10 @@ spec:
                 \"\${ETC}/systemd/system/sockets.target.wants/sshd.socket\" || true
               mkdir -p \"\${ETC}/ssh/sshd_config.d\"
               # Note: 'UsePAM no' is NOT supported in this Fedora openssh build.
-              # PermitRootLogin prohibit-password: default on Fedora, allows pubkey
-              # for root (set by bootc via --root-ssh-authorized-keys).
-              printf 'PubkeyAuthentication yes\nStrictModes no\nPermitRootLogin prohibit-password\n' \
+              # AuthorizedKeysFile: default .ssh/authorized_keys covers both root
+              # (/var/roothome/.ssh) and bluefin-test (/var/home/bluefin-test/.ssh).
+              # PermitRootLogin prohibit-password: allows root pubkey auth (Fedora default).
+              printf 'PubkeyAuthentication yes\nStrictModes no\nPermitRootLogin prohibit-password\nAuthorizedKeysFile .ssh/authorized_keys\n' \
                 > \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
 
               # Diagnostic: confirm the drop-in was written correctly.
@@ -295,17 +296,34 @@ spec:
 
               echo '[INNER] etc/ config done'
 
-              # Inject bluefin-test SSH key to /var/home (persistent var, always
-              # accessible at boot — bootc-native root-ssh-keys handles root).
+              # Key injection via /var (persistent storage, always accessible at boot).
+              # /var lives at ostree/deploy/${STATEROOT}/var regardless of the deployment.
               STATEROOT=\$(ls /tmp/installed/ostree/deploy/ 2>/dev/null | head -1)
-              HOME_DIR=\"/tmp/installed/ostree/deploy/\${STATEROOT}/var/home/bluefin-test\"
+              VAR_DIR=\"/tmp/installed/ostree/deploy/\${STATEROOT}/var\"
+
+              # Root: inject directly to /var/roothome (= /root at runtime on Fedora/bootc).
+              # bootc --root-ssh-authorized-keys also injects via tmpfiles.d; writing here
+              # ensures it works even if tmpfiles-setup runs after sshd accepts first conn.
+              ROOT_SSH_DIR=\"\${VAR_DIR}/roothome/.ssh\"
+              mkdir -p \"\${ROOT_SSH_DIR}\"
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ROOT_SSH_DIR}/authorized_keys\"
+              chmod 700 \"\${ROOT_SSH_DIR}\"
+              chmod 600 \"\${ROOT_SSH_DIR}/authorized_keys\"
+              echo '[INNER] root authorized_keys written to /var/roothome/.ssh/'
+              echo '[INNER] root authorized_keys content:' && cat \"\${ROOT_SSH_DIR}/authorized_keys\"
+
+              # bluefin-test: inject to /var/home/bluefin-test
+              HOME_DIR=\"\${VAR_DIR}/home/bluefin-test\"
               mkdir -p \"\${HOME_DIR}/.ssh\"
               printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${HOME_DIR}/.ssh/authorized_keys\"
               chmod 700 \"\${HOME_DIR}/.ssh\"
               chmod 600 \"\${HOME_DIR}/.ssh/authorized_keys\"
               chown -R 1001:1001 \"\${HOME_DIR}\"
-              echo '[INNER] SSH keys injected to /var/home/bluefin-test'
-              echo '[INNER] authorized_keys content:' && cat \"\${HOME_DIR}/.ssh/authorized_keys\"
+              echo '[INNER] bluefin-test authorized_keys written to /var/home/bluefin-test/.ssh/'
+              echo '[INNER] bluefin-test authorized_keys content:' && cat \"\${HOME_DIR}/.ssh/authorized_keys\"
+
+              # Show bootc tmpfiles.d root-ssh conf for diagnostics.
+              echo '[INNER] bootc-root-ssh.conf:' && cat \"\${ETC}/tmpfiles.d/bootc-root-ssh.conf\" 2>/dev/null || echo '(not found)'
 
               # trap cleanup EXIT: umount btvar, umount installed, losetup -d
             " || PODMAN_EXIT=$?

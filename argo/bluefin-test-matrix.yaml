@@ -90,6 +90,8 @@ spec:
                   value: "bluefin"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
+                - name: containerdisk-tag
+                  value: "testing"
 
           - name: test-lts
             templateRef:
@@ -105,6 +107,8 @@ spec:
                   value: "bluefin"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
+                - name: containerdisk-tag
+                  value: "lts-testing"
 
     # onExit: teardown both VMs regardless of outcome
     - name: cleanup

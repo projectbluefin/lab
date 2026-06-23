@@ -44,6 +44,10 @@ spec:
             # and step defs. Defaults to main; set per-run to test a PR branch
             # without merging — e.g. `-p branch=fix/test-reliability-and-podgc`
             value: "main"
+          - name: containerdisk-tag
+            # image tag used to derive the screenshot slug pushed to GHCR
+            # e.g. "testing", "lts-testing", "dakota-testing"
+            value: ""
       # 60-minute ceiling: SSH wait (10min) + dnf install (10min) + test run (30min)
       activeDeadlineSeconds: 3600
       # hostNetwork: KubeVirt masquerade only routes from the host network namespace
@@ -345,7 +349,7 @@ spec:
                   | tar xz -C /usr/local/bin/ oras 2>/dev/null || true
               fi
               if command -v oras &>/dev/null; then
-                VARIANT_TAG="{{workflow.parameters.containerdisk-tag}}"
+                VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
                 case "${VARIANT_TAG}" in
                   lts-*)    IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
                   dakota-*) IMG_SLUG="${VARIANT_TAG}" ;;

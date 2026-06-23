@@ -389,8 +389,9 @@ spec:
             cat "${VDP}/etc/ssh/authorized_keys/root" 2>&1 || echo "MISSING"
             echo "[VERIFY] var/roothome/.ssh:"
             ls -la /mnt/verify/ostree/deploy/default/var/roothome/.ssh/ 2>&1 || echo "MISSING"
-            # Force btrfs commit so qemu-img convert sees clean filesystem
-            btrfs filesystem sync /mnt/verify
+            # Best-effort sync; btrfs-progs may not be in the outer pod image.
+            # The inner container's hard umount already committed all writes.
+            btrfs filesystem sync /mnt/verify 2>/dev/null || true
             umount /mnt/verify
           else
             echo "[VERIFY] ERROR: could not mount btrfs partition from raw disk"

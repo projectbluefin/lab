@@ -262,9 +262,14 @@ spec:
                 > \"\${ETC}/gdm/custom.conf\"
 
               # sshd: enable + permit key auth
+              # Enable sshd.service (standalone daemon) AND sshd.socket (socket activation).
+              # Bluefin/Fedora may use either; enabling both ensures sshd starts.
               mkdir -p \"\${ETC}/systemd/system/multi-user.target.wants\"
               ln -sf /usr/lib/systemd/system/sshd.service \
                 \"\${ETC}/systemd/system/multi-user.target.wants/sshd.service\" || true
+              mkdir -p \"\${ETC}/systemd/system/sockets.target.wants\"
+              ln -sf /usr/lib/systemd/system/sshd.socket \
+                \"\${ETC}/systemd/system/sockets.target.wants/sshd.socket\" || true
               mkdir -p \"\${ETC}/ssh/sshd_config.d\"
               # UsePAM no: avoids PAM account checks rejecting locked-password accounts.
               # AuthorizedKeysFile: point to /etc path so it works regardless of /var/home state.

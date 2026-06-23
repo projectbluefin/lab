@@ -251,7 +251,7 @@ spec:
                 echo 'bluefin-test:x:1001:1001:Test User:/var/home/bluefin-test:/bin/bash' \
                   >> \"\${ETC}/passwd\"
               grep -q '^bluefin-test:' \"\${ETC}/shadow\" 2>/dev/null || \
-                echo 'bluefin-test:!:19000:0:99999:7:::' >> \"\${ETC}/shadow\"
+                echo 'bluefin-test:*:19000:0:99999:7:::' >> \"\${ETC}/shadow\"
               grep -q '^bluefin-test:' \"\${ETC}/group\" 2>/dev/null || \
                 echo 'bluefin-test:x:1001:' >> \"\${ETC}/group\"
               sed -i 's/^\(wheel:x:10:.*\)$/\1,bluefin-test/' \"\${ETC}/group\" 2>/dev/null || true
@@ -271,9 +271,9 @@ spec:
               ln -sf /usr/lib/systemd/system/sshd.socket \
                 \"\${ETC}/systemd/system/sockets.target.wants/sshd.socket\" || true
               mkdir -p \"\${ETC}/ssh/sshd_config.d\"
-              # UsePAM no: avoids PAM account checks rejecting locked-password accounts.
-              # AuthorizedKeysFile: point to /etc path so it works regardless of /var/home state.
-              printf 'PubkeyAuthentication yes\nStrictModes no\nUsePAM no\nAuthorizedKeysFile /etc/ssh/test-authorized-keys\n' \
+              # Note: 'UsePAM no' is NOT supported in this Fedora openssh build.
+              # AuthorizedKeysFile: absolute path wins (Include is at top of sshd_config).
+              printf 'PubkeyAuthentication yes\nStrictModes no\nAuthorizedKeysFile /etc/ssh/test-authorized-keys\n' \
                 > \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
 
               # Write authorized key to /etc (read-only deployment, always present at runtime).

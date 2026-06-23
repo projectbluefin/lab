@@ -49,6 +49,7 @@ Run `just logs` first. Then match a row:
 | Workflow times out at SSH wait | `just list-vms` → confirm VMI is Ready. If SSH port open but auth fails, verify `bluefin-test-ssh-pubkey` secret exists in the VM's namespace: `kubectl get secret -n bluefin-test bluefin-test-ssh-pubkey` |
 | LTS VM goes `Stopped` immediately | `bluefin-test-ssh-pubkey` missing from `bluefin-lts-test` — check `manifests/bluefin-test-ssh-pubkey.yaml` covers both namespaces; force ArgoCD sync |
 | VMI `NotFound` 1 second after VM creation | Same as above — KubeVirt refused to start VM due to missing accessCredentials secret; VM status will be `Stopped` |
+| VM `Stopped` with `FailedCreate: metadata.labels must be no more than 63 characters` | vm-name exceeds K8s label limit. `bluefin-lts-testing-developer-<uuid>` = 67 chars. Fix: use `{{workflow.name}}-{{item}}` in `bluefin-qa-pipeline` (not `{{variant}}-{{item}}-{{uuid}}`). Already fixed in commit `7fca070`. |
 | `TypeError: ... requireResult` | Fix the step per [`docs/dogtail-testing.md`](dogtail-testing.md) §6.2 (`findChildren(...)` / `retry=False`) |
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |

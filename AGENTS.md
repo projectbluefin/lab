@@ -311,6 +311,7 @@ Loki captures workflow pod logs. Use the commands in [docs/agent-cheatsheet.md](
 - **No `generateName` in `manifests/`** — ArgoCD needs stable names to track resources. Use fixed `name:` fields.
 - **Use `workflowTemplateRef`** in CronWorkflows instead of inlining DAG templates — avoids duplication.
 - **Server-side apply is enabled** for `manifests/` — you can patch a subset of a resource's fields without owning the whole object.
+- **VM names must be ≤63 chars** — KubeVirt applies the VM name as a label value on the VMI and pod, which has a strict 63-char Kubernetes limit. Prefer `{{workflow.name}}-{{item}}` over `{{variant}}-{{item}}-{{workflow.uid}}`; workflow names are short and unique. A `FailedCreate` condition with `metadata.labels: must be no more than 63 characters` means the name is too long.
 
 ## Issue Filing
 

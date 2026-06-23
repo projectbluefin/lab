@@ -92,8 +92,8 @@ contract.
 
 | CronWorkflow | Time (UTC) | Pipeline | Parameters |
 | --- | --- | --- | --- |
-| `nightly-smoke` | 02:00 | `bluefin-qa-pipeline` | `image=ghcr.io/ublue-os/bluefin:latest`, `image-tag=latest`, `namespace=bluefin-test`, `suites=smoke,developer` |
-| `nightly-smoke-lts` | 02:30 | `bluefin-qa-pipeline` | `image=ghcr.io/ublue-os/bluefin:lts`, `image-tag=lts`, `namespace=bluefin-lts-test`, `suites=smoke,developer` |
+| `nightly-smoke` | 02:00 | `bluefin-qa-pipeline` | `image=ghcr.io/projectbluefin/bluefin`, `image-tag=testing`, `namespace=bluefin-test`, `suites=smoke,developer,system` |
+| `nightly-smoke-lts` | 02:30 | `bluefin-qa-pipeline` | `image=ghcr.io/projectbluefin/bluefin-lts`, `image-tag=lts-testing`, `namespace=bluefin-lts-test`, `suites=smoke,developer,system` |
 | `nightly-dakota` | 03:00 | `dakota-qa-pipeline` | `variant=default`, `branch=main`, `namespace=bluefin-test`, `suites=smoke` |
 | `nightly-knuckle` | 03:30 | `knuckle-qa-pipeline` | `branch=main`, `namespace=knuckle-test`, `suite=smoke`, `tests-branch=main` |
 

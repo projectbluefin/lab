@@ -203,18 +203,22 @@ spec:
           # The kernel's selinux_inode_setxattr hook validates label types against the
           # host's in-memory policy. When building bluefin-lts on a bluefin host, the lts
           # image may contain label types absent from the host policy → EINVAL.
-          # The kernel code in selinux_inode_setxattr absorbs EINVAL when capable(CAP_MAC_ADMIN):
-          #   rc = security_context_to_sid(value, size, &newsid, GFP_KERNEL);
-          #   if (rc == -EINVAL && !capable(CAP_MAC_ADMIN)) { return rc; }
-          # Fix: explicitly add CAP_MAC_ADMIN to the inner container so the EINVAL is absorbed
-          # and the label is set to unlabeled_t (acceptable since the installed VM uses selinux=0).
-          # This is safe: the ghost-heavy-compute mutex serialises builds, and the VM boots
-          # with selinux=0 karg so the temporary unlabeled_t labels are never used at runtime.
-          # Ref: kernel security/selinux/hooks.c selinux_inode_setxattr; bootc-dev/bootc#279
+          # Cross-policy fsetxattr(security.selinux) EINVAL root cause (confirmed via kernel source):
+          # selinux_inode_setxattr calls has_cap_mac_admin() which requires BOTH:
+          #   1. cap_capable(cred, &init_user_ns, CAP_MAC_ADMIN, ...) — kernel cap (passes w/ privileged)
+          #   2. cred_has_capability(cred, CAP_MAC_ADMIN, ...) — SELinux AVC check for
+          #      capability2 { mac_admin } in the running container's SELinux TYPE
+          # The outer K8s pod runs as spc_t (super-privileged), which has capability2 mac_admin.
+          # --security-opt label=type:unconfined_t overrides the type to unconfined_t; if that
+          # type's policy lacks capability2 mac_admin, has_cap_mac_admin returns false → EINVAL.
+          # Fix: --security-opt label=disable inherits the outer K8s pod's spc_t context.
+          # spc_t has capability2 mac_admin → has_cap_mac_admin returns true → EINVAL absorbed.
+          # Labels forced to unlabeled_t (fine: VM boots with selinux=0 karg anyway).
+          # Ref: kernel security/selinux/hooks.c:3166 has_cap_mac_admin(); bootc-dev/bootc#279
           PODMAN_EXIT=0
           podman run --rm --privileged --pid=host --ipc=host \
             --cap-add=CAP_MAC_ADMIN \
-            --security-opt label=type:unconfined_t \
+            --security-opt label=disable \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "${STAGING}:/output" \

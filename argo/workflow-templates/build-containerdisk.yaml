@@ -191,12 +191,13 @@ spec:
           # Configure cgroupfs to avoid systemd cgroup manager conflict in k8s.
           printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
 
+          echo "[DIAG] pre-podman disk: $(ls -la ${DISK} 2>&1)"
+          echo "[DIAG] mounts under /mnt: $(mount | grep '/mnt' 2>/dev/null || echo none)"
+
           # Run bootc install to-disk inside the Bluefin container via podman.
           # Key: the inner container creates its OWN loop device with --partscan (-P).
-          # If the outer container held the loop device open, BLKRRPART would return EINVAL
-          # and bootc would fail with "Device has no children".  Creating the loop device
-          # inside the inner container avoids that competing lock.
           # Mount staging to /var/tmp/disk-staging — /mnt may not exist in the Bluefin OCI image.
+          PODMAN_EXIT=0
           podman run --rm --privileged --pid=host \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
@@ -204,29 +205,35 @@ spec:
             "${IMAGE}" \
             bash -c "
               set -euo pipefail
+              echo '[INNER] disk-staging contents: '\$(ls -la /var/tmp/disk-staging/ 2>&1)
               LOOP=\$(losetup -f --show -P /var/tmp/disk-staging/disk.raw)
-              echo 'Inner loop: '\"\${LOOP}\"
-              trap 'losetup -d \"\$LOOP\" 2>/dev/null || true' EXIT
+              echo '[INNER] loop: '\${LOOP}
+              trap 'losetup -d \"\${LOOP}\" 2>/dev/null || true' EXIT
               bootc install to-disk \
                 --generic-image \
                 --filesystem=btrfs \
                 --source-imgref 'docker://${IMAGE}' \
                 --target-no-signature-verification \
                 \"\${LOOP}\"
-            " || {
-            EXIT=$?
+            " || PODMAN_EXIT=$?
+
+          echo "[DIAG] podman exit=${PODMAN_EXIT}"
+          echo "[DIAG] post-podman disk: $(ls -la ${DISK} 2>&1)"
+          echo "[DIAG] mounts under /mnt: $(mount | grep '/mnt' 2>/dev/null || echo none)"
+
+          if [[ "${PODMAN_EXIT}" -ne 0 ]]; then
             # bootc#2246: check ALLOCATED blocks (not logical size — sparse file is always 15G).
-            # A sparse file has 0 blocks; a written disk has millions.  >0 means data was written.
             ALLOCATED=$(stat -c%b "${DISK}" 2>/dev/null || echo 0)
+            echo "[DIAG] allocated blocks=${ALLOCATED}"
             if [[ "${ALLOCATED}" -gt 0 ]]; then
-              echo "WARNING: bootc exited ${EXIT} but disk has ${ALLOCATED} allocated blocks (bootc#2246) — continuing"
+              echo "WARNING: bootc exited ${PODMAN_EXIT} but disk has ${ALLOCATED} allocated blocks (bootc#2246) — continuing"
               umount -l /mnt 2>/dev/null || true
             else
               losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
               rm -f "${DISK}"
-              exit "${EXIT}"
+              exit "${PODMAN_EXIT}"
             fi
-          }
+          fi
 
           # Clean up any leftover loop devices for this file
           losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d

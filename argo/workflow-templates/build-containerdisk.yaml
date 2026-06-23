@@ -168,36 +168,63 @@ spec:
 
           truncate -s 15G "${DISK}"
 
-          # Write SSH public key to staging so bootc can read it inside the container.
-          printf '%s\n' "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/authorized_keys"
-
-          # Configure podman storage to use the staging hostPath (large NVMe) instead of
-          # ephemeral pod storage, which would be evicted when pull fills it with ~5GB of layers.
+          # Configure podman storage to the staging hostPath (large NVMe).
+          # The inner container (bluefin) needs -v pointing at this graph root
+          # so bootc can find the image layers it is running from.
+          # Ref: bootc install docs — "-v /var/lib/containers:/var/lib/containers
+          #   is required in order for the container to access its own underlying image"
           mkdir -p /mnt/staging/podman-storage
           mkdir -p /etc/containers
           printf '[storage]\ndriver = "overlay"\nrunRoot = "/mnt/staging/podman-storage/run"\ngraphRoot = "/mnt/staging/podman-storage/graph"\n' \
             > /etc/containers/storage.conf
+          printf '[engine]\ncgroup_manager = "cgroupfs"\n' \
+            > /etc/containers/containers.conf
 
-          # Pull image (uses zot-ghcr mirror if cached)
+          # Pull image into custom storage (avoids filling ephemeral pod overlay).
           podman pull --tls-verify=true "${IMAGE}"
 
-          # Configure cgroupfs to avoid systemd cgroup manager conflict in k8s.
-          printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
-
-          # Run bootc install to-disk inside the Bluefin container via podman.
-          # --disable-selinux: bootc-native flag, no disk patching needed.
-          # --root-ssh-authorized-keys: bootc-native injection via systemd tmpfiles.d.
-          # --karg=selinux=0: belt-and-suspenders alongside --disable-selinux.
+          echo "Starting bootc install (via-loopback)..."
+          # SSH_AUTHORIZED_KEYS is passed via -e into the container so the key
+          # is written inside the container at /tmp/authorized_keys.
+          # Writing via staging bind-mount is unreliable: bind-mount source path
+          # is resolved in the pod's mount namespace but the inner container may
+          # see the underlying device, not the overlay, causing ENOENT.
+          # Ref: bootc install docs — use --via-loopback for VM disk creation.
           PODMAN_EXIT=0
-          podman run --rm --privileged --pid=host \
+          podman run --rm --privileged --pid=host --ipc=host \
+            --security-opt label=type:unconfined_t \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
-            -v "${STAGING}:/var/tmp/disk-staging" \
+            -v "${STAGING}:/output" \
+            -v "/mnt/staging/podman-storage/graph:/var/lib/containers/storage" \
+            -e "SSH_AUTHORIZED_KEYS=${SSH_AUTHORIZED_KEYS}" \
             "${IMAGE}" \
             bash -c "
               set -euo pipefail
-              LOOP=\$(losetup -f --show -P /var/tmp/disk-staging/disk.raw)
-              echo '[INNER] loop: '\${LOOP}
+
+              # Write authorized_keys inside the container (avoids bind-mount ENOENT).
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > /tmp/authorized_keys
+              echo '[INNER] key bytes: '\$(wc -c < /tmp/authorized_keys)
+
+              # --via-loopback: upstream recommended pattern for VM disk creation.
+              # bootc manages the loop device internally and releases it on exit.
+              bootc install to-disk \
+                --generic-image \
+                --filesystem=btrfs \
+                --target-no-signature-verification \
+                --disable-selinux \
+                --karg=selinux=0 \
+                --root-ssh-authorized-keys /tmp/authorized_keys \
+                --via-loopback /output/disk.raw
+
+              echo '[INNER] bootc done, mounting for post-install'
+
+              # Post-install: user, GDM autologin, sshd, SSH key injection.
+              # bootc released its loop device; create a new one for our work.
+              # qecore-headless starts GDM and requires autologin for a non-root
+              # user (gitlab.com/dogtail/qecore README).
+              LOOP=\$(losetup -f --show -P /output/disk.raw)
+              echo '[INNER] post-install loop: '\${LOOP}
 
               cleanup() {
                 umount /mnt/btvar 2>/dev/null || true
@@ -205,24 +232,6 @@ spec:
                 losetup -d \"\${LOOP}\" 2>/dev/null || true
               }
               trap cleanup EXIT
-
-              bootc install to-disk \
-                --generic-image \
-                --filesystem=btrfs \
-                --source-imgref 'docker://${IMAGE}' \
-                --target-no-signature-verification \
-                --disable-selinux \
-                --karg=selinux=0 \
-                --root-ssh-authorized-keys /var/tmp/disk-staging/authorized_keys \
-                \"\${LOOP}\"
-
-              # Post-install: configure test user, GDM autologin, and sshd.
-              # Still inside the Bluefin container — btrfs-progs are available.
-              # LOOP is still attached; bootc does not detach a loop we created.
-              #
-              # qecore-headless starts/stops GDM and requires autologin to be
-              # configured for a non-root user before tests can run.
-              # Ref: gitlab.com/dogtail/qecore README.
 
               mkdir -p /mnt/installed
               mount -t btrfs \"\${LOOP}p3\" /mnt/installed
@@ -246,7 +255,7 @@ spec:
                 echo 'bluefin-test:x:1001:' >> \"\${ETC}/group\"
               sed -i 's/^\(wheel:x:10:.*\)$/\1,bluefin-test/' \"\${ETC}/group\" 2>/dev/null || true
 
-              # GDM autologin — required by qecore-headless
+              # GDM autologin
               mkdir -p \"\${ETC}/gdm\"
               printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=bluefin-test\n' \
                 > \"\${ETC}/gdm/custom.conf\"
@@ -273,7 +282,7 @@ spec:
               mount -t btrfs -o subvol=var \"\${LOOP}p3\" /mnt/btvar
               HOME_DIR=\"/mnt/btvar/home/bluefin-test\"
               mkdir -p \"\${HOME_DIR}/.ssh\"
-              cp /var/tmp/disk-staging/authorized_keys \"\${HOME_DIR}/.ssh/authorized_keys\"
+              printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${HOME_DIR}/.ssh/authorized_keys\"
               chmod 700 \"\${HOME_DIR}/.ssh\"
               chmod 600 \"\${HOME_DIR}/.ssh/authorized_keys\"
               chown -R 1001:1001 \"\${HOME_DIR}\"
@@ -298,7 +307,6 @@ spec:
 
           # Clean up any leftover loop devices for this file
           losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
-          rm -f "${STAGING}/authorized_keys"
           chown 107:107 "${DISK}"
           echo "install-to-disk complete: ${DISK}"
 

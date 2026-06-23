@@ -6,7 +6,8 @@ description: >
   debugging VM boot failures, or working with KubeVirt manifests.
 metadata:
   context7-sources:
-    - /argoproj/argo-workflows
+    - /kubevirt/kubevirt
+    - /kubevirt/containerized-data-importer
 ---
 
 # KubeVirt VMs — testing-lab Skill

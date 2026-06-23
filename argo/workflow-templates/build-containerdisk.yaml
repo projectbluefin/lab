@@ -206,27 +206,29 @@ spec:
           # most reliable mechanism (no post-install ostree-etc-merge concerns).
           echo "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/root-ssh-keys"
 
+          echo "[OUTER-DIAG] SELinux context: $(cat /proc/self/attr/current 2>/dev/null || echo 'unavailable')"
+
           # Ref: bootc install docs — use --via-loopback for VM disk creation.
           # Cross-policy fsetxattr(security.selinux) EINVAL fix:
           # The kernel's selinux_inode_setxattr hook validates label types against the
           # host's in-memory policy. When building bluefin-lts on a bluefin host, the lts
           # image may contain label types absent from the host policy → EINVAL.
-          # Cross-policy fsetxattr(security.selinux) EINVAL root cause (confirmed via kernel source):
           # selinux_inode_setxattr calls has_cap_mac_admin() which requires BOTH:
           #   1. cap_capable(cred, &init_user_ns, CAP_MAC_ADMIN, ...) — kernel cap (passes w/ privileged)
           #   2. cred_has_capability(cred, CAP_MAC_ADMIN, ...) — SELinux AVC check for
           #      capability2 { mac_admin } in the running container's SELinux TYPE
-          # The outer K8s pod runs as spc_t (super-privileged), which has capability2 mac_admin.
-          # --security-opt label=type:unconfined_t overrides the type to unconfined_t; if that
-          # type's policy lacks capability2 mac_admin, has_cap_mac_admin returns false → EINVAL.
-          # Fix: --security-opt label=disable inherits the outer K8s pod's spc_t context.
-          # spc_t has capability2 mac_admin → has_cap_mac_admin returns true → EINVAL absorbed.
-          # Labels forced to unlabeled_t (fine: VM boots with selinux=0 karg anyway).
-          # Ref: kernel security/selinux/hooks.c:3166 has_cap_mac_admin(); bootc-dev/bootc#279
+          # Diagnostic (commit 12a9986) confirmed the inner container runs as unconfined_service_t,
+          # which lacks capability2 mac_admin in Fedora/Bluefin policy.
+          # seLinuxOptions.type=spc_t on the outer pod did not propagate to the inner container —
+          # either k3s/containerd does not apply seLinuxOptions, or an exec transition overrides it.
+          # Fix: --security-opt label=type:spc_t explicitly sets the inner container's SELinux type
+          # to spc_t, which has capability2 mac_admin → has_cap_mac_admin returns true → EINVAL
+          # absorbed → unknown label types forced to unlabeled_t (fine; VM boots with selinux=0).
+          # Ref: kernel security/selinux/hooks.c has_cap_mac_admin(); bootc-dev/bootc#279
           PODMAN_EXIT=0
           podman run --rm --privileged --pid=host --ipc=host \
             --cap-add=CAP_MAC_ADMIN \
-            --security-opt label=disable \
+            --security-opt label=type:spc_t \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "${STAGING}:/output" \

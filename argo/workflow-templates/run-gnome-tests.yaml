@@ -183,6 +183,7 @@ spec:
             # SSH keys are set up here rather than relying on disk injection.
             echo "Bootstrapping bluefin-test user and SSH access via root..." >&2
             SSH_PUBKEY="$(cat ${SSH_KEY}.pub)"
+            SSH_PUBKEY="$(cat ${SSH_KEY}.pub)"
             ${ROOT_SSH} "
               set -euo pipefail
               # Create bluefin-test user if not already present (uid 1001, wheel)
@@ -193,16 +194,23 @@ spec:
               else
                 echo '[ROOT] bluefin-test user exists'
               fi
+              # Unlock account: useradd without a password locks the account (!).
+              # With UsePAM no, sshd rejects locked accounts before checking keys.
+              passwd -u bluefin-test 2>/dev/null || usermod -p '*' bluefin-test
               # Ensure home directory and .ssh exist with correct ownership/permissions.
-              # KubeVirt qemuGuestAgent injects the key to ~/.ssh/authorized_keys for
-              # both root and bluefin-test (provision-bluefin-vm.yaml accessCredentials).
-              # We ensure the directory exists so the injection has a place to land.
-              mkdir -p /var/home/bluefin-test
-              chown 1001:1001 /var/home/bluefin-test
-              chmod 750 /var/home/bluefin-test
               mkdir -p /var/home/bluefin-test/.ssh
-              chown 1001:1001 /var/home/bluefin-test/.ssh
+              chown -R 1001:1001 /var/home/bluefin-test
+              chmod 750 /var/home/bluefin-test
               chmod 700 /var/home/bluefin-test/.ssh
+              # Write key to ~/.ssh/authorized_keys (KubeVirt accessCredentials target)
+              # and to /etc/ssh/test-authorized-keys (old containerdisk sshd config).
+              # Both paths covered so this works across all disk versions.
+              printf '%s\n' '${SSH_PUBKEY}' > /var/home/bluefin-test/.ssh/authorized_keys
+              chown 1001:1001 /var/home/bluefin-test/.ssh/authorized_keys
+              chmod 600 /var/home/bluefin-test/.ssh/authorized_keys
+              printf '%s\n' '${SSH_PUBKEY}' >> /etc/ssh/test-authorized-keys 2>/dev/null || true
+              mkdir -p /etc/ssh/authorized_keys
+              printf '%s\n' '${SSH_PUBKEY}' > /etc/ssh/authorized_keys/bluefin-test 2>/dev/null || true
               # Ensure sudoers entry
               echo 'bluefin-test ALL=(ALL) NOPASSWD:ALL' \
                 > /etc/sudoers.d/bluefin-test

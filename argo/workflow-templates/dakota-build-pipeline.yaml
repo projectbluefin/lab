@@ -33,6 +33,12 @@ spec:
   templates:
 
     - name: build
+      inputs:
+        parameters:
+          - name: ref
+            value: "{{workflow.parameters.ref}}"
+          - name: repo
+            value: "{{workflow.parameters.repo}}"
       dag:
         tasks:
           - name: build-bluefin
@@ -43,6 +49,10 @@ spec:
                   value: "oci/bluefin.bst"
                 - name: tag
                   value: "dakota-cluster-testing"
+                - name: ref
+                  value: "{{inputs.parameters.ref}}"
+                - name: repo
+                  value: "{{inputs.parameters.repo}}"
           - name: build-bluefin-nvidia
             template: bst-build
             arguments:
@@ -51,6 +61,10 @@ spec:
                   value: "oci/bluefin-nvidia.bst"
                 - name: tag
                   value: "dakota-cluster-testing-nvidia"
+                - name: ref
+                  value: "{{inputs.parameters.ref}}"
+                - name: repo
+                  value: "{{inputs.parameters.repo}}"
 
     - name: bst-build
       priorityClassName: bst-build
@@ -58,6 +72,16 @@ spec:
         parameters:
           - name: element
           - name: tag
+          - name: ref
+          - name: repo
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: ["bluefin"]
       volumes:
         - name: fuse
           hostPath:
@@ -97,8 +121,8 @@ spec:
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"
           TAG="{{inputs.parameters.tag}}"
-          REF="{{workflow.parameters.ref}}"
-          REPO="{{workflow.parameters.repo}}"
+          REF="{{inputs.parameters.ref}}"
+          REPO="{{inputs.parameters.repo}}"
 
           echo "=== Cloning dakota @ ${REF} ==="
           git clone --depth=1 --branch "${REF}" "${REPO}" /src

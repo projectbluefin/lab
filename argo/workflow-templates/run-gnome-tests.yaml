@@ -396,6 +396,10 @@ spec:
               FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
               HISTORY=$(echo "$CURRENT" | jq -r 'if .content then (.content | gsub("\n";"") | @base64d | fromjson | .history // []) else [] end' 2>/dev/null || echo "[]")
 
+              # Capture failing scenario names for the dashboard
+              FAILED_NAMES=$(jq -c '[.[].elements[] | select(.status=="failed") | .name] | unique' \
+                /tmp/results/results.json 2>/dev/null || echo "[]")
+
               ENTRY=$(jq -nc \
                 --arg rd "$NOW" --arg wf "{{workflow.name}}" \
                 --arg st "$RUN_STATUS" --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
@@ -405,9 +409,10 @@ spec:
                 --arg v "$IMG_SLUG" --arg su "$SUITE" --arg lr "$NOW" \
                 --arg wf "{{workflow.name}}" --arg st "$RUN_STATUS" \
                 --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
+                --argjson fn "$FAILED_NAMES" \
                 --arg ss "https://projectbluefin.github.io/testing-lab/screenshots/${IMG_SLUG}-${SUITE}-latest.png" \
                 --argjson h "$(echo "$HISTORY" | jq -c --argjson e "$ENTRY" '[$e] + . | .[:10]')" \
-                '{variant:$v,suite:$su,last_run:$lr,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f,screenshot_url:$ss,history:$h}')
+                '{variant:$v,suite:$su,last_run:$lr,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f,failed_scenarios:$fn,screenshot_url:$ss,history:$h}')
 
               CONTENT=$(echo "$PAYLOAD_OBJ" | base64 -w0)
               BODY=$(jq -nc \

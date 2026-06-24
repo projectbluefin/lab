@@ -25,6 +25,697 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 14px;
       line-height: 1.5;
+      padding: 20px 24px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Header ─────────────────────────────────────── */
+    header {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 16px; gap: 16px; flex-wrap: wrap;
+    }
+    h1 { font-size: 18px; font-weight: 600; }
+    .header-meta { font-size: 12px; color: var(--muted); }
+    .header-meta a { color: var(--link); }
+
+    /* ── Failure alert banner ────────────────────────── */
+    .alert-banner {
+      display: flex; align-items: center; gap: 12px;
+      background: #2e1c1c; border: 1px solid #6e2020;
+      border-radius: 6px; padding: 10px 16px;
+      margin-bottom: 16px; font-size: 13px;
+    }
+    .alert-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fail); flex-shrink: 0; }
+    .alert-text { color: #f85149; font-weight: 600; }
+    .alert-detail { color: var(--muted); margin-left: 4px; }
+
+    /* ── Section heading ─────────────────────────────── */
+    h2 {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted);
+      margin: 20px 0 8px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Failure cards ───────────────────────────────── */
+    .failure-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+    .failure-card {
+      background: var(--surface); border: 1px solid #6e2020;
+      border-left: 3px solid var(--fail);
+      border-radius: 6px; padding: 12px 16px;
+    }
+    .failure-title {
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap; margin-bottom: 8px;
+    }
+    .failure-image { font-weight: 600; font-size: 14px; }
+    .failure-suite {
+      background: #2e1c1c; color: var(--fail);
+      border: 1px solid #6e202040;
+      padding: 1px 8px; border-radius: 4px;
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+    }
+    .failure-count { font-size: 13px; color: var(--fail); font-weight: 600; }
+    .failure-meta {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      font-size: 12px; color: var(--muted); margin-bottom: 8px;
+      align-items: center;
+    }
+    .failure-meta a { color: var(--link); }
+    .failure-meta .sep { color: var(--border); }
+    .sparkline { display: inline-flex; gap: 3px; align-items: center; vertical-align: middle; }
+    .spark-dot {
+      width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+      display: inline-block;
+    }
+    .spark-pass    { background: var(--pass); }
+    .spark-fail    { background: var(--fail); }
+    .spark-pending { background: var(--border); }
+    .spark-running { background: var(--run); }
+    .failing-scenarios {
+      margin-top: 8px; font-size: 12px;
+      border-top: 1px solid var(--border); padding-top: 8px;
+    }
+    .failing-scenarios ul { list-style: none; }
+    .failing-scenarios li {
+      padding: 2px 0 2px 12px; color: var(--muted);
+      position: relative;
+    }
+    .failing-scenarios li::before {
+      content: "·"; position: absolute; left: 0; color: var(--fail);
+    }
+    details summary {
+      cursor: pointer; color: var(--link); font-size: 12px;
+      list-style: none; margin-bottom: 4px;
+    }
+    details summary::-webkit-details-marker { display: none; }
+    details[open] summary { color: var(--muted); }
+
+    /* ── Status table ────────────────────────────────── */
+    .status-table {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; overflow: hidden; margin-bottom: 8px;
+    }
+    .status-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .status-table th {
+      padding: 7px 12px; text-align: left; font-weight: 500;
+      color: var(--muted); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .status-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .status-table tr:last-child td { border-bottom: none; }
+    .status-table tr:hover td { background: var(--surface2); }
+    .suite-cell {
+      white-space: nowrap; cursor: default;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .suite-cell a { display: flex; align-items: center; gap: 6px; color: inherit; }
+    .suite-cell a:hover { text-decoration: none; }
+    .cell-pass { color: var(--pass); }
+    .cell-fail { color: var(--fail); }
+    .cell-pend { color: var(--muted); }
+    .cell-run  { color: var(--run); }
+
+    /* ── Running queue ───────────────────────────────── */
+    .queue-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+    .queue-row {
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 3px solid var(--run);
+      border-radius: 6px; padding: 8px 14px;
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap; font-size: 13px;
+    }
+    .queue-name { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+    .queue-dur  { color: var(--run); font-variant-numeric: tabular-nums; font-size: 12px; }
+    .queue-label{ color: var(--muted); font-size: 12px; }
+
+    /* ── Cluster strip ───────────────────────────────── */
+    .cluster-strip {
+      display: flex; flex-wrap: wrap; gap: 16px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 10px 16px;
+      font-size: 12px; margin-bottom: 8px; align-items: center;
+    }
+    .cluster-node { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot-pass { background: var(--pass); }
+    .dot-fail { background: var(--fail); }
+    .dot-run  { background: var(--run); }
+    .cluster-sep { color: var(--border); }
+    .sem-pips { display: inline-flex; gap: 2px; vertical-align: middle; }
+    .sem-pip {
+      width: 10px; height: 14px; border-radius: 1px;
+      background: var(--surface2); border: 1px solid var(--border);
+    }
+    .sem-pip.used { background: var(--run); border-color: var(--run); }
+
+    /* ── Generic table ───────────────────────────────── */
+    .data-block {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; overflow: hidden; margin-bottom: 16px;
+    }
+    .data-block table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-block th {
+      padding: 7px 12px; text-align: left; color: var(--muted);
+      font-weight: 500; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .data-block td { padding: 7px 12px; border-bottom: 1px solid var(--border); }
+    .data-block tr:last-child td { border-bottom: none; }
+    .data-block tr:hover td { background: var(--surface2); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .badge {
+      padding: 2px 7px; border-radius: 12px; font-size: 11px;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .badge-pass    { background: #1c2e1c; color: var(--pass); border: 1px solid #2ea04326; }
+    .badge-fail    { background: #2e1c1c; color: var(--fail); border: 1px solid #f8514926; }
+    .badge-pending { background: #2e261c; color: var(--pending); border: 1px solid #d2992226; }
+    .badge-run     { background: #1c2333; color: var(--run);  border: 1px solid #58a6ff26; }
+    .empty { color: var(--muted); padding: 16px; text-align: center; }
+
+    /* ── Screenshot expander ─────────────────────────── */
+    .screenshot-thumb {
+      width: 120px; height: 68px; object-fit: cover; border-radius: 4px;
+      border: 1px solid var(--border); vertical-align: middle; cursor: pointer;
+    }
+    .screenshot-thumb:hover { border-color: var(--link); }
+
+    /* ── History section ─────────────────────────────── */
+    .history-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 12px; margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Bluefin QA Dashboard</h1>
+  <div class="header-meta" id="header-meta">Loading…</div>
+</header>
+
+<!-- Alert banner (failures only) -->
+<div id="alert-banner"></div>
+
+<!-- Failures section (shown only when failures exist) -->
+<div id="failures-section"></div>
+
+<!-- Image status table -->
+<h2>Image Status</h2>
+<div class="status-table">
+  <table>
+    <thead>
+      <tr>
+        <th>Image</th>
+        <th>Smoke</th>
+        <th>Developer</th>
+        <th>System</th>
+        <th>Last Run</th>
+        <th>Trigger / PR</th>
+        <th>Workflow</th>
+      </tr>
+    </thead>
+    <tbody id="status-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Running queue -->
+<div id="queue-section"></div>
+
+<!-- Cluster health strip -->
+<h2>Cluster</h2>
+<div class="cluster-strip" id="cluster-strip">Loading…</div>
+
+<!-- Recent runs -->
+<h2>Recent Runs</h2>
+<div class="data-block">
+  <table>
+    <thead>
+      <tr>
+        <th>Workflow</th>
+        <th>Image</th>
+        <th>Smoke</th>
+        <th>Developer</th>
+        <th>System</th>
+        <th>Duration</th>
+        <th>Trigger / PR</th>
+        <th>Result</th>
+      </tr>
+    </thead>
+    <tbody id="runs-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Screenshots -->
+<h2>Screenshots</h2>
+<div id="screenshots-section" style="margin-bottom:8px"></div>
+
+<!-- Run history -->
+<h2>History</h2>
+<div class="history-grid" id="history-grid"><p style="color:var(--muted)">Loading…</p></div>
+
+<script>
+const ARGO_UI   = 'http://192.168.1.102:32746';
+const GH_REPO   = 'https://github.com/projectbluefin/testing-lab';
+const SUITES    = ['smoke', 'developer', 'system'];
+const SUITE_FEATURES = {
+  smoke:     GH_REPO + '/tree/main/tests/smoke/features',
+  developer: GH_REPO + '/tree/main/tests/developer/features',
+  system:    GH_REPO + '/tree/main/tests/system/features',
+};
+// PR context: prefix → GitHub repo slug
+const PR_REPOS = {
+  common:  'projectbluefin/common',
+  blu:     'projectbluefin/bluefin',
+  lts:     'projectbluefin/bluefin-lts',
+  aurora:  'ublue-os/aurora',
+  bazzite: 'ublue-os/bazzite',
+  dakota:  'projectbluefin/dakota',
+};
+
+async function load(url) {
+  try { const r = await fetch(url); return r.ok ? r.json() : null; }
+  catch { return null; }
+}
+
+function fmtAgo(iso) {
+  if (!iso) return 'never';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60000)    return 'just now';
+  if (ms < 3600000)  return Math.round(ms/60000)+'m ago';
+  if (ms < 86400000) return Math.round(ms/3600000)+'h ago';
+  return Math.round(ms/86400000)+'d ago';
+}
+function fmt(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString(undefined, { dateStyle:'short', timeStyle:'short' }); }
+  catch { return iso; }
+}
+function argoHref(wf) { return `${ARGO_UI}/workflows/argo/${wf}`; }
+function argoLink(wf, label) {
+  if (!wf) return '—';
+  const txt = label || wf;
+  return `<a class="mono" href="${argoHref(wf)}" target="_blank" rel="noopener">${txt}</a>`;
+}
+
+// Extract PR context from workflow name
+function prContext(wfName) {
+  if (!wfName) return null;
+  const m = wfName.match(/^([a-z]+)-(\d+)-/);
+  if (!m) return null;
+  const [, prefix, num] = m;
+  const repo = PR_REPOS[prefix];
+  if (!repo) return null;
+  return { repo, num, url: `https://github.com/${repo}/pull/${num}` };
+}
+function prLabel(wfName) {
+  const ctx = prContext(wfName);
+  if (!ctx) return null;
+  return `<a href="${ctx.url}" target="_blank" rel="noopener">${ctx.repo.split('/')[1]}#${ctx.num}</a>`;
+}
+function triggerLabel(r) {
+  const pr = prLabel(r.id || r.workflow_name || '');
+  if (pr) return pr;
+  const t = r.trigger || '';
+  if (t === 'nightly')   return '<span style="color:var(--muted)">nightly</span>';
+  if (t === 'manual')    return '<span style="color:var(--muted)">manual</span>';
+  if (t === 'pr-poller') return '<span style="color:var(--muted)">pr-poller</span>';
+  return `<span style="color:var(--muted)">${t||'—'}</span>`;
+}
+
+// Sparkline from history array (newest-first)
+function sparkline(history) {
+  if (!history?.length) return '<span style="color:var(--muted);font-size:11px">no history</span>';
+  const dots = history.slice(0, 10).map(h => {
+    const s = h.status;
+    const cls = s === 'passed' ? 'spark-pass' : s === 'failed' ? 'spark-fail' : s === 'running' ? 'spark-running' : 'spark-pending';
+    const title = `${fmt(h.run||h.run_date)}: ${s} (${(h.scenarios||0) - (h.failed||0)}/${h.scenarios||0})`;
+    return `<span class="spark-dot ${cls}" title="${title}"></span>`;
+  }).join('');
+  return `<span class="sparkline">${dots}</span>`;
+}
+
+// Find when a suite first started failing (walk history newest→oldest)
+function failingSince(history) {
+  if (!history?.length) return null;
+  let since = null;
+  for (const h of history) {
+    if (h.status === 'failed') since = h.run || h.run_date;
+    else break;
+  }
+  return since;
+}
+
+// Suite cell for status table
+function suiteCell(d, suite) {
+  if (!d) return `<div class="suite-cell cell-pend">—</div>`;
+  const score = d.scenarios - d.failed;
+  if (d.status === 'running') {
+    return `<div class="suite-cell cell-run">
+      <a href="${argoHref(d.workflow_name)}" target="_blank" rel="noopener">
+        running
+      </a>
+    </div>`;
+  }
+  if (d.status === 'passed') {
+    return `<div class="suite-cell cell-pass">
+      <a href="${argoHref(d.workflow_name)}" target="_blank" rel="noopener">
+        ✓ ${score}/${d.scenarios}
+      </a>
+    </div>`;
+  }
+  if (d.status === 'failed') {
+    return `<div class="suite-cell cell-fail">
+      <a href="${argoHref(d.workflow_name)}" target="_blank" rel="noopener">
+        ✗ ${score}/${d.scenarios}
+      </a>
+    </div>`;
+  }
+  return `<div class="suite-cell cell-pend">pending</div>`;
+}
+
+// Run score cell for recent runs table
+function runSuiteCell(d) {
+  if (!d) return '<td style="color:var(--muted)">—</td>';
+  const score = (d.scenarios||0) - (d.failed||0);
+  const col = d.status === 'passed' ? 'var(--pass)' : d.status === 'running' ? 'var(--run)' : 'var(--fail)';
+  return `<td style="color:${col};font-variant-numeric:tabular-nums">
+    <a href="${argoHref(d.workflow_name||'')}" target="_blank" rel="noopener" style="color:inherit">
+      ${score}/${d.scenarios||0}
+    </a>
+  </td>`;
+}
+
+// ── Build failures section ──────────────────────────────────────────────────
+function buildFailures(allData) {
+  // allData: [{image, suite, data}] for all failing suites
+  const failures = allData.filter(d => d.data?.status === 'failed');
+  if (!failures.length) {
+    document.getElementById('alert-banner').innerHTML = '';
+    document.getElementById('failures-section').innerHTML = '';
+    return;
+  }
+
+  const summary = failures.map(f => {
+    const passed = f.data.scenarios - f.data.failed;
+    return `${f.image.label} <strong>${f.suite}</strong> ${passed}/${f.data.scenarios}`;
+  }).join(' · ');
+
+  document.getElementById('alert-banner').innerHTML = `
+    <div class="alert-banner">
+      <span class="alert-dot"></span>
+      <span class="alert-text">${failures.length} suite${failures.length>1?'s':''} failing</span>
+      <span class="alert-detail">${summary}</span>
+    </div>`;
+
+  const cards = failures.map(f => {
+    const d = f.data;
+    const passed = d.scenarios - d.failed;
+    const since = failingSince(d.history);
+    const pr = prLabel(d.workflow_name);
+    const trigger = pr ? `PR ${pr}` : 'nightly / manual';
+    const spark = sparkline(d.history);
+    const argoUrl = d.workflow_name ? argoHref(d.workflow_name) : null;
+    const featureUrl = SUITE_FEATURES[f.suite];
+
+    const scenarioList = d.failed_scenarios?.length
+      ? (() => {
+          const items = d.failed_scenarios.map(s =>
+            `<li>${s.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</li>`).join('');
+          const show = d.failed_scenarios.length > 6;
+          const inner = `<ul>${items}</ul>`;
+          return `<div class="failing-scenarios">
+            ${show ? `<details><summary>▸ ${d.failed_scenarios.length} failing scenarios (click to expand)</summary>${inner}</details>` : inner}
+          </div>`;
+        })()
+      : `<div class="failing-scenarios" style="color:var(--muted);font-size:12px">
+           Scenario names available after next test run
+           (run-gnome-tests now captures them)
+         </div>`;
+
+    return `<div class="failure-card">
+      <div class="failure-title">
+        <span class="failure-image">${f.image.label}</span>
+        <span class="failure-suite">${f.suite}</span>
+        <span class="failure-count">${d.failed} of ${d.scenarios} scenarios failing</span>
+      </div>
+      <div class="failure-meta">
+        ${spark}
+        <span class="sep">·</span>
+        ${since ? `Failing since: ${fmtAgo(since)}` : ''}
+        <span class="sep">·</span>
+        ${argoUrl ? `<a href="${argoUrl}" target="_blank" rel="noopener">→ Argo logs (${d.workflow_name})</a>` : ''}
+        <span class="sep">·</span>
+        <a href="${featureUrl}" target="_blank" rel="noopener">→ Feature files</a>
+        <span class="sep">·</span>
+        ${trigger}
+      </div>
+      ${scenarioList}
+    </div>`;
+  }).join('');
+
+  document.getElementById('failures-section').innerHTML = `
+    <h2>Failures</h2>
+    <div class="failure-list">${cards}</div>`;
+}
+
+// ── Build status table ──────────────────────────────────────────────────────
+function buildStatusTable(images, allData) {
+  const bySlug = {};
+  for (const d of allData) {
+    if (!bySlug[d.image.slug]) bySlug[d.image.slug] = {};
+    bySlug[d.image.slug][d.suite] = d.data;
+  }
+
+  const rows = images.map(img => {
+    const row = bySlug[img.slug] || {};
+    const suites = SUITES.map(s => suiteCell(row[s], s)).join('');
+    const lastRuns = SUITES.map(s => row[s]?.last_run).filter(Boolean).sort();
+    const lastRun = lastRuns.pop();
+    const wfNames = SUITES.map(s => row[s]?.workflow_name).filter(Boolean);
+    const wf = wfNames[0];
+    const pr = wf ? prLabel(wf) : null;
+    const trig = pr ? pr : (lastRun ? 'nightly' : '—');
+    const wfLink = wf ? argoLink(wf, wf.length > 28 ? wf.slice(0,26)+'…' : wf) : '—';
+
+    return `<tr>
+      <td style="font-weight:600">${img.label}</td>
+      ${suites.split('</div>').filter(Boolean).map(c => `<td>${c}</div></td>`).join('')}
+      <td style="color:var(--muted);white-space:nowrap">${fmtAgo(lastRun)}</td>
+      <td style="white-space:nowrap">${trig}</td>
+      <td class="mono" style="font-size:11px">${wfLink}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('status-tbody').innerHTML = rows;
+}
+
+// ── Build queue ─────────────────────────────────────────────────────────────
+function buildQueue(stats) {
+  const running = (stats.recent_runs || []).filter(r => r.overall === 'running');
+  if (!running.length) {
+    document.getElementById('queue-section').innerHTML = '';
+    return;
+  }
+  const rows = running.map(r => {
+    const dur = Math.round((Date.now() - new Date(r.started_at).getTime()) / 60000);
+    const pr = prLabel(r.id || '');
+    return `<div class="queue-row">
+      <span class="dot dot-run"></span>
+      <span class="queue-name"><a href="${argoHref(r.id)}" target="_blank" rel="noopener">${r.id}</a></span>
+      <span class="queue-label">${r.label || r.variant}</span>
+      <span class="queue-dur">${dur}m running</span>
+      ${pr ? `<span class="queue-label">PR: ${pr}</span>` : ''}
+    </div>`;
+  }).join('');
+  document.getElementById('queue-section').innerHTML = `
+    <h2>Running (${running.length})</h2>
+    <div class="queue-list">${rows}</div>`;
+}
+
+// ── Cluster strip ───────────────────────────────────────────────────────────
+function buildCluster(stats) {
+  const nodes = stats.factory?.cluster?.nodes || [];
+  const sem = stats.factory?.semaphores || {};
+  const cd = sem.containerdisk || {};
+  const hd = sem.hostdisk || {};
+
+  const cdPips = Array.from({length: cd.capacity||8}, (_,i) =>
+    `<span class="sem-pip${i < (cd.active||0) ? ' used' : ''}"></span>`).join('');
+  const hdPips = Array.from({length: hd.capacity||3}, (_,i) =>
+    `<span class="sem-pip${i < (hd.active||0) ? ' used' : ''}"></span>`).join('');
+
+  const nodeHtml = nodes.map(n => `
+    <span class="cluster-node">
+      <span class="dot ${n.status==='ready'?'dot-pass':'dot-fail'}"></span>
+      <strong>${n.name}</strong>
+      <span style="color:var(--muted)">${n.role} · ${n.ram_gb}GB · ${n.cpu_threads}t</span>
+    </span>`).join('<span class="cluster-sep">|</span>');
+
+  document.getElementById('cluster-strip').innerHTML = `
+    ${nodeHtml}
+    <span class="cluster-sep">|</span>
+    <span>ContainerDisk <span class="sem-pips">${cdPips}</span> ${cd.active||0}/${cd.capacity||8}</span>
+    <span>HostDisk <span class="sem-pips">${hdPips}</span> ${hd.active||0}/${hd.capacity||3}</span>
+    <span style="color:var(--muted)">k3s · 3 nodes · ${stats.factory?.cluster?.total_ram_gb||128}GB RAM total</span>`;
+}
+
+// ── Recent runs table ───────────────────────────────────────────────────────
+function buildRecentRuns(stats) {
+  const runs = stats.recent_runs || [];
+  if (!runs.length) {
+    document.getElementById('runs-tbody').innerHTML = '<tr><td colspan="8" class="empty">No recent run data</td></tr>';
+    return;
+  }
+  const rows = runs.map(r => {
+    const dur = r.overall === 'running'
+      ? `<span style="color:var(--run)">${Math.round((Date.now()-new Date(r.started_at).getTime())/60000)}m…</span>`
+      : (r.duration_min ? r.duration_min+'m' : '—');
+    const wfLink = argoLink(r.id, r.id.length>30 ? r.id.slice(0,28)+'…' : r.id);
+    const badge = r.overall === 'passed'  ? '<span class="badge badge-pass">pass</span>'
+                : r.overall === 'fail'    ? '<span class="badge badge-fail">fail</span>'
+                : r.overall === 'running' ? '<span class="badge badge-run">running</span>'
+                : '<span class="badge badge-pending">—</span>';
+    return `<tr>
+      <td class="mono" style="font-size:11px">${wfLink}</td>
+      <td style="color:var(--muted)">${r.label||r.variant}</td>
+      ${runSuiteCell(r.smoke ? {...r.smoke, workflow_name: r.id} : null)}
+      ${runSuiteCell(r.developer ? {...r.developer, workflow_name: r.id} : null)}
+      ${runSuiteCell(r.system ? {...r.system, workflow_name: r.id} : null)}
+      <td style="color:var(--muted)">${dur}</td>
+      <td>${triggerLabel(r)}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('runs-tbody').innerHTML = rows;
+}
+
+// ── Screenshots ─────────────────────────────────────────────────────────────
+function buildScreenshots(images) {
+  const shots = images.map(img => {
+    const url = `screenshots/${img.slug}-smoke-latest.png`;
+    return `<span style="margin-right:12px;display:inline-block">
+      <img class="screenshot-thumb" src="${url}" alt="${img.label}"
+           title="${img.label}"
+           onerror="this.parentElement.style.display='none'"
+           onclick="window.open(this.src,'_blank')">
+      <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:3px">${img.label}</div>
+    </span>`;
+  }).join('');
+  document.getElementById('screenshots-section').innerHTML = `<div style="line-height:2">${shots}</div>`;
+}
+
+// ── History tables ──────────────────────────────────────────────────────────
+async function buildHistoryBlock(img, allSuiteData) {
+  const rows = [];
+  for (const s of SUITES) {
+    const d = allSuiteData[s];
+    if (!d?.history?.length) continue;
+    for (const h of d.history) rows.push({ suite: s, wf: d.workflow_name, ...h });
+  }
+  rows.sort((a,b) => (b.run||b.run_date||'').localeCompare(a.run||a.run_date||''));
+  const top = rows.slice(0, 15);
+  const tbody = top.length
+    ? top.map(r => {
+        const passed = (r.scenarios||0) - (r.failed||0);
+        const st = r.status;
+        const col = st==='passed'?'var(--pass)':st==='failed'?'var(--fail)':'var(--muted)';
+        const wfLink = r.workflow_name||r.wf ? argoLink(r.workflow_name||r.wf) : '—';
+        return `<tr>
+          <td style="color:var(--muted);white-space:nowrap">${fmt(r.run||r.run_date)}</td>
+          <td>${r.suite}</td>
+          <td><span style="color:${col};font-weight:600">${st||'—'}</span></td>
+          <td style="font-variant-numeric:tabular-nums">${r.scenarios>0?`${passed}/${r.scenarios}`:'—'}</td>
+          <td class="mono" style="font-size:11px">${wfLink}</td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="5" class="empty">No history yet</td></tr>`;
+
+  return `<div class="data-block">
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px">${img.label}</div>
+    <table>
+      <thead><tr><th>Date</th><th>Suite</th><th>Status</th><th>Scenarios</th><th>Workflow</th></tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>
+  </div>`;
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+(async () => {
+  const stats = await load('data/factory-stats.json') || {};
+  const IMAGES = (stats.images||[]).length ? stats.images : [
+    { slug:'bluefin-testing',         label:'bluefin:testing' },
+    { slug:'bluefin-lts-testing',     label:'bluefin-lts:testing' },
+    { slug:'bluefin-bazzite-testing', label:'bazzite:testing' },
+    { slug:'bluefin-aurora-testing',  label:'aurora:testing' },
+    { slug:'dakota-testing',          label:'dakota:testing' },
+  ];
+
+  const gen = stats._meta?.generated;
+  document.getElementById('header-meta').innerHTML =
+    `${gen ? 'Data: '+fmtAgo(gen) : ''} · <a href="${ARGO_UI}" target="_blank" rel="noopener">Argo UI</a> · <a href="${GH_REPO}" target="_blank" rel="noopener">testing-lab</a>`;
+
+  // Phase 2: fetch all result files in parallel
+  const allData = [];
+  await Promise.all(IMAGES.flatMap(img =>
+    SUITES.map(s =>
+      load(`results/${img.slug}-${s}.json`).then(d => {
+        allData.push({ image: img, suite: s, data: d });
+      })
+    )
+  ));
+
+  // Group by image slug for easy lookup
+  const byImage = {};
+  for (const d of allData) {
+    if (!byImage[d.image.slug]) byImage[d.image.slug] = {};
+    byImage[d.image.slug][d.suite] = d.data;
+  }
+
+  buildFailures(allData);
+  buildStatusTable(IMAGES, allData);
+  buildQueue(stats);
+  buildCluster(stats);
+  buildRecentRuns(stats);
+  buildScreenshots(IMAGES);
+
+  const historyBlocks = await Promise.all(
+    IMAGES.map(img => buildHistoryBlock(img, byImage[img.slug] || {}))
+  );
+  document.getElementById('history-grid').innerHTML = historyBlocks.join('');
+})();
+</script>
+</body>
+</html>
+  <style>
+    :root {
+      --pass:    #3fb950;
+      --fail:    #f85149;
+      --pending: #d29922;
+      --run:     #58a6ff;
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --surface2:#21262d;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --link:    #58a6ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
       padding: 24px;
       max-width: 1280px;
       margin: 0 auto;

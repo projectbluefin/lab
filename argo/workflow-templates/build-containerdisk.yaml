@@ -195,8 +195,13 @@ spec:
           IMAGE="{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
           STAGING="/mnt/staging/${TAG}"
           DISK="${STAGING}/disk.raw"
+          BUILDLOG="${STAGING}/build.log"
 
           mkdir -p "${STAGING}"
+          exec > >(tee -a "${BUILDLOG}") 2>&1
+
+          echo "[BUILD] start: $(date -u) image=${IMAGE} disk-size={{inputs.parameters.disk-size}}"
+          echo "[BUILD] outer SELinux context: $(cat /proc/self/attr/current 2>/dev/null || echo unavailable)"
 
           if [[ -f "${DISK}" ]]; then
             echo "Removing stale disk: ${DISK}"
@@ -245,6 +250,7 @@ spec:
               set -euo pipefail
 
               echo \"[INNER] SSH_AUTHORIZED_KEYS prefix: \${SSH_AUTHORIZED_KEYS:0:30}...\"
+              echo \"[INNER] SELinux context: \$(cat /proc/self/attr/current 2>/dev/null || echo unavailable)\"
 
               # --via-loopback: upstream recommended pattern for VM disk creation.
               # --root-ssh-authorized-keys: bootc-native root SSH key injection —

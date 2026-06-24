@@ -9,6 +9,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
+    argocd.argoproj.io/sync-wave: "-2"
   name: plans.upgrade.cattle.io
 spec:
   group: upgrade.cattle.io
@@ -1315,6 +1316,8 @@ spec:
 apiVersion: v1
 kind: Namespace
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
   labels:
     pod-security.kubernetes.io/enforce: privileged
   name: system-upgrade

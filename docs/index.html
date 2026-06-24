@@ -445,7 +445,149 @@ const SUITE_DEBUG_HINTS = {
     'Container runtime: check <code>docker info</code> or <code>containerd status</code>',
   ],
 };
-// PR context: prefix → GitHub repo slug
+// All known scenarios per suite, grouped by feature file
+// Used to show per-scenario pass/fail status when failed_scenarios is available
+const SUITE_SCENARIOS = {
+  smoke: {
+    'gnome_shell': [
+      'GNOME Shell process is running and accessible via AT-SPI',
+      'Panel is present in AT-SPI tree',
+      'Activities toggle button is visible in panel',
+      'Clock toggle button is visible in panel',
+      'System menu toggle button is visible in panel',
+      'Super key opens Activities overview',
+      'Typing in overview populates search bar',
+      'Escape closes Activities overview',
+      'Clicking System menu opens Quick Settings',
+      'Escape closes Quick Settings',
+      'Clicking clock opens calendar popup',
+      'Escape closes calendar popup',
+      'Overview search launches Files',
+      'Overview search launches Settings',
+      'Overview search opens Files sidebar locations',
+      'Overview search opens Settings About and Appearance panels',
+      'Quick Settings dark style toggle changes desktop theme',
+      'xdg-settings reports a default browser',
+      'Dash to Dock keeps a visible dock actor outside the overview',
+      'Blur My Shell applies an overview blur effect',
+      'App Indicators registers a tray host in the shell panel',
+      'Windows Navigator shows workspace navigation hints in the overview',
+      'Date menu shows a delivered desktop notification',
+      'GNOME Shell extensions do not crash shell on load',
+      'No gnome-shell coredump after session start',
+    ],
+    'flatpak_health': [
+      'flatpak repair --user exits cleanly',
+      'flatpak repair --system exits cleanly',
+    ],
+    'browser': [
+      'Firefox launches from its desktop entry',
+      'xdg-open launches Firefox for a local file URL',
+    ],
+  },
+  developer: {
+    'brew': [
+      'Homebrew bootstrap service completed successfully',
+      'Homebrew binary is available on PATH',
+      'Homebrew doctor completes without unexpected warnings',
+      'Homebrew profile integration is configured',
+      'Homebrew installs a formula from a fixture Brewfile',
+      'Running brew bundle install twice produces no unexpected drift',
+    ],
+    'devmode': [
+      'ujust devmode does not prompt to enable when already enabled',
+    ],
+    'distrobox': [
+      'distrobox create runs without error',
+      'created distrobox appears in list',
+      'distrobox enter runs a command inside the container',
+      'distrobox rm removes the container',
+    ],
+    'podman': [
+      'Podman Desktop Flatpak launches without missing dependency error',
+      'Podman Desktop main window shows Dashboard',
+      'Podman Desktop exposes the Containers navigation item',
+      'Podman Desktop launch shows no permission error dialog',
+      'Podman Desktop closes cleanly',
+      'podman info reports rootless storage configuration',
+      'Podman quadlets use supported directories',
+      'Podman auto-update timer is active for the user',
+      'User lingering is enabled for rootless Podman services',
+      'Homebrew Docker runtime mapping uses a supported user-space socket',
+      'Podman socket is accessible for user-space tooling',
+      'Colima context is registered when colima is installed',
+    ],
+    'ptyxis': [
+      'Ptyxis launches and window is accessible',
+      'Terminal accepts keyboard input',
+      'brew is on PATH and returns version string',
+      'podman is available in terminal',
+      'No Vulkan validation spam on terminal open',
+      'New tab opens via keyboard shortcut',
+      'Ptyxis closes via shortcut',
+    ],
+  },
+  software: {
+    'bazaar': [
+      'Bazaar launches and shows main view',
+      'Bazaar updates tab is accessible',
+      'Updates tab loads without gnome-software crash',
+      'Flatpak appstream metadata is up to date',
+      'Explore page loads featured content',
+      'Installed list is non-empty after Flatpak bootstrap',
+      'Search returns results for a known app',
+      'Installed tab shows system Flatpak apps',
+    ],
+    'flatpak': [
+      'Bazaar launches and main window is visible',
+      'Explore tab is present and accessible',
+      'Installed tab is present and accessible',
+      'Clicking Installed tab shows installed apps list',
+      'Search bar accepts input and returns results',
+      'Flathub remote is configured at system scope',
+      'System-scoped Flatpak applications are installed',
+      'Flatpak updates section is reachable without crash',
+      'No gnome-software coredump on Explore page load',
+      'gnome-software does not consume high CPU after close',
+      'Bazaar closes cleanly via shortcut',
+    ],
+  },
+  system: {
+    'bootc': [
+      'bootc status reports active deployment',
+      '/usr is mounted read-only',
+      'active deployment has a valid image reference',
+      'staged deployment visibility',
+    ],
+    'filesystem': [
+      'btrfs root has compression enabled',
+    ],
+    'integrity': [
+      'composefs is active on the root filesystem',
+      'prepare-root.conf exists and is readable',
+      '/usr is backed by a composefs overlay',
+      'image signature policy file exists',
+      'key executables retain composefs file capabilities',
+    ],
+    'uupd': [
+      'uupd config exists and is valid JSON',
+      'uupd service unit is present',
+      'bootc upgrade check runs without error',
+      'uupd modules are configured',
+    ],
+  },
+  flatcar: {
+    'boot': [
+      'systemd reaches multi-user.target',
+      'No systemd units are in failed state',
+      'containerd service is active',
+      'containerd socket is reachable',
+      'Network interface has an IP address',
+      'DNS resolution works',
+      'Flatcar version file is present',
+    ],
+  },
+};
 const PR_REPOS = {
   common:  'projectbluefin/common',
   blu:     'projectbluefin/bluefin',
@@ -1090,24 +1232,84 @@ function buildFailures(allData, stats) {
         </div>`
       : '';
 
-    // Scenario list: each item links to GitHub code search so maintainers can jump to the test
-    const scenarioList = d.failed_scenarios?.length
-      ? (() => {
-          const items = d.failed_scenarios.map(s => {
-            const safe = s.replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            const searchUrl = ghScenarioLink(f.suite, s);
-            return `<li><a href="${searchUrl}" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:none" title="Find this scenario in GitHub code search">${safe} ↗</a></li>`;
-          }).join('');
-          const show = d.failed_scenarios.length > 6;
-          const inner = `<ul>${items}</ul>`;
-          return `<div class="failing-scenarios">
-            ${show ? `<details><summary>▸ ${d.failed_scenarios.length} failing scenarios — click to expand</summary>${inner}</details>` : inner}
+    // Scenario checklist: cross-reference failed_scenarios against SUITE_SCENARIOS catalog
+    // Shows each known scenario as ✓ pass / ✗ fail / ? unknown
+    const catalogByFile = SUITE_SCENARIOS[f.suite] || {};
+    const allCatalogScenarios = Object.values(catalogByFile).flat();
+    const failedSet = new Set(d.failed_scenarios || []);
+    const hasFailedNames = !!(d.failed_scenarios?.length);
+    const total = d.scenarios || allCatalogScenarios.length;
+    const failedCount = d.failed || 0;
+
+    const scenarioList = (() => {
+      if (!allCatalogScenarios.length) {
+        // No catalog: fall back to old behavior
+        if (!hasFailedNames) {
+          return `<div class="failing-scenarios" style="color:var(--muted);font-size:12px">
+            Scenario names will appear after next test run. Feature files:
+            <div style="margin-top:4px">${featureFiles || `<a href="${featureUrl}" target="_blank" rel="noopener" style="color:var(--link)">Browse →</a>`}</div>
           </div>`;
-        })()
-      : `<div class="failing-scenarios" style="color:var(--muted);font-size:12px">
-           Scenario names will appear after next test run. Feature files:
-           <div style="margin-top:4px">${featureFiles || `<a href="${featureUrl}" target="_blank" rel="noopener" style="color:var(--link)">Browse →</a>`}</div>
-         </div>`;
+        }
+        const items = d.failed_scenarios.map(s => {
+          const safe = s.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          return `<li><a href="${ghScenarioLink(f.suite, s)}" target="_blank" rel="noopener" style="color:var(--muted)">${safe} ↗</a></li>`;
+        }).join('');
+        return `<div class="failing-scenarios"><ul>${items}</ul></div>`;
+      }
+
+      // Build per-file scenario grid
+      const fileHtml = Object.entries(catalogByFile).map(([fname, scenarios]) => {
+        const rows = scenarios.map(sc => {
+          const searchUrl = ghScenarioLink(f.suite, sc);
+          const featureFileUrl = `${GH_REPO}/blob/main/tests/${f.suite}/features/${fname}.feature`;
+          const safe = sc.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          let status, color, icon;
+          if (!hasFailedNames) {
+            // We know count but not which ones — show all as unknown with just scenario names
+            status = 'unknown';
+            color = 'var(--muted)';
+            icon = '?';
+          } else if (failedSet.has(sc)) {
+            status = 'failed';
+            color = 'var(--fail)';
+            icon = '✗';
+          } else {
+            status = 'passed';
+            color = 'var(--pass)';
+            icon = '✓';
+          }
+          return `<div style="display:flex;align-items:baseline;gap:6px;padding:2px 0">
+            <span style="color:${color};font-size:11px;font-weight:700;flex-shrink:0;width:14px">${icon}</span>
+            <a href="${searchUrl}" target="_blank" rel="noopener"
+               style="color:${status==='failed'?'var(--fail)':status==='passed'?'var(--text)':'var(--muted)'};font-size:12px;text-decoration:none"
+               title="Search this scenario in the codebase">${safe}</a>
+          </div>`;
+        }).join('');
+
+        const failCount = scenarios.filter(sc => failedSet.has(sc)).length;
+        const fileLabel = hasFailedNames
+          ? (failCount > 0 ? `<span style="color:var(--fail)">${fname}.feature (${failCount} failing)</span>` : `<span style="color:var(--pass)">${fname}.feature ✓</span>`)
+          : `<a href="${GH_REPO}/blob/main/tests/${f.suite}/features/${fname}.feature" target="_blank" rel="noopener" style="color:var(--muted)">${fname}.feature</a>`;
+
+        return `<div style="margin-bottom:8px">
+          <div style="font-size:11px;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">${fileLabel}</div>
+          ${rows}
+        </div>`;
+      }).join('');
+
+      const summary = hasFailedNames
+        ? `${failedCount} failing · ${total - failedCount} passing`
+        : `${failedCount} of ${total} scenarios failing · scenario names will appear after next run`;
+      const toggle = `<details style="margin-top:6px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--muted);list-style:none">
+          ▸ Scenario checklist — ${summary}
+        </summary>
+        <div style="margin-top:8px;padding:8px 12px;background:#0d1117;border:1px solid var(--border);border-radius:4px">
+          ${fileHtml}
+        </div>
+      </details>`;
+      return `<div class="failing-scenarios">${toggle}</div>`;
+    })();
 
     const criticalBadge = isSystem
       ? `<span class="badge-critical" title="System suite validates bootc integrity, composefs, fs-verity, and uupd — platform contracts">PLATFORM CONTRACT</span>`
@@ -1230,7 +1432,12 @@ function buildStatusTable(images, allData) {
 
 // ── Build queue ─────────────────────────────────────────────────────────────
 function buildQueue(stats) {
-  const running = (stats.recent_runs || []).filter(r => r.overall === 'running');
+  // Filter to actively running workflows — treat >3h old "running" as stale
+  const running = (stats.recent_runs || []).filter(r => {
+    if (r.overall !== 'running') return false;
+    const age = Date.now() - new Date(r.started_at).getTime();
+    return age < 3 * 3600 * 1000; // discard stale "running" entries
+  });
   if (!running.length) {
     document.getElementById('queue-section').innerHTML = '';
     return;

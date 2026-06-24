@@ -467,7 +467,9 @@ a:hover { text-decoration: underline; }
 ═══════════════════════════════════════════════════════════════════════════ */
 const VARIANTS = ['A', 'B', 'C'];
 const VARIANT_NAMES = { A: 'Run Log', B: 'Suite Board', C: 'Triage' };
-const RESULT_SLUGS = ['bluefin-testing', 'bluefin-lts-testing', 'dakota-testing'];
+// RESULT_SLUGS is derived dynamically from stats.images after the first fetch.
+// This const is the fallback used only if factory-stats.json is unavailable.
+const DEFAULT_RESULT_SLUGS = ['bluefin-testing', 'bluefin-lts-testing', 'bluefin-bazzite-testing', 'bluefin-aurora-testing', 'dakota-testing'];
 const SUITES = ['smoke', 'developer', 'system'];
 const ARGO_UI = 'http://192.168.1.102:32746';
 
@@ -498,9 +500,11 @@ const SEED = {
     }
   },
   images: [
-    { slug:'bluefin-testing',     label:'bluefin:testing',     image:'ghcr.io/projectbluefin/bluefin:testing' },
-    { slug:'bluefin-lts-testing', label:'bluefin-lts:testing', image:'ghcr.io/projectbluefin/bluefin-lts:testing' },
-    { slug:'dakota-testing',      label:'dakota:testing',       image:'ghcr.io/projectbluefin/dakota:testing' }
+    { slug:'bluefin-testing',        label:'bluefin:testing',     image:'ghcr.io/projectbluefin/bluefin:testing' },
+    { slug:'bluefin-lts-testing',    label:'bluefin-lts:testing', image:'ghcr.io/projectbluefin/bluefin-lts:testing' },
+    { slug:'bluefin-bazzite-testing',label:'bazzite:testing',     image:'ghcr.io/ublue-os/bazzite:testing' },
+    { slug:'bluefin-aurora-testing', label:'aurora:testing',      image:'ghcr.io/ublue-os/aurora:testing' },
+    { slug:'dakota-testing',         label:'dakota:testing',      image:'ghcr.io/projectbluefin/dakota:testing' }
   ],
   test_coverage: {
     feature_files:15, scenarios_total:99,
@@ -517,8 +521,8 @@ const SEED = {
     scorecard_score: 7.2,
     checks: { 'Binary-Artifacts':10,'Branch-Protection':7,'CI-Best-Practices':8,'Code-Review':10,'Dependency-Update-Tool':10,'License':10,'Maintained':10,'Pinned-Dependencies':5,'SAST':6,'Security-Policy':10,'Signed-Releases':8,'Token-Permissions':9 }
   },
-  velocity: { commits_7d:28, prs_merged_7d:12, deployments_7d:42, build_minutes_7d:1890, vms_provisioned_7d:56, vms_provisioned_total:1247 },
-  github: { latest_release:'v2026.06', testing_lab:{ open_issues:64, open_prs:4 } }
+  velocity: { commits_7d:268, prs_merged_7d:15, deployments_7d:42, build_minutes_7d:1890, vms_provisioned_7d:56, vms_provisioned_total:1247 },
+  github: { testing_lab:{ open_issues:65, open_prs:17 }, common:{ stars:27, forks:41 } }
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -571,7 +575,7 @@ function makeFakeRuns(s) {
   ];
   let runN = 1247;
   for (let day = 0; day < 3; day++) {
-    for (const variant of RESULT_SLUGS) {
+    for (const variant of DEFAULT_RESULT_SLUGS) {
       const si = Math.floor(Math.random() * statuses.length);
       const st = statuses[si];
       const dur = (p.avg_total_min || 45) + Math.round((Math.random() - .5) * 10);
@@ -756,11 +760,15 @@ function populateSuiteBoard(s, results) {
   const cdC = s.factory?.semaphores?.containerdisk?.capacity || 8;
   document.getElementById('sb-k-slots').textContent = `${cdA}/${cdC}`;
 
-  // Build result grid
+  // Build result grid — keyed by variant slug + suite
   const grid = {};
   results.forEach(r => { if (!r) return; if (!grid[r.variant]) grid[r.variant] = {}; grid[r.variant][r.suite] = r; });
 
-  // One panel per suite
+  // Derive live slug list from stats (same source as data load)
+  const liveSlugs = (s.images || []).map(i => i.slug);
+  const allSlugs = liveSlugs.length > 0 ? liveSlugs : DEFAULT_RESULT_SLUGS;
+
+  // One panel per suite — aggregates across all known image variants
   const suiteOrder = ['smoke', 'developer', 'system', 'flatcar', 'software'];
   const suiteDefs = cov.suites || {};
 
@@ -769,7 +777,7 @@ function populateSuiteBoard(s, results) {
     const def = suiteDefs[suite] || { scenarios: 0, label: suite, description: '' };
 
     // Collect results across all variants for this suite
-    const variantResults = RESULT_SLUGS.map(slug => grid[slug]?.[suite]).filter(Boolean);
+    const variantResults = allSlugs.map(slug => grid[slug]?.[suite]).filter(r => r && r.scenarios > 0);
     const totalScen  = variantResults.reduce((a,r) => a + (r.scenarios||0), 0);
     const totalFail  = variantResults.reduce((a,r) => a + (r.failed||0), 0);
     const totalPass  = totalScen - totalFail;
@@ -805,6 +813,16 @@ function populateSuiteBoard(s, results) {
       ? `<div style="font-size:11px;color:var(--muted);font-style:italic">No recent failures</div>`
       : failures.map(f => `<div class="sb-failure-item">${dot('fail')}<span class="sb-failure-name">${f}</span><span class="sb-failure-count">×${Math.ceil(Math.random()*3+1)}</span></div>`).join('');
 
+    // Per-variant breakdown row
+    const variantBreakdown = allSlugs.map(slug => {
+      const r = grid[slug]?.[suite];
+      const imgDef = s.images?.find(i => i.slug === slug);
+      const lbl = (imgDef?.label || slug).replace(':testing','');
+      if (!r || r.scenarios === 0) return `<span style="color:var(--muted);font-size:10px" title="${slug}">${lbl}: —</span>`;
+      const col = r.status === 'passed' ? 'var(--pass)' : r.failed <= 2 ? 'var(--warn)' : 'var(--fail)';
+      return `<span style="color:${col};font-size:10px" title="${slug}">${lbl}: ${r.scenarios-r.failed}/${r.scenarios}</span>`;
+    }).join('<span style="color:var(--border);margin:0 4px">·</span>');
+
     return `<div class="sb-panel">
       <div class="sb-panel-head">
         <span class="dot ${overallSt === 'passed' ? 'pass' : overallSt === 'failed' ? 'fail' : overallSt === 'partial' ? 'warn' : 'skip'}"></span>
@@ -819,6 +837,7 @@ function populateSuiteBoard(s, results) {
           </div>
           <div style="font-size:10px;color:var(--muted);margin-top:2px">${def.description || ''}</div>
         </div>
+        <div style="line-height:1.7;flex-wrap:wrap;display:flex;gap:2px 0">${variantBreakdown}</div>
         <div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:4px">Last 7 runs</div>
           <div class="sb-sparkbar">${sparkHtml}</div>
@@ -864,6 +883,9 @@ function populateTriage(s, results) {
   const grid = {};
   results.forEach(r => { if (!r) return; if (!grid[r.variant]) grid[r.variant] = {}; grid[r.variant][r.suite] = r; });
 
+  const liveSlugs = (s.images || []).map(i => i.slug);
+  const allSlugs  = liveSlugs.length > 0 ? liveSlugs : DEFAULT_RESULT_SLUGS;
+
   // Classify suites
   const suiteDefs = cov.suites || {};
   const failingSuites = [];
@@ -879,7 +901,7 @@ function populateTriage(s, results) {
 
   for (const suite of SUITES) {
     const def = suiteDefs[suite] || { label: suite };
-    const variantResults = RESULT_SLUGS.map(slug => grid[slug]?.[suite]).filter(Boolean);
+    const variantResults = allSlugs.map(slug => grid[slug]?.[suite]).filter(r => r && r.scenarios > 0);
     const totalScen = variantResults.reduce((a,r) => a + (r.scenarios||0), 0);
     const totalFail = variantResults.reduce((a,r) => a + (r.failed||0), 0);
     const totalPass = totalScen - totalFail;
@@ -922,8 +944,11 @@ function populateTriage(s, results) {
       `<div class="tr-failure-row">${dot('fail')}<span class="tr-failure-row-name">${f}</span><span class="tr-failure-row-count">×${Math.ceil(Math.random()*3+1)}</span></div>`
     ).join('');
 
-    // Which variants are affected?
-    const affected = variantResults.filter(r=>r.status==='failed').length;
+    // Which variants are affected — show their labels
+    const affectedSlugs = variantResults.filter(r=>r.status==='failed').map(r => {
+      const imgDef = s.images?.find(i => i.slug === r.variant);
+      return (imgDef?.label || r.variant).replace(':testing','');
+    });
     const cardCls = totalFail > 3 ? '' : 'warn';
 
     return `<div class="tr-failure-card ${cardCls}">
@@ -931,7 +956,7 @@ function populateTriage(s, results) {
         <span class="dot ${totalFail>3?'fail':'warn'}"></span>
         <span class="tr-failure-card-title">${def.label || suite}</span>
         ${badge(pct !== null ? pct+'% pass' : 'no data', totalFail > 3 ? 'fail' : 'warn')}
-        <span class="tr-failure-card-meta">${totalPass}/${totalScen} · ${affected}/${RESULT_SLUGS.length} variants affected</span>
+        <span class="tr-failure-card-meta">${totalPass}/${totalScen} · ${affectedSlugs.length > 0 ? affectedSlugs.join(', ') : 'all pending'}</span>
       </div>
       ${failures.length > 0 ? `<div class="tr-failure-list">${failRows}</div>` : '<div style="font-size:11px;color:var(--muted)">Variant failures without known scenario breakdown.</div>'}
     </div>`;
@@ -1005,22 +1030,27 @@ function populateTriage(s, results) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Main data load
+//  Main data load — two-phase so RESULT_SLUGS comes from stats.images
 // ═══════════════════════════════════════════════════════════════════════════
 (async () => {
   setVariant(getVariant());
 
-  const resultKeys = RESULT_SLUGS.flatMap(slug => SUITES.map(suite => ({ slug, suite, key: `${slug}-${suite}` })));
-  const [statsResult, ...resultResults] = await Promise.allSettled([
-    tryFetch('data/factory-stats.json'),
-    ...resultKeys.map(({ key }) => tryFetch(`results/${key}.json`))
-  ]);
+  // Phase 1: fetch factory stats (source of truth for which images exist)
+  const statsRaw = await tryFetch('data/factory-stats.json');
+  const stats = statsRaw || SEED;
 
-  const stats = statsResult.status === 'fulfilled' && statsResult.value
-    ? statsResult.value : SEED;
+  // Derive slug list from stats — picks up any new image automatically
+  const resultSlugs = (stats.images || []).map(i => i.slug);
+  const slugs = resultSlugs.length > 0 ? resultSlugs : DEFAULT_RESULT_SLUGS;
 
-  // Annotate results with slug + suite for easy lookup
-  const results = resultResults.map((r, i) => {
+  // Phase 2: fetch all result files in parallel (one per slug × suite)
+  const resultKeys = slugs.flatMap(slug => SUITES.map(suite => ({ slug, suite })));
+  const fetched = await Promise.allSettled(
+    resultKeys.map(({ slug, suite }) => tryFetch(`results/${slug}-${suite}.json`))
+  );
+
+  // Annotate each result with variant + suite for easy grid lookup
+  const results = fetched.map((r, i) => {
     const data = r.status === 'fulfilled' ? r.value : null;
     if (!data) return null;
     return { ...data, variant: resultKeys[i].slug, suite: resultKeys[i].suite };

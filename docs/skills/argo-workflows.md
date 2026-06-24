@@ -655,7 +655,6 @@ UID 107 = qemu. Required — omitting `--chown` causes VM boot failure (permissi
 
 Before marking any WorkflowTemplate change done:
 
-- [ ] All VM-running pipelines have `spec.synchronization.semaphores:` (plural) pointing to `semaphore-config`
 - [ ] All VM-running pipelines have `spec.activeDeadlineSeconds` set
 - [ ] Any new CronWorkflow uses `spec.schedules:` (array), not `spec.schedule:` (singular)
 - [ ] All sub-template calls include explicit `arguments:` blocks

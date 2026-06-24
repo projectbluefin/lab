@@ -380,7 +380,8 @@ requests** (8Gi per VM). No Argo semaphores. No config to maintain.
 
 When a node has insufficient RAM, the virt-launcher pod stays Pending. When a
 running VM finishes, resources free up and the scheduler picks the next Pending
-pod. FIFO ordering follows workflow creation timestamp automatically.
+pod. Pending VMIs are scheduled as resources free up (no strict FIFO guarantee — k8s
+priority classes and scheduler decisions can reorder work).
 
 **Adding a node:** the scheduler starts using it immediately. No YAML changes needed.
 

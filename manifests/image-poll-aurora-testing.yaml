@@ -1,33 +1,30 @@
-# CronWorkflow: runs aurora system suite nightly at 04:30 UTC against aurora:testing.
-# System suite only — aurora uses KDE, not GNOME; smoke/developer suites are GNOME-specific.
-# All three images (bluefin, bazzite, aurora) share the same bootc system contract.
+# CronWorkflow: polls ghcr.io/ublue-os/aurora:testing hourly.
+# Triggers bluefin-qa-pipeline (system suite only — aurora uses KDE)
+# only when OCI digest changes vs ConfigMap state.
+# Replaces nightly-aurora (time-based) with digest-triggered polling.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
-  name: nightly-aurora
+  name: image-poll-aurora-testing
   namespace: argo
   labels:
     app.kubernetes.io/part-of: testing-lab
+    bluefin.io/trigger: digest-poll
 spec:
   schedules:
-    - "30 4 * * *"
+    - "20 * * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
-  workflowMetadata:
-    labels:
-      app.kubernetes.io/part-of: bluefin-test-suite
-      bluefin.io/trigger: nightly
-      bluefin.io/suite: system
   workflowSpec:
     serviceAccountName: argo
     podGC:
       strategy: OnWorkflowCompletion
     ttlStrategy:
-      secondsAfterSuccess: 86400   # 24h
-      secondsAfterFailure: 604800  # 7d
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
     workflowTemplateRef:
-      name: bluefin-qa-pipeline
+      name: image-poller
     arguments:
       parameters:
         - name: image
@@ -36,13 +33,11 @@ spec:
           value: "testing"
         - name: containerdisk-tag
           value: "aurora-testing"
+        - name: state-key
+          value: "digest-aurora-testing"
         - name: namespace
           value: "aurora-test"
         - name: suites
           value: "system"
         - name: variant
           value: "aurora"
-        - name: ssh-key-secret
-          value: "bluefin-test-ssh-key"
-        - name: vm-memory
-          value: "8Gi"

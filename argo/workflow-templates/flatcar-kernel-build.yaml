@@ -217,7 +217,7 @@ spec:
           - name: sdk-version
       activeDeadlineSeconds: 10800
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -231,7 +231,7 @@ spec:
                 key: id_ed25519
         source: |
           set -euo pipefail
-          apk add --no-cache openssh-client 2>&1 | tail -2
+          dnf install -y --setopt=install_weak_deps=False openssh-clients 2>&1 | tail -3
           VM_IP="{{inputs.parameters.vm-ip}}"
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
           SCRIPTS_REF="{{inputs.parameters.flatcar-scripts-ref}}"
@@ -324,11 +324,6 @@ spec:
           echo "=== Build complete: \$(wc -c < \${BUILD_DIR}/output/flatcar_production_update.gz) bytes ==="
           REMOTE
 
-          # Copy output from VM to workflow pod via kubectl cp
-          NS="{{workflow.parameters.namespace}}"
-          VM="{{workflow.parameters.vm-name}}"
-          LAUNCHER=$(kubectl get pod -n "${NS}" \
-            -l "kubevirt.io/vm=${VM}" -o jsonpath='{.items[0].metadata.name}')
           echo "Copying output from VM..."
           scp -i /tmp/id_ed25519 -o StrictHostKeyChecking=no \
             core@${VM_IP}:/var/tmp/build/output/flatcar_production_update.gz /tmp/

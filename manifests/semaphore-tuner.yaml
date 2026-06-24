@@ -86,6 +86,7 @@ spec:
               echo "  $name: ${mem_gi}Gi allocatable → ${usable}Gi usable"
               [[ "$name" == "ghost" ]] && ghost_gi=$usable
             done < <(kubectl get nodes \
+              -l 'node-workload-class!=desktop' \
               -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.allocatable.memory}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}')
 
             cd_slots=$(( total_cd_gi / SLOT_GI ))

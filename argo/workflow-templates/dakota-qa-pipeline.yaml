@@ -17,10 +17,10 @@ metadata:
 spec:
   serviceAccountName: argo
   synchronization:
-    semaphore:
-      configMapKeyRef:
-        name: semaphore-config
-        key: max-containerdisk-vms
+    semaphores:
+      - configMapKeyRef:
+          name: semaphore-config
+          key: max-containerdisk-vms
   activeDeadlineSeconds: 3600
   entrypoint: pipeline
   onExit: cleanup-and-report

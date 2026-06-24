@@ -17,10 +17,10 @@ metadata:
 spec:
   serviceAccountName: argo
   synchronization:
-    semaphore:
-      configMapKeyRef:
-        name: semaphore-config
-        key: max-hostdisk-vms
+    semaphores:
+      - configMapKeyRef:
+          name: semaphore-config
+          key: max-hostdisk-vms
   activeDeadlineSeconds: 7200
   entrypoint: pipeline
   onExit: teardown

@@ -21,10 +21,10 @@ spec:
   # inside Argo (no VMI objects created) so k8s scheduler stays unburdened.
   # Slot count is in manifests/semaphore-config.yaml — edit there to tune.
   synchronization:
-    semaphore:
-      configMapKeyRef:
-        name: semaphore-config
-        key: max-containerdisk-vms
+    semaphores:
+      - configMapKeyRef:
+          name: semaphore-config
+          key: max-containerdisk-vms
   activeDeadlineSeconds: 3600
   # ── entrypoint ──────────────────────────────────────────────────────────────
   entrypoint: pipeline

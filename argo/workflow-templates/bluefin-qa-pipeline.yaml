@@ -271,7 +271,11 @@ spec:
                 key: token
         source: |
           set -euo pipefail
-          dnf install -y --quiet jq 2>/dev/null | tail -1 >&2
+          dnf install -y --quiet jq 2>/dev/null | tail -1 >&2 || true
+          if ! command -v jq &>/dev/null; then
+            echo "WARNING: jq not available (dnf failed), skipping dashboard update" >&2
+            exit 0
+          fi
 
           API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/data/factory-stats.json"
           WF_NAME="{{workflow.name}}"

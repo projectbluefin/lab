@@ -37,6 +37,6 @@ Do not guess flags or chart schema. The Helm API and k3s config have changed acr
 
 ## Key references
 
-- Cluster topology: `docs/cluster-ops.md`
+- Cluster topology: `AGENTS.md`
 - Bootstrap procedure: `docs/bootstrap.md`
 - Recovery: `docs/skills/k3s-cluster-ops` (user skill, load before any cluster recovery)

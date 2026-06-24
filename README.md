@@ -111,6 +111,7 @@ testing-lab/
 ├── README.md                         # This file
 ├── RUNBOOK.md                        # Timeless architecture + failure modes
 ├── AGENTS.md                         # Agent policy, scope rules, cluster topology
+├── WORKFLOWS.md                      # WorkflowTemplate agent contract (submit interface)
 ├── Justfile                          # Operator convenience wrappers
 │
 ├── argo/
@@ -122,6 +123,7 @@ testing-lab/
 │   │   ├── provision-bluefin-vm.yaml     boot containerDisk KubeVirt VM
 │   │   ├── run-gnome-tests.yaml          behave + qecore + Dogtail GNOME tests
 │   │   ├── run-incluster-tests.yaml      in-cluster (kubectl-based) tests
+│   │   ├── run-service-tests.yaml        service endpoint + health-check tests
 │   │   ├── run-flatcar-tests.yaml        Flatcar OS test runner
 │   │   ├── provision-flatcar-vm.yaml     provision Flatcar test VM (hostDisk)
 │   │   ├── provision-gnomeos-vm.yaml     provision GNOME OS test VM
@@ -138,12 +140,7 @@ testing-lab/
 │   │   ├── image-poller.yaml            Digest-polling trigger for image-poll CronWorkflows
 │   │   ├── pr-poller.yaml               PR label poller for CI gate
 │   │   ├── ghost-cleanup.yaml           Clear stale podman lock files on ghost
-│   │   ├── ghost-kernel-args.yaml       Set Strix Halo performance kernel args
-│   │   ├── ghost-otel-patch.yaml        Patch otelcol-agent.service config on ghost
-│   │   ├── homelab-access-probe.yaml    Homelab SSH/auth test probe
-│   │   ├── homelab-restore-drill.yaml   Homelab backup restore drill
-│   │   ├── homelab-storage.yaml         Homelab storage tests
-│   │   └── homelab-substrate.yaml       Homelab substrate (networking, DNS) tests
+│   │   └── ghost-kernel-args.yaml       Set Strix Halo performance kernel args
 │   │
 │   ├── bootstrap/                    # ← NOT ArgoCD managed — run once to set up cluster
 │   │   ├── README.md                     bootstrap guide
@@ -159,11 +156,6 @@ testing-lab/
 │   ├── bluefin-service-catalog-smoke.yaml  submit: service catalog smoke
 │   ├── flatcar-smoke-test.yaml       submit: Flatcar smoke run
 │   ├── gnomeos-access-spike.yaml     submit: GNOME OS accessibility spike
-│   ├── homelab-access-probe.yaml     submit: homelab access probe (no auth)
-│   ├── homelab-auth-probe.yaml       submit: homelab access probe (with auth)
-│   ├── homelab-restore-drill.yaml    submit: homelab restore drill
-│   ├── homelab-storage.yaml          submit: homelab storage tests
-│   ├── homelab-substrate.yaml        submit: homelab substrate tests
 │   └── one-shot-delete-golden-disks.yaml  emergency: delete all golden disks to reclaim space
 │
 ├── manifests/                        # ← ArgoCD (testing-lab-infra App) auto-syncs these
@@ -172,16 +164,37 @@ testing-lab/
 │   ├── nightly-dakota.yaml               CronWorkflow: nightly dakota @ 03:00 UTC
 │   ├── nightly-knuckle.yaml              CronWorkflow: nightly knuckle @ 03:30 UTC
 │   ├── orphan-vm-cleanup.yaml            CronWorkflow: clean orphaned VMs every 2h
+│   ├── orphan-pod-gc.yaml                CronWorkflow: GC orphaned pods
 │   ├── golden-disk-gc.yaml               CronWorkflow: GC stale golden disks
+│   ├── pr-image-gc.yaml                  CronWorkflow: GC PR container images
+│   ├── image-poll-bluefin-testing.yaml   CronWorkflow: poll bluefin:testing digest
+│   ├── image-poll-bluefin-stable.yaml    CronWorkflow: poll bluefin:stable digest
+│   ├── image-poll-lts-testing.yaml       CronWorkflow: poll bluefin-lts:testing digest
+│   ├── image-poll-lts-stable.yaml        CronWorkflow: poll bluefin-lts:stable digest
+│   ├── image-poll-common.yaml            CronWorkflow: poll common image digest
+│   ├── image-polling-state.yaml          ConfigMap: last-seen digest state for pollers
+│   ├── pr-label-poller.yaml              CronWorkflow: poll PR labels for CI gate
 │   ├── workflow-controller-configmap.yaml TTL patch (7d success, 30d failure)
 │   ├── argo-default-sa-rbac.yaml         Argo executor RBAC
-│   ├── homelab-runner-rbac.yaml          homelab-runner SA + ClusterRole
+│   ├── argo-server-auth.yaml             Argo server auth config
 │   ├── argo-server-nodeport.yaml         NodePort for external Argo API access
+│   ├── kubevirt-feature-gates.yaml       KubeVirt feature gate config (HostDisk, Ignition)
+│   ├── kubevirt-rbac.yaml                KubeVirt RBAC for workflow pods
+│   ├── homelab-runner-rbac.yaml          homelab-runner SA + ClusterRole
+│   ├── homelab-access-auth.yaml          homelab access auth config
 │   ├── flatcar-test-namespace.yaml       Flatcar test namespace
+│   ├── gnomeos-test-namespace.yaml       GNOME OS test namespace
+│   ├── gnomeos-smbios-hook.yaml          GNOME OS SMBIOS firmware hook
+│   ├── bluefin-test-ssh-pubkey.yaml      SSH public key for VM accessCredentials injection
+│   ├── bst-build-priorityclass.yaml      PriorityClass for BST build pods
+│   ├── lab-test-vm-priorityclass.yaml    PriorityClass for lab test VM pods
+│   ├── bst-cache-warm.yaml               BST cache warm manifest
+│   ├── inotify-tuning.yaml               inotify kernel parameter tuning
+│   ├── loki-config.yaml                  Loki log aggregation config
 │   ├── promtail-config.yaml              Loki log scraping config
-│   ├── rocm-device-plugin.yaml           AMD ROCm GPU device plugin
-│   ├── llm-d-gateway-crds.yaml           Gateway API Inference Extension CRDs
-│   └── llm-d.yaml                        Qwen3.6-35B-A3B model server on ROCm
+│   ├── registry-mirror-config.yaml       DaemonSet: write containerd hosts.toml mirror config
+│   ├── zot-cache.yaml                    Zot pull-through cache (port 30501, all upstreams)
+│   └── zot-writable.yaml                 Zot writable registry (port 30500)
 │
 ├── argocd/
 │   ├── application.yaml              ArgoCD App: argo/workflow-templates → cluster
@@ -199,8 +212,8 @@ testing-lab/
     ├── agent-cheatsheet.md           canonical command reference
     ├── lab-operations.md             long-form operator procedures
     ├── dogtail-testing.md            GUI test authoring + debugging
-    ├── homelab-contracts.md          expected cluster behaviour contracts
-    └── WORKFLOWS.md                  WorkflowTemplate parameter contracts
+    ├── bluefin-integration.md        image-poll → test → screenshot pipeline
+    └── WORKFLOWS.md                  full WorkflowTemplate reference (resource profiles, disk paths)
 ```
 
 ---
@@ -268,6 +281,7 @@ just run-tests
 |---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | Ryzen AI MAX+ 395, 16c/32t, 64GB RAM |
 | exo-1 | k3s worker (workflow pods only) | — |
+| bazzite | k3s worker (on demand) | Gaming machine — fully schedulable (no taint); k3s disabled at boot |
 
 **Namespaces:**
 
@@ -278,7 +292,11 @@ just run-tests
 | `bluefin-test` | `latest` test VMs |
 | `bluefin-lts-test` | `lts` test VMs |
 | `flatcar-test` | Flatcar test VMs |
+| `gnomeos-test` | GNOME OS test VMs |
 | `llm-d` | Qwen3.6-35B-A3B on ROCm (hive swarm node) |
+| `local-registry` | Zot writable registry (30500) + pull-through cache (30501) |
+| `arc-systems` | ARC controller + listener pods |
+| `arc-runners` | ARC ephemeral runner pods (empty when no jobs queued) |
 | `mcp` | Kubernetes MCP server |
 
 ---
@@ -321,6 +339,8 @@ See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring
 | Doc | Purpose |
 |---|---|
 | [README.md](README.md) | Architecture overview (this file) |
+| [WORKFLOWS.md](WORKFLOWS.md) | WorkflowTemplate agent contract — submit interface, parameter reference |
+| [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | Full WorkflowTemplate reference — resource profiles, disk paths, pipeline details |
 | [docs/bluefin-integration.md](docs/bluefin-integration.md) | Image-poll → test → screenshot → release pipeline |
 | [docs/bootstrap.md](docs/bootstrap.md) | How to replicate this lab from scratch |
 | [RUNBOOK.md](RUNBOOK.md) | Timeless architecture + failure-mode reference |
@@ -328,7 +348,6 @@ See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring
 | [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md) | Canonical command reference |
 | [docs/lab-operations.md](docs/lab-operations.md) | Long-form operator procedures |
 | [docs/dogtail-testing.md](docs/dogtail-testing.md) | GUI test authoring + debugging |
-| [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | WorkflowTemplate parameter contracts |
 
 ---
 

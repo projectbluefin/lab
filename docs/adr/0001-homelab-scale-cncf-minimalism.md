@@ -55,8 +55,8 @@ No GitHub Actions, no admission-controller policy, no Rego/conftest.
 
 Per SECURITY.md: `:latest` and `:latest-dev` tags are an accepted trade-off
 for homelab iteration speed. Determinism for the *bootable* image is
-recovered at BIB time via the source-digest marker (ADR-adjacent: see
-`bib-build-and-push.yaml`). Pod images stay on tags.
+recovered at build time via the source-digest marker (ADR-adjacent: see
+`build-containerdisk.yaml`). Pod images stay on tags.
 
 ### MinIO non-use
 

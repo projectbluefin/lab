@@ -223,7 +223,7 @@ contract test. Bias toward:
 - `uupd` orchestration
 - OCI layer signature verification
 
-See `docs/homelab-contracts.md` for the full contract specification.
+See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
 
 ## Common Rationalizations
 

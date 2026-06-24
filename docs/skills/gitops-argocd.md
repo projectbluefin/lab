@@ -157,11 +157,9 @@ controllerServiceAccount:
   name: arc-systems-gha-rs-controller
 ```
 
-**bazzite taint** — bazzite carries `node-role.kubernetes.io/gaming:NoSchedule`
-(persisted in `manifests/bazzite-node-taint.yaml`). Infra pods landing there fail
-DNS resolution (`no route to host` to CoreDNS) because bazzite's CNI may not be
-fully initialised on join. If a pod lands on bazzite and fails, delete it — it will
-reschedule to ghost automatically.
+**bazzite scheduling** — bazzite is fully schedulable (no taint); k3s is disabled at boot.
+When bazzite is online it can accept workflow pods. If a pod lands on bazzite and fails,
+delete it — it will reschedule to ghost automatically.
 
 ### 8. Reconciling orphan templates (cluster-only → git)
 

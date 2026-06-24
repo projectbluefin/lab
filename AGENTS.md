@@ -109,7 +109,7 @@ Every pipeline (Bluefin, Bluefin-LTS, Dakota, Knuckle) provisions a fresh VM on 
 |---|---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | 192.168.1.102 | Ryzen AI MAX+ 395, 16c/32t, 64GB RAM |
 | exo-1 | k3s worker (workflow pods only) | 192.168.1.239 | — |
-| bazzite | k3s worker (on demand) | 192.168.1.223 | Gaming machine — taint `node-role.kubernetes.io/gaming:NoSchedule`; k3s disabled at boot |
+| bazzite | k3s worker (on demand) | 192.168.1.223 | Gaming machine — fully schedulable (no taint); k3s disabled at boot, enable when needed |
 | Argo UI | — | http://192.168.1.102:32746 | NodePort; also http://192.168.1.102:2746 on host |
 | Loki | log aggregation | http://192.168.1.102:30100 | Scrapes pods labeled `app.kubernetes.io/part-of=bluefin-test-suite` |
 | ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `testing-lab` + `testing-lab-infra` |
@@ -148,32 +148,69 @@ Rules:
 ```
 argo/
   workflow-templates/          ← ArgoCD (testing-lab App) syncs these
-    bib-build-and-push.yaml       build golden disk via BIB
-    provision-vm.yaml             reflink golden disk + boot KubeVirt VM
-    provision-flatcar-vm.yaml     provision Flatcar VM
+    build-containerdisk.yaml      build containerDisk from bootc image
+    bluefin-qa-pipeline.yaml      full pipeline: build + provision + tests
+    provision-bluefin-vm.yaml     boot Bluefin KubeVirt VM
     run-gnome-tests.yaml          SSH into VM, run behave/qecore suite
+    teardown-bluefin-vm.yaml      delete Bluefin VM + disk
+    provision-flatcar-vm.yaml     provision Flatcar VM
     run-flatcar-tests.yaml        SSH into Flatcar VM, run tests
-    teardown-vm.yaml              delete VM + hostDisk
     teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
-    bluefin-qa-pipeline.yaml      full pipeline: ensure-disk + provision + tests
-    patch-golden-disk.yaml        retroactively fix SSH auth on existing disk
+    provision-gnomeos-vm.yaml     provision GnomeOS VM
+    teardown-gnomeos-vm.yaml      delete GnomeOS VM + hostDisk
+    run-incluster-tests.yaml      run tests inside the cluster
+    dakota-qa-pipeline.yaml       full Dakota QA pipeline
     dakota-bst.yaml               drive dakota `just validate` / `just build` / `just lint` on ghost
-  bluefin-smoke-test.yaml         submit: full BIB+provision+test run (latest)
+    knuckle-qa-pipeline.yaml      Knuckle installer pipeline
+    image-poller.yaml             poll for new image digests
+    pr-poller.yaml                poll PRs for label-triggered test runs
+    ghost-cleanup.yaml            ghost host maintenance and disk GC
+    collect-vm-logs.yaml          collect logs from a running test VM
+  bluefin-smoke-test.yaml         submit: full build+provision+test run (latest)
   bluefin-test-matrix.yaml        submit: parallel latest+lts matrix
   flatcar-smoke-test.yaml         submit: Flatcar test run
 manifests/                     ← ArgoCD (testing-lab-infra App) syncs these
   argo-server-nodeport.yaml       NodePort 32746 for external Argo API access
+  argo-server-auth.yaml           Argo Server auth config
+  argo-default-sa-rbac.yaml       default service account RBAC
+  kubevirt-rbac.yaml              KubeVirt RBAC for workflow pods
+  kubevirt-feature-gates.yaml     KubeVirt feature gates (HostDisk, ExperimentalIgnitionSupport)
   orphan-vm-cleanup.yaml          CronWorkflow: clean orphaned VMs every 2h
+  orphan-pod-gc.yaml              CronWorkflow: garbage-collect orphaned pods
+  golden-disk-gc.yaml             CronWorkflow: garbage-collect old golden disks
+  pr-image-gc.yaml                CronWorkflow: clean up PR test images
   nightly-smoke.yaml              CronWorkflow: nightly smoke latest @ 02:00 UTC
   nightly-smoke-lts.yaml          CronWorkflow: nightly smoke lts @ 02:30 UTC
+  nightly-dakota.yaml             CronWorkflow: nightly Dakota QA
+  nightly-knuckle.yaml            CronWorkflow: nightly Knuckle pipeline
   workflow-controller-configmap.yaml  global TTL patch (7d success, 30d failure)
   flatcar-test-namespace.yaml     Flatcar test namespace
-  rocm-device-plugin.yaml         AMD ROCm k8s device plugin — exposes amd.com/gpu on ghost
-  llm-d-gateway-crds.yaml         PreSync Job: Gateway API Inference Extension CRDs (llm-d router)
-  llm-d.yaml                      llm-d model server: Qwen3.6-35B-A3B Q4_K_M GGUF via llama.cpp on ROCm, NodePort 30800
+  gnomeos-test-namespace.yaml     GnomeOS test namespace
+  gnomeos-smbios-hook.yaml        GnomeOS SMBIOS MutatingWebhook
+  bluefin-test-ssh-pubkey.yaml    SSH public key secret for VM accessCredentials
+  image-polling-state.yaml        ConfigMap: per-image last-seen digest
+  image-poll-bluefin-testing.yaml CronWorkflow: poll bluefin:testing digest
+  image-poll-bluefin-stable.yaml  CronWorkflow: poll bluefin:stable digest
+  image-poll-lts-testing.yaml     CronWorkflow: poll bluefin-lts:testing digest
+  image-poll-lts-stable.yaml      CronWorkflow: poll bluefin-lts:stable digest
+  image-poll-common.yaml          CronWorkflow: poll common image digest
+  pr-label-poller.yaml            CronWorkflow: poll PRs for test-me label
+  bst-build-priorityclass.yaml    PriorityClass for BST build pods
+  bst-cache-warm.yaml             CronWorkflow: warm BST layer cache
+  lab-test-vm-priorityclass.yaml  PriorityClass for test VM pods
+  homelab-access-auth.yaml        homelab access auth config
+  homelab-runner-rbac.yaml        RBAC for homelab ARC runners
+  inotify-tuning.yaml             DaemonSet: tune inotify limits on all nodes
+  registry-mirror-config.yaml     DaemonSet: write containerd hosts.toml mirror config
+  loki-config.yaml                Loki log aggregation config
+  promtail-config.yaml            Promtail log scraper config
+  zot-cache.yaml                  Zot pull-through cache (port 30501, all upstreams)
+  zot-writable.yaml               Zot writable local registry (port 30500)
 argocd/
   application.yaml               ArgoCD Application: testing-lab
   infra-application.yaml         ArgoCD Application: testing-lab-infra
+  arc-controller-app.yaml        ArgoCD Application: ARC controller
+  arc-runners-app.yaml           ArgoCD Application: ARC runner scale set
 tests/
   smoke/features/                behave/qecore GNOME Shell smoke tests
   developer/features/            behave GNOME desktop tests (podman, ptyxis, etc.)
@@ -298,6 +335,7 @@ Loki captures workflow pod logs. Use the commands in [docs/agent-cheatsheet.md](
 | bluefin-test | latest variant test VMs |
 | bluefin-lts-test | lts variant test VMs |
 | flatcar-test | Flatcar test VMs |
+| gnomeos-test | GNOME OS test VMs |
 | llm-d | LLM inference hive node (Qwen3.6-35B-A3B Q4_K_M GGUF via llama.cpp on ROCm) |
 | local-registry | OCI registry: writable Zot (port 30500), unified pull-through cache — zot-cache (30501, all upstreams) |
 | arc-systems | ARC controller + listener pods |

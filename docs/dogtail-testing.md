@@ -736,7 +736,7 @@ shape for new suites.
 
 ## Historical Lessons
 
-Date-stamped debugging history lives in [docs/archive/iteration-notes.md](archive/iteration-notes.md).
+Date-stamped debugging history is recorded in the sections below.
 
 ---
 

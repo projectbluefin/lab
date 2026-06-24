@@ -41,7 +41,7 @@
 | `build-containerdisk` | Shared containerDisk builder. Flow: `check` (zot existence) → `install-to-disk` → `convert-and-push`. Builds a KubeVirt containerDisk from a bootc image and pushes to the local registry. Replaces the old `bib-build-and-push` hostDisk approach. |
 | `provision-bluefin-vm` | Shared Bluefin/Dakota VM bring-up. `reflink-disk` clones `disk.raw`, `create-vm` defines a 4 vCPU / 8 GiB KubeVirt VM, and `wait-for-vm-ready` returns the pod IP once SSH is reachable. |
 | `teardown-bluefin-vm` | Shared Bluefin/Dakota/Knuckle VM cleanup. Deletes the KubeVirt VM and removes the matching hostDisk from the pipeline test root. |
-| `run-gnome-tests` | Shared test runner. Clones `testing-lab`, waits for SSH, installs test dependencies in the VM, copies `tests/<suite>`, and runs `behave` (GUI suites via `qecore-headless`). |
+| `run-gnome-tests` | Shared test runner. Clones `projectbluefin/testsuite` (the single source of truth), waits for SSH, installs test dependencies, copies `tests/<suite>`, and runs `behave`. GUI suites (smoke) run via `qecore-headless` inside the VM. The `common` suite runs from the runner container with `VM_IP`/`SSH_KEY` exported so its SSH steps reach the VM directly — do NOT run common via qecore-headless. The `system` suite runs inside the VM without a display. |
 | `run-incluster-tests` | Shared in-cluster pytest runner. Git-syncs `testing-lab`, runs a pytest module against a live k8s workload, emits JUnit XML. |
 | `dakota-bst` | Dakota-specific build path. `bst-validate` performs a fast graph check; `bst-build-export-push` builds on ghost, pushes `192.168.1.102:5000/dakota:<tag>`, and returns `image-ref` to `dakota-qa-pipeline`. |
 

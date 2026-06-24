@@ -367,7 +367,58 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
 - Zot annotations require `oras` tooling to set post-push; ConfigMap needs only `kubectl`
 - The ConfigMap stores the *source* digest, not the containerdisk digest — conceptually different
 
-## Common Rationalizations
+### 15. VM concurrency — semaphore pools (bin-packing)
+
+Use `spec.synchronization.semaphores` to cap concurrent VM-holding workflows. Without it, submitting 20+ PRs at once creates 20+ VMI objects simultaneously — all their resource requests count against node capacity even while Pending, flooding the scheduler.
+
+**The API (v3.6+):**
+```yaml
+spec:
+  synchronization:
+    semaphores:                          # plural — "semaphore:" singular is DEPRECATED
+      - configMapKeyRef:
+          name: semaphore-config
+          key: max-containerdisk-vms
+  activeDeadlineSeconds: 3600           # always set — prevents stuck VMs holding slots forever
+```
+
+`semaphore:` (singular) is deprecated and rejected by ArgoCD schema validation. Use `semaphores:` (list). Verified against Context7 `/argoproj/argo-workflows` deprecations doc.
+
+**Two pools in this repo:**
+
+| ConfigMap key | Pipelines | Nodes |
+|---|---|---|
+| `max-containerdisk-vms` | bluefin-qa-pipeline, dakota-qa-pipeline | any Ready node |
+| `max-hostdisk-vms` | knuckle-qa-pipeline, flatcar-smoke-test | ghost only |
+
+hostDisk VMs (knuckle, flatcar) are ghost-pinned because their disk images live in ghost's local hostPath. containerDisk VMs (bluefin, dakota) can schedule on any node with KubeVirt. Two separate pools prevents knuckle builds from starving bluefin PR tests.
+
+**Auto-tuning (semaphore-tuner CronWorkflow, hourly):**
+```
+slots = clamp(floor((sum_ready_node_ram - OVERHEAD_GI) / SLOT_GI), MIN, MAX)
+```
+Adding a node → slots auto-increase within 1 hour. Values written to `manifests/semaphore-config.yaml`. Tune constants in `manifests/semaphore-tuner.yaml`.
+
+### 16. CronWorkflow — `schedules` not `schedule`
+
+CronWorkflow uses `schedules` (plural array), not `schedule` (singular string). The singular field does not exist in the CRD schema — ArgoCD's ServerSideApply validation will reject it.
+
+```yaml
+# ✗ WRONG — rejected by ArgoCD schema validation
+spec:
+  schedule: "0 * * * *"
+
+# ✅ CORRECT
+spec:
+  schedules:
+    - "0 * * * *"
+```
+
+Verified against Context7 `/argoproj/argo-workflows` CronWorkflow spec docs.
+
+CronWorkflows also cannot be invoked via `workflowTemplateRef` — if you need a CronWorkflow to be submittable manually, extract its logic into a WorkflowTemplate and have the CronWorkflow reference it with `workflowTemplateRef`.
+
+
 
 | Rationalization | Reality |
 |---|---|
@@ -380,7 +431,10 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
 
 ## Red Flags
 
-- A WorkflowTemplate missing `serviceAccountName: argo`
+- `synchronization.semaphore:` (singular) in any pipeline — deprecated, rejected by ArgoCD schema. Use `synchronization.semaphores:` (list with `- configMapKeyRef:` item)
+- `spec.schedule:` (singular) on a CronWorkflow — field does not exist in CRD schema; use `spec.schedules:` (array)
+- A pipeline with VMs and no `spec.activeDeadlineSeconds` — a stuck VM holds its semaphore slot forever
+- A pipeline with VMs and no semaphore — submitting 20 PRs at once floods the scheduler with VMI resource requests
 - A `steps` or `dag` task calling a sub-template without `arguments:`
 - A pipeline with no `onExit` handler (VM will leak on failure)
 - Any `script:` template without `resources:` limits
@@ -405,7 +459,9 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
 
 Before marking any WorkflowTemplate change done:
 
-- [ ] `argo lint --offline argo/workflow-templates/` passes with zero errors
+- [ ] All VM-running pipelines have `spec.synchronization.semaphores:` (plural) pointing to `semaphore-config`
+- [ ] All VM-running pipelines have `spec.activeDeadlineSeconds` set
+- [ ] Any new CronWorkflow uses `spec.schedules:` (array), not `spec.schedule:` (singular)
 - [ ] All sub-template calls include explicit `arguments:` blocks
 - [ ] Pipeline has `onExit: cleanup` handler
 - [ ] All pod-running templates have `resources:` requests and limits

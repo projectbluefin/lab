@@ -47,6 +47,17 @@ spec:
                 - name: containerdisk-tag
                   value: "lts-testing"
 
+          - name: watch-dakota
+            template: watch-variant
+            arguments:
+              parameters:
+                - name: image
+                  value: "ghcr.io/projectbluefin/dakota"
+                - name: image-tag
+                  value: "latest"
+                - name: containerdisk-tag
+                  value: "dakota-latest"
+
     # ─── watch-variant ────────────────────────────────────────────────────────
     # Fetches the live GHCR digest (anonymous token, no image pull).
     # Compares against stored digest in ConfigMap containerdisk-source-digests.

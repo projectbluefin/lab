@@ -5,161 +5,211 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      End-to-end Dakota QA pipeline: BST validate → BST build+export+push →
-      build-containerdisk → provision (containerDisk VM) → run-tests → teardown.
-
-      Flow:
-        1. bst-validate          — fast element graph check (no build)
-        2. bst-build-export-push — BST build, export to containers-storage,
-                                   push to 192.168.1.102:30500/dakota:<tag>
-        3. build-containerdisk   — install bootc image to disk, configure, convert
-                                   to qcow2, push to Zot as containerDisk OCI image
-        4. provision             — KubeVirt VM boot from containerDisk
-        5. run-tests             — behave/dogtail smoke suite
-        6. teardown (onExit)     — VM delete (no disk cleanup needed)
-
-      All heavy build steps (BST, disk build) are serialised by the ghost-heavy-compute
-      mutex so concurrent pipelines queue rather than race on ghost storage.
+      End-to-end Dakota QA pipeline: assert containerDisk exists in Zot, then run
+      parallel test lanes (smoke, developer, system). Each lane provisions a
+      fresh KubeVirt VM, runs the behave/qecore suite via SSH, and tears down
+      the VM on completion. On PR runs, posts a GitHub commit status on exit.
+      The digest-watch CronWorkflow keeps the containerDisk current — this
+      pipeline fails fast if the disk is missing.
   labels:
     app.kubernetes.io/component: qa-pipeline
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-
   entrypoint: pipeline
-
-  # Cleanup VM + hostDisk on any exit (success, failure, timeout)
-  onExit: teardown
+  onExit: cleanup-and-report
 
   arguments:
     parameters:
-      - name: ref_type
-        value: "branch"    # branch | pr | sha
-      - name: ref_value
-        value: "main"
-      - name: repo
-        value: "https://github.com/projectbluefin/dakota"
-      - name: variant
-        value: "default"   # default | nvidia
+      - name: image
+        value: "ghcr.io/projectbluefin/dakota"
+      - name: image-tag
+        value: "latest"
       - name: namespace
         value: "bluefin-test"
-      # Comma-separated test suite names matching tests/ subdirectories
       - name: suites
-        value: "smoke"
+        value: "smoke,developer,system"
+      - name: variant
+        value: "dakota"
       - name: ssh-key-secret
         value: "bluefin-test-ssh-key"
-      # git ref for the testing-lab repo (test code + step defs)
-      - name: tests-branch
+      - name: containerdisk-tag
+        value: "dakota-latest"
+      - name: branch
         value: "main"
+      - name: pr-number
+        value: ""
+      - name: sha
+        value: ""
+      - name: repo
+        value: ""
+      - name: vm-memory
+        value: "8Gi"
 
   templates:
 
     - name: pipeline
       dag:
         tasks:
-          # 0. Resolve ref_type + ref_value → clone_url + clone_ref
-          - name: resolve-source
-            templateRef:
-              name: dakota-bst
-              template: resolve-source
+          # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.
+          - name: assert-cd
+            template: assert-cd
             arguments:
               parameters:
-                - name: ref_type
-                  value: "{{workflow.parameters.ref_type}}"
-                - name: ref_value
-                  value: "{{workflow.parameters.ref_value}}"
-                - name: repo
-                  value: "{{workflow.parameters.repo}}"
+                - name: containerdisk-tag
+                  value: "{{workflow.parameters.containerdisk-tag}}"
 
-          # 1. Fast BST element graph check — no build
-          - name: bst-validate
-            depends: "resolve-source.Succeeded"
-            templateRef:
-              name: dakota-bst
-              template: bst-validate
+          # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down
+          - name: test-lane
+            depends: "assert-cd.Succeeded"
+            withItems:
+              - smoke
+              - developer
+              - system
+            when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
+            template: lane
             arguments:
               parameters:
-                - name: clone_url
-                  value: "{{tasks.resolve-source.outputs.parameters.clone_url}}"
-                - name: clone_ref
-                  value: "{{tasks.resolve-source.outputs.parameters.clone_ref}}"
-
-          # 2. BST build → OCI export → push to cluster zot
-          - name: bst-build-export-push
-            depends: "bst-validate.Succeeded"
-            templateRef:
-              name: dakota-bst
-              template: bst-build-export-push
-            arguments:
-              parameters:
+                - name: suite
+                  value: "{{item}}"
+                - name: vm-name
+                  value: "{{workflow.name}}-{{item}}"
+                - name: image-tag
+                  value: "{{workflow.parameters.image-tag}}"
+                - name: containerdisk-tag
+                  value: "{{workflow.parameters.containerdisk-tag}}"
+                - name: namespace
+                  value: "{{workflow.parameters.namespace}}"
                 - name: variant
                   value: "{{workflow.parameters.variant}}"
-                - name: clone_url
-                  value: "{{tasks.resolve-source.outputs.parameters.clone_url}}"
-                - name: clone_ref
-                  value: "{{tasks.resolve-source.outputs.parameters.clone_ref}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+                - name: vm-memory
+                  value: "{{workflow.parameters.vm-memory}}"
 
-          # 3. Build containerDisk OCI image from the BST-pushed zot image
-          - name: build-cd
-            depends: "bst-build-export-push.Succeeded"
-            templateRef:
-              name: build-containerdisk
-              template: build-containerdisk
-            arguments:
-              parameters:
-                - name: image
-                  value: "{{tasks.bst-build-export-push.outputs.parameters.image-ref}}"
-                - name: image-tag
-                  value: "{{workflow.parameters.variant}}"
-                - name: containerdisk-tag
-                  value: "dakota-{{workflow.parameters.variant}}"
+    # ── assert-cd: fail fast if containerDisk is missing from Zot ───────────
+    - name: assert-cd
+      inputs:
+        parameters:
+          - name: containerdisk-tag
+      script:
+        image: quay.io/skopeo/stable:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        source: |
+          set -euo pipefail
+          TAG="{{inputs.parameters.containerdisk-tag}}"
+          CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
+          DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
+            "docker://${CD_IMAGE}" 2>/dev/null || echo "")
+          if [[ -n "${DIGEST}" ]]; then
+            echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
+          else
+            echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
+            echo "The digest-watch CronWorkflow builds it when GHCR changes." >&2
+            echo "Check: argo list -n argo --field-selector metadata.name=~build-cd-sync" >&2
+            exit 1
+          fi
 
-          # 4. KubeVirt VM boot from containerDisk
-          - name: provision
-            depends: "build-cd.Succeeded"
+    # ── lane: provision VM → run suite → teardown (per-suite) ────────────────
+    - name: lane
+      inputs:
+        parameters:
+          - name: suite
+          - name: vm-name
+          - name: image-tag
+          - name: containerdisk-tag
+          - name: namespace
+          - name: variant
+          - name: ssh-key-secret
+          - name: branch
+          - name: vm-memory
+      steps:
+        - - name: provision
             templateRef:
               name: provision-bluefin-vm
               template: provision-vm
             arguments:
               parameters:
                 - name: image-tag
-                  value: "dakota-{{workflow.parameters.variant}}"
+                  value: "{{inputs.parameters.containerdisk-tag}}"
                 - name: vm-name
-                  value: "dakota-test-{{workflow.uid}}"
+                  value: "{{inputs.parameters.vm-name}}"
                 - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-
-          # 5. Run smoke test suite against the provisioned Dakota VM
-          - name: run-smoke
-            depends: "provision.Succeeded"
-            when: "'{{workflow.parameters.suites}}' =~ 'smoke'"
+                  value: "{{inputs.parameters.namespace}}"
+                - name: vm-memory
+                  value: "{{inputs.parameters.vm-memory}}"
+        - - name: run-tests
             templateRef:
               name: run-gnome-tests
               template: run-gnome-tests
             arguments:
               parameters:
                 - name: vm-ip
-                  value: "{{tasks.provision.outputs.parameters.vm-ip}}"
+                  value: "{{steps.provision.outputs.parameters.vm-ip}}"
                 - name: suite
-                  value: "smoke"
+                  value: "{{inputs.parameters.suite}}"
                 - name: variant
-                  value: "{{workflow.parameters.variant}}"
+                  value: "{{inputs.parameters.variant}}"
                 - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
+                  value: "{{inputs.parameters.ssh-key-secret}}"
                 - name: branch
-                  value: "{{workflow.parameters.tests-branch}}"
-
-    # ── onExit handler ──────────────────────────────────────────────────────
-    - name: teardown
-      dag:
-        tasks:
-          - name: teardown-vm
+                  value: "{{inputs.parameters.branch}}"
+                - name: containerdisk-tag
+                  value: "{{inputs.parameters.containerdisk-tag}}"
+        - - name: teardown
             templateRef:
               name: teardown-bluefin-vm
               template: teardown-vm
             arguments:
               parameters:
                 - name: vm-name
-                  value: "dakota-test-{{workflow.uid}}"
+                  value: "{{inputs.parameters.vm-name}}"
                 - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
+                  value: "{{inputs.parameters.namespace}}"
+            continueOn:
+              failed: true
+
+    # ── onExit handler: optional GitHub commit status post ───────────────────
+    - name: cleanup-and-report
+      dag:
+        tasks:
+          - name: post-status
+            template: post-github-status
+            when: "'{{workflow.parameters.sha}}' != ''"
+
+    # ── post-github-status ────────────────────────────────────────────────────
+    - name: post-github-status
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
+        source: |
+          STATE=$([ "{{workflow.status}}" = "Succeeded" ] && echo success || echo failure)
+          PAYLOAD=$(jq -n \
+            --arg state "$STATE" \
+            --arg ctx  "ghost-lab" \
+            --arg desc "Dakota lab test $STATE" \
+            --arg url  "http://192.168.1.102:32746/workflows/argo/{{workflow.name}}" \
+            '{state:$state,context:$ctx,description:$desc,target_url:$url}')
+          curl -sf -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/{{workflow.parameters.repo}}/statuses/{{workflow.parameters.sha}}" \
+            -d "$PAYLOAD" \
+          && echo "Posted $STATE to {{workflow.parameters.repo}}@{{workflow.parameters.sha}}" \
+          || echo "WARNING: failed to post commit status (non-fatal)"

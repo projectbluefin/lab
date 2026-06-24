@@ -159,8 +159,7 @@ argo/
     provision-gnomeos-vm.yaml     provision GnomeOS VM
     teardown-gnomeos-vm.yaml      delete GnomeOS VM + hostDisk
     run-incluster-tests.yaml      run tests inside the cluster
-    dakota-qa-pipeline.yaml       full Dakota QA pipeline
-    dakota-bst.yaml               drive dakota `just validate` / `just build` / `just lint` on ghost
+    dakota-qa-pipeline.yaml       full Dakota QA pipeline (pull from ghcr.io/projectbluefin/dakota)
     knuckle-qa-pipeline.yaml      Knuckle installer pipeline
     image-poller.yaml             poll for new image digests
     pr-poller.yaml                poll PRs for label-triggered test runs
@@ -193,10 +192,8 @@ manifests/                     ← ArgoCD (testing-lab-infra App) syncs these
   image-poll-bluefin-stable.yaml  CronWorkflow: poll bluefin:stable digest
   image-poll-lts-testing.yaml     CronWorkflow: poll bluefin-lts:testing digest
   image-poll-lts-stable.yaml      CronWorkflow: poll bluefin-lts:stable digest
-  image-poll-common.yaml          CronWorkflow: poll common image digest
+  image-poll-dakota.yaml          CronWorkflow: poll dakota:latest digest
   pr-label-poller.yaml            CronWorkflow: poll PRs for test-me label
-  bst-build-priorityclass.yaml    PriorityClass for BST build pods
-  bst-cache-warm.yaml             CronWorkflow: warm BST layer cache
   lab-test-vm-priorityclass.yaml  PriorityClass for test VM pods
   homelab-access-auth.yaml        homelab access auth config
   homelab-runner-rbac.yaml        RBAC for homelab ARC runners

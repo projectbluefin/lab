@@ -24,6 +24,10 @@ spec:
       # Used by digest-watch when the upstream GHCR digest changes.
       - name: force
         value: "false"
+      # disk-size: raw disk pre-allocation for bootc install to-disk.
+      # 20G is the default; increase for larger images (e.g. bazzite/aurora).
+      - name: disk-size
+        value: "20G"
   templates:
 
     # ─── Top-level DAG ────────────────────────────────────────────────────────
@@ -36,6 +40,8 @@ spec:
           - name: containerdisk-tag  # tag to push: 192.168.1.102:30500/bluefin-containerdisk:<tag>
           - name: force          # "true" skips check and always rebuilds
             value: "false"
+          - name: disk-size      # raw disk pre-allocation for bootc install
+            value: "20G"
       dag:
         tasks:
           # Skipped when force=true (digest-watch already confirmed a rebuild is needed).
@@ -66,6 +72,8 @@ spec:
                   value: "{{inputs.parameters.image-tag}}"
                 - name: containerdisk-tag
                   value: "{{inputs.parameters.containerdisk-tag}}"
+                - name: disk-size
+                  value: "{{inputs.parameters.disk-size}}"
 
           # Skipped when check=exists (install-to-disk skipped → this skips too).
           - name: convert-and-push
@@ -123,6 +131,8 @@ spec:
           - name: image
           - name: image-tag
           - name: containerdisk-tag
+          - name: disk-size
+            value: "20G"
       synchronization:
         mutexes:
           - name: ghost-heavy-compute
@@ -187,7 +197,7 @@ spec:
             rm -f "${DISK}"
           fi
 
-          truncate -s 15G "${DISK}"
+          truncate -s "{{inputs.parameters.disk-size}}" "${DISK}"
 
           # /var/lib/containers is mounted from the ghost SSD hostPath so podman
           # stores image layers on the data disk, not the pod's ephemeral overlay.

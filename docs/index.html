@@ -237,13 +237,15 @@
         <th>Image</th>
         <th>Smoke</th>
         <th>Developer</th>
+        <th>Software</th>
         <th>System</th>
+        <th>Flatcar</th>
         <th>Last Run</th>
         <th>Trigger / PR</th>
         <th>Workflow</th>
       </tr>
     </thead>
-    <tbody id="status-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    <tbody id="status-tbody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
   </table>
 </div>
 
@@ -285,11 +287,13 @@
 <script>
 const ARGO_UI   = 'http://192.168.1.102:32746';
 const GH_REPO   = 'https://github.com/projectbluefin/testing-lab';
-const SUITES    = ['smoke', 'developer', 'system'];
+const SUITES    = ['smoke', 'developer', 'software', 'system'];
 const SUITE_FEATURES = {
   smoke:     GH_REPO + '/tree/main/tests/smoke/features',
   developer: GH_REPO + '/tree/main/tests/developer/features',
+  software:  GH_REPO + '/tree/main/tests/software/features',
   system:    GH_REPO + '/tree/main/tests/system/features',
+  flatcar:   GH_REPO + '/tree/main/tests/flatcar/features',
 };
 // PR context: prefix → GitHub repo slug
 const PR_REPOS = {
@@ -495,20 +499,27 @@ function buildStatusTable(images, allData) {
     bySlug[d.image.slug][d.suite] = d.data;
   }
 
+  const ALL_COLS = ['smoke', 'developer', 'software', 'system', 'flatcar'];
+
   const rows = images.map(img => {
     const row = bySlug[img.slug] || {};
-    const suites = SUITES.map(s => suiteCell(row[s], s)).join('');
-    const lastRuns = SUITES.map(s => row[s]?.last_run).filter(Boolean).sort();
+    // Images can declare their own suite list (e.g. flatcar only runs 'flatcar')
+    const imgSuites = img.suites || SUITES;
+    const cols = ALL_COLS.map(s => {
+      if (!imgSuites.includes(s)) return '<td style="color:var(--border)">—</td>';
+      return `<td>${suiteCell(row[s], s)}</td>`;
+    }).join('');
+    const lastRuns = ALL_COLS.map(s => row[s]?.last_run).filter(Boolean).sort();
     const lastRun = lastRuns.pop();
-    const wfNames = SUITES.map(s => row[s]?.workflow_name).filter(Boolean);
+    const wfNames = ALL_COLS.map(s => row[s]?.workflow_name).filter(Boolean);
     const wf = wfNames[0];
     const pr = wf ? prLabel(wf) : null;
     const trig = pr ? pr : (lastRun ? 'nightly' : '—');
     const wfLink = wf ? argoLink(wf, wf.length > 28 ? wf.slice(0,26)+'…' : wf) : '—';
 
     return `<tr>
-      <td style="font-weight:600">${img.label}</td>
-      ${suites.split('</div>').filter(Boolean).map(c => `<td>${c}</div></td>`).join('')}
+      <td style="font-weight:600;white-space:nowrap">${img.label}</td>
+      ${cols}
       <td style="color:var(--muted);white-space:nowrap">${fmtAgo(lastRun)}</td>
       <td style="white-space:nowrap">${trig}</td>
       <td class="mono" style="font-size:11px">${wfLink}</td>
@@ -615,8 +626,9 @@ function buildScreenshots(images) {
 
 // ── History tables ──────────────────────────────────────────────────────────
 async function buildHistoryBlock(img, allSuiteData) {
+  const imgSuites = img.suites || SUITES;
   const rows = [];
-  for (const s of SUITES) {
+  for (const s of imgSuites) {
     const d = allSuiteData[s];
     if (!d?.history?.length) continue;
     for (const h of d.history) rows.push({ suite: s, wf: d.workflow_name, ...h });
@@ -657,21 +669,23 @@ async function buildHistoryBlock(img, allSuiteData) {
     { slug:'bluefin-bazzite-testing', label:'bazzite:testing' },
     { slug:'bluefin-aurora-testing',  label:'aurora:testing' },
     { slug:'dakota-testing',          label:'dakota:testing' },
+    { slug:'flatcar-testing',         label:'flatcar:testing', suites:['flatcar'] },
   ];
 
   const gen = stats._meta?.generated;
   document.getElementById('header-meta').innerHTML =
     `${gen ? 'Data: '+fmtAgo(gen) : ''} · <a href="${ARGO_UI}" target="_blank" rel="noopener">Argo UI</a> · <a href="${GH_REPO}" target="_blank" rel="noopener">testing-lab</a>`;
 
-  // Phase 2: fetch all result files in parallel
+  // Phase 2: fetch all result files in parallel (each image fetches its own suite list)
   const allData = [];
-  await Promise.all(IMAGES.flatMap(img =>
-    SUITES.map(s =>
+  await Promise.all(IMAGES.flatMap(img => {
+    const imgSuites = img.suites || SUITES;
+    return imgSuites.map(s =>
       load(`results/${img.slug}-${s}.json`).then(d => {
         allData.push({ image: img, suite: s, data: d });
       })
-    )
-  ));
+    );
+  }));
 
   // Group by image slug for easy lookup
   const byImage = {};

@@ -44,7 +44,7 @@ spec:
         value: "bluefin-test"
       # Comma-separated suite names matching tests/ subdirectories
       - name: suites
-        value: "smoke,developer"
+        value: "smoke,developer,software"
       # Used to select Ghostty fixtures on dakota builds
       - name: variant
         value: "bluefin"
@@ -90,6 +90,7 @@ spec:
             withItems:
               - smoke
               - developer
+              - software
               - system
             when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
             template: lane

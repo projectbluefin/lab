@@ -316,11 +316,11 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
 
 ```
 [digest-watch CronWorkflow, every 5 min]
-  step 1 (curl): GET current GHCR image digest (cheap — single HTTP HEAD, ~100ms)
-  step 2 (kubectl): GET stored digest from ConfigMap containerdisk-source-digests
+  step 1 (skopeo): GET current GHCR image digest (authenticated via github-token secret)
+  step 2 (curl → k8s API): GET stored digest from ConfigMap containerdisk-source-digests
   match?    → exit 0 (skip)
-  mismatch? → PATCH ConfigMap with new digest (claim it)
-              kubectl apply Workflow from workflowtemplate/build-containerdisk (async)
+  mismatch? → PATCH ConfigMap with new digest (claim it, create if 404)
+              POST Workflow JSON to k8s API (async build)
 
 [test pipeline (bluefin-qa-pipeline)]
   assert-cd: skopeo inspect Zot → tag exists? → proceed
@@ -328,43 +328,45 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
 ```
 
 **Rules:**
-- Digest watch uses `curl` + GHCR anonymous token (no skopeo, no image pull):
+- Digest watch uses `quay.io/skopeo/stable:latest` (has skopeo + curl, no kubectl needed):
   ```bash
-  TOKEN=$(curl -sL "https://ghcr.io/token?scope=repository:projectbluefin/bluefin:pull" \
-    | sed 's/.*"token":"\([^"]*\)".*/\1/')
-  DIGEST=$(curl -sI -H "Authorization: Bearer ${TOKEN}" \
-    -H "Accept: application/vnd.oci.image.index.v1+json" \
-    "https://ghcr.io/v2/projectbluefin/bluefin/manifests/testing" \
-    | grep -i docker-content-digest | awk '{print $2}' | tr -d '\r\n')
+  # Authenticated digest fetch — works for all GHCR images (public + org-restricted)
+  LIVE_DIGEST=$(skopeo inspect \
+    --no-tags \
+    --format '{{.Digest}}' \
+    --creds "_token:${GITHUB_TOKEN}" \
+    "docker://${IMAGE}:${IMAGE_TAG}" 2>/dev/null)
+  ```
+  Anonymous GHCR token API returns a 60-char non-JWT token that produces 404 on manifest
+  requests — do NOT use the anonymous token endpoint. Use PAT via `--creds "_token:PAT"`.
+- Use in-cluster k8s API (SA token at `/var/run/secrets/kubernetes.io/serviceaccount/`)
+  with `curl` for all ConfigMap and Workflow CRUD — no kubectl image needed.
+- **HTTP status detection trap**: `curl -sf -w "%{http_code}" ... || echo "000"` appends
+  "000" to curl's stdout output when curl fails. Use a tmpfile instead:
+  ```bash
+  HTTP_CODE_FILE=$(mktemp)
+  curl -s -w "%{http_code}" -o /dev/null ... > "${HTTP_CODE_FILE}" || true
+  HTTP=$(cat "${HTTP_CODE_FILE}"); rm -f "${HTTP_CODE_FILE}"
   ```
 - The ConfigMap (`containerdisk-source-digests`) stores **GHCR source digests**, not Zot
   containerdisk digests — the two images are different (source bootc OCI vs BIB-built qcow2 OCI)
 - ConfigMap is patched by the workflow, NOT managed by ArgoCD. Do not put it in `manifests/`.
-  Create it in the first workflow run via `kubectl create configmap ... || kubectl patch ...`
-- Submitting a build via `kubectl apply` (not `argo submit` CLI, no extra image dependency):
+  Create it in the first workflow run via POST if PATCH returns 404.
+- Submitting a build via k8s API (no extra image dependency):
   ```bash
-  cat > /tmp/build.yaml << EOF
-  apiVersion: argoproj.io/v1alpha1
-  kind: Workflow
-  metadata:
-    generateName: build-cd-sync-
-    namespace: argo
-  spec:
-    workflowTemplateRef:
-      name: build-containerdisk
-    arguments:
-      parameters:
-      - name: image
-        value: "${IMAGE}"
-  EOF
-  kubectl apply -f /tmp/build.yaml
+  curl -sf --cacert "${CACERT}" \
+    -H "Authorization: Bearer ${SA_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -X POST \
+    "${KS}/apis/argoproj.io/v1alpha1/namespaces/argo/workflows" \
+    -d '{"apiVersion":"argoproj.io/v1alpha1","kind":"Workflow","metadata":{"generateName":"build-cd-sync-testing-","namespace":"argo"},"spec":{"workflowTemplateRef":{"name":"build-containerdisk"},"arguments":{"parameters":[{"name":"image","value":"..."}]}}}'
   ```
 - `assert-cd` in the test pipeline uses the existing `build-containerdisk/check` template
   but must **exit 1 on missing**, not just output `"missing"` (the original `check` template
   is non-failing — write a new `assert` template that calls skopeo and fails on empty result)
 
 **Why ConfigMap over Zot annotation:**
-- Zot annotations require `oras` tooling to set post-push; ConfigMap needs only `kubectl`
+- Zot annotations require `oras` tooling to set post-push; ConfigMap needs only `curl`
 - The ConfigMap stores the *source* digest, not the containerdisk digest — conceptually different
 
 ### 15. VM concurrency — semaphore pools (bin-packing)

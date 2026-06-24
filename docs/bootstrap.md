@@ -12,7 +12,7 @@ safely.
 |---|---|
 | x86_64 bare metal | Minimum 16GB RAM, 256GB NVMe, btrfs root or separate btrfs volume for `/var/tmp` |
 | Fedora / Bluefin host OS | Tested on Bluefin (bootc, atomic). Any systemd-based distro works. |
-| `k3s` installed | See [k3s.io/docs](https://docs.k3s.io/quick-start) — single node or multi-node |
+| `k3s` installed | See [k3s.io/docs](https://docs.k3s.io/quick-start) — single node or multi-node. **On immutable Linux (Bluefin/Dakota/Bazzite):** always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin` |
 | ArgoCD installed | `kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml` in `argocd` namespace |
 | Argo Workflows installed | See [argo-workflows install](https://argoproj.github.io/argo-workflows/installation/) |
 | `kubectl`, `argo`, `argocd`, `just` CLIs | On workstation or admin pod |
@@ -171,7 +171,25 @@ Loki listens at `http://192.168.1.102:30100` and scrapes pods labeled
 
 ---
 
-## 9. Verify the Setup
+## 9. Add Worker Nodes (optional)
+
+This cluster uses an opt-in model: worker nodes join the cluster manually and can
+leave at any time (useful for laptops and gaming machines).
+
+**Full onboarding steps: `docs/agent-cheatsheet.md` section 14.**
+
+Quick summary:
+1. Get join token: `ssh jorge@192.168.1.102 "sudo cat /var/lib/rancher/k3s/server/node-token"`
+2. On the new node: `sudo mkdir -p /var/usrlocal/bin` then run the k3s install script with `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`
+3. Disable auto-start: `sudo systemctl disable k3s-agent`
+4. Install `~/Justfile` with `just k8s-on/off/status` commands
+5. Label from workstation: `kubectl label node <name> node-role.kubernetes.io/worker=true`
+
+**Flannel backend is `host-gw`** — requires all nodes on 192.168.1.0/24 flat L2.
+
+---
+
+## 10. Verify the Setup
 
 ```bash
 # ArgoCD applications are healthy and synced

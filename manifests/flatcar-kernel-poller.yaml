@@ -1,0 +1,75 @@
+# CronWorkflow: polls kernel.org for the latest stable kernel weekly.
+# When the version changes vs ConfigMap state, triggers flatcar-kernel-build.
+# Weekly cadence is appropriate for a homelab — kernel.org stable releases
+# are typically every few weeks, hourly polling is unnecessary waste.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: flatcar-kernel-poller
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  schedules:
+    - "0 4 * * 1"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 86400
+      secondsAfterFailure: 604800
+    entrypoint: poll-and-trigger
+    templates:
+      - name: poll-and-trigger
+        script:
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          command: [bash]
+          source: |
+            set -euo pipefail
+
+            # Fetch latest stable kernel version from kernel.org
+            LATEST=$(curl -sf https://www.kernel.org/releases.json \
+              | python3 -c "
+            import sys, json
+            data = json.load(sys.stdin)
+            for r in data['releases']:
+                if r['moniker'] == 'stable':
+                    print(r['version'])
+                    break
+            ")
+            echo "Latest kernel.org stable: $LATEST"
+
+            # Read last-seen version from ConfigMap
+            SEEN=$(kubectl get configmap flatcar-kernel-polling-state \
+              -n argo -o jsonpath='{.data.kernel-stable}' 2>/dev/null || echo "")
+            echo "Last built: $SEEN"
+
+            if [ "$LATEST" = "$SEEN" ]; then
+              echo "No change — skipping build"
+              exit 0
+            fi
+
+            echo "New kernel detected: $LATEST — triggering build"
+            kubectl create -f - <<EOF
+            apiVersion: argoproj.io/v1alpha1
+            kind: Workflow
+            metadata:
+              generateName: flatcar-kernel-build-
+              namespace: argo
+            spec:
+              workflowTemplateRef:
+                name: flatcar-kernel-build
+              arguments:
+                parameters:
+                  - name: kernel-version
+                    value: "$LATEST"
+            EOF
+
+            # Update state so we don't re-trigger on next poll
+            kubectl patch configmap flatcar-kernel-polling-state \
+              -n argo --type=merge \
+              -p "{\"data\":{\"kernel-stable\":\"$LATEST\"}}"

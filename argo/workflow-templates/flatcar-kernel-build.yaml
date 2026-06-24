@@ -1,0 +1,240 @@
+# Builds a full Flatcar OS image with a custom kernel version.
+#
+# Pipeline:
+#   build-image  - Flatcar SDK builds packages + OS image + update payload
+#   register     - POST update payload to Nebraska; update_engine sees it immediately
+#
+# The update payload (flatcar_production_update.gz) is uploaded to Nebraska's
+# package store. update_engine on Flatcar nodes polls Nebraska (via update.conf
+# written by flatcar-update-configurator DaemonSet) and performs an A/B update.
+#
+# Flatcar app UUID: e96281a6-d1af-4bde-9a0a-97b76e56dc57
+# Nebraska NodePort: 30802 (http://192.168.1.102:30802)
+#
+# Build node: floats to any schedulable node. Needs privileged + ~100Gi scratch.
+# Build time: ~60-90 minutes first run (no ccache), ~30 minutes with warm cache.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: flatcar-kernel-build
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  entrypoint: pipeline
+  arguments:
+    parameters:
+      - name: kernel-version
+        value: "7.1.1"
+      - name: flatcar-scripts-ref
+        value: "main"
+      - name: sdk-version
+        value: "4593.0.0"
+
+  volumeClaimTemplates:
+    - metadata:
+        name: build-workspace
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 120Gi
+    - metadata:
+        name: ccache
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi
+
+  templates:
+    - name: pipeline
+      steps:
+        - - name: build-image
+            template: build-image
+            arguments:
+              parameters:
+                - name: kernel-version
+                  value: "{{workflow.parameters.kernel-version}}"
+                - name: flatcar-scripts-ref
+                  value: "{{workflow.parameters.flatcar-scripts-ref}}"
+                - name: sdk-version
+                  value: "{{workflow.parameters.sdk-version}}"
+        - - name: register-package
+            template: register-package
+            arguments:
+              parameters:
+                - name: kernel-version
+                  value: "{{workflow.parameters.kernel-version}}"
+
+    # -------------------------------------------------------------------------
+    # build-image: runs the Flatcar SDK as the pod container.
+    # Clones flatcar/scripts, copies kernel overlay, builds packages + OS image.
+    # Output: flatcar_production_update.gz on the build-workspace PVC.
+    # -------------------------------------------------------------------------
+    - name: build-image
+      inputs:
+        parameters:
+          - name: kernel-version
+          - name: flatcar-scripts-ref
+          - name: sdk-version
+      container:
+        image: "ghcr.io/flatcar/flatcar-sdk-amd64:{{inputs.parameters.sdk-version}}"
+        command: [bash, -euo, pipefail, -c]
+        args:
+          - |
+            KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
+            SCRIPTS_REF="{{inputs.parameters.flatcar-scripts-ref}}"
+
+            echo "=== Flatcar kernel build: ${KERNEL_VERSION} ==="
+
+            # Clone flatcar/scripts (shallow for speed)
+            git clone --depth=1 --branch "${SCRIPTS_REF}" \
+              https://github.com/flatcar/scripts /workspace/scripts
+            cd /workspace/scripts
+
+            # Clone testing-lab to get the kernel overlay
+            git clone --depth=1 \
+              https://github.com/projectbluefin/testing-lab /workspace/testing-lab
+
+            # Install kernel overlay into the scripts tree
+            OVERLAY_SRC=/workspace/testing-lab/flatcar/kernel-overlay
+            OVERLAY_DEST=sdk_container/src/third_party/flatcar-kernel-overlay
+            cp -r "${OVERLAY_SRC}" "${OVERLAY_DEST}"
+
+            # Register overlay in portage repos.conf
+            mkdir -p /etc/portage/repos.conf
+            cat > /etc/portage/repos.conf/flatcar-kernel.conf << EOF
+            [flatcar-kernel]
+            location = /workspace/scripts/${OVERLAY_DEST}
+            masters = portage-stable coreos
+            auto-sync = no
+            EOF
+
+            # Configure ccache
+            export CCACHE_DIR=/ccache
+            export USE_CCACHE=1
+            export CCACHE_MAXSIZE=15G
+            ccache --zero-stats 2>/dev/null || true
+
+            # Update the Manifest checksums for the kernel tarball.
+            # ebspike fetches the tarball and recomputes hashes.
+            emerge --quiet --oneshot dev-util/ebspike 2>/dev/null || true
+            ebspike "${OVERLAY_DEST}/sys-kernel/coreos-sources/coreos-sources-${KERNEL_VERSION}.ebuild" \
+              || echo "ebspike not available; Manifest must be pre-populated"
+
+            # Set up the amd64-usr board (cross-compilation sysroot)
+            ./setup_board --board=amd64-usr --default --skip-chroot-upgrade
+
+            # Build just the kernel source package from our overlay
+            emerge-amd64-usr --quiet --jobs=4 \
+              "=sys-kernel/coreos-sources-${KERNEL_VERSION}"
+
+            # Build the full OS image (produces flatcar_production_update.gz)
+            # --generate_update creates the Omaha-compatible payload signed with dev key
+            ./build_image --board=amd64-usr prod
+
+            # Locate the update payload
+            IMAGES_DIR="src/build/images/amd64-usr/latest"
+            PAYLOAD="${IMAGES_DIR}/flatcar_production_update.gz"
+            if [ ! -f "${PAYLOAD}" ]; then
+              echo "ERROR: update payload not found at ${PAYLOAD}"
+              ls "${IMAGES_DIR}/" || true
+              exit 1
+            fi
+
+            # Copy payload and metadata to workspace output dir for next step
+            mkdir -p /workspace/output
+            cp "${PAYLOAD}" /workspace/output/flatcar_production_update.gz
+            sha1sum "${PAYLOAD}" | awk '{print $1}' > /workspace/output/sha1.txt
+            sha256sum "${PAYLOAD}" | awk '{print $1}' > /workspace/output/sha256.txt
+            wc -c < "${PAYLOAD}" > /workspace/output/size.txt
+
+            echo "=== Build complete ==="
+            echo "Payload: $(wc -c < /workspace/output/flatcar_production_update.gz) bytes"
+            echo "SHA1:    $(cat /workspace/output/sha1.txt)"
+            echo "SHA256:  $(cat /workspace/output/sha256.txt)"
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: "8"
+            memory: 16Gi
+          limits:
+            cpu: "32"
+            memory: 32Gi
+        volumeMounts:
+          - name: build-workspace
+            mountPath: /workspace
+          - name: ccache
+            mountPath: /ccache
+        env:
+          - name: CCACHE_DIR
+            value: /ccache
+
+    # -------------------------------------------------------------------------
+    # register-package: copies the payload into Nebraska's package PVC and
+    # registers it via the Nebraska REST API.
+    # Nebraska serves it at: http://192.168.1.102:30802/flatcar/<filename>
+    # update_engine on nodes downloads it on next check-in.
+    # -------------------------------------------------------------------------
+    - name: register-package
+      inputs:
+        parameters:
+          - name: kernel-version
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        source: |
+          set -euo pipefail
+
+          KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
+          NEBRASKA_URL="http://192.168.1.102:30802"
+          FLATCAR_APP_ID="e96281a6-d1af-4bde-9a0a-97b76e56dc57"
+
+          PAYLOAD=/workspace/output/flatcar_production_update.gz
+          SHA1=$(cat /workspace/output/sha1.txt)
+          SHA256=$(cat /workspace/output/sha256.txt)
+          SIZE=$(cat /workspace/output/size.txt)
+          FILENAME="flatcar_production_update-${KERNEL_VERSION}.gz"
+
+          # Copy payload into Nebraska's package directory via the nebraska pod
+          NEBRASKA_POD=$(kubectl get pod -n flatcar-update \
+            -l app=nebraska -o jsonpath='{.items[0].metadata.name}')
+          kubectl cp "${PAYLOAD}" \
+            "flatcar-update/${NEBRASKA_POD}:/packages/${FILENAME}"
+
+          # Nebraska package URL (served from its /flatcar/ path)
+          PKG_URL="${NEBRASKA_URL}/flatcar/${FILENAME}"
+
+          # Register the package via Nebraska REST API
+          # Version string format: Flatcar uses semver-like e.g. "4593.2.3+kernel7.1.1"
+          VERSION="4593.2.3+kernel${KERNEL_VERSION}"
+
+          # Convert SHA1 to base64 (Nebraska API expects base64-encoded SHA1)
+          SHA1_B64=$(echo -n "${SHA1}" | xxd -r -p | base64)
+
+          curl -sf -X POST \
+            "${NEBRASKA_URL}/api/v1/apps/${FLATCAR_APP_ID}/packages" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"filename\": \"${FILENAME}\",
+              \"url\": \"${PKG_URL}\",
+              \"version\": \"${VERSION}\",
+              \"hash\": \"${SHA1_B64}\",
+              \"hash256\": \"${SHA256}\",
+              \"size\": \"${SIZE}\",
+              \"type\": 1,
+              \"arch\": 1
+            }"
+
+          echo ""
+          echo "=== Package registered in Nebraska ==="
+          echo "Version:  ${VERSION}"
+          echo "URL:      ${PKG_URL}"
+          echo "update_engine on Flatcar nodes will pick this up on next check-in"
+        volumeMounts:
+          - name: build-workspace
+            mountPath: /workspace

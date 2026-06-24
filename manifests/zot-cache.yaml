@@ -1,10 +1,9 @@
-# Zot pull-through cache — single instance proxying all 7 upstream registries
+# Zot pull-through cache — single instance proxying all 6 upstream registries
 # Zot sync destination prefix mapping stores each registry under a separate subpath:
 #   ghcr.io                    → /ghcr   (pull via http://192.168.1.102:30501/ghcr/...)
 #   docker.io                  → /docker (pull via http://192.168.1.102:30501/docker/...)
 #   quay.io                    → /quay   (pull via http://192.168.1.102:30501/quay/...)
 #   registry.fedoraproject.org → /fedora (pull via http://192.168.1.102:30501/fedora/...)
-#   registry.access.redhat.com → /redhat (pull via http://192.168.1.102:30501/redhat/...)
 #   registry.k8s.io            → /k8s    (pull via http://192.168.1.102:30501/k8s/...)
 #   cgr.dev                    → /cgr    (pull via http://192.168.1.102:30501/cgr/...)
 #
@@ -61,12 +60,6 @@ data:
               "onDemand": true,
               "tlsVerify": true,
               "content": [{ "prefix": "**", "destination": "/fedora" }]
-            },
-            {
-              "urls": ["https://registry.access.redhat.com"],
-              "onDemand": true,
-              "tlsVerify": true,
-              "content": [{ "prefix": "**", "destination": "/redhat" }]
             },
             {
               "urls": ["https://registry.k8s.io"],

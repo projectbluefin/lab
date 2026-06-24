@@ -263,14 +263,13 @@ containerd `hosts.toml` (written by `registry-mirror-config` DaemonSet — no k3
 | Instance | Upstream | NodePort | Storage |
 |---|---|---|---|
 | `registry` (writable) | — write target, no upstream | 30500 | `/var/mnt/ghost-data/zot-local` |
-| `zot-cache` | all 7 upstreams (ghcr, docker, quay, fedora, redhat, k8s, cgr) | 30501 | `/var/mnt/ghost-data/zot-cache` |
+| `zot-cache` | all 6 upstreams (ghcr, docker, quay, fedora, k8s, cgr) | 30501 | `/var/mnt/ghost-data/zot-cache` |
 
 Pull path prefixes (used in hosts.toml mirror URLs and Zot destination mapping):
 - `ghcr.io` → `:30501/ghcr`
 - `docker.io` → `:30501/docker`
 - `quay.io` → `:30501/quay`
 - `registry.fedoraproject.org` → `:30501/fedora`
-- `registry.access.redhat.com` → `:30501/redhat`
 - `registry.k8s.io` → `:30501/k8s`
 - `cgr.dev` → `:30501/cgr`
 
@@ -279,9 +278,14 @@ via `manifests/zot-cache.yaml` (pull-through) and `manifests/zot-writable.yaml` 
 
 **Image policy:** all `image:` references in `argo/` and `manifests/` must use a cached registry.
 Enforced by the registry allowlist lint step in `.github/workflows/lint.yaml`.
-Allowlist: `ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`,
-`registry.k8s.io`, `cgr.dev`, `192.168.1.102`, `localhost`.
+Allowlist: `ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.k8s.io`, `cgr.dev`, `192.168.1.102`, `localhost`.
 Exception: `docker.io/rocm/k8s-device-plugin` — annotate `# registry-lint-ignore`.
+**Banned registries:** `registry.access.redhat.com` (UBI), `bitnami`, `docker.io` (except rocm exception above).
+**Base image preference order:**
+1. `cgr.dev/chainguard/*` — Chainguard first always
+2. `registry.fedoraproject.org/fedora-hummingbird:latest` — Fedora Hummingbird only; no other Fedora variants
+3. `ubuntu` (docker.io) — Ubuntu third
+4. Anything else: ask before choosing
 **Rule:** for kubectl+shell in workflow templates, use `cgr.dev/chainguard/kubectl:latest-dev`
 (has bash; `registry.k8s.io/kubectl` is distroless — no shell).
 **Rule:** upstream k8s/CNCF registries (`registry.k8s.io`, `quay.io`) always preferred over

@@ -158,7 +158,7 @@ spec:
         parameters:
           - name: vm-name
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -210,7 +210,7 @@ spec:
         - name: work
           emptyDir: {}
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -245,7 +245,7 @@ spec:
           emptyDir: {}
       initContainers:
         - name: git-clone
-          image: quay.io/fedora/fedora:latest
+          image: registry.fedoraproject.org/fedora-hummingbird:latest
           command: [bash, -c]
           args:
             - |
@@ -257,7 +257,7 @@ spec:
             - name: src
               mountPath: /src
       container:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash, -c]
         args:
           - |
@@ -352,7 +352,7 @@ spec:
         - name: work
           emptyDir: {}
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         env:
           - name: SSH_PUBKEY
@@ -534,7 +534,7 @@ spec:
           secret:
             secretName: "{{inputs.parameters.ssh-key-secret}}"
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -624,7 +624,7 @@ spec:
           secret:
             secretName: "{{inputs.parameters.ssh-key-secret}}"
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -677,7 +677,7 @@ spec:
           - name: namespace
       activeDeadlineSeconds: 600
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -774,7 +774,7 @@ spec:
         - name: work
           emptyDir: {}
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -873,7 +873,7 @@ spec:
         parameters:
           - name: vm-name
       script:
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:

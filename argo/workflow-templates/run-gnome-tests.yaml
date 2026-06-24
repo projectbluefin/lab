@@ -59,7 +59,7 @@ spec:
       # Results are captured via outputs.result (stdout) + kubectl logs.
       initContainers:
         - name: git-sync
-          image: quay.io/fedora/fedora:latest
+          image: registry.fedoraproject.org/fedora-hummingbird:latest
           env:
             - name: BRANCH
               value: "{{inputs.parameters.branch}}"
@@ -96,7 +96,7 @@ spec:
               mountPath: /workspace
       container:
         # Fedora: has dnf, python3, pip3 — matches Bluefin (Fedora-based) package names
-        image: quay.io/fedora/fedora:latest
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         imagePullPolicy: Always
         resources:
           requests:

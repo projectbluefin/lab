@@ -1,0 +1,108 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: dakota-commit-poller
+  namespace: argo
+  annotations:
+    description: |
+      Polls GitHub API for new commits on dakota:testing. If HEAD SHA changed
+      vs stored state in image-polling-digests ConfigMap, submits
+      dakota-build-pipeline. Runs every 5 min via the dakota-commit-poller
+      CronWorkflow in manifests/.
+  labels:
+    app.kubernetes.io/component: commit-poller
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  podGC:
+    strategy: OnWorkflowCompletion
+  ttlStrategy:
+    secondsAfterSuccess: 3600
+    secondsAfterFailure: 86400
+  activeDeadlineSeconds: 120
+  entrypoint: poll
+
+  arguments:
+    parameters:
+      - name: repo
+        value: "projectbluefin/dakota"
+      - name: branch
+        value: "testing"
+      - name: state-key
+        value: "sha-dakota-testing"
+
+  templates:
+
+    - name: poll
+      dag:
+        tasks:
+          - name: check-sha
+            template: check-sha
+          - name: run-build
+            depends: "check-sha.Succeeded"
+            when: "{{tasks.check-sha.outputs.parameters.changed}} == true"
+            templateRef:
+              name: dakota-build-pipeline
+              template: build
+            arguments:
+              parameters:
+                - name: ref
+                  value: "{{workflow.parameters.branch}}"
+
+    - name: check-sha
+      outputs:
+        parameters:
+          - name: changed
+            valueFrom:
+              path: /tmp/changed
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
+        source: |
+          set -euo pipefail
+          REPO="{{workflow.parameters.repo}}"
+          BRANCH="{{workflow.parameters.branch}}"
+          KEY="{{workflow.parameters.state-key}}"
+
+          # Fetch latest commit SHA from GitHub API
+          REMOTE=$(curl -sf \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/commits?sha=${BRANCH}&per_page=1" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['sha'])")
+
+          echo "Remote SHA:  ${REMOTE}" >&2
+
+          # Read stored SHA from ConfigMap
+          STORED=$(kubectl get configmap image-polling-digests \
+            -n argo \
+            -o jsonpath="{.data.${KEY}}" 2>/dev/null || true)
+
+          echo "Stored SHA:  ${STORED}" >&2
+
+          if [[ "$REMOTE" == "$STORED" ]]; then
+            echo "No change — skipping build" >&2
+            echo "false" > /tmp/changed
+          else
+            echo "SHA changed — updating ConfigMap key ${KEY}" >&2
+            kubectl patch configmap image-polling-digests \
+              -n argo --type merge \
+              -p "{\"data\":{\"${KEY}\":\"${REMOTE}\"}}" 2>/dev/null \
+            || kubectl patch configmap image-polling-digests \
+              -n argo --type merge \
+              -p "{\"data\":{\"${KEY}\":\"${REMOTE}\"}}"
+            echo "true" > /tmp/changed
+          fi

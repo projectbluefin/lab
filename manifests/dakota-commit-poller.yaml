@@ -1,0 +1,25 @@
+# Polls dakota:testing for new commits every 5 min. Triggers in-cluster BST build
+# when HEAD SHA changes. No ARC runners — fully in-cluster trigger.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: dakota-commit-poller
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: commit-poller
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  schedules:
+    - "*/5 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    workflowTemplateRef:
+      name: dakota-commit-poller

@@ -1,0 +1,150 @@
+# Scale down ArgoCD components not used in this single-tenant homelab.
+# ServerSideApply (configured in testing-lab-infra Application) patches
+# only the fields declared here — other fields are left intact.
+#
+# dex-server: SSO broker — not configured (admin local account only).
+# notifications-controller: alert delivery — not configured.
+# applicationset-controller: dynamic app generators — not used (static apps only).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-dex-server
+  namespace: argocd
+spec:
+  replicas: 0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-notifications-controller
+  namespace: argocd
+spec:
+  replicas: 0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-applicationset-controller
+  namespace: argocd
+spec:
+  replicas: 0
+---
+# timeout.reconciliation: reduce git polling from 3 min (default) to 1 h.
+# Push triggers and manual syncs handle day-to-day reconciliation; the
+# background poll is a safety net only.
+#
+# resource.exclusions: stop ArgoCD watching Workflow instances and bare Pods.
+# These are high-churn transient objects managed entirely by Argo Workflows,
+# not by GitOps. Without this exclusion the application-controller burns CPU
+# continuously diffing objects it has no authority over.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  timeout.reconciliation: 1h
+  resource.exclusions: |
+    - apiGroups:
+      - argoproj.io
+      kinds:
+      - Workflow
+    - apiGroups:
+      - ""
+      kinds:
+      - Pod
+---
+# server.disable.dex: suppress dex-server health checks in the API server
+# (dex-server is scaled to zero above).
+#
+# reposerver.parallelism.limit:1 — sequential manifest rendering on repo-server.
+# Prevents OOM when both testing-lab apps sync simultaneously on this single node.
+#
+# controller.status.processors / controller.operation.processors: reduced from
+# defaults (20/10) to match the actual load of two static ArgoCD Applications.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  server.disable.dex: "true"
+  reposerver.parallelism.limit: "1"
+  controller.status.processors: "5"
+  controller.operation.processors: "2"
+---
+# Resource requests for ArgoCD components — currently all BestEffort (resources: {}).
+# Without requests, these are first OOM-killed under VM memory pressure.
+# Values are conservative: sized for 2 static apps (testing-lab, testing-lab-infra).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argocd-application-controller
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-repo-server
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-redis
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: redis
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

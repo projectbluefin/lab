@@ -61,8 +61,26 @@ data:
         secondsAfterCompletion: 604800
         secondsAfterSuccess: 604800
         secondsAfterFailure: 2592000
-      # podGC.OnWorkflowSuccess: succeeded pods deleted immediately on workflow
-      # success; on failure, pods persist for the TTL window above so `argo
-      # logs` can fetch them. Bounded pod count → predictable scheduler load.
+      # OnPodCompletion cleans each pod as it finishes rather than waiting for
+      # the whole workflow. Flattens scheduler load during long multi-lane
+      # pipelines.
       podGC:
-        strategy: OnWorkflowSuccess
+        strategy: OnPodCompletion
+
+  # ── argoexec sidecar resource cap ─────────────────────────────────────────
+  # argoexec runs in every workflow pod. Without limits it inherits node
+  # allocatable, inflating scheduler resource accounting. Generous limits —
+  # argoexec only does artifact I/O and parameter passing.
+  executor: |
+    resources:
+      requests:
+        cpu: 100m
+        memory: 64Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+  # ── metrics TTL — evict stale label sets from prometheus registry ──────────
+  metricsConfig: |
+    enabled: true
+    metricsTTL: "10m"

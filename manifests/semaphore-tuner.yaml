@@ -10,7 +10,9 @@
 #   containerdisk — any Ready node (bluefin, dakota containerDisk VMs)
 #   hostdisk      — ghost only     (knuckle, flatcar, gnomeos hostDisk VMs)
 #
-# Constants are in the script below; adjust OVERHEAD_GI or SLOT_GI to tune.
+# Constants are in the script below; adjust OVERHEAD_GI, SLOT_GI, or bounds to tune.
+# OVERHEAD_GI=12  right-sized for Framework desktops that may have active desktop workloads
+# MAX_CD=16       cap for containerdisk pool (5×64GB nodes → 33 raw slots; 16 is aggressive but safe)
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -52,9 +54,9 @@ spec:
             set -euo pipefail
 
             # ── tunables ────────────────────────────────────────────────────
-            OVERHEAD_GI=10   # system/argo overhead reserved per node
+            OVERHEAD_GI=12   # system/argo overhead reserved per node (right-sized for Framework desktops)
             SLOT_GI=8        # slot unit = largest VM in the fleet
-            MIN_CD=2;  MAX_CD=32   # containerdisk bounds (any node)
+            MIN_CD=2;  MAX_CD=16   # containerdisk bounds (any node)
             MIN_HD=2;  MAX_HD=6    # hostdisk bounds (ghost only)
 
             # ── parse kubernetes memory quantity → integer GiB ──────────────

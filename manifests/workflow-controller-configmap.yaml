@@ -2,19 +2,22 @@
 # anti-spam limits. ServerSideApply (configured in testing-lab-infra Application)
 # merges only the keys defined here — Helm-owned keys are left intact.
 #
-# Anti-spam rationale (added 2026-06-22):
+# Anti-spam rationale (added 2026-06-22, updated 2026-06-23):
 #   A rogue agent submitting workflows in a tight loop previously saturated the
 #   cluster. The following limits bound the blast radius without affecting normal
 #   nightly and ad-hoc test runs:
 #
-#   parallelism / namespaceParallelism — hard cap on concurrently RUNNING
-#     workflows. Excess submissions queue in Pending state (cheap) rather than
-#     spin up pods (expensive). Ghost has 16c/64GB; 8 concurrent pipelines is
-#     generous (each BIB+VM run uses ~4c/8GB peak).
+#   parallelism / namespaceParallelism — soft ceiling, set high so Argo is not
+#     the bottleneck. Real backpressure comes from Kubernetes pod scheduling:
+#     each VM pod requests 8 Gi RAM; ghost (64 GB) + bazzite (30 GB) = ~94 GB,
+#     so the scheduler naturally queues pods beyond ~11 concurrent VM runs.
+#     The Argo cap is a last-resort anti-spam guard against runaway agents, not
+#     a capacity knob. 50 is unreachable in practice given node RAM limits.
 #
 #   resourceRateLimit — token-bucket throttle on how fast the controller
 #     creates k8s resources (pods, PVCs) across all running workflows. Prevents
-#     a single burst from exhausting the API server or scheduler.
+#     a single burst from exhausting the API server or scheduler. This is the
+#     primary defence against the 9000-pod incident; the parallelism cap is not.
 #
 #   workflowDefaults.spec.activeDeadlineSeconds — hard 2-hour kill on any
 #     workflow that has not completed. The longest legitimate pipeline
@@ -24,6 +27,9 @@
 #   workflowDefaults.spec.parallelism — cap on concurrent nodes (pods) within
 #     a single workflow. Normal pipelines have at most 3–4 parallel nodes.
 #
+#   podGC + orphan-pod-gc CronWorkflow — the real guards against pod
+#     accumulation. The parallelism cap does not prevent orphaned pods.
+#
 # workflowDefaults TTL: 7 days for success, 30 days for failure — lets agents
 # answer "did the last 10 runs pass?" without a separate archive database.
 apiVersion: v1
@@ -32,15 +38,14 @@ metadata:
   name: workflow-controller-configmap
   namespace: argo
 data:
-  # Max concurrent running workflows cluster-wide. Submissions beyond this
-  # queue in Pending state until a slot opens — no resources consumed.
-  # Ghost has 64 GB RAM; each VM pipeline consumes ~8 GB peak. 6 concurrent
-  # workflows → ≤6 VMs → ~48 GB RAM, leaving 16 GB headroom for system +
-  # workflow pods. Bazzite handles overflow workflow pods (non-VM steps).
-  parallelism: "6"
+  # High ceiling — Kubernetes pod scheduling (node RAM limits) is the real
+  # backpressure. This cap is a last-resort guard against runaway agents.
+  # ghost (64 GB) + bazzite (30 GB) can physically fit ~11 concurrent 8 Gi VM
+  # pods before the scheduler queues them. 50 is unreachable in practice.
+  parallelism: "50"
 
   # Same cap scoped to the argo namespace.
-  namespaceParallelism: "6"
+  namespaceParallelism: "50"
 
   # Token-bucket rate limit on k8s resource creation by the controller.
   # limit: 10 ops/s, burst: 10 — allows a fresh workflow to spin up its

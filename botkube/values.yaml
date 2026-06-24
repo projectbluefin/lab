@@ -22,6 +22,20 @@ communications:
 
 settings:
   clusterName: "bluefin-factory"
+  prefix: "!"
+  aliases:
+    release-bluefin:
+      command: github run-workflow projectbluefin/bluefin execute-release.yml
+      displayName: "Release Bluefin"
+    release-lts:
+      command: github run-workflow projectbluefin/bluefin-lts execute-release.yml
+      displayName: "Release Bluefin LTS"
+    release-dakota:
+      command: github run-workflow projectbluefin/dakota execute-release.yml
+      displayName: "Release Dakota"
+    release-common:
+      command: github run-workflow projectbluefin/common release.yml
+      displayName: "Release Common"
 
 # RBAC note: Botkube v1.14 rbac.groups renders K8s ClusterRole objects, NOT
 # Discord-role auth. Authorization for github-dispatch is enforced via channel

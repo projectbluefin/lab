@@ -31,25 +31,28 @@ spec:
                   id: "1519233261438631936"  # #factory channel
                   bindings:
                     executors:
-                      - kubectl-read-only
                       - github-dispatch
                     sources:
                       - k8s-err-with-logs
         settings:
           clusterName: "bluefin-factory"
+          prefix: "!"
+          aliases:
+            release-bluefin:
+              command: github run-workflow projectbluefin/bluefin execute-release.yml
+              displayName: "Release Bluefin"
+            release-lts:
+              command: github run-workflow projectbluefin/bluefin-lts execute-release.yml
+              displayName: "Release Bluefin LTS"
+            release-dakota:
+              command: github run-workflow projectbluefin/dakota execute-release.yml
+              displayName: "Release Dakota"
+            release-common:
+              command: github run-workflow projectbluefin/common release.yml
+              displayName: "Release Common"
         rbac:
           groups: []
         executors:
-          kubectl-read-only:
-            botkube/kubectl:
-              enabled: true
-              config:
-                allowedVerbs: ["get", "describe", "logs", "top"]
-                allowedResources:
-                  - nodes
-                  - pods
-                  - namespaces
-                  - workflows
           github-dispatch:
             botkube/github:
               enabled: true

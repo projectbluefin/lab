@@ -391,3 +391,121 @@ If the file is missing, delete the pod and let the init container re-download it
 - `hostNetwork: true` + `hostIPC: true` required for ROCm IPC
 - `HSA_OVERRIDE_GFX_VERSION=11.5.1` required — gfx1151 is RDNA 3.5, not RDNA 4
 - Qwen3 uses chain-of-thought thinking by default; add `/no_think` prefix or increase `max_tokens`
+
+---
+
+## 14. Node onboarding — adding a worker to the cluster
+
+All nodes in this cluster run immutable Linux (Bluefin, Dakota, Bazzite — ostree-based).
+`/usr/local/bin` is a symlink to `/var/usrlocal/bin` (the writable overlay). The k3s install
+script must be told to use this path or it fails on a fresh system.
+
+### Get the join token (run from ghost or this workstation)
+
+```bash
+ssh jorge@192.168.1.102 "sudo cat /var/lib/rancher/k3s/server/node-token"
+```
+
+### Bootstrap a new worker node (run ON the new node, with sudo)
+
+```bash
+# 1. Ensure writable bin directory exists (required on ostree/immutable Linux)
+sudo mkdir -p /var/usrlocal/bin
+
+# 2. Install k3s agent — joins the cluster immediately
+curl -sfL https://get.k3s.io | \
+  K3S_URL="https://192.168.1.102:6443" \
+  K3S_TOKEN="<token from above>" \
+  INSTALL_K3S_BIN_DIR="/var/usrlocal/bin" \
+  sh -s -
+
+# 3. Disable auto-start — nodes opt in to the cluster (see Justfile below)
+sudo systemctl disable k3s-agent
+
+# 4. Install sleep inhibitor (prevents suspend while k3s is active — critical for laptops)
+sudo tee /etc/systemd/system/k3s-sleep-inhibit.service << 'EOF'
+[Unit]
+Description=Inhibit sleep while k3s agent is running
+BindsTo=k3s-agent.service
+After=k3s-agent.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:handle-lid-switch --who=k3s --why="k3s running - use just k8s-off before travel" --mode=block sleep infinity
+Restart=on-failure
+RestartSec=5
+EOF
+
+sudo mkdir -p /etc/systemd/system/k3s-agent.service.d
+sudo tee /etc/systemd/system/k3s-agent.service.d/sleep-inhibit.conf << 'EOF'
+[Unit]
+Wants=k3s-sleep-inhibit.service
+EOF
+
+sudo systemctl daemon-reload
+```
+
+### Install the cluster Justfile in the node's home directory
+
+```bash
+cat > ~/Justfile << 'EOF'
+# Cluster controls — opt in/out of the ghost k3s cluster
+# k8s-on  — join the cluster (laptop stays awake while connected)
+# k8s-off — leave the cluster (safe to travel, close lid, suspend)
+
+k8s-on:
+    sudo systemctl enable --now k3s-agent
+    @echo "k3s agent started — sleep/lid inhibited while connected"
+
+k8s-off:
+    sudo systemctl stop k3s-agent
+    sudo systemctl disable k3s-agent
+    @echo "k3s agent stopped — normal sleep restored"
+
+k8s-status:
+    @systemctl is-active k3s-agent 2>/dev/null && echo "k8s: ON (inhibiting sleep)" || echo "k8s: OFF (normal sleep)"
+EOF
+```
+
+### Label the node and verify
+
+```bash
+# From workstation / ghost
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl label node <hostname> \
+  node-role.kubernetes.io/worker=true --overwrite
+
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl get nodes -o wide
+```
+
+Expected: new node appears as `Ready  worker`.
+
+### Passwordless sudo for agents (required for non-interactive SSH management)
+
+On the new node, the `jorge-nopasswd` sudoers file must sort AFTER `wheel` and include `!requiretty`:
+
+```bash
+sudo bash -c 'echo -e "Defaults:jorge !requiretty\njorge ALL=(ALL) NOPASSWD: ALL" \
+  > /etc/sudoers.d/zzz-jorge && chmod 440 /etc/sudoers.d/zzz-jorge'
+```
+
+### Node offboarding — removing a worker
+
+```bash
+# 1. Drain the node (from workstation)
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl drain <hostname> \
+  --ignore-daemonsets --delete-emptydir-data
+
+# 2. Delete from cluster
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl delete node <hostname>
+
+# 3. On the node itself (optional cleanup)
+sudo /var/usrlocal/bin/k3s-agent-uninstall.sh
+```
+
+### Key facts for immutable Linux nodes
+
+- **Binary path:** `/var/usrlocal/bin/k3s` — always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`
+- **Flannel backend:** `host-gw` — pure L2 routes, no VXLAN/WireGuard kernel modules needed
+- **All nodes must be on 192.168.1.0/24** for host-gw to work
+- **Upgrades:** handled by system-upgrade-controller via `manifests/k3s-upgrade-plans.yaml` — ArgoCD manages it
+- **Version skew rule:** agents must never be newer than the server (ghost)

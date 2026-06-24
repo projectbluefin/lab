@@ -25,15 +25,17 @@ spec:
       - name: force
         value: "false"
       # disk-size: raw disk pre-allocation for bootc install to-disk.
-      # Formula for non-native images (ostree relabeling pass ~7.5x expansion from compressed):
-      #   compressed_MB * 7.5 / 1024 + 1G_overhead, rounded up to nearest 5G.
-      # Measured compressed sizes (as of 2026-06):
-      #   bluefin:testing  4295 MB → 25G (native SELinux, no relabeling, ~5x expansion)
-      #   bluefin-lts      3153 MB → 25G (non-native, 23.5G installed+relabeled, fits)
-      #   dakota           2927 MB → 25G (non-native, smaller than lts)
-      #   aurora           3405 MB → 30G (non-native; 25G failed with 282 kB remaining)
-      #   bazzite          4712 MB → 40G (non-native, 34.5G calculated)
-      # To re-derive: skopeo inspect docker://<image>:<tag> | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(l['Size'] for l in d['LayersData'])//1024//1024,'MB')"
+      # bootc docs: root partition takes all remaining space after EFI (512 MiB) + BIOS (1 MiB).
+      # No upstream minimum is specified — size is image-dependent.
+      # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/man/bootc-install-to-disk.8.md
+      #
+      # Measured compressed layer sizes via skopeo inspect (2026-06):
+      #   bluefin:testing  4295 MB compressed → 25G  (native host SELinux; no relabeling pass needed; fits)
+      #   bluefin-lts      3153 MB compressed → 25G  (non-native; LTS declares xfs but btrfs override works; fits)
+      #   aurora           3405 MB compressed → 30G  (non-native; 25G failed with 282 kB remaining at end of relabeling)
+      #   bazzite          4712 MB compressed → 40G  (non-native; not yet measured; scaled from aurora's empirical ratio)
+      #   dakota           2927 MB compressed → N/A  (declares bootloader=systemd in 00-defaults.toml but ships no bootupd; blocked)
+      # To re-measure: skopeo inspect docker://<image>:<tag> | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(l['Size'] for l in d['LayersData'])//1024//1024,'MB')"
       - name: disk-size
         value: "25G"
   templates:

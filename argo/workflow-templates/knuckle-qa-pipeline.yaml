@@ -16,13 +16,11 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  nodeSelector:
-    kubernetes.io/hostname: ghost
   synchronization:
     semaphores:
       - configMapKeyRef:
           name: semaphore-config
-          key: max-hostdisk-vms
+          key: max-containerdisk-vms
   activeDeadlineSeconds: 7200
   entrypoint: pipeline
   onExit: teardown
@@ -43,7 +41,11 @@ spec:
     - name: pipeline
       dag:
         tasks:
+          - name: create-workspace
+            template: create-workspace
+
           - name: clone-source
+            depends: "create-workspace.Succeeded"
             template: resolve-source
             arguments:
               parameters:
@@ -138,6 +140,33 @@ spec:
                 - name: branch
                   value: "{{workflow.parameters.tests-branch}}"
 
+    - name: create-workspace
+      resource:
+        action: create
+        setOwnerReference: true
+        manifest: |
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "{{workflow.name}}-workspace"
+            namespace: argo
+          spec:
+            accessModes: [ReadWriteOnce]
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 30Gi
+
+    - name: delete-workspace
+      resource:
+        action: delete
+        manifest: |
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "{{workflow.name}}-workspace"
+            namespace: argo
+
     - name: resolve-source
       inputs:
         parameters:
@@ -183,14 +212,11 @@ spec:
       synchronization:
         mutexes:
           - name: ghost-heavy-compute
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       activeDeadlineSeconds: 3600
       volumes:
         - name: knuckle-test
-          hostPath:
-            path: /var/mnt/ghost-data/knuckle-test
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-workspace"
         - name: src
           emptyDir: {}
       initContainers:
@@ -288,13 +314,10 @@ spec:
           - name: ignition-json
             valueFrom:
               path: /work/ignition.json
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       volumes:
         - name: knuckle-test
-          hostPath:
-            path: /var/mnt/ghost-data/knuckle-test
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-workspace"
         - name: work
           emptyDir: {}
       script:
@@ -338,13 +361,10 @@ spec:
       inputs:
         parameters:
           - name: vm-name
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       volumes:
         - name: knuckle-test
-          hostPath:
-            path: /var/mnt/ghost-data/knuckle-test
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-workspace"
       script:
         image: quay.io/kubevirt/virt-launcher:v1.8.2
         command: [bash]
@@ -399,8 +419,6 @@ spec:
                   kubevirt.io/ignitiondata: >-
                     {{inputs.parameters.ignition-json}}
               spec:
-                nodeSelector:
-                  kubernetes.io/hostname: ghost
                 domain:
                   firmware:
                     bootloader:
@@ -430,13 +448,11 @@ spec:
                     pod: {}
                 volumes:
                   - name: installeriso
-                    hostDisk:
-                      path: /var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso
-                      type: Disk
+                    persistentVolumeClaim:
+                      claimName: "{{workflow.name}}-workspace"
                   - name: rootdisk
-                    hostDisk:
-                      path: /var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}.raw
-                      type: Disk
+                    persistentVolumeClaim:
+                      claimName: "{{workflow.name}}-workspace"
 
     - name: boot-installer
       inputs:
@@ -444,17 +460,14 @@ spec:
           - name: vm-name
           - name: namespace
           - name: ssh-key-secret
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       activeDeadlineSeconds: 1200
       podSpecPatch: |
         hostNetwork: true
         dnsPolicy: ClusterFirstWithHostNet
       volumes:
         - name: knuckle-test
-          hostPath:
-            path: /var/mnt/ghost-data/knuckle-test
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-workspace"
         - name: ssh-key
           secret:
             secretName: "{{inputs.parameters.ssh-key-secret}}"
@@ -540,8 +553,6 @@ spec:
           - name: vm-name
           - name: namespace
           - name: ssh-key-secret
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       activeDeadlineSeconds: 600
       podSpecPatch: |
         hostNetwork: true
@@ -602,8 +613,6 @@ spec:
         parameters:
           - name: vm-name
           - name: namespace
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       activeDeadlineSeconds: 600
       script:
         image: quay.io/fedora/fedora:latest
@@ -653,8 +662,6 @@ spec:
                 labels:
                   kubevirt.io/vm: ${VM}
               spec:
-                nodeSelector:
-                  kubernetes.io/hostname: ghost
                 domain:
                   cpu:
                     cores: 4
@@ -676,9 +683,8 @@ spec:
                     pod: {}
                 volumes:
                   - name: rootdisk
-                    hostDisk:
-                      path: /var/mnt/ghost-data/knuckle-test/${VM}.raw
-                      type: Disk
+                    persistentVolumeClaim:
+                      claimName: {{workflow.name}}-workspace
           EOF
 
           virtctl -n "${NS}" start "${VM}"
@@ -695,8 +701,6 @@ spec:
           - name: vm-ip
             valueFrom:
               path: /work/vm-ip
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       activeDeadlineSeconds: 600
       podSpecPatch: |
         hostNetwork: true
@@ -769,8 +773,6 @@ spec:
                   value: "knuckle-test-{{workflow.uid}}"
                 - name: namespace
                   value: "{{workflow.parameters.namespace}}"
-                - name: test-root
-                  value: "/var/mnt/ghost-data/knuckle-test"
 
           - name: cleanup-installer-artifacts
             depends: "teardown-vm.Succeeded"
@@ -780,17 +782,18 @@ spec:
                 - name: vm-name
                   value: "knuckle-test-{{workflow.uid}}"
 
+          - name: delete-workspace
+            depends: "cleanup-installer-artifacts.Succeeded || cleanup-installer-artifacts.Failed"
+            template: delete-workspace
+
     - name: cleanup-installer-artifacts
       inputs:
         parameters:
           - name: vm-name
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       volumes:
         - name: knuckle-test
-          hostPath:
-            path: /var/mnt/ghost-data/knuckle-test
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-workspace"
       script:
         image: registry.access.redhat.com/ubi9/ubi-minimal:9.5
         command: [bash]

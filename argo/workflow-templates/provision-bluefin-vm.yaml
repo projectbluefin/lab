@@ -153,11 +153,27 @@ spec:
           kubectl wait vmi -n "${NS}" "${VM}" \
             --for=condition=Ready --timeout=600s >&2
 
+          # Start sshd.socket via QEMU guest agent.
+          # Bluefin's OpenSSH packaging enables sshd.service (persistent daemon) but
+          # Fedora's new packaging requires sshd.socket for TCP; the service never
+          # auto-starts. Starting sshd.socket explicitly is the reliable fix.
+          VIRT_POD=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "Starting sshd.socket in ${VM} via guest agent..." >&2
+          kubectl exec -n "${NS}" "${VIRT_POD}" -c compute -- \
+            virsh qemu-agent-command 1 \
+            '{"execute":"guest-exec","arguments":{"path":"systemctl","arg":["start","sshd.socket"],"capture-output":false}}' \
+            >&2 || echo "WARNING: guest-exec for sshd.socket failed, SSH poll will be the arbiter" >&2
+
+          # Wait for SSH key injection (qemuGuestAgent propagation).
+          kubectl wait vmi -n "${NS}" "${VM}" \
+            --for=condition=AccessCredentialsSynchronized --timeout=120s >&2
+
           POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
             -o jsonpath='{.items[0].status.podIP}')
 
           echo "Waiting for SSH on ${POD_IP}..." >&2
-          timeout 1800 bash -c \
-            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 10; done"
+          timeout 300 bash -c \
+            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
 
           echo "${POD_IP}"

@@ -399,7 +399,44 @@ slots = clamp(floor((sum_ready_node_ram - OVERHEAD_GI) / SLOT_GI), MIN, MAX)
 ```
 Adding a node → slots auto-increase within 1 hour. Values written to `manifests/semaphore-config.yaml`. Tune constants in `manifests/semaphore-tuner.yaml`.
 
-### 16. CronWorkflow — `schedules` not `schedule`
+### 16. GitHub Contents API write-back — curl+jq only
+
+When a workflow pod needs to push a file to a GitHub repo (e.g. Pages results JSON), use `curl` + `jq` inside the bash script. Never use inline Python (`python3 -c "..."`) — colons and quotes in Python code break YAML block scalar parsing and produce ArgoCD `ManifestGenerationError`.
+
+**Pattern (verified against Context7 `/websites/github_en_rest`):**
+```bash
+# GET current file sha (required for updates)
+CURRENT=$(curl -sf \
+  -H "Authorization: token ${GITHUB_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  "https://api.github.com/repos/OWNER/REPO/contents/PATH/file.json" || echo "{}")
+FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
+
+# Build payload with jq — no Python, no heredocs
+CONTENT=$(echo "$PAYLOAD_OBJ" | base64 -w0)
+BODY=$(jq -nc \
+  --arg msg "commit message" \
+  --arg content "$CONTENT" \
+  --arg sha "$FILE_SHA" \
+  'if $sha != "" then {message:$msg,content:$content,sha:$sha} else {message:$msg,content:$content} end')
+
+# PUT — sha required for updates, omit for new files
+HTTP_CODE=$(curl -sf -w "%{http_code}" -o /tmp/response.json \
+  -X PUT \
+  -H "Authorization: token ${GITHUB_TOKEN}" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -H "Content-Type: application/json" \
+  -d "$BODY" "https://api.github.com/repos/OWNER/REPO/contents/PATH/file.json")
+```
+
+Key rules:
+- `sha` field required when updating an existing file; omit for new files (404 on GET = new file)
+- `content` must be base64 encoded; use `base64 -w0` (no line wraps)
+- `X-GitHub-Api-Version: 2022-11-28` header required by current GitHub API
+- Log output to a file on persistent storage (hostPath) — pod stdout is GC'd
+
+### 17. CronWorkflow — `schedules` not `schedule`
 
 CronWorkflow uses `schedules` (plural array), not `schedule` (singular string). The singular field does not exist in the CRD schema — ArgoCD's ServerSideApply validation will reject it.
 
@@ -439,8 +476,10 @@ CronWorkflows also cannot be invoked via `workflowTemplateRef` — if you need a
 - A pipeline with no `onExit` handler (VM will leak on failure)
 - Any `script:` template without `resources:` limits
 - Templates in `argo/workflow-templates/` applied with `kubectl apply` (not via git)
-- `generateName:` in `manifests/` (ArgoCD needs stable names)
-- Python inside bash inside YAML (colons + quotes cause parse errors — use `kubectl jsonpath` or `jq` instead, never inline python3 -c)
+- A `pr-poller` (or any PR-gating workflow) that skips on ANY existing commit status — it must skip only `pending` (in-flight) and `success` (already passed), and re-test on `error`/`failure`. Skipping `error` means stale statuses from deleted workflows permanently block retests.
+- A hostDisk VM pipeline (`knuckle-qa-pipeline`, `flatcar-smoke-test`) with `nodeSelector` only on individual templates but not at `spec.nodeSelector` — the DAG entrypoint pod can land on the wrong node. Set `spec.nodeSelector: kubernetes.io/hostname: ghost` at the WorkflowTemplate spec level for all hostDisk pipelines.
+- Python inside bash inside YAML (colons + quotes cause parse errors — use `curl`+`jq` instead; never `python3 -c` or heredoc Python; see §16 GitHub Contents API pattern)
+- Heredoc `<< 'EOF'` inside a YAML block scalar — indentation breaks the YAML parser. ArgoCD returns `ManifestGenerationError: yaml: could not find expected ':'`. Write scripts to files in initContainers or use inline jq instead.
 - `registry.k8s.io/kubectl` used as a shell-capable image — it is distroless, has no bash, nc, or any shell utilities. Use `cgr.dev/chainguard/kubectl:latest-dev` when you need kubectl + bash together
 - A WorkflowTemplate file name that doesn't match its `metadata.name` (confuses ArgoCD tracking)
 - Templates annotated `DEPRECATED` that haven't been deleted from git
@@ -468,7 +507,8 @@ Before marking any WorkflowTemplate change done:
 - [ ] Change is committed and pushed — not manually applied to cluster
 - [ ] `description:` annotation present on the new/modified template
 - [ ] File name matches `metadata.name` (e.g. `provision-bluefin-vm.yaml` for `name: provision-bluefin-vm`)
-- [ ] No DEPRECATED templates left in git
+- [ ] hostDisk pipelines (knuckle, flatcar) have `spec.nodeSelector: kubernetes.io/hostname: ghost` at WorkflowTemplate spec level — not just on individual templates
+- [ ] GitHub Contents API write-backs use curl+jq, not inline Python; output teed to a file on persistent hostPath storage
 - [ ] `kubectl get workflowtemplate -n argo` shows no cluster-only templates (not in git) unless they're intentional bootstrap one-shots
 - [ ] No CronWorkflow with a `dry-run` parameter whose default is `"true"` — verify GC jobs actually delete
 - [ ] All local OCI registry references use `:30500` (NodePort), not `:5000` (container-internal)

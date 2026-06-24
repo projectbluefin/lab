@@ -257,7 +257,7 @@ spec:
     # dashboard reflects live run data without waiting for the 30-min GHA cron.
     - name: update-factory-stats
       script:
-        image: registry.fedoraproject.org/fedora-hummingbird:latest
+        image: quay.io/fedora/fedora:latest
         command: [bash]
         env:
           - name: GITHUB_TOKEN
@@ -380,7 +380,7 @@ spec:
     # ── post-github-status: posts commit status to GitHub API ──────────────────
     - name: post-github-status
       script:
-        image: registry.fedoraproject.org/fedora-hummingbird:latest
+        image: quay.io/fedora/fedora:latest
         command: [bash]
         env:
           - name: GITHUB_TOKEN

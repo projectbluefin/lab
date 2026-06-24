@@ -250,8 +250,37 @@
     }
     .screenshot-thumb:hover { border-color: var(--link); }
 
-    /* ── History section ─────────────────────────────── */
-    .history-grid {
+    /* ── Stats bar ───────────────────────────────────── */
+    .stats-bar {
+      display: flex; flex-wrap: wrap; gap: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; margin-bottom: 16px; overflow: hidden;
+    }
+    .stat-chip {
+      padding: 10px 18px; border-right: 1px solid var(--border);
+      font-size: 13px; display: flex; flex-direction: column; gap: 2px;
+    }
+    .stat-chip:last-child { border-right: none; }
+    .stat-value {
+      font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-good  { color: var(--pass); }
+    .stat-warn  { color: var(--pending); }
+    .stat-bad   { color: var(--fail); }
+    .stat-neutral { color: var(--text); }
+
+    /* ── Critical badge ─────────────────────────────── */
+    .badge-critical {
+      background: #3d1a1a; color: #ff6b6b;
+      border: 1px solid #8b2020;
+      padding: 1px 6px; border-radius: 3px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
       gap: 12px; margin-bottom: 8px;
@@ -264,6 +293,9 @@
   <h1>Bluefin QA Dashboard</h1>
   <div class="header-meta" id="header-meta">Loading…</div>
 </header>
+
+<!-- Quick stats bar -->
+<div id="stats-bar" class="stats-bar"></div>
 
 <!-- Alert banner (failures only) -->
 <div id="alert-banner"></div>
@@ -284,11 +316,11 @@
     <thead>
       <tr>
         <th>Image</th>
-        <th>Smoke</th>
-        <th>Developer</th>
-        <th>Software</th>
-        <th>System</th>
-        <th>Flatcar</th>
+        <th title="GNOME Shell boot, display, accessibility AT-SPI">Smoke</th>
+        <th title="Ptyxis terminal, Podman, Flatpak, Homebrew — needs uinput">Developer</th>
+        <th title="Bazaar, Flatpak, GNOME extensions">Software</th>
+        <th title="bootc integrity, composefs, fs-verity, uupd staged deployments — PLATFORM CONTRACTS">System ⚑</th>
+        <th title="Flatcar systemd, container workloads">Flatcar</th>
         <th>Last Green</th>
         <th>Last Run</th>
         <th>Trigger / PR</th>
@@ -355,7 +387,68 @@ const PR_REPOS = {
   dakota:  'projectbluefin/dakota',
 };
 
-async function load(url) {
+// GitHub code search link for a specific scenario name
+function ghScenarioLink(suite, name) {
+  const q = encodeURIComponent(`repo:projectbluefin/testing-lab "${name}"`);
+  return `https://github.com/search?q=${q}&type=code`;
+}
+
+// Loki log query URL for a workflow pod (raw API — filter by workflow label)
+function lokiLogUrl(wfName) {
+  const q = encodeURIComponent(`{app_kubernetes_io_part_of="bluefin-test-suite"} |= "${wfName}"`);
+  return `http://192.168.1.102:30100/loki/api/v1/query_range?query=${q}&limit=1000`;
+}
+
+// ── Quick stats bar ─────────────────────────────────────────────────────────
+function buildStatsBar(stats) {
+  const p = stats.pipelines || {};
+  const cd = p.containerdisk || {};
+  const v = stats.velocity || {};
+  const cov = stats.test_coverage || {};
+
+  const runs7d = cd.runs_7d || v.deployments_7d || '—';
+  const suc = cd.success_rate_pct;
+  const sucClass = suc >= 90 ? 'stat-good' : suc >= 70 ? 'stat-warn' : 'stat-bad';
+  const avgMin = cd.avg_total_min || '—';
+  const vms7d = v.vms_provisioned_7d || '—';
+  const openIssues = stats.github?.testing_lab?.open_issues || stats.hive?.open_issues || '—';
+  const scenarios = cov.scenarios_total || '—';
+  const scensFailed = cov.scenarios_failed || 0;
+  const scensClass = scensFailed > 0 ? 'stat-bad' : 'stat-good';
+  const running = (stats.recent_runs || []).filter(r => r.overall === 'running').length;
+
+  document.getElementById('stats-bar').innerHTML = `
+    <div class="stat-chip">
+      <span class="stat-value stat-neutral">${runs7d}</span>
+      <span class="stat-label">Runs · 7d</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-value ${sucClass}">${suc != null ? suc+'%' : '—'}</span>
+      <span class="stat-label">Pipeline success</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-value stat-neutral">${avgMin}m</span>
+      <span class="stat-label">Avg duration</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-value stat-neutral">${vms7d}</span>
+      <span class="stat-label">VMs · 7d</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-value ${scensClass}">${scensFailed > 0 ? scensFailed + ' failing' : 'all passing'}</span>
+      <span class="stat-label">of ${scenarios} scenarios</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-value ${running > 0 ? 'stat-neutral' : 'stat-good'}">${running}</span>
+      <span class="stat-label">Running now</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-value stat-neutral">${openIssues}</span>
+      <span class="stat-label">Open issues</span>
+    </div>`;
+}
+
+
   try { const r = await fetch(url); return r.ok ? r.json() : null; }
   catch { return null; }
 }
@@ -477,11 +570,32 @@ function buildAlertBanner(allData, stats) {
   const stuck = runs.filter(r => r.overall === 'running' &&
     (Date.now() - new Date(r.started_at).getTime()) / 60000 > 90);
 
+  // Count unique PRs that have only failures (blocked)
+  const prMap = {};
+  for (const r of runs.filter(r => r.overall === 'fail')) {
+    const ctx = prContext(r.id || '');
+    if (ctx) prMap[`${ctx.repo}#${ctx.num}`] = true;
+  }
+  const blockedPRs = Object.keys(prMap).length;
+
+  // System suite failures are platform contract failures — critical
+  const systemFails = failures.filter(d => d.suite === 'system');
+
   const parts = [];
+  if (systemFails.length) parts.push(`<strong style="color:var(--fail)">⚑ ${systemFails.length} CRITICAL</strong> — platform contract failures`);
   if (failures.length) parts.push(`<strong>${failures.length}</strong> suite${failures.length>1?'s':''} failing`);
   if (infraFails.length) parts.push(`<strong>${infraFails.length}</strong> pipeline failure${infraFails.length>1?'s':''}`);
+  if (blockedPRs) parts.push(`<strong>${blockedPRs}</strong> PR${blockedPRs>1?'s':''} blocked`);
   if (stuck.length) parts.push(`<strong>${stuck.length}</strong> stuck`);
   if (bugs.length) parts.push(`<strong>${bugs.length}</strong> open bug${bugs.length>1?'s':''}`);
+
+  // Deduplicate system in suite count if shown separately
+  const nonSystemFails = failures.filter(d => d.suite !== 'system');
+  if (systemFails.length && nonSystemFails.length) {
+    // Replace generic suite count with non-system count
+    const idx = parts.findIndex(p => p.includes('suite') && !p.includes('CRITICAL'));
+    if (idx >= 0) parts[idx] = `<strong>${nonSystemFails.length}</strong> other suite${nonSystemFails.length>1?'s':''} failing`;
+  }
 
   if (!parts.length) {
     document.getElementById('alert-banner').innerHTML = `
@@ -677,6 +791,13 @@ function buildFailures(allData, stats) {
   }
   const bugs = stats.open_bugs || [];
 
+  // Sort: system suite first (platform contracts are most critical)
+  failures.sort((a, b) => {
+    if (a.suite === 'system' && b.suite !== 'system') return -1;
+    if (b.suite === 'system' && a.suite !== 'system') return 1;
+    return 0;
+  });
+
   const cards = failures.map(f => {
     const d = f.data;
     const passed = d.scenarios - d.failed;
@@ -686,6 +807,7 @@ function buildFailures(allData, stats) {
     const spark = sparkline(d.history);
     const argoUrl = d.workflow_name ? argoHref(d.workflow_name) : null;
     const featureUrl = SUITE_FEATURES[f.suite];
+    const isSystem = f.suite === 'system';
 
     // Find related open bugs for this suite
     const relatedBugs = bugs.filter(b =>
@@ -696,42 +818,52 @@ function buildFailures(allData, stats) {
           <span style="color:var(--pending)">Related issues:</span>
           ${relatedBugs.map(b =>
             `<a href="${b.url}" target="_blank" rel="noopener" style="color:var(--pending);margin-left:6px">
-              #${b.number} ${b.title.slice(0,60)}${b.title.length>60?'…':''}
+              #${b.number} — ${b.title.slice(0,70)}${b.title.length>70?'…':''}
             </a>`
           ).join('')}
         </div>`
       : '';
 
+    // Scenario list: each item links to GitHub code search so maintainers can jump to the test
     const scenarioList = d.failed_scenarios?.length
       ? (() => {
-          const items = d.failed_scenarios.map(s =>
-            `<li>${s.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</li>`).join('');
+          const items = d.failed_scenarios.map(s => {
+            const safe = s.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            const searchUrl = ghScenarioLink(f.suite, s);
+            return `<li><a href="${searchUrl}" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:none" title="Search for this scenario in GitHub">${safe}</a></li>`;
+          }).join('');
           const show = d.failed_scenarios.length > 6;
           const inner = `<ul>${items}</ul>`;
           return `<div class="failing-scenarios">
-            ${show ? `<details><summary>▸ ${d.failed_scenarios.length} failing scenarios (click to expand)</summary>${inner}</details>` : inner}
+            ${show ? `<details><summary>▸ ${d.failed_scenarios.length} failing scenarios — click to expand, each links to code</summary>${inner}</details>` : inner}
           </div>`;
         })()
       : `<div class="failing-scenarios" style="color:var(--muted);font-size:12px">
-           Scenario names will appear here after next test run
+           Scenario names will appear here after next test run.
+           <a href="${featureUrl}" target="_blank" rel="noopener" style="color:var(--link)">Browse feature files →</a>
          </div>`;
 
-    return `<div class="failure-card">
+    const criticalBadge = isSystem
+      ? `<span class="badge-critical" title="System suite validates bootc integrity, composefs, fs-verity, and uupd — platform contracts">PLATFORM CONTRACT</span>`
+      : '';
+
+    return `<div class="failure-card"${isSystem?' style="border-color:#8b2020;border-left-color:#ff6b6b"':''}>
       <div class="failure-title">
         <span class="failure-image">${f.image.label}</span>
         <span class="failure-suite">${f.suite}</span>
+        ${criticalBadge}
         <span class="failure-count">${d.failed} of ${d.scenarios} scenarios failing</span>
       </div>
       <div class="failure-meta">
         ${spark}
         <span class="sep">·</span>
         ${since ? `Failing since: ${fmtAgo(since)}` : ''}
+        ${argoUrl ? `<span class="sep">·</span><a href="${argoUrl}" target="_blank" rel="noopener">Argo logs</a>` : ''}
         <span class="sep">·</span>
-        ${argoUrl ? `<a href="${argoUrl}" target="_blank" rel="noopener">→ Argo logs (${d.workflow_name})</a>` : ''}
-        <span class="sep">·</span>
-        <a href="${featureUrl}" target="_blank" rel="noopener">→ Feature files (${f.suite})</a>
+        <a href="${featureUrl}" target="_blank" rel="noopener">Feature files</a>
         <span class="sep">·</span>
         ${trigger}
+        ${d.workflow_name ? `<span class="mono" style="font-size:11px;color:var(--muted)">${d.workflow_name}</span>` : ''}
       </div>
       ${bugLinks}
       ${scenarioList}
@@ -952,6 +1084,7 @@ async function buildHistoryBlock(img, allSuiteData) {
     byImage[d.image.slug][d.suite] = d.data;
   }
 
+  buildStatsBar(stats);
   buildAlertBanner(allData, stats);
   buildFailures(allData, stats);
   buildTriage(stats, allData);

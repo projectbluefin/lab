@@ -231,6 +231,7 @@ spec:
                 key: id_ed25519
         source: |
           set -euo pipefail
+          apk add --no-cache openssh-client 2>&1 | tail -2
           VM_IP="{{inputs.parameters.vm-ip}}"
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
           SCRIPTS_REF="{{inputs.parameters.flatcar-scripts-ref}}"

@@ -204,6 +204,10 @@ spec:
               chmod 600 /var/home/bluefin-test/.ssh/authorized_keys
               echo '[ROOT] bluefin-test authorized_keys written:'
               cat /var/home/bluefin-test/.ssh/authorized_keys
+              # Enable user lingering so rootless Podman services survive login/logout.
+              # Required by the developer suite 'User lingering is enabled' assertion.
+              loginctl enable-linger bluefin-test 2>/dev/null || true
+              echo '[ROOT] user lingering enabled for bluefin-test'
             "
             # Wait for bluefin-test SSH to work (short retry loop).
             echo "Verifying bluefin-test SSH..." >&2

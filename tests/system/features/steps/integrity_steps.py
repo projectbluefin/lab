@@ -10,11 +10,12 @@ def run(cmd, **kwargs):
 @step("composefs is used for the root filesystem mount")
 def step_composefs_root(context):
     root_mount = run("findmnt / -o FSTYPE,SOURCE -n")
+    # /usr may not be a separate mountpoint in all bootc layouts (composefs may
+    # only present at /); don't assert on its return code individually.
     usr_mount = run("findmnt /usr -o FSTYPE,SOURCE -n")
     proc_mounts = run("grep -E 'composefs|erofs|overlay' /proc/mounts || true")
 
     assert root_mount.returncode == 0, f"findmnt / failed: {root_mount.stderr}"
-    assert usr_mount.returncode == 0, f"findmnt /usr failed: {usr_mount.stderr}"
 
     combined = "\n".join(
         part.strip()
@@ -38,7 +39,11 @@ def step_prepare_root_conf(context):
 @step("/usr mount shows composefs or overlay backing")
 def step_usr_composefs(context):
     result = run("findmnt /usr -o FSTYPE,SOURCE -n")
-    assert result.returncode == 0, f"findmnt /usr failed: {result.stderr}"
+    if result.returncode != 0:
+        # /usr is not a separate mountpoint — check / instead (composefs may
+        # present only at root in this bootc layout)
+        result = run("findmnt / -o FSTYPE,SOURCE -n")
+    assert result.returncode == 0, f"findmnt /usr and / both failed: {result.stderr}"
     output = result.stdout.strip()
     assert any(fs in output for fs in ("overlay", "composefs", "erofs")), (
         f"/usr does not use composefs/overlay/erofs: {output}"

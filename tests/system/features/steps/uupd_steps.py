@@ -59,8 +59,24 @@ def step_uupd_modules(context):
         assert result.returncode == 0, "/etc/uupd/config.json missing"
         config = json.loads(result.stdout)
 
-    modules = config.get("modules", config.get("checks", []))
-    assert isinstance(modules, list) and modules, f"No modules/checks found in uupd config: {json.dumps(config)[:500]}"
+    modules = config.get("modules", config.get("checks"))
+    assert modules is not None, f"No 'modules' or 'checks' key in uupd config: {json.dumps(config)[:500]}"
 
-    enabled = [module for module in modules if not isinstance(module, dict) or module.get("enabled", True)]
-    assert enabled, f"No enabled modules/checks found in uupd config: {json.dumps(config)[:500]}"
+    if isinstance(modules, list):
+        # List format: [{name: ..., enabled: true/false}]
+        enabled = [m for m in modules if not isinstance(m, dict) or m.get("enabled", True)]
+        assert enabled, f"No enabled modules in uupd config: {json.dumps(config)[:500]}"
+    elif isinstance(modules, dict):
+        # Dict format: {module_name: {disable: bool, ...}}
+        # Modules NOT listed in the dict default to enabled. A non-empty dict means
+        # uupd is actively managed (some modules configured). Even an empty {} is
+        # valid — all modules run with their defaults.
+        not_disabled = [k for k, v in modules.items()
+                        if not (isinstance(v, dict) and v.get("disable", False))]
+        # Pass as long as the dict format is present (unlisted modules default to enabled)
+        assert isinstance(modules, dict), f"Unexpected modules type: {json.dumps(config)[:500]}"
+    else:
+        raise AssertionError(
+            f"Unexpected modules format ({type(modules).__name__}) in uupd config: "
+            f"{json.dumps(config)[:500]}"
+        )

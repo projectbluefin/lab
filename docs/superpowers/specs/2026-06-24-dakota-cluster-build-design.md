@@ -126,9 +126,12 @@ Nightlies and PR poller still get their VMs. BST build always has guaranteed roo
 2. Add `dakota-build-pipeline` WorkflowTemplate (ArgoCD syncs `argo/workflow-templates/`)
 3. Update semaphore-tuner to include BST_RESERVE_GI
 4. Manual test: `argo submit` the workflow by hand, confirm casd gets populated
-5. Add `cluster-build.yml` to dakota repo + `buildstream-cluster.conf`
+5. Add `buildstream-cluster.conf` to dakota repo (commit 20d2f07)
 6. Monitor first automated push-triggered build
 
-## Open Questions
+## Operational Notes
+
+- **Local Zot registry (`:30500`) requires a containerd `hosts.toml`** for each node. The `registry-mirror-config` DaemonSet (`manifests/registry-mirror-config.yaml`) writes a `local-zot.hosts.toml` that tells containerd to use plain HTTP for `192.168.1.102:30500`. This was discovered during smoke testing (commit `eea0b29`).
+- **Smoke test verified (2026-06-24):** both `build-bluefin` and `build-bluefin-nvidia` pods started, git-cloned `dakota:testing`, and BST began building. The `ref`/`repo` parameter wiring through `inputs.parameters` is confirmed working.
 
 - None. All decisions made.

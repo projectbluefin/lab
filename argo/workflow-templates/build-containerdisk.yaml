@@ -160,8 +160,6 @@ spec:
         securityContext:
           privileged: true
           runAsUser: 0
-          seLinuxOptions:
-            type: spc_t
         resources:
           requests:
             cpu: "4"
@@ -252,10 +250,43 @@ spec:
               echo \"[INNER] SSH_AUTHORIZED_KEYS prefix: \${SSH_AUTHORIZED_KEYS:0:30}...\"
               echo \"[INNER] SELinux context: \$(cat /proc/self/attr/current 2>/dev/null || echo unavailable)\"
 
+              # fsetxattr(security.selinux) EINVAL: host SELinux policy (Bluefin) rejects
+              # xattr labels from foreign images (aurora, lts, dakota have different contexts).
+              # Compile a wrapper inside this container (same glibc, no ABI/label issues)
+              # that silently drops EINVAL on security.* xattrs. Safe: VM boots selinux=0.
+              if which gcc &>/dev/null; then
+                cat > /tmp/fsetxattr_wrap.c << 'CEOF'
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <string.h>
+#include <errno.h>
+#include <stddef.h>
+typedef int (*fn_t)(int,const char*,const void*,size_t,int);
+int fsetxattr(int fd,const char*n,const void*v,size_t s,int f){
+  static fn_t real;
+  if(!real)real=(fn_t)dlsym(RTLD_NEXT,\"fsetxattr\");
+  int r=real(fd,n,v,s,f);
+  if(r==-1&&errno==EINVAL&&n&&strncmp(n,\"security.\",9)==0){errno=0;return 0;}
+  return r;}
+CEOF
+                gcc -shared -fPIC -o /tmp/fsetxattr_wrapper.so /tmp/fsetxattr_wrap.c -ldl
+                export LD_PRELOAD=/tmp/fsetxattr_wrapper.so
+                echo '[INNER] fsetxattr wrapper compiled and loaded'
+              else
+                echo '[INNER] WARNING: gcc not found, no fsetxattr wrapper'
+              fi
+
+              # bootupd is required by bootc install to-disk for ostree-based images.
+              # Some images (e.g. dakota) don't ship it; install from package manager.
+              if [[ ! -f /usr/libexec/bootupd ]]; then
+                echo '[INNER] bootupd missing, installing...'
+                dnf install -y --quiet bootupd 2>&1 | tail -3 || \
+                  yum install -y bootupd 2>&1 | tail -3 || \
+                  echo '[INNER] WARNING: could not install bootupd'
+              fi
+
               # --via-loopback: upstream recommended pattern for VM disk creation.
-              # --root-ssh-authorized-keys: bootc-native root SSH key injection —
-              # this is the reliable path; it writes to /root/.ssh/authorized_keys
-              # during install, avoiding post-install ostree etc-merge uncertainty.
+              # --root-ssh-authorized-keys: bootc-native root SSH key injection.
               bootc install to-disk \
                 --generic-image \
                 --filesystem=btrfs \

@@ -41,7 +41,7 @@ spec:
           - name: force          # "true" skips check and always rebuilds
             value: "false"
           - name: disk-size      # raw disk pre-allocation for bootc install
-            value: "20G"
+            value: "25G"
       dag:
         tasks:
           # Skipped when force=true (digest-watch already confirmed a rebuild is needed).
@@ -132,7 +132,7 @@ spec:
           - name: image-tag
           - name: containerdisk-tag
           - name: disk-size
-            value: "20G"
+            value: "25G"
       synchronization:
         mutexes:
           - name: ghost-heavy-compute
@@ -228,46 +228,14 @@ spec:
           # most reliable mechanism (no post-install ostree-etc-merge concerns).
           echo "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/root-ssh-keys"
 
-          # fsetxattr EINVAL fix for cross-policy LTS builds:
-          # unconfined_service_t lacks capability2 mac_admin in Bluefin's SELinux policy
-          # (confirmed: setfattr with unknown label → EINVAL from outer pod context).
-          # seLinuxOptions + --security-opt label=type:spc_t both failed — k3s assigns
-          # unconfined_service_t regardless. LD_PRELOAD wrapper intercepts
-          # fsetxattr(security.*) EINVAL → return 0 (noop); silently drops unknown
-          # security xattrs so ostree/libglnx never sees the error. Safe since the
-          # installed VM boots with selinux=0 and doesn't use SELinux xattrs.
-          dnf install -y gcc glibc-devel 2>&1 | tail -2
-          printf '%s\n' \
-            '#define _GNU_SOURCE' \
-            '#include <dlfcn.h>' \
-            '#include <string.h>' \
-            '#include <errno.h>' \
-            '#include <stddef.h>' \
-            'typedef int (*fn_t)(int,const char*,const void*,size_t,int);' \
-            'int fsetxattr(int fd,const char*n,const void*v,size_t s,int f){' \
-            '  static fn_t real;' \
-            '  if(!real)real=(fn_t)dlsym(RTLD_NEXT,"fsetxattr");' \
-            '  int r=real(fd,n,v,s,f);' \
-            '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,"security.",9)==0){errno=0;return 0;}' \
-            '  return r;}' \
-            > /tmp/fsetxattr_wrap.c
-          # Compile to a non-hostPath tmpfs directory so the inner container's ld.so
-          # can open it cleanly. The hostPath-mounted /output directory may have a
-          # SELinux file label (svirt_sandbox_file_t) that blocks ld.so in the inner
-          # LTS container even though the file permissions are 777.
-          mkdir -p /tmp/bluefin-cd-preload
-          gcc -shared -fPIC -o /tmp/bluefin-cd-preload/fsetxattr_wrapper.so /tmp/fsetxattr_wrap.c -ldl
-          # Ensure the .so has no SELinux deny label that would block ld.so
-          chcon -t lib_t /tmp/bluefin-cd-preload/fsetxattr_wrapper.so 2>/dev/null || true
-          echo "[OUTER] fsetxattr wrapper compiled: $(ls -lhZ /tmp/bluefin-cd-preload/fsetxattr_wrapper.so)"
-
           PODMAN_EXIT=0
+          # --security-opt label=type:unconfined_t is the canonical bootc install flag.
+          # Per bootc-dev/bootc docs/src/bootc-install.md via-loopback section.
           podman run --rm --privileged --pid=host --ipc=host \
-            -e LD_PRELOAD=/preload/fsetxattr_wrapper.so \
+            --security-opt label=type:unconfined_t \
             -v /dev:/dev \
             -v /run/udev:/run/udev \
             -v "${STAGING}:/output" \
-            -v /tmp/bluefin-cd-preload:/preload \
             -v /var/lib/containers:/var/lib/containers \
             -e "SSH_AUTHORIZED_KEYS=${SSH_AUTHORIZED_KEYS}" \
             "${IMAGE}" \
@@ -275,8 +243,6 @@ spec:
               set -euo pipefail
 
               echo \"[INNER] SSH_AUTHORIZED_KEYS prefix: \${SSH_AUTHORIZED_KEYS:0:30}...\"
-              echo \"[INNER] LD_PRELOAD: \${LD_PRELOAD:-unset}\"
-              echo \"[INNER] wrapper exists: \$(ls -lhZ /preload/fsetxattr_wrapper.so 2>&1)\"
 
               # --via-loopback: upstream recommended pattern for VM disk creation.
               # --root-ssh-authorized-keys: bootc-native root SSH key injection —

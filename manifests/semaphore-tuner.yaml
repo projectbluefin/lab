@@ -58,6 +58,7 @@ spec:
             SLOT_GI=8        # slot unit = largest VM in the fleet
             MIN_CD=2;  MAX_CD=16   # containerdisk bounds (any node)
             MIN_HD=2;  MAX_HD=6    # hostdisk bounds (ghost only)
+            BST_RESERVE_GI=16  # always reserve headroom on ghost for one BST build pod
 
             # ── parse kubernetes memory quantity → integer GiB ──────────────
             mem_to_gi() {
@@ -79,6 +80,8 @@ spec:
               [[ "$ready" != "True" ]] && { echo "  SKIP $name (NotReady)"; continue; }
               mem_gi=$(mem_to_gi "$mem_raw")
               usable=$(( mem_gi > OVERHEAD_GI ? mem_gi - OVERHEAD_GI : 0 ))
+              # Reserve BST build headroom on ghost so build pods always fit
+              [[ "$name" == "ghost" ]] && usable=$(( usable > BST_RESERVE_GI ? usable - BST_RESERVE_GI : 0 ))
               total_cd_gi=$(( total_cd_gi + usable ))
               echo "  $name: ${mem_gi}Gi allocatable → ${usable}Gi usable"
               [[ "$name" == "ghost" ]] && ghost_gi=$usable

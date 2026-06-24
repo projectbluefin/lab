@@ -380,68 +380,85 @@ spec:
             # https://projectbluefin.github.io/testing-lab/
             # Uses the GitHub Contents API to create/update docs/results/<slug>-<suite>.json
             # which triggers a Pages rebuild and is read by the dashboard JS.
+            cat > /tmp/push-results.py << 'PUSHEOF'
+import json, base64, urllib.request, urllib.error, datetime, sys, os
+
+token, result_dir, slug, suite, wf_name = sys.argv[1:6]
+pages_base = "https://projectbluefin.github.io/testing-lab"
+base_api = "https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/"
+
+results_file = os.path.join(result_dir, suite, "results.json")
+if not os.path.exists(results_file):
+    print(f"No results.json at {results_file}")
+    sys.exit(1)
+
+with open(results_file) as f:
+    data = json.load(f)
+
+n_total = sum(len(feat.get("elements", [])) for feat in data)
+n_failed = sum(1 for feat in data for sc in feat.get("elements", [])
+               for st in sc.get("steps", [])
+               if st.get("result", {}).get("status") == "failed")
+run_status = "failed" if n_failed > 0 else "passed"
+now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+api_url = base_api + slug + "-" + suite + ".json"
+hdrs = {
+    "Authorization": "token " + token,
+    "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "Content-Type": "application/json",
+}
+
+sha = None
+history = []
+req = urllib.request.Request(api_url, headers=hdrs)
+try:
+    with urllib.request.urlopen(req) as r:
+        old = json.load(r)
+        sha = old["sha"]
+        history = json.loads(base64.b64decode(old["content"]).decode()).get("history", [])
+except urllib.error.HTTPError as e:
+    if e.code != 404:
+        print(f"GET failed: {e.code} {e.read().decode()[:200]}")
+
+entry = {"run_date": now, "workflow_name": wf_name,
+         "status": run_status, "scenarios": n_total, "failed": n_failed}
+history = ([entry] + history)[:10]
+
+payload_obj = {
+    "variant": slug, "suite": suite, "last_run": now,
+    "workflow_name": wf_name, "status": run_status,
+    "scenarios": n_total, "failed": n_failed,
+    "screenshot_url": f"{pages_base}/screenshots/{slug}-{suite}-latest.png",
+    "history": history,
+}
+body = {
+    "message": f"test: update results for {slug}-{suite}",
+    "content": base64.b64encode(json.dumps(payload_obj, indent=2).encode()).decode(),
+}
+if sha:
+    body["sha"] = sha
+
+req = urllib.request.Request(api_url, data=json.dumps(body).encode(), headers=hdrs, method="PUT")
+try:
+    with urllib.request.urlopen(req) as r:
+        print(f"pushed {slug}-{suite}: {run_status} ({n_total} scenarios, {n_failed} failed)")
+except urllib.error.HTTPError as e:
+    print(f"PUT failed: {e.code} {e.read().decode()[:300]}")
+    sys.exit(1)
+PUSHEOF
+
+            PUSH_LOG="${RESULT_DIR}/pages-push.log"
             if [[ -f /tmp/results/results.json && -n "${GITHUB_TOKEN:-}" && -n "${IMG_SLUG:-}" ]]; then
-              python3 -c "
-              import json, os, base64, urllib.request, urllib.error
-              from datetime import datetime, timezone
-              token = os.environ.get('GITHUB_TOKEN', '')
-              slug = '${IMG_SLUG}'
-              suite = '${SUITE}'
-              wf = '{{workflow.name}}'
-              pages_base = 'https://projectbluefin.github.io/testing-lab'
-              try:
-                  data = json.load(open('/tmp/results/results.json'))
-                  n_failed = sum(1 for f in data for s in f.get('elements', []) if s.get('status') == 'failed')
-                  n_total = sum(len(f.get('elements', [])) for f in data)
-                  run_status = 'failed' if n_failed > 0 else 'passed'
-              except Exception as exc:
-                  print('results.json parse error:', exc)
-                  n_failed, n_total, run_status = 0, 0, 'failed'
-              now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-              result = {
-                  'variant': slug, 'suite': suite, 'last_run': now,
-                  'workflow_name': wf, 'status': run_status,
-                  'scenarios': n_total, 'failed': n_failed,
-                  'screenshot_url': pages_base + '/screenshots/' + slug + '-' + suite + '-latest.png',
-                  'history': [],
-              }
-              base_api = 'https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/'
-              api = base_api + slug + '-' + suite + '.json'
-              hdrs = {
-                  'Authorization': 'token ' + token,
-                  'Accept': 'application/vnd.github.v3+json',
-                  'Content-Type': 'application/json',
-                  'User-Agent': 'bluefin-test-runner',
-              }
-              sha = None
-              try:
-                  req = urllib.request.Request(api, headers=hdrs)
-                  with urllib.request.urlopen(req) as resp:
-                      old = json.loads(resp.read())
-                      sha = old.get('sha')
-                      result['history'] = json.loads(
-                          base64.b64decode(old['content']).decode()
-                      ).get('history', [])
-              except urllib.error.HTTPError as exc:
-                  if exc.code != 404:
-                      print('GET failed:', exc.code)
-              entry = {'run_date': now, 'workflow_name': wf,
-                       'status': run_status, 'scenarios': n_total, 'failed': n_failed}
-              result['history'] = ([entry] + result['history'])[:10]
-              payload = {
-                  'message': 'test: update results for ' + slug + '-' + suite,
-                  'content': base64.b64encode(json.dumps(result, indent=2).encode()).decode(),
-              }
-              if sha:
-                  payload['sha'] = sha
-              body = json.dumps(payload).encode()
-              req = urllib.request.Request(api, data=body, headers=hdrs, method='PUT')
-              try:
-                  with urllib.request.urlopen(req) as resp:
-                      print('Results pushed for ' + slug + '-' + suite + ': ' + run_status)
-              except urllib.error.HTTPError as exc:
-                  print('PUT failed:', exc.code, exc.read().decode()[:200])
-              " 2>&1 || true
+              {
+                python3 /tmp/push-results.py \
+                  "${GITHUB_TOKEN}" "${RESULT_DIR}" "${IMG_SLUG}" "${SUITE}" "{{workflow.name}}" \
+                  2>&1 || echo "push-results.py exited non-zero"
+              } | tee -a "${PUSH_LOG}" >&2
+            else
+              echo "Skipping Pages push: results.json=$(test -f /tmp/results/results.json && echo yes || echo missing) GITHUB_TOKEN=$(test -n "${GITHUB_TOKEN:-}" && echo set || echo empty) IMG_SLUG=${IMG_SLUG:-empty}" \
+                | tee -a "${PUSH_LOG}" >&2
             fi
 
             echo "Done. Results in /tmp/results/" >&2

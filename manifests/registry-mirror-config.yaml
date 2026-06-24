@@ -52,6 +52,11 @@ data:
 
     [host."http://192.168.1.102:30501/k8s"]
       capabilities = ["pull", "resolve"]
+  local-zot.hosts.toml: |
+    server = "http://192.168.1.102:30500"
+
+    [host."http://192.168.1.102:30500"]
+      capabilities = ["pull", "resolve", "push"]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -84,13 +89,15 @@ spec:
                 /certs.d/quay.io \
                 /certs.d/registry.fedoraproject.org \
                 /certs.d/registry.access.redhat.com \
-                /certs.d/registry.k8s.io
+                /certs.d/registry.k8s.io \
+                "/certs.d/192.168.1.102:30500"
               cp /config/ghcr.io.hosts.toml                    /certs.d/ghcr.io/hosts.toml
               cp /config/docker.io.hosts.toml                  /certs.d/docker.io/hosts.toml
               cp /config/quay.io.hosts.toml                    /certs.d/quay.io/hosts.toml
               cp /config/registry.fedoraproject.org.hosts.toml /certs.d/registry.fedoraproject.org/hosts.toml
               cp /config/registry.access.redhat.com.hosts.toml /certs.d/registry.access.redhat.com/hosts.toml
               cp /config/registry.k8s.io.hosts.toml            /certs.d/registry.k8s.io/hosts.toml
+              cp /config/local-zot.hosts.toml                  "/certs.d/192.168.1.102:30500/hosts.toml"
               echo "Mirror hosts written."
           volumeMounts:
             - name: certs-d

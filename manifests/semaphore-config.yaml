@@ -18,4 +18,9 @@ metadata:
   labels:
     app.kubernetes.io/part-of: bluefin-test-suite
 data:
-  max-concurrent-vms: "8"
+  # containerdisk VMs (bluefin, dakota) — any Ready node
+  # hostdisk VMs (knuckle, flatcar, gnomeos) — ghost only
+  # Recomputed hourly by the semaphore-tuner CronWorkflow.
+  # These bootstrap values are overwritten on the first tuner run.
+  max-containerdisk-vms: "8"
+  max-hostdisk-vms: "3"

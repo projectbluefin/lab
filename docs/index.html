@@ -418,17 +418,21 @@ function buildStatsBar(stats) {
   const cd = p.containerdisk || {};
   const v = stats.velocity || {};
   const cov = stats.test_coverage || {};
+  const gh = stats.github?.testing_lab || {};
 
   const runs7d = cd.runs_7d || v.deployments_7d || '—';
   const suc = cd.success_rate_pct;
   const sucClass = suc >= 90 ? 'stat-good' : suc >= 70 ? 'stat-warn' : 'stat-bad';
   const avgMin = cd.avg_total_min || '—';
   const vms7d = v.vms_provisioned_7d || '—';
-  const openIssues = stats.github?.testing_lab?.open_issues || stats.hive?.open_issues || '—';
+  const openIssues = gh.open_issues || stats.hive?.open_issues || '—';
+  const openPRs = gh.open_prs || stats.hive?.open_prs || '—';
   const scenarios = cov.scenarios_total || '—';
   const scensFailed = cov.scenarios_failed || 0;
   const scensClass = scensFailed > 0 ? 'stat-bad' : 'stat-good';
   const running = (stats.recent_runs || []).filter(r => r.overall === 'running').length;
+  const imgsWithData = cov.images_with_results || '—';
+  const totalImages = (stats.images || []).length || 6;
 
   document.getElementById('stats-bar').innerHTML = `
     <div class="stat-chip">
@@ -448,12 +452,20 @@ function buildStatsBar(stats) {
       <span class="stat-label">VMs · 7d</span>
     </div>
     <div class="stat-chip">
-      <span class="stat-value ${scensClass}">${scensFailed > 0 ? scensFailed + ' failing' : 'all passing'}</span>
+      <span class="stat-value ${scensClass}">${scensFailed > 0 ? scensFailed + ' failing' : 'all pass'}</span>
       <span class="stat-label">of ${scenarios} scenarios</span>
     </div>
     <div class="stat-chip">
       <span class="stat-value ${running > 0 ? 'stat-neutral' : 'stat-good'}">${running}</span>
       <span class="stat-label">Running now</span>
+    </div>
+    <div class="stat-chip" title="Images that have at least one completed test run">
+      <span class="stat-value ${imgsWithData < totalImages ? 'stat-warn' : 'stat-good'}">${imgsWithData}/${totalImages}</span>
+      <span class="stat-label">Images tested</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-value stat-neutral">${openPRs}</span>
+      <span class="stat-label">Open PRs</span>
     </div>
     <div class="stat-chip">
       <span class="stat-value stat-neutral">${openIssues}</span>
@@ -462,6 +474,7 @@ function buildStatsBar(stats) {
 }
 
 
+async function load(url) {
   try { const r = await fetch(url); return r.ok ? r.json() : null; }
   catch { return null; }
 }
@@ -735,7 +748,21 @@ function buildTriage(stats, allData) {
     return dur > 90;
   });
 
-  const anyIssues = bugs.length || infraFails.length || stuck.length;
+  // Coverage gaps: images where all suites have no data yet
+  const bySlug = {};
+  for (const d of allData) {
+    if (!bySlug[d.image.slug]) bySlug[d.image.slug] = [];
+    if (d.data?.last_run) bySlug[d.image.slug].push(d.suite);
+  }
+  const images = stats.images || [];
+  const neverTested = images.filter(img => !(bySlug[img.slug]?.length));
+  const partialCoverage = images.filter(img => {
+    const ran = bySlug[img.slug]?.length || 0;
+    const total = (img.suites || ['smoke','developer','software','system']).length;
+    return ran > 0 && ran < total;
+  });
+
+  const anyIssues = bugs.length || infraFails.length || stuck.length || neverTested.length || partialCoverage.length;
   if (!anyIssues) {
     document.getElementById('triage-section').innerHTML = '';
     return;
@@ -760,6 +787,28 @@ function buildTriage(stats, allData) {
       }).join('')}
     </div>` : '';
 
+  // Coverage gaps section
+  const gapHtml = (neverTested.length || partialCoverage.length) ? `
+    <div class="triage-section-head" style="margin-top:${bugHtml?'12px':'0'}">Coverage gaps</div>
+    ${neverTested.map(img => {
+      const argoSubmitUrl = `${ARGO_UI}/workflows/argo?label=image=${img.slug}`;
+      return `<div class="infra-fail-row" style="border-left-color:var(--pending)">
+        <span style="color:var(--pending);font-weight:600">${img.label}</span>
+        <span style="color:var(--muted)">never tested</span>
+        <span style="color:var(--muted);font-size:11px">${img.image}</span>
+        ${img.nightly_time_utc ? `<span style="color:var(--muted);font-size:11px">nightly: ${img.nightly_time_utc} UTC</span>` : ''}
+      </div>`;
+    }).join('')}
+    ${partialCoverage.map(img => {
+      const ran = bySlug[img.slug] || [];
+      const all = img.suites || ['smoke','developer','software','system'];
+      const missing = all.filter(s => !ran.includes(s));
+      return `<div class="infra-fail-row" style="border-left-color:#555">
+        <span style="color:var(--muted);font-weight:600">${img.label}</span>
+        <span style="color:var(--muted)">missing: ${missing.join(', ')}</span>
+      </div>`;
+    }).join('')}` : '';
+
   // Infra failure list (dedupe by PR)
   const seenPR = new Set();
   const infraItems = infraFails.filter(r => {
@@ -773,14 +822,15 @@ function buildTriage(stats, allData) {
   const infraHtml = infraItems.length ? `
     <div class="triage-section-head">Pipeline failures — no test data produced (${infraFails.length} runs)</div>
     ${infraItems.map(r => {
-      const pr = prLabel(r.id || '');
+      const ctx = prContext(r.id || '');
+      const prLink = ctx ? `<a href="${ctx.url}" target="_blank" rel="noopener">${ctx.repo.split('/')[1]}#${ctx.num}</a>` : '';
       const argoUrl = argoHref(r.id);
       return `<div class="infra-fail-row">
-        <span class="mono"><a href="${argoUrl}" target="_blank" rel="noopener">${r.id.slice(0,32)}…</a></span>
-        ${pr ? `<span>PR: ${pr}</span>` : ''}
+        <span class="mono"><a href="${argoUrl}" target="_blank" rel="noopener">${r.id.length>34?r.id.slice(0,32)+'…':r.id}</a></span>
+        ${prLink ? `<span>${prLink}</span>` : ''}
         <span style="color:var(--muted)">${r.label || r.variant}</span>
-        <span style="color:var(--muted)">${r.duration_min ? r.duration_min+'m' : ''}  · ${fmtAgo(r.finished_at||r.started_at)}</span>
-        <span style="color:var(--fail)">no test output</span>
+        <span style="color:var(--muted)">${r.duration_min ? r.duration_min+'m' : ''} · ${fmtAgo(r.finished_at||r.started_at)}</span>
+        <span style="color:var(--fail);font-size:11px">no test output</span>
       </div>`;
     }).join('')}` : '';
 
@@ -789,16 +839,17 @@ function buildTriage(stats, allData) {
     ${stuck.map(r => {
       const dur = Math.round((Date.now() - new Date(r.started_at).getTime()) / 60000);
       return `<div class="infra-fail-row" style="border-left-color:var(--pending)">
-        <span class="mono"><a href="${argoHref(r.id)}" target="_blank" rel="noopener">${r.id.slice(0,32)}…</a></span>
+        <span class="mono"><a href="${argoHref(r.id)}" target="_blank" rel="noopener">${r.id.length>34?r.id.slice(0,32)+'…':r.id}</a></span>
         <span style="color:var(--pending)">${dur}m running</span>
         <span style="color:var(--muted)">${r.label || r.variant}</span>
       </div>`;
     }).join('')}` : '';
 
+  // Build two-column layout: left=bugs+gaps, right=infra+stuck
   document.getElementById('triage-section').innerHTML = `
     <h2>Triage</h2>
     <div class="triage-cols">
-      <div>${bugHtml}</div>
+      <div>${bugHtml}${gapHtml}</div>
       <div>${infraHtml}${stuckHtml}</div>
     </div>`;
 }
@@ -927,10 +978,30 @@ function buildStatusTable(images, allData) {
       ? `<span style="color:var(--pass)">${fmtAgo(green)}</span>`
       : `<span style="color:var(--muted)">—</span>`;
 
-    return `<tr>
-      <td style="font-weight:600;white-space:nowrap">${img.label}</td>
+    // Never run: all tracked suites are pending/null
+    const neverRun = imgSuites.every(s => !row[s] || row[s].status === 'pending' || !row[s].last_run);
+
+    // Image label: link to GHCR if available + metadata tooltip
+    const ghcrUrl = img.image && img.image.startsWith('ghcr.io')
+      ? `https://github.com/orgs/projectbluefin/packages?repo_name=${img.image.split('/').pop().split(':')[0]}`
+      : null;
+    const tooltip = [
+      img.image,
+      img.golden_disk ? `disk: ${img.golden_disk}` : '',
+      img.nightly_time_utc ? `nightly: ${img.nightly_time_utc} UTC` : '',
+      neverRun ? '⚠ never tested' : '',
+    ].filter(Boolean).join('\n');
+    const imgLabel = ghcrUrl
+      ? `<a href="${ghcrUrl}" target="_blank" rel="noopener" style="color:var(--text)" title="${tooltip}">${img.label}</a>`
+      : `<span title="${tooltip}">${img.label}</span>`;
+    const neverBadge = neverRun
+      ? `<span style="font-size:10px;color:var(--pending);margin-left:6px" title="No test runs recorded for this image">no data</span>`
+      : '';
+
+    return `<tr${neverRun?' style="opacity:0.65"':''}>
+      <td style="font-weight:600;white-space:nowrap">${imgLabel}${neverBadge}</td>
       ${cols}
-      ${greenHtml ? `<td style="white-space:nowrap">${greenHtml}</td>` : '<td>—</td>'}
+      <td style="white-space:nowrap">${greenHtml}</td>
       <td style="color:var(--muted);white-space:nowrap">${fmtAgo(lastRun)}</td>
       <td style="white-space:nowrap">${trig}</td>
       <td class="mono" style="font-size:11px">${wfLink}</td>

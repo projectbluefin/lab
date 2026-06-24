@@ -39,10 +39,10 @@ benefit `build-bluefin-nvidia` immediately — shared artifact pool.
 |---------|------|--------|--------------|-------------------------------------------|
 | ghost   | 32   | 62.5Gi | yes          | casd PVC lives here; 16Gi reserved for BST |
 | bazzite | 12   | 30.5Gi | yes          | overflow build pods                        |
-| bluefin | 16   | 31.2Gi | no           | hamilton workstation — excluded via nodeAffinity NotIn |
+| bluefin | 16   | 31.2Gi | yes          | hamilton workstation (added June 2026)     |
 | exo-1   | 22   | 15.1Gi | no           | 15.1Gi allocatable — below 16Gi request   |
 
-BST builds schedule on ghost and bazzite only. `bluefin` is excluded via `nodeAffinity NotIn [bluefin]` (workstation). exo-1 is auto-excluded by the 16Gi memory request.
+exo-1 auto-excluded by the 16Gi memory request.
 
 ## Components
 

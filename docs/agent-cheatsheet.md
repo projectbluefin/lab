@@ -319,7 +319,7 @@ Expected: `ghost-runners` with MINIMUM=0 MAXIMUM=4.
 
 **If listener is missing** (arc-systems has only the controller pod, no listener):
 1. Check controller logs: `kubernetes-mcp-pods_log namespace=arc-systems <controller-pod>`
-2. If error is `no route to host` / DNS failure: the controller landed on bazzite.
+2. If error is `no route to host` / DNS failure: the controller landed on bazzite (bazzite has no cluster DNS — ARC controller must run on ghost).
    Delete the controller pod — it will reschedule to ghost where DNS works.
 3. If error is GitHub API auth failure: check `arc-github-secret` exists in `arc-runners`.
 

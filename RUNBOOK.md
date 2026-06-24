@@ -24,7 +24,7 @@ All pipelines use ephemeral VMs — every run provisions a fresh VM and tears it
 |---|---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | 192.168.1.102 | Runs VM workloads and Argo control-plane services |
 | exo-1 | k3s worker | 192.168.1.239 | Workflow pods only |
-| bazzite | k3s worker (on demand) | 192.168.1.223 | Gaming machine; k3s disabled at boot — start manually when needed |
+| bazzite | k3s worker | 192.168.1.223 | Gaming machine — fully schedulable; k3s-agent enabled at boot |
 | Argo UI | external entrypoint | http://192.168.1.102:32746 | Host-local service also exposed on port 2746 |
 | Loki | log aggregation | http://192.168.1.102:30100 | Captures workflow pod logs |
 | ArgoCD | GitOps controller | https://192.168.1.102 | Reconciles this repo into the cluster |

@@ -109,7 +109,7 @@ Every pipeline (Bluefin, Bluefin-LTS, Dakota, Knuckle) provisions a fresh VM on 
 |---|---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | 192.168.1.102 | Ryzen AI MAX+ 395, 16c/32t, 64GB RAM |
 | exo-1 | k3s worker (workflow pods only) | 192.168.1.239 | — |
-| bazzite | k3s worker (on demand) | 192.168.1.223 | Gaming machine — fully schedulable (no taint); k3s disabled at boot, enable when needed |
+| bazzite | k3s worker | 192.168.1.223 | Gaming machine — fully schedulable (no taint); k3s-agent enabled and running at boot |
 | Argo UI | — | http://192.168.1.102:32746 | NodePort; also http://192.168.1.102:2746 on host |
 | Loki | log aggregation | http://192.168.1.102:30100 | Scrapes pods labeled `app.kubernetes.io/part-of=bluefin-test-suite` |
 | ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `testing-lab` + `testing-lab-infra` |
@@ -242,7 +242,7 @@ Self-hosted GitHub Actions runners via Actions Runner Controller (ARC).
 **Never replace the GitHub App credentials with a PAT.**
 
 If the listener is missing from `arc-systems`: check controller logs. Most likely cause
-is the controller landing on bazzite (broken DNS). Delete the controller pod — it
+is the controller landing on bazzite (bazzite has no cluster DNS — ARC controller must run on ghost). Delete the controller pod — it
 reschedules to ghost.
 
 ## Zot Registry Cache

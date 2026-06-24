@@ -157,7 +157,7 @@ controllerServiceAccount:
   name: arc-systems-gha-rs-controller
 ```
 
-**bazzite scheduling** — bazzite is fully schedulable (no taint); k3s is disabled at boot.
+**bazzite scheduling** — bazzite is fully schedulable (no taint); k3s-agent is enabled at boot.
 When bazzite is online it can accept workflow pods. If a pod lands on bazzite and fails,
 delete it — it will reschedule to ghost automatically.
 

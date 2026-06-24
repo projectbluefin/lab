@@ -281,7 +281,7 @@ just run-tests
 |---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | Ryzen AI MAX+ 395, 16c/32t, 64GB RAM |
 | exo-1 | k3s worker (workflow pods only) | — |
-| bazzite | k3s worker (on demand) | Gaming machine — fully schedulable (no taint); k3s disabled at boot |
+| bazzite | k3s worker | Gaming machine — fully schedulable (no taint); k3s-agent enabled at boot |
 
 **Namespaces:**
 

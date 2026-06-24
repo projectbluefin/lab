@@ -1620,8 +1620,12 @@ function filterStatusTable(failingOnly) {
   ];
 
   const gen = stats._meta?.generated;
+  const genAge = gen ? (Date.now() - new Date(gen).getTime()) : Infinity;
+  const staleWarning = genAge > 90 * 60 * 1000  // > 90min
+    ? `<span style="color:var(--pending)" title="Data is more than 90 minutes old — GHA refresh may be stuck">⚠ data ${fmtAgo(gen)}</span>`
+    : (gen ? `Data: ${fmtAgo(gen)}` : '');
   document.getElementById('header-meta').innerHTML =
-    `${gen ? 'Data: '+fmtAgo(gen) : ''} · <a href="${ARGO_UI}" target="_blank" rel="noopener">Argo UI</a> · <a href="${GH_REPO}" target="_blank" rel="noopener">testing-lab</a>`;
+    `${staleWarning} · <a href="${ARGO_UI}" target="_blank" rel="noopener">Argo UI</a> · <a href="${GH_REPO}" target="_blank" rel="noopener">testing-lab</a>`;
 
   // Phase 2: fetch all result files in parallel (each image fetches its own suite list)
   const allData = [];

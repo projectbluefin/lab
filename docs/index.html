@@ -303,6 +303,7 @@
   <a href="https://github.com/projectbluefin/testing-lab/issues/new/choose" target="_blank" rel="noopener" style="background:var(--surface);border:1px solid var(--border);padding:3px 10px;border-radius:4px">+ File issue</a>
   <a href="https://github.com/projectbluefin/testing-lab/blob/main/RUNBOOK.md" target="_blank" rel="noopener" style="background:var(--surface);border:1px solid var(--border);padding:3px 10px;border-radius:4px">RUNBOOK</a>
   <a href="https://github.com/projectbluefin/testing-lab/blob/main/docs/agent-cheatsheet.md" target="_blank" rel="noopener" style="background:var(--surface);border:1px solid var(--border);padding:3px 10px;border-radius:4px">Cheatsheet</a>
+  <a href="https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml" target="_blank" rel="noopener" style="background:var(--surface);border:1px solid var(--border);padding:3px 10px;border-radius:4px">↻ Refresh data</a>
   <a href="http://192.168.1.102:32746/workflows/argo" target="_blank" rel="noopener" style="background:var(--surface);border:1px solid var(--border);padding:3px 10px;border-radius:4px">Argo UI</a>
 </div>
 
@@ -794,14 +795,17 @@ function sparkline(history) {
 }
 
 // Find when a suite first started failing (walk history newest→oldest)
+// Returns {since, consecutiveRuns} — since is the date of first consecutive failure,
+// consecutiveRuns is how many consecutive failures in a row
 function failingSince(history) {
-  if (!history?.length) return null;
+  if (!history?.length) return { since: null, consecutiveRuns: 0 };
   let since = null;
+  let consecutiveRuns = 0;
   for (const h of history) {
-    if (h.status === 'failed') since = h.run || h.run_date;
+    if (h.status === 'failed') { since = h.run || h.run_date; consecutiveRuns++; }
     else break;
   }
-  return since;
+  return { since, consecutiveRuns };
 }
 
 // Compute nightly overdue hours for an image row
@@ -941,7 +945,16 @@ function buildAlertBanner(allData, stats) {
     <div class="alert-banner">
       <span class="alert-dot"></span>
       <span class="alert-text">Needs attention:</span>
-      <span class="alert-detail">${parts.join(' · ')}</span>
+      <span class="alert-detail">
+        ${parts.map((p, i) => {
+          // Make suite failures clickable → scroll to failures section
+          if (p.includes('suite') || p.includes('CRITICAL')) return `<a href="#failures-section" style="color:inherit;text-decoration:none">${p}</a>`;
+          if (p.includes('PR')) return `<a href="#pr-matrix-section" style="color:inherit;text-decoration:none">${p}</a>`;
+          if (p.includes('bug')) return `<a href="#triage-section" style="color:inherit;text-decoration:none">${p}</a>`;
+          if (p.includes('overdue')) return `<a href="#nightly-strip" style="color:inherit;text-decoration:none">${p}</a>`;
+          return p;
+        }).join(' · ')}
+      </span>
     </div>`;
 }
 
@@ -1183,7 +1196,7 @@ function buildFailures(allData, stats) {
 
   const cards = failures.map(f => {
     const d = f.data;
-    const since = failingSince(d.history);
+    const { since, consecutiveRuns } = failingSince(d.history);
     const pr = prLabel(d.workflow_name);
     const trigger = pr ? `PR ${pr}` : 'nightly / manual';
     const spark = sparkline(d.history);
@@ -1330,7 +1343,7 @@ function buildFailures(allData, stats) {
       <div class="failure-meta">
         ${spark}
         <span class="sep">·</span>
-        ${since ? `Failing since: ${fmtAgo(since)}` : ''}
+        ${since ? `Failing since: ${fmtAgo(since)}${consecutiveRuns > 1 ? ` <span style="color:var(--fail);font-size:10px">(${consecutiveRuns} runs)</span>` : ''}` : ''}
         ${argoUrl ? `<span class="sep">·</span><a href="${argoUrl}" target="_blank" rel="noopener">Argo logs</a>` : ''}
         ${d.workflow_name ? `<span class="sep">·</span><a href="${lokiLogUrl(d.workflow_name)}" target="_blank" rel="noopener" style="color:var(--muted)" title="Query Loki for all pods in this workflow">Loki logs</a>` : ''}
         <span class="sep">·</span>

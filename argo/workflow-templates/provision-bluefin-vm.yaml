@@ -166,8 +166,20 @@ spec:
             >&2 || echo "WARNING: guest-exec for sshd.socket failed, SSH poll will be the arbiter" >&2
 
           # Wait for SSH key injection (qemuGuestAgent propagation).
-          kubectl wait vmi -n "${NS}" "${VM}" \
-            --for=condition=AccessCredentialsSynchronized --timeout=120s >&2
+          # NOTE: kubectl wait --for=condition exits immediately when condition=False (not Unknown).
+          # KubeVirt sets AccessCredentialsSynchronized=False while guest agent is offline,
+          # so we must poll manually until it becomes True rather than using kubectl wait.
+          echo "Waiting for AccessCredentialsSynchronized=True (guest agent must come online)..." >&2
+          DEADLINE=$(($(date +%s) + 300))
+          until [ "$(kubectl get vmi -n "${NS}" "${VM}" \
+            -o jsonpath='{.status.conditions[?(@.type=="AccessCredentialsSynchronized")].status}' \
+            2>/dev/null)" = "True" ]; do
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+              echo "WARNING: AccessCredentialsSynchronized never became True after 300s, proceeding anyway" >&2
+              break
+            fi
+            sleep 5
+          done
 
           POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
             -o jsonpath='{.items[0].status.podIP}')

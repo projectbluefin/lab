@@ -227,8 +227,11 @@ spec:
                   echo 'System-suite dependencies already installed, skipping.' >&2
                 else
                   echo 'Installing system-suite dependencies via pip...' >&2
-                  pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
-                  python3 -m pip install --quiet --user behave 2>&1 | tail -3
+                  # Ensure pip is available. Use || true so missing pip3/ensurepip is not fatal.
+                  pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 || true
+                  python3 -m pip install --user behave 2>&1
+                  # Verify behave installed successfully.
+                  python3 -c 'import behave' || { echo 'FATAL: behave not installed' >&2; exit 1; }
                 fi
               else
                 if python3 -c 'import qecore, behave, dogtail' 2>/dev/null && \
@@ -277,8 +280,7 @@ spec:
             if [[ "${SUITE}" == "system" ]]; then
               ${SSH} "
                 export PATH=\$HOME/.local/bin:\$PATH
-                BEHAVE_BIN=\$(which behave)
-                \"\$BEHAVE_BIN\" /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}
+                python3 -m behave /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}
               " || BEHAVE_RC=$?
             else
               # Write a runner script to the VM to avoid shell-quoting issues

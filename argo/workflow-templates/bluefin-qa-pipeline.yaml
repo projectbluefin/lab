@@ -390,12 +390,8 @@ spec:
                 key: token
         source: |
           STATE=$([ "{{workflow.status}}" = "Succeeded" ] && echo success || echo failure)
-          PAYLOAD=$(jq -n \
-            --arg state "$STATE" \
-            --arg ctx  "ghost-lab" \
-            --arg desc "Bluefin lab test $STATE" \
-            --arg url  "http://192.168.1.102:32746/workflows/argo/{{workflow.name}}" \
-            '{state:$state,context:$ctx,description:$desc,target_url:$url}')
+          URL="http://192.168.1.102:32746/workflows/argo/{{workflow.name}}"
+          PAYLOAD="{\"state\":\"${STATE}\",\"context\":\"ghost-lab\",\"description\":\"Bluefin lab test ${STATE}\",\"target_url\":\"${URL}\"}"
           curl -sf -X POST \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github+json" \

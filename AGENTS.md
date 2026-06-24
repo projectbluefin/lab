@@ -115,8 +115,9 @@ Every pipeline (Bluefin, Bluefin-LTS, Dakota, Knuckle) provisions a fresh VM on 
 | ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `testing-lab` + `testing-lab-infra` |
 | llm-d | LLM inference (hive node) | http://192.168.1.102:30800 | OpenAI-compatible API; model: Qwen/Qwen3.6-35B-A3B; namespace: `llm-d` |
 
-**HostDisk VMs** (Flatcar, Knuckle, GnomeOS) are pinned to ghost via `nodeSelector: kubernetes.io/hostname: ghost` — their disk files live on ghost's local storage.
-**ContainerDisk VMs** (Bluefin test VMs) require no nodeSelector and can schedule on any KubeVirt-capable node (ghost or bazzite).
+**HostDisk VMs** (Flatcar only) are pinned to ghost via `nodeSelector: kubernetes.io/hostname: ghost` — their disk files live on ghost's local storage.
+**ContainerDisk VMs** (Bluefin, GnomeOS, Dakota) require no nodeSelector and can schedule on any KubeVirt-capable node (ghost or bazzite).
+**PVC-backed VMs** (Knuckle) use a per-workflow `local-path` PVC — KubeVirt co-schedules the VM automatically on the PVC's node. No explicit nodeSelector needed.
 
 ## GitOps Rules
 
@@ -139,7 +140,7 @@ Rules:
 
 ## KubeVirt Feature Gates
 
-- `HostDisk` is required for the Bluefin/Flatcar hostDisk VM flows in this repo.
+- `HostDisk` is required for the Flatcar hostDisk VM flows in this repo.
 - `ExperimentalIgnitionSupport` is required for installer-style VMs that use the `kubevirt.io/ignitiondata` annotation.
 - If VM creation fails with `feature gate is not enabled in kubevirt-config`, treat that as **cluster infra drift** and persist the fix via GitOps under `manifests/`.
 
@@ -157,7 +158,7 @@ argo/
     run-flatcar-tests.yaml        SSH into Flatcar VM, run tests
     teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
     provision-gnomeos-vm.yaml     provision GnomeOS VM
-    teardown-gnomeos-vm.yaml      delete GnomeOS VM + hostDisk
+    teardown-gnomeos-vm.yaml      delete GnomeOS VM
     run-incluster-tests.yaml      run tests inside the cluster
     dakota-qa-pipeline.yaml       full Dakota QA pipeline (pull from ghcr.io/projectbluefin/dakota)
     knuckle-qa-pipeline.yaml      Knuckle installer pipeline
@@ -367,8 +368,8 @@ phantom resource requests from jobs not yet running.
 
 | Pool key | Pipelines | Nodes | Bootstrap |
 |---|---|---|---|
-| `max-containerdisk-vms` | bluefin-qa-pipeline, dakota-qa-pipeline | any Ready node | 8 |
-| `max-hostdisk-vms` | knuckle-qa-pipeline, flatcar-smoke-test | ghost only | 6 |
+| `max-containerdisk-vms` | bluefin-qa-pipeline, dakota-qa-pipeline, knuckle-qa-pipeline | any Ready node | 8 |
+| `max-hostdisk-vms` | flatcar-smoke-test | ghost only | 6 |
 
 Values live in `manifests/semaphore-config.yaml` and are **recomputed hourly**
 by the `semaphore-tuner` CronWorkflow using live node allocatable memory:

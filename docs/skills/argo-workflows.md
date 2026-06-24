@@ -560,8 +560,69 @@ If dakota builds appear again, stop them immediately — each one holds the mute
 `activeDeadlineSeconds` and starves LTS/aurora/bazzite rebuilds.
 
 
-|---|---|
-| "I'll skip the description annotation for now." | ArgoCD prune and agent navigation both rely on the annotation. Add it. |
+### 20. Per-workflow ephemeral storage — volumeClaimTemplates
+
+For pipelines that need shared scratch space across steps (e.g. installer binaries, target disks),
+use Argo's `volumeClaimTemplates` at the workflow spec level. Argo auto-creates the PVC at workflow
+start and auto-deletes it on completion — no manual cleanup step needed.
+
+```yaml
+spec:
+  volumeClaimTemplates:
+    - metadata:
+        name: workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path   # k3s default
+        resources:
+          requests:
+            storage: 30Gi
+
+  templates:
+    - name: my-step
+      script:
+        volumeMounts:
+          - name: workspace
+            mountPath: /mnt/workspace
+```
+
+**RWO PVC + KubeVirt VM co-location:** When a VM uses a `persistentVolumeClaim` volume backed
+by a RWO PVC, KubeVirt automatically schedules the VM on the same node as the PVC — no explicit
+`nodeSelector` needed. Source: /kubevirt/user-guide — "When using local devices or ReadWriteOnce
+(RWO) PVCs, affinity rules on VMs sharing storage ensure they are scheduled on the same node."
+
+**Namespace constraint:** `volumeClaimTemplates` creates the PVC in the workflow's own namespace
+(`argo`). If a VM in a different namespace (`knuckle-test`) needs a disk, create a dedicated PVC
+in that namespace via a `resource:` step, and delete it in `onExit`.
+
+```yaml
+# registry-lint-ignore not needed — no image ref
+- name: create-rootdisk-pvc
+  resource:
+    action: apply
+    manifest: |
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{workflow.name}}-rootdisk"
+        namespace: knuckle-test
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 30Gi
+```
+
+**containerDisk OCI format** (source: /kubevirt/user-guide):
+```dockerfile
+FROM scratch
+ADD --chown=107:107 disk.raw /disk/
+```
+UID 107 = qemu. Required — omitting `--chown` causes VM boot failure (permission denied on disk).
+
+
+
 | "The sub-template will see workflow.parameters directly." | It will not. Argo Workflows scopes parameters per-template. Always pass explicitly. |
 | "I applied the template with kubectl — it's fine." | ArgoCD selfHeal will overwrite it within minutes. Use git. |
 | "The lint passed locally, I'll skip CI." | CI runs against the same offline linter. If it passed locally, it passes in CI. |
@@ -579,7 +640,7 @@ If dakota builds appear again, stop them immediately — each one holds the mute
 - Any `script:` template without `resources:` limits
 - Templates in `argo/workflow-templates/` applied with `kubectl apply` (not via git)
 - A `pr-poller` (or any PR-gating workflow) that skips on ANY existing commit status — it must skip only `pending` (in-flight) and `success` (already passed), and re-test on `error`/`failure`. Skipping `error` means stale statuses from deleted workflows permanently block retests.
-- A hostDisk VM pipeline (`knuckle-qa-pipeline`, `flatcar-smoke-test`) with `nodeSelector` only on individual templates but not at `spec.nodeSelector` — the DAG entrypoint pod can land on the wrong node. Set `spec.nodeSelector: kubernetes.io/hostname: ghost` at the WorkflowTemplate spec level for all hostDisk pipelines.
+- A hostDisk VM pipeline (`flatcar-smoke-test`) with `nodeSelector` only on individual templates but not at `spec.nodeSelector` — the DAG entrypoint pod can land on the wrong node. Set `spec.nodeSelector: kubernetes.io/hostname: ghost` at the WorkflowTemplate spec level for all hostDisk pipelines. Knuckle and GnomeOS no longer use hostDisk.
 - Python inside bash inside YAML (colons + quotes cause parse errors — use `curl`+`jq` instead; never `python3 -c` or heredoc Python; see §16 GitHub Contents API pattern)
 - Heredoc `<< 'EOF'` inside a YAML block scalar — indentation breaks the YAML parser. ArgoCD returns `ManifestGenerationError: yaml: could not find expected ':'`. Write scripts to files in initContainers or use inline jq instead.
 - `registry.k8s.io/kubectl` used as a shell-capable image — it is distroless, has no bash, nc, or any shell utilities. Use `cgr.dev/chainguard/kubectl:latest-dev` when you need kubectl + bash together
@@ -612,7 +673,7 @@ Before marking any WorkflowTemplate change done:
 - [ ] Change is committed and pushed — not manually applied to cluster
 - [ ] `description:` annotation present on the new/modified template
 - [ ] File name matches `metadata.name` (e.g. `provision-bluefin-vm.yaml` for `name: provision-bluefin-vm`)
-- [ ] hostDisk pipelines (knuckle, flatcar) have `spec.nodeSelector: kubernetes.io/hostname: ghost` at WorkflowTemplate spec level — not just on individual templates
+- [ ] hostDisk pipelines (flatcar only) have `spec.nodeSelector: kubernetes.io/hostname: ghost` at WorkflowTemplate spec level — not just on individual templates. Knuckle uses PVC; GnomeOS uses containerDisk — neither needs spec-level nodeSelector.
 - [ ] GitHub Contents API write-backs use curl+jq, not inline Python; output teed to a file on persistent hostPath storage
 - [ ] `kubectl get workflowtemplate -n argo` shows no cluster-only templates (not in git) unless they're intentional bootstrap one-shots
 - [ ] No CronWorkflow with a `dry-run` parameter whose default is `"true"` — verify GC jobs actually delete

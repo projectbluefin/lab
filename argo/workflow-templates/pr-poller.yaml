@@ -81,7 +81,9 @@ spec:
              | jq -r --arg ctx "$CONTEXT" \
                '.[] | select(.context == $ctx) | .state' | head -1)
 
-           if [[ -n "$EXISTING" ]]; then
+           # Skip only if already in-flight (pending) or passed (success).
+           # Re-test on error/failure so stale or failed runs get retried.
+           if [[ "$EXISTING" == "pending" || "$EXISTING" == "success" ]]; then
              echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: status=${EXISTING}, skip" >&2
              return
            fi

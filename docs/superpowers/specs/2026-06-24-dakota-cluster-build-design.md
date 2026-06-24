@@ -64,7 +64,6 @@ exo-1 is NotReady — excluded.
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/cluster-build.yml` | Trigger: `push: testing` → argo submit |
 | `buildstream-cluster.conf` | BST config pointing at in-cluster casd (`buildbox-casd.local-registry.svc.cluster.local:11002`) |
 
 ## Resource Management
@@ -99,8 +98,8 @@ Nightlies and PR poller still get their VMs. BST build always has guaranteed roo
 ## Data Flow
 
 1. Dev pushes to `dakota:testing`
-2. `cluster-build.yml` GHA fires on `ghost-runners`
-3. GHA runs `argo submit --watch dakota-build-pipeline` via Argo API
+2. `dakota-commit-poller` CronWorkflow fires every 5 min, polls GitHub API for HEAD SHA
+3. If SHA changed vs `image-polling-digests` ConfigMap → updates ConfigMap, submits `dakota-build-pipeline`
 4. Argo DAG starts two parallel steps: `build-bluefin` and `build-bluefin-nvidia`
 5. Each pod: `git clone dakota:testing` → `bst --config buildstream-cluster.conf build oci/<variant>.bst`
 6. BST pushes each built element to in-cluster casd over gRPC (cluster-local, sub-ms latency)
@@ -111,7 +110,7 @@ Nightlies and PR poller still get their VMs. BST build always has guaranteed roo
 
 - BST pods need `securityContext.seLinuxOptions.type: spc_t` + `--security-opt label=disable` in the bst2 container invocation (required for `bootc install` inside sandbox — see SELinux memory)
 - casd runs unauthenticated — in-cluster only, no external exposure (ClusterIP Service, no NodePort)
-- GHA `cluster-build.yml` needs an `ARGO_TOKEN` secret (ServiceAccount token for the `argo` SA) added to the dakota repo secrets — new secret, not pre-existing
+- No ARC runners — trigger is an in-cluster commit-poller CronWorkflow (same pattern as image-poller)
 
 ## What This Is Not
 

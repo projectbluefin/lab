@@ -289,7 +289,9 @@ spec:
             fi
 
             # ── Run tests ────────────────────────────────────────────────────
-            # GUI suites use qecore-headless; the system suite runs behave directly.
+            # GUI suites (smoke) use qecore-headless inside the VM.
+            # The common suite is SSH-driven from this runner container.
+            # The system suite runs behave directly inside the VM via SSH.
             echo "Running behave suite..." >&2
             TAGS_ARG="--tags ~@wip"
             if [[ -n "${BEHAVE_TAGS}" ]]; then
@@ -307,6 +309,20 @@ spec:
                 export PYTHONPATH=/tmp/bluefin-tests
                 python3 -m behave /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}
               " || BEHAVE_RC=$?
+            elif [[ "${SUITE}" == "common" ]]; then
+              # common suite is SSH-driven from the runner container (no AT-SPI/display).
+              # It reads VM_IP, VM_USER, and SSH_KEY from the environment, which are
+              # available here but NOT inside the VM. Run behave from this container
+              # so it can reach the test SSH key at ${SSH_KEY}.
+              if ! python3 -c 'import behave' 2>/dev/null; then
+                pip3 install --quiet behave 2>&1 | tail -3
+              fi
+              export VM_IP="${VM_IP}"
+              export VM_USER="${VM_USER}"
+              export SSH_KEY="${SSH_KEY}"
+              PYTHONPATH=/workspace/bluefin-test-suite \
+              python3 -m behave /workspace/bluefin-test-suite/tests/common/features/ \
+                --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
             else
               # Write a runner script to the VM to avoid shell-quoting issues
               # when passing compound commands to qecore-headless.
@@ -359,7 +375,10 @@ spec:
             # Use trailing /. on source to copy CONTENTS not the directory itself
             # (avoids /tmp/results/results/ nesting when dest already exists).
             echo "Collecting results..." >&2
-            ${SCP} ${VM_USER}@${VM_IP}:/tmp/results/. /tmp/results/ || true
+            # common suite writes results.json locally in this container; skip VM SCP.
+            if [[ "${SUITE}" != "common" ]]; then
+              ${SCP} ${VM_USER}@${VM_IP}:/tmp/results/. /tmp/results/ || true
+            fi
 
             # Persist results + screenshots to ghost disk for release evidence
             RESULT_DIR="/var/mnt/ghost-data/test-results/{{workflow.name}}/${SUITE}"

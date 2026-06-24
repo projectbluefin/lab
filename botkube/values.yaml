@@ -1,0 +1,76 @@
+# Botkube v1.14.0 — Bluefin factory ChatOps
+# ponytail: minimal config — only Discord + GitHub + kubectl plugins enabled
+
+communications:
+  default-group:
+    discord:
+      enabled: true
+      # token injected from botkube-discord k8s secret at deploy time
+      token: "${DISCORD_TOKEN}"
+      botID: "1519228970032169050"
+      channels:
+        default:
+          id: "1519233261438631936"  # #factory channel
+          notification:
+            disabled: false
+          bindings:
+            executors:
+              - kubectl-read-only
+              - github-dispatch
+            sources:
+              - k8s-err-with-logs
+
+settings:
+  clusterName: "bluefin-factory"
+
+# RBAC note: Botkube v1.14 rbac.groups renders K8s ClusterRole objects, NOT
+# Discord-role auth. Authorization for github-dispatch is enforced via channel
+# isolation — only Maintainer role can see/post in the channel where
+# github-dispatch is bound (Task 3, Discord Developer Portal command permissions).
+rbac:
+  groups: []
+
+executors:
+  kubectl-read-only:
+    botkube/kubectl:
+      enabled: true
+      context:
+        defaultNamespace: default
+      config:
+        # read-only verbs; write access requires explicit Maintainer role gate
+        allowedVerbs: ["get", "describe", "logs", "top"]
+        allowedResources:
+          - nodes
+          - pods
+          - namespaces
+          - workflows  # Argo Workflows
+
+  github-dispatch:
+    botkube/github:
+      enabled: true
+      config:
+        github:
+          auth:
+            # GitHub App auth — no PAT
+            appID: "${GITHUB_APP_ID}"
+            installationID: "${GITHUB_APP_INSTALLATION_ID}"
+            privateKey: "${GITHUB_APP_PRIVATE_KEY}"
+
+sources:
+  k8s-err-with-logs:
+    botkube/kubernetes:
+      enabled: true
+      config:
+        event:
+          types:
+            - error
+          reason: ""
+        resources:
+          - type: v1/pods
+          - type: batch/jobs
+          - type: argoproj.io/v1alpha1/Workflows
+
+plugins:
+  repositories:
+    botkube:
+      url: https://github.com/kubeshop/botkube-plugins/releases/download/v1.14.0/plugins-index.yaml

@@ -500,11 +500,19 @@ CronWorkflows also cannot be invoked via `workflowTemplateRef` — if you need a
 
 ### 18. `when` condition trap — never reference a Skipped task's outputs
 
-When a DAG task is Skipped (its own `when` condition evaluated false), its `outputs.result`
-is **undefined**. Any downstream task whose `when` references that output will fail to
-evaluate and will also be Skipped — silently, with no error. The entire chain dies.
+**Verified against Context7 `/argoproj/argo-workflows` enhanced-depends-logic docs:**
+> "If a downstream task references outputs from a task that was Skipped or Omitted,
+> those references will resolve to empty strings."
 
-**Example of the bug:**
+So `'{{tasks.check.outputs.result}}' != 'exists'` becomes `'' != 'exists'` = `true` when
+the upstream is Skipped. In theory the build should run. In practice (Argo v4.0.5), we
+observed the downstream task never being scheduled at all — the controller logs show
+`"was unable to obtain the node"` for it and the workflow stalls with only 2 nodes.
+
+The safe, version-independent fix: **never put a `when` guard on the task that owns the
+gate output. Move the bypass inside the script.**
+
+**Example of the fragile pattern:**
 ```yaml
 - name: check
   when: "'{{inputs.parameters.force}}' != 'true'"   # Skipped when force=true
@@ -512,22 +520,18 @@ evaluate and will also be Skipped — silently, with no error. The entire chain 
 
 - name: build
   depends: "(check.Succeeded || check.Skipped)"
-  when: "'{{tasks.check.outputs.result}}' != 'exists'"  # ✗ undefined when check is Skipped
+  when: "'{{tasks.check.outputs.result}}' != 'exists'"  # resolves to '' when Skipped → unpredictable
   template: build
 ```
 
-When `force=true`: `check` is Skipped → `tasks.check.outputs.result` is undefined →
-`build`'s `when` fails to evaluate → `build` is also Skipped → nothing runs. No error logged.
-
-**The fix: never skip the task that owns the gate decision. Move the bypass logic inside the script.**
-
+**The robust fix:**
 ```yaml
 - name: check           # always runs — no 'when' on this task
-  template: check       # script checks force param internally and outputs "missing" if force=true
+  template: check       # script handles force=true internally
 
 - name: build
   depends: "check.Succeeded"
-  when: "'{{tasks.check.outputs.result}}' != 'exists'"   # ✅ output always defined
+  when: "'{{tasks.check.outputs.result}}' != 'exists'"   # ✅ always defined
   template: build
 ```
 

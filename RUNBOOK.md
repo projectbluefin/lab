@@ -85,6 +85,11 @@ Golden disks can be rotated via the `build-containerdisk` template.
 | Symptom | Root cause | Durable fix |
 |---|---|---|
 | `Permission denied (publickey)` during SSH wait | ContainerDisk or hostDisk contains an old public key | Rebuild the containerDisk via `build-containerdisk` |
+| `wait-for-vm` exits 1 with `Error from server (Forbidden)` | argo SA has no kubevirt-manager Role in the VM namespace | Add Role + RoleBinding to `manifests/kubevirt-rbac.yaml` for the new namespace |
+| `AccessCredentialsSynchronized` never becomes True; `wait-for-vm` times out | `qemu-guest-agent.service` not enabled in VM image | `build-containerdisk` symlinks it; check post-install step was preserved |
+| `force=true` rebuild workflow stalls with only 2 nodes (DAG + Skipped check) | Downstream `when` references a Skipped task's outputs (resolves to empty string); Argo v4 does not schedule the task | Let `check` always run; handle `force=true` bypass inside the script body (see `argo-workflows.md` §18) |
+| dakota builds accumulate, hold `ghost-heavy-compute` mutex, starve other rebuilds | `image-poll-dakota` CronWorkflow not suspended; dakota pipeline permanently blocked (composefs, no UKI) | `image-poll-dakota` has `spec.suspend: true` in git; if builds appear, stop them immediately |
+| Cross-node SSH from workflow pods to VM fails (bazzite VM, ghost pod) | firewalld on node blocks flannel/pod-to-pod traffic | `k3s-firewalld-config` DaemonSet disables firewalld on all nodes; if re-enabled, rollout restart the DaemonSet |
 | Workflow hangs before GUI steps start | VM boot or SSH readiness never completed | Inspect VMI readiness and runner logs, then re-run the appropriate recovery path |
 | `TypeError` involving `requireResult` | Stale dogtail step pattern | Replace with `findChildren(...)` or `findChild(..., retry=False)` |
 | Clock / quick-settings scenarios miss their targets | GNOME Shell AT-SPI geometry gap | Drive the interaction via `Shell.Eval` |

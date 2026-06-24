@@ -328,11 +328,11 @@
     <thead>
       <tr>
         <th>Image</th>
-        <th title="GNOME Shell boot, display, accessibility AT-SPI">Smoke</th>
-        <th title="Ptyxis terminal, Podman, Flatpak, Homebrew — needs uinput">Developer</th>
-        <th title="Bazaar, Flatpak, GNOME extensions">Software</th>
-        <th title="bootc integrity, composefs, fs-verity, uupd staged deployments — PLATFORM CONTRACTS">System ⚑</th>
-        <th title="Flatcar systemd, container workloads">Flatcar</th>
+        <th id="th-smoke"     title="GNOME Shell boot, display, accessibility AT-SPI">Smoke</th>
+        <th id="th-developer" title="Ptyxis terminal, Podman, Flatpak, Homebrew — needs uinput">Developer</th>
+        <th id="th-software"  title="Bazaar, Flatpak, GNOME extensions">Software</th>
+        <th id="th-system"    title="bootc integrity, composefs, fs-verity, uupd staged deployments — PLATFORM CONTRACTS">System ⚑</th>
+        <th id="th-flatcar"   title="Flatcar systemd, container workloads">Flatcar</th>
         <th>Last Green</th>
         <th>Last Run</th>
         <th>Trigger / PR</th>
@@ -389,6 +389,42 @@ const SUITE_FEATURES = {
   software:  GH_REPO + '/tree/main/tests/software/features',
   system:    GH_REPO + '/tree/main/tests/system/features',
   flatcar:   GH_REPO + '/tree/main/tests/flatcar/features',
+};
+// Feature files per suite (direct links to each .feature file)
+const SUITE_FEATURE_FILES = {
+  smoke:     ['gnome_shell', 'flatpak_health', 'browser'],
+  developer: ['ptyxis', 'podman', 'brew', 'distrobox', 'devmode'],
+  software:  ['flatpak', 'bazaar'],
+  system:    ['integrity', 'bootc', 'uupd', 'filesystem'],
+  flatcar:   ['boot'],
+};
+// Debugging hints per suite — common failure causes and where to look
+const SUITE_DEBUG_HINTS = {
+  smoke: [
+    'Check GNOME Shell started: <code>systemctl --user status gnome-session</code>',
+    'AT-SPI accessibility must be enabled: <code>gsettings get org.gnome.desktop.interface toolkit-accessibility</code>',
+    'Wayland display: ensure DISPLAY/WAYLAND_DISPLAY set in session',
+  ],
+  developer: [
+    '<a href="https://github.com/projectbluefin/testing-lab/issues/237" style="color:var(--pending)">#237</a> — uinput device may be unavailable; check <code>/dev/uinput</code> permissions',
+    'Ptyxis new-tab: verify uinput setup step ran without error in Argo logs',
+    'Podman: check <code>podman info</code> returns successfully in the VM',
+  ],
+  software: [
+    'Bazaar: verify GNOME Software launched and flatpak remote is enabled',
+    'Flatpak: check <code>flatpak list --app</code> returns expected apps',
+  ],
+  system: [
+    '⚑ PLATFORM CONTRACT — these failures block image promotion',
+    'composefs: check <code>mount | grep composefs</code> in VM',
+    'fs-verity: check <code>fsverity measure /usr/bin/bash</code>',
+    'bootc: check <code>bootc status</code> shows correct deployment',
+    'uupd: check <code>systemctl status uupd</code> and journal for staged deployment errors',
+  ],
+  flatcar: [
+    'Check systemd units are active: <code>systemctl status</code>',
+    'Container runtime: check <code>docker info</code> or <code>containerd status</code>',
+  ],
 };
 // PR context: prefix → GitHub repo slug
 const PR_REPOS = {
@@ -872,7 +908,6 @@ function buildFailures(allData, stats) {
 
   const cards = failures.map(f => {
     const d = f.data;
-    const passed = d.scenarios - d.failed;
     const since = failingSince(d.history);
     const pr = prLabel(d.workflow_name);
     const trigger = pr ? `PR ${pr}` : 'nightly / manual';
@@ -880,6 +915,32 @@ function buildFailures(allData, stats) {
     const argoUrl = d.workflow_name ? argoHref(d.workflow_name) : null;
     const featureUrl = SUITE_FEATURES[f.suite];
     const isSystem = f.suite === 'system';
+
+    // Direct feature file links (individual .feature files)
+    const featureFiles = (SUITE_FEATURE_FILES[f.suite] || []).map(name => {
+      const path = `tests/${f.suite}/features/${name}.feature`;
+      return `<a href="${GH_REPO}/blob/main/${path}" target="_blank" rel="noopener" style="color:var(--muted);margin-right:8px">${name}.feature</a>`;
+    }).join('');
+
+    // Debug hints for this suite
+    const hints = SUITE_DEBUG_HINTS[f.suite] || [];
+    const debugHtml = hints.length ? `
+      <div style="margin-top:8px;padding:8px 12px;background:#0d1117;border:1px solid var(--border);border-radius:4px;font-size:12px">
+        <div style="color:var(--muted);font-weight:600;margin-bottom:4px;text-transform:uppercase;font-size:10px;letter-spacing:.06em">Common failure causes</div>
+        <ul style="list-style:none">${hints.map(h => `<li style="padding:2px 0 2px 12px;position:relative;color:var(--muted)"><span style="position:absolute;left:0;color:var(--pending)">›</span>${h}</li>`).join('')}</ul>
+      </div>` : '';
+
+    // Screenshot: show inline if URL available
+    const ssUrl = d.screenshot_url;
+    const screenshotHtml = ssUrl ? `
+      <div style="margin-top:8px">
+        <img src="${ssUrl}" alt="failure screenshot for ${f.image.label} ${f.suite}"
+             style="max-width:240px;max-height:135px;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;display:block"
+             onerror="this.style.display='none'"
+             onclick="window.open(this.src,'_blank')"
+             title="Screenshot at time of last test run — click to open full size">
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">Screenshot at last run · click to enlarge</div>
+      </div>` : '';
 
     // Find related open bugs for this suite
     const relatedBugs = bugs.filter(b =>
@@ -902,17 +963,17 @@ function buildFailures(allData, stats) {
           const items = d.failed_scenarios.map(s => {
             const safe = s.replace(/</g,'&lt;').replace(/>/g,'&gt;');
             const searchUrl = ghScenarioLink(f.suite, s);
-            return `<li><a href="${searchUrl}" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:none" title="Search for this scenario in GitHub">${safe}</a></li>`;
+            return `<li><a href="${searchUrl}" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:none" title="Find this scenario in GitHub code search">${safe} ↗</a></li>`;
           }).join('');
           const show = d.failed_scenarios.length > 6;
           const inner = `<ul>${items}</ul>`;
           return `<div class="failing-scenarios">
-            ${show ? `<details><summary>▸ ${d.failed_scenarios.length} failing scenarios — click to expand, each links to code</summary>${inner}</details>` : inner}
+            ${show ? `<details><summary>▸ ${d.failed_scenarios.length} failing scenarios — click to expand</summary>${inner}</details>` : inner}
           </div>`;
         })()
       : `<div class="failing-scenarios" style="color:var(--muted);font-size:12px">
-           Scenario names will appear here after next test run.
-           <a href="${featureUrl}" target="_blank" rel="noopener" style="color:var(--link)">Browse feature files →</a>
+           Scenario names will appear after next test run. Feature files:
+           <div style="margin-top:4px">${featureFiles || `<a href="${featureUrl}" target="_blank" rel="noopener" style="color:var(--link)">Browse →</a>`}</div>
          </div>`;
 
     const criticalBadge = isSystem
@@ -938,7 +999,9 @@ function buildFailures(allData, stats) {
         ${d.workflow_name ? `<span class="mono" style="font-size:11px;color:var(--muted)">${d.workflow_name}</span>` : ''}
       </div>
       ${bugLinks}
+      ${screenshotHtml}
       ${scenarioList}
+      ${debugHtml}
     </div>`;
   }).join('');
 
@@ -1034,7 +1097,19 @@ function buildQueue(stats) {
     <div class="queue-list">${rows}</div>`;
 }
 
-// ── Cluster strip ───────────────────────────────────────────────────────────
+// ── Annotate status table headers with scenario counts from test_coverage ───
+function annotateStatusTableHeaders(stats) {
+  const cov = stats.test_coverage?.suites || stats.test_coverage?.coverage_by_suite || {};
+  const manual = { smoke: 29, developer: 31, software: 26, system: 14, flatcar: 14 };
+  ['smoke', 'developer', 'software', 'system', 'flatcar'].forEach(s => {
+    const el = document.getElementById(`th-${s}`);
+    if (!el) return;
+    const n = cov[s]?.scenarios || manual[s];
+    if (n) el.innerHTML = el.textContent + `<br><span style="font-size:10px;font-weight:400;letter-spacing:0;text-transform:none;opacity:.7">${n} scenarios</span>`;
+  });
+}
+
+
 function buildCluster(stats) {
   const nodes = stats.factory?.cluster?.nodes || [];
   const sem = stats.factory?.semaphores || {};
@@ -1189,6 +1264,7 @@ async function buildHistoryBlock(img, allSuiteData) {
   buildFailures(allData, stats);
   buildTriage(stats, allData);
   buildStatusTable(IMAGES, allData);
+  annotateStatusTableHeaders(stats);
   buildQueue(stats);
   buildPRMatrix(stats);
   buildCluster(stats);

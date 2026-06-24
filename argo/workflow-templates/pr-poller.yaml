@@ -54,6 +54,7 @@ spec:
            "projectbluefin/bluefin-lts"
            "projectbluefin/dakota"
            "projectbluefin/knuckle"
+           "projectbluefin/testsuite"
           )
 
           dispatch_pr() {
@@ -71,10 +72,15 @@ spec:
            REPO=$(echo "$PR" | jq -r '.base.repo.full_name')
            SHA=$(echo "$PR"  | jq -r '.head.sha')
            PR_NUM=$(echo "$PR" | jq -r '.number')
-           # Always use main branch of testing-lab for external PRs.
-           # The branch from the source repo (bluefin, common, etc.) is unrelated
-           # to testing-lab branches and would cause git-sync to fail.
-           BRANCH="main"
+           HEAD_BRANCH=$(echo "$PR" | jq -r '.head.ref')
+           # testsuite PRs: run-gnome-tests clones testsuite, so use the real PR
+           # branch so the lab exercises the new/changed scenarios under review.
+           # All other repos: use main (their branch is unrelated to testsuite).
+           if [[ "$REPO" == "projectbluefin/testsuite" ]]; then
+             BRANCH="$HEAD_BRANCH"
+           else
+             BRANCH="main"
+           fi
            REPO_SLUG=$(echo "$REPO" | sed 's|.*/||; s/bluefin-lts/lts/; s/bluefin/blu/; s/dakota/dak/; s/knuckle/knu/')
            TITLE=$(echo "$PR" | jq -r '.title')
            # Slugify title: lowercase, non-alnum to dash, truncate to 30 chars
@@ -132,6 +138,18 @@ spec:
                  value: bluefin-lts-test
                - name: suites
                  value: smoke
+               - name: vm-memory
+                 value: ${VM_MEM}" ;;
+             */testsuite)    TMPL="bluefin-qa-pipeline"
+                             # Run smoke + common against bluefin:testing using
+                             # the PR branch so the new/changed scenarios are exercised.
+                             EXTRA_PARAMS="
+               - name: image-tag
+                 value: testing
+               - name: containerdisk-tag
+                 value: testing
+               - name: suites
+                 value: smoke,common
                - name: vm-memory
                  value: ${VM_MEM}" ;;
              *)              TMPL="bluefin-qa-pipeline"

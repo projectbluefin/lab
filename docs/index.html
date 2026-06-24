@@ -1533,13 +1533,17 @@ function buildRecentRuns(stats) {
       ? `<a href="${ctx.url}" target="_blank" rel="noopener">${ctx.repo.split('/')[1]}#${ctx.num}</a>`
       : triggerLabel(r);
 
+    // Suite scores: new format uses r.suite_scores.{smoke,developer,...}, old uses r.{smoke,...}
+    const ss = r.suite_scores || {};
+    const suiteData = name => ss[name] || r[name] || null;
+
     return `<tr>
       <td class="mono" style="font-size:11px">${wfLink}</td>
       <td style="color:var(--muted);white-space:nowrap">${r.label||r.variant}</td>
-      ${runSuiteCell(r.smoke    ? {...r.smoke,    workflow_name: r.id} : null)}
-      ${runSuiteCell(r.developer? {...r.developer,workflow_name: r.id} : null)}
-      ${runSuiteCell(r.software ? {...r.software, workflow_name: r.id} : null)}
-      ${runSuiteCell(r.system   ? {...r.system,   workflow_name: r.id} : null, true)}
+      ${runSuiteCell(suiteData('smoke')    ? {...suiteData('smoke'),    workflow_name: r.id} : null)}
+      ${runSuiteCell(suiteData('developer')? {...suiteData('developer'),workflow_name: r.id} : null)}
+      ${runSuiteCell(suiteData('software') ? {...suiteData('software'), workflow_name: r.id} : null)}
+      ${runSuiteCell(suiteData('system')   ? {...suiteData('system'),   workflow_name: r.id} : null, true)}
       <td style="color:var(--muted)">${dur}</td>
       <td style="white-space:nowrap">${trig}</td>
       <td>${badge}</td>

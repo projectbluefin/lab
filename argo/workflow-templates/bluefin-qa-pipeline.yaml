@@ -216,6 +216,134 @@ spec:
           - name: post-status
             template: post-github-status
             when: "'{{workflow.parameters.sha}}' != ''"
+          - name: update-dashboard
+            template: update-factory-stats
+
+    # ── update-factory-stats: append recent run to factory-stats.json ─────────
+    # Runs on every pipeline exit (success or failure). Patches the recent_runs
+    # array in docs/data/factory-stats.json via GitHub Contents API so the
+    # dashboard reflects live run data without waiting for the 30-min GHA cron.
+    - name: update-factory-stats
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
+        source: |
+          set -euo pipefail
+
+          API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/data/factory-stats.json"
+          WF_NAME="{{workflow.name}}"
+          WF_STATUS="{{workflow.status}}"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Map workflow status → dashboard overall
+          OVERALL=$([ "$WF_STATUS" = "Succeeded" ] && echo "passed" || echo "fail")
+
+          # Derive image label from pipeline parameters
+          TAG="{{workflow.parameters.image-tag}}"
+          VARIANT="{{workflow.parameters.variant}}"
+          case "$VARIANT" in
+            lts*)     LABEL="bluefin-lts:${TAG}" ;;
+            bazzite*) LABEL="bazzite:${TAG}" ;;
+            aurora*)  LABEL="aurora:${TAG}" ;;
+            dakota*)  LABEL="dakota:${TAG}" ;;
+            *)        LABEL="bluefin:${TAG}" ;;
+          esac
+
+          # Fetch current file
+          CURRENT=$(curl -sf \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API_URL}" 2>/dev/null || echo "{}")
+          FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
+
+          if [[ -z "$FILE_SHA" ]]; then
+            echo "Could not fetch factory-stats.json SHA — skipping dashboard update"
+            exit 0
+          fi
+
+          # Decode current content
+          CONTENT_B64=$(echo "$CURRENT" | jq -r '.content // ""' | tr -d '\n')
+          STATS=$(echo "$CONTENT_B64" | base64 -d | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)))" 2>/dev/null || echo "{}")
+
+          # Build new recent_run entry — also fetch per-suite scores from result files
+          PR_NUM="{{workflow.parameters.pr-number}}"
+          TRIGGER=$([ -n "$PR_NUM" ] && echo "pr-poller" || echo "nightly")
+
+          # Determine image slug for result file lookup (mirrors slug derivation in run-gnome-tests)
+          case "$VARIANT" in
+            lts*)     IMG_SLUG="bluefin-lts-${TAG}" ;;
+            bazzite*) IMG_SLUG="bluefin-bazzite-${TAG}" ;;
+            aurora*)  IMG_SLUG="bluefin-aurora-${TAG}" ;;
+            *)        IMG_SLUG="bluefin-${TAG}" ;;
+          esac
+
+          # Fetch per-suite result files and write to temp dir
+          mkdir -p /tmp/suite-scores
+          for SUITE in smoke developer software system; do
+            curl -sf \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/${IMG_SLUG}-${SUITE}.json" \
+              2>/dev/null \
+            | jq -r 'if .content then (.content | gsub("\n";"") | @base64d) else empty end' 2>/dev/null \
+            > "/tmp/suite-scores/${SUITE}.json" || true
+          done
+
+          # Build suite_scores object via Python
+          SUITE_SCORES=$(python3 - <<'PYEOF'
+import json, os, sys
+scores = {}
+for suite in ["smoke", "developer", "software", "system"]:
+    p = f"/tmp/suite-scores/{suite}.json"
+    try:
+        with open(p) as f:
+            d = json.load(f)
+            scores[suite] = {"scenarios": d.get("scenarios", 0), "failed": d.get("failed", 0), "status": d.get("status", "unknown")}
+    except Exception:
+        pass
+print(json.dumps(scores))
+PYEOF
+)
+
+          NEW_RUN=$(jq -nc \
+            --arg id   "$WF_NAME" \
+            --arg overall "$OVERALL" \
+            --arg label "$LABEL" \
+            --arg variant "$VARIANT" \
+            --arg started "$NOW" \
+            --arg finished "$NOW" \
+            --arg trigger "$TRIGGER" \
+            --argjson scores "${SUITE_SCORES:-{}}" \
+            '{id:$id,overall:$overall,label:$label,variant:$variant,started_at:$started,finished_at:$finished,trigger:$trigger,suite_scores:$scores}')
+
+          # Prepend new entry, keep most recent 15, update _meta.generated
+          UPDATED=$(echo "$STATS" | jq -c \
+            --argjson run "$NEW_RUN" \
+            --arg now "$NOW" \
+            '.recent_runs = ([$run] + (.recent_runs // []) | .[:15])
+             | ._meta.generated = $now')
+
+          # Push back
+          BODY=$(jq -nc \
+            --arg msg  "chore: update dashboard run data for ${WF_NAME}" \
+            --arg content "$(echo "$UPDATED" | base64 -w0)" \
+            --arg sha  "$FILE_SHA" \
+            '{message:$msg,content:$content,sha:$sha}')
+
+          HTTP=$(curl -sf -w "%{http_code}" -o /dev/null \
+            -X PUT \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" "${API_URL}" 2>&1) || HTTP="error"
+
+          echo "Dashboard update: ${OVERALL} for ${LABEL} (${WF_NAME}) — http=${HTTP}"
 
     # ── post-github-status: posts commit status to GitHub API ──────────────────
     - name: post-github-status

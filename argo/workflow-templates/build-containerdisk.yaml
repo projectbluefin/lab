@@ -34,7 +34,7 @@ spec:
       #   bluefin-lts      3153 MB compressed → 25G  (non-native; LTS declares xfs but btrfs override works; fits)
       #   aurora           3405 MB compressed → 30G  (non-native; 25G failed with 282 kB remaining at end of relabeling)
       #   bazzite          4712 MB compressed → 40G  (non-native; not yet measured; scaled from aurora's empirical ratio)
-      #   dakota           2927 MB compressed → N/A  (declares bootloader=systemd in 00-defaults.toml but ships no bootupd; blocked)
+      #   dakota           2927 MB compressed → blocked  (composefs image: declares bootloader=systemd + composefs=yes but ships no UKI; bootc install to-disk requires a signed UKI for composefs path; needs upstream fix or golden-disk approach like GnomeOS)
       # To re-measure: skopeo inspect docker://<image>:<tag> | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(l['Size'] for l in d['LayersData'])//1024//1024,'MB')"
       - name: disk-size
         value: "25G"

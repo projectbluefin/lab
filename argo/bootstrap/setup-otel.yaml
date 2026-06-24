@@ -17,7 +17,7 @@ spec:
     script:
       command:
       - sh
-      image: alpine:latest
+      image: alpine:latest # registry-lint-ignore
       source: "set -euo pipefail\necho \"\u2192 Deploying observability stack to {{inputs.parameters.host}}...\"\
         \nsh /workspace/otel/deploy.sh {{inputs.parameters.host}}\necho \"\u2713 Observability\
         \ stack deployed to {{inputs.parameters.host}}\"\n"

@@ -6,6 +6,9 @@
 # Flatcar update.conf keys:
 #   GROUP   - which channel/group to track (matches a Nebraska group name)
 #   SERVER  - Omaha endpoint (Nebraska /v1/update/)
+#
+# Detection note: /etc/os-release on Flatcar is a symlink to /usr/lib/os-release.
+# We mount both /etc and /usr/lib from the host so the symlink resolves.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -38,7 +41,8 @@ spec:
             - -c
             - |
               while true; do
-                if ! grep -q 'ID=flatcar' /host/etc/os-release 2>/dev/null; then
+                if ! grep -q 'ID=flatcar' /host/usr/lib/os-release 2>/dev/null \
+                   && ! grep -q 'ID=flatcar' /host/etc/os-release 2>/dev/null; then
                   sleep 3600
                   continue
                 fi
@@ -56,6 +60,9 @@ spec:
           volumeMounts:
             - name: host-etc
               mountPath: /host/etc
+            - name: host-usr-lib
+              mountPath: /host/usr/lib
+              readOnly: true
           resources:
             requests:
               cpu: 5m
@@ -67,3 +74,6 @@ spec:
         - name: host-etc
           hostPath:
             path: /etc
+        - name: host-usr-lib
+          hostPath:
+            path: /usr/lib

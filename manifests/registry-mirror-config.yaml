@@ -2,7 +2,7 @@
 # Writes containerd hosts.toml to each node's certs.d path.
 # containerd v2.0 (k3s v1.32+) hot-reloads these — no k3s restart needed.
 #
-# All 6 registries mirror through a single zot-cache instance (NodePort 30501).
+# All 7 registries mirror through a single zot-cache instance (NodePort 30501).
 # Zot stores each upstream under a subpath via sync destination prefix mapping:
 #   ghcr.io                    → ghost:30501/ghcr
 #   docker.io                  → ghost:30501/docker
@@ -10,6 +10,7 @@
 #   registry.fedoraproject.org → ghost:30501/fedora
 #   registry.access.redhat.com → ghost:30501/redhat
 #   registry.k8s.io            → ghost:30501/k8s
+#   cgr.dev                    → ghost:30501/cgr
 #
 # To update mirrors: edit ConfigMap below, then:
 #   kubectl rollout restart daemonset/registry-mirror-config -n local-registry
@@ -52,6 +53,11 @@ data:
 
     [host."http://192.168.1.102:30501/k8s"]
       capabilities = ["pull", "resolve"]
+  cgr.dev.hosts.toml: |
+    server = "https://cgr.dev"
+
+    [host."http://192.168.1.102:30501/cgr"]
+      capabilities = ["pull", "resolve"]
   local-zot.hosts.toml: |
     server = "http://192.168.1.102:30500"
 
@@ -90,6 +96,7 @@ spec:
                 /certs.d/registry.fedoraproject.org \
                 /certs.d/registry.access.redhat.com \
                 /certs.d/registry.k8s.io \
+                /certs.d/cgr.dev \
                 "/certs.d/192.168.1.102:30500"
               cp /config/ghcr.io.hosts.toml                    /certs.d/ghcr.io/hosts.toml
               cp /config/docker.io.hosts.toml                  /certs.d/docker.io/hosts.toml
@@ -97,6 +104,7 @@ spec:
               cp /config/registry.fedoraproject.org.hosts.toml /certs.d/registry.fedoraproject.org/hosts.toml
               cp /config/registry.access.redhat.com.hosts.toml /certs.d/registry.access.redhat.com/hosts.toml
               cp /config/registry.k8s.io.hosts.toml            /certs.d/registry.k8s.io/hosts.toml
+              cp /config/cgr.dev.hosts.toml                    /certs.d/cgr.dev/hosts.toml
               cp /config/local-zot.hosts.toml                  "/certs.d/192.168.1.102:30500/hosts.toml"
               echo "Mirror hosts written."
           volumeMounts:

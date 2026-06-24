@@ -408,6 +408,10 @@ Bluefin VMs no longer use golden disk hostPath files. They use `containerDisk` (
 The disk build pipeline is `build-containerdisk` — see section 2 above.
 
 For Flatcar, disk image is downloaded at workflow start, converted qcow2→raw, wrapped as containerDisk (OCI), and pushed to Zot. No ghost-local disk files.
+
+**Flatcar download URL (2026):** `https://stable.release.flatcar-linux.net/amd64-usr/<version>/flatcar_production_qemu_image.img.bz2`
+Old domain `stable.release.flatcar-container.net` is NXDOMAIN — do not use.
+Images ship as `.img.bz2` (bzip2-compressed qcow2) — decompress with `bzip2 -d` before `qemu-img convert`.
 Knuckle uses a per-workflow PVC. GnomeOS uses containerDisk. No VM type writes to ghost disk anymore.
 
 `gts` and `lts-hwe` tags do NOT exist. Never use them.
@@ -654,6 +658,10 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 - VM goes `Stopped` with `FailedCreate` and `metadata.labels: must be no more than 63 characters` — VM name exceeds Kubernetes label-value limit. `bluefin-lts-testing-developer-<36-char-uuid>` = 67 chars, fails. `smoke` (5 chars) just passes; `developer` (9 chars) overflows. Fix: use `{{workflow.name}}-{{item}}` instead of `{{workflow.parameters.variant}}-{{item}}-{{workflow.uid}}` — workflow names are short and unique. Fixed in `bluefin-qa-pipeline` commit `7fca070`.
 - Orphaned VMs from a prior workflow consuming ghost resources — run `just list-vms` before submitting a new matrix run; delete orphans with `kubernetes-mcp-resources_delete` if present. Four concurrent VMs on ghost can cause VMI Ready timeouts.
 - **SSH always times out with 1800s poll even though VMI is Ready** — Fedora 41+ OpenSSH packaging: `sshd.service` is a dead shim, never starts. `sshd.socket` is enabled but requires explicit activation via guest-exec. Check with `systemctl is-active sshd.socket` via guest agent; if inactive, the `wait-for-vm-ready` template is missing the guest-exec start step (section 5). The 1800s timeout is the smoke alarm, not the root cause.
+- **Flatcar containerdisk build: `curl: (6) Could not resolve host: stable.release.flatcar-container.net`** — that domain is NXDOMAIN. Use `stable.release.flatcar-linux.net`. See `provision-flatcar-vm.yaml`.
+- **Flatcar containerdisk build: `bzip2: (stdin) is not a bzip2 file`** — old URL returned bare qcow2; new URL returns `.img.bz2`. Run `bzip2 -d` before `qemu-img convert`.
+- **Flatcar DaemonSet in ErrImagePull with `wolfi-base:latest-dev`** — that tag does not exist. The correct tag is `cgr.dev/chainguard/wolfi-base:latest` (`:latest` already has full tooling including nsenter).
+- **DaemonSet pod: `nsenter: can't open /proc/1/ns/mnt: Permission denied`** — pod was created before a DaemonSet rollout that added `seccompProfile: Unconfined`. Delete the pod to force respawn with the new spec.
 - **`kubectl exec ... -c compute -- virsh qemu-agent-command` returns Forbidden** — `pods/exec` (verb: create) is missing from the kubevirt-manager Role in the VM namespace. Add it to `manifests/kubevirt-rbac.yaml` for every namespace (`bluefin-test`, `bluefin-lts-test`). RHEL10 `bootc install` only creates `/EFI/redhat/`; copy the shim to the fallback path in the build step. See section 13a.
 - **LTS VM SSH never opens and CPU time grows but slowly (8-15 min boot)** — fstab `/boot` or `/boot/efi` entry missing `nofail`+`x-systemd.device-timeout=5s`. The field-aware sed in section 13b MUST cover both `defaults` and `umask=...` option strings. A simple `/defaults/ s/defaults/defaults,nofail/` won't match RHEL10's `/boot/efi` entry.
 - **Field-aware fstab sed not patching `/boot/efi`** — the old sed pattern `/defaults/` doesn't match RHEL10 fstab where `/boot/efi` uses `umask=0077,shortname=winnt`. Use the column-4-aware sed from section 13b.

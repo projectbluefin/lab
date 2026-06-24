@@ -261,6 +261,36 @@ This protocol was established after multiple sessions where:
 - Bootstrap templates accidentally placed in `argo/workflow-templates/` (ArgoCD will prune them if removed from git)
 - Reporting a fix as deployed without verifying `argo-mcp-get_workflow_template` shows the new value live
 - Submitting a new workflow immediately after a push without waiting for ArgoCD sync confirmation
+- **Using `registry.access.redhat.com` (UBI) or `bitnami/*` images** — both banned in this cluster. Use `cgr.dev/chainguard/wolfi-base:latest` instead.
+- **Choosing a base image without checking the policy** — preference order is: `cgr.dev/chainguard/*` first, then ask. Fedora images are allowed when appropriate (not replaced with non-existent alternatives). docker.io is banned except `docker.io/rocm/k8s-device-plugin` (annotate `# registry-lint-ignore`).
+
+## Image Policy
+
+**Preference order (enforced by `just lint` registry allowlist):**
+
+1. `cgr.dev/chainguard/*` — default choice for all infra/tooling images
+2. For anything else: **ask the user** — do not assume distros
+3. Fedora images are allowed when appropriate for Fedora/CoreOS-specific tooling
+4. Banned: `registry.access.redhat.com` (UBI), `bitnami/*`, `docker.io/*` (except `docker.io/rocm/k8s-device-plugin` with `# registry-lint-ignore`)
+
+**Critical Chainguard tag facts:**
+- `cgr.dev/chainguard/wolfi-base:latest` ✅ (has apk, nsenter, full tooling)
+- `cgr.dev/chainguard/wolfi-base:latest-dev` ❌ DOES NOT EXIST
+- `cgr.dev/chainguard/kubectl:latest-dev` ✅ (has bash; `:latest` is distroless — no shell)
+- `cgr.dev/chainguard/kubectl:latest` ❌ no bash — use `latest-dev` for steps that need shell
+
+**Zot pull-through cache — 6 upstreams (as of 2026):**
+
+| Upstream | NodePort path prefix |
+|---|---|
+| `ghcr.io` | `:30501/ghcr` |
+| `docker.io` | `:30501/docker` |
+| `quay.io` | `:30501/quay` |
+| `registry.fedoraproject.org` | `:30501/fedora` |
+| `registry.k8s.io` | `:30501/k8s` |
+| `cgr.dev` | `:30501/cgr` |
+
+All images in `argo/` and `manifests/` must use a registry from the allowlist in `.github/workflows/lint.yaml`.
 
 ## Verification
 

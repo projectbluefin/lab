@@ -22,6 +22,8 @@ automation — `bluefin-lts` has no `:latest` tag.
 
 ## Test Suites
 
+All Bluefin image test scenarios live in **[`projectbluefin/testsuite`](https://github.com/projectbluefin/testsuite)** — the single source of truth. The lab's `run-gnome-tests` WorkflowTemplate clones `testsuite` (main or a branch) and runs qecore-headless + behave against a real KubeVirt VM. The same test code also runs in GitHub Actions (`e2e.yml`) against a QEMU VM.
+
 Each pipeline run executes one or more suites via the `suites` parameter (comma-separated).
 
 ### smoke
@@ -42,15 +44,15 @@ Bluefin developer tooling validation. Validates the tools Bluefin ships for deve
 - Dev mode (`ujust enable-dev-mode`): systemd service activated, no fatal journal entries
 - Ptyxis terminal opens and accepts input
 
-### system
-Atomic OS contract tests. Validates Bluefin's immutable-image guarantees.
+### common
+Atomic OS contract and system health tests. Validates Bluefin's immutable-image guarantees.
 
 - `bootc status` reports a known good deployment
 - `/usr` is mounted read-only
-- `uupd` service is present and enabled
-- composefs/fs-verity: OCI layers verified against stored digests
-- Image signature policy: `cosign verify` passes for the running image
-- Staged deployment: `bootc upgrade --check` exits cleanly
+- XDG portal health + integration
+- Flatpak model and state
+- polkit rules, shell environment, ujust recipes
+- GSettings/dconf defaults, desktop entries, signing assertions
 
 ### flatcar (separate pipeline)
 Flatcar OS substrate tests. Not part of the Bluefin image pipelines; runs via

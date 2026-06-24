@@ -52,7 +52,7 @@ smoke tests against the installed system.
 | `namespace` | `knuckle-test` | KubeVirt namespace for the ephemeral installer VM. |
 | `suite` | `smoke` | Single GNOME test suite to run after install. |
 | `ssh-key-secret` | `bluefin-test-ssh-key` | Secret in `argo` ns used for installer access and installed-system SSH. |
-| `tests-branch` | `main` | `testing-lab` branch cloned by `run-gnome-tests`. |
+| `tests-branch` | `main` | `testsuite` branch cloned by `run-gnome-tests`. |
 
 Wall-clock: ~12–20 min depending on ISO build cache and Flatcar download time.
 

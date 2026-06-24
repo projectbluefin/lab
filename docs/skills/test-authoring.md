@@ -1,44 +1,58 @@
 ---
 name: test-authoring
 description: >
-  Writing, debugging, and running behave/qecore/dogtail GNOME GUI tests in
-  the testing-lab. Use when adding test scenarios, fixing AT-SPI failures,
-  debugging Shell.Eval interactions, or working with the qecore-headless
-  session.
+  Writing, debugging, and running behave/qecore/dogtail GNOME GUI tests.
+  All Bluefin image tests live in projectbluefin/testsuite. Use when adding
+  test scenarios, fixing AT-SPI failures, debugging Shell.Eval interactions,
+  or working with the qecore-headless session.
 ---
 
-# Test Authoring — testing-lab Skill
+# Test Authoring
+
+## Single source of truth
+
+**`projectbluefin/testsuite`** is the canonical test repo for all Bluefin image tests.
+Tests run in two places:
+
+- **GitHub Actions** (`e2e.yml`) — QEMU-based, triggers on every PR and image publish
+- **KubeVirt lab** (`run-gnome-tests` WorkflowTemplate) — clones `testsuite` main (or a branch), runs against a real VM
+
+Do NOT add Bluefin image tests here in `testing-lab`. Add them in `testsuite`.
+
+Tests that belong in `testing-lab/tests/` are lab infrastructure tests only:
+`homelab_access`, `homelab_backup`, `homelab_storage`, `homelab_substrate`,
+`service_catalog`, `flatcar`.
 
 ## When to Use
 
-- Adding a new `.feature` file or step definition
-- Fixing a failing AT-SPI test (`findChild`, `findChildren`, `Shell.Eval`)
+- Debugging a `run-gnome-tests` workflow failure (lab execution path)
+- Fixing AT-SPI / `findChild` / `Shell.Eval` issues in the testsuite
 - Debugging `qecore-headless` startup failures
 - Working with GNOME Shell 50 top-bar interactions
-- Understanding why a test passes locally but fails in the workflow
 
 ## When NOT to Use
 
+- Adding new Bluefin image scenarios → go to `projectbluefin/testsuite`
 - Argo Workflows template YAML → `argo-workflows.md`
 - VM boot failures before tests start → `kubevirt-vms.md`
-- `run-gnome-tests` Argo template changes → `argo-workflows.md`
 
 ## Core Process
 
-### 1. Test directory layout
+### 1. Test directory layout (testsuite)
 
 ```
-tests/
-├── smoke/features/              Phase 1 — GNOME Shell, Activities, top-bar
-├── developer/features/          Phase 2 — Ptyxis, Homebrew, Podman, micro
-├── software/features/           Phase 3 — Flatpak, Bazaar, GNOME Software
-├── system/features/             Phase 4 — bootc contract, atomic OS checks
-└── flatcar/features/            Phase 5 — Flatcar systemd + containers
+tests/                            (in projectbluefin/testsuite)
+├── smoke/features/               GNOME Shell, desktop identity, app launch
+├── common/features/              Flatpak model, portals, polkit, immutable OS
+├── developer/features/           Homebrew, Podman, Ptyxis
+├── software/features/            Bazaar, Flatpak CLI
+├── lifecycle/features/           bootc upgrade/rollback/migration
+├── hardware/features/            udev rules, peripherals
+├── security/features/            image provenance, SELinux
+└── vanilla-gnome/features/       baseline GNOME parity
 ```
 
-Add `.feature` files to the appropriate `features/` directory.
-Add step implementations in `features/steps/`.
-
+Add `.feature` files and step implementations in the appropriate suite directory.
 Tag new/unstable scenarios `@wip` until they pass reliably in CI.
 
 ### 2. qecore-headless session startup (required incantation)

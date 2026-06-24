@@ -173,7 +173,50 @@
     }
     .sem-pip.used { background: var(--run); border-color: var(--run); }
 
-    /* ── Generic table ───────────────────────────────── */
+    /* ── Bug/issue list ──────────────────────────────── */
+    .bug-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+    .bug-row {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 9px 14px;
+      display: flex; align-items: flex-start; gap: 12px;
+      font-size: 13px;
+    }
+    .bug-row.area-test  { border-left: 3px solid var(--pending); }
+    .bug-row.area-infra { border-left: 3px solid var(--fail); }
+    .bug-num  { color: var(--link); font-weight: 600; white-space: nowrap; flex-shrink: 0; font-size: 12px; }
+    .bug-title { flex: 1; }
+    .bug-area {
+      padding: 1px 7px; border-radius: 4px; font-size: 11px;
+      font-weight: 600; text-transform: uppercase; flex-shrink: 0;
+    }
+    .bug-area-test  { background: #2e261c; color: var(--pending); }
+    .bug-area-infra { background: #2e1c1c; color: var(--fail); }
+    .bug-age  { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+    .bug-affects { color: var(--muted); font-size: 11px; }
+
+    /* ── Triage columns ──────────────────────────────── */
+    .triage-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px; margin-bottom: 8px;
+    }
+    @media (max-width: 800px) { .triage-cols { grid-template-columns: 1fr; } }
+
+    /* ── Infra failure rows ──────────────────────────── */
+    .infra-fail-row {
+      background: var(--surface); border: 1px solid var(--border);
+      border-left: 3px solid var(--fail);
+      border-radius: 6px; padding: 8px 14px;
+      font-size: 12px; margin-bottom: 6px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .infra-fail-row .mono { font-size: 11px; }
+    .triage-section-head {
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted);
+      margin-bottom: 8px; padding-bottom: 5px;
+      border-bottom: 1px solid var(--border);
+    }
     .data-block {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 6px; overflow: hidden; margin-bottom: 16px;
@@ -225,7 +268,10 @@
 <!-- Alert banner (failures only) -->
 <div id="alert-banner"></div>
 
-<!-- Failures section (shown only when failures exist) -->
+<!-- Triage section: open bugs + infra failures -->
+<div id="triage-section"></div>
+
+<!-- Test failures (suite-level) -->
 <div id="failures-section"></div>
 
 <!-- Image status table -->
@@ -418,27 +464,100 @@ function runSuiteCell(d) {
   </td>`;
 }
 
-// ── Build failures section ──────────────────────────────────────────────────
-function buildFailures(allData) {
-  // allData: [{image, suite, data}] for all failing suites
-  const failures = allData.filter(d => d.data?.status === 'failed');
-  if (!failures.length) {
-    document.getElementById('alert-banner').innerHTML = '';
-    document.getElementById('failures-section').innerHTML = '';
+// ── Build triage section: open bugs + infra failures ───────────────────────
+function buildTriage(stats, allData) {
+  const bugs = stats.open_bugs || [];
+  const runs = stats.recent_runs || [];
+
+  // Infra failures: failed runs with no test data and failure_type=infra or no suite data
+  const infraFails = runs.filter(r =>
+    r.overall === 'fail' &&
+    !r.smoke && !r.developer && !r.system &&
+    (r.failure_type === 'infra' || true)  // treat all no-data failures as infra
+  );
+
+  // Stuck: running > 90min
+  const stuck = runs.filter(r => {
+    if (r.overall !== 'running') return false;
+    const dur = (Date.now() - new Date(r.started_at).getTime()) / 60000;
+    return dur > 90;
+  });
+
+  const anyIssues = bugs.length || infraFails.length || stuck.length;
+  if (!anyIssues) {
+    document.getElementById('triage-section').innerHTML = '';
     return;
   }
 
-  const summary = failures.map(f => {
-    const passed = f.data.scenarios - f.data.failed;
-    return `${f.image.label} <strong>${f.suite}</strong> ${passed}/${f.data.scenarios}`;
-  }).join(' · ');
+  // Bug list
+  const bugHtml = bugs.length ? `
+    <div class="triage-section-head">Open bugs (${bugs.length})</div>
+    <div class="bug-list">
+      ${bugs.map(b => {
+        const areaClass = b.area === 'test' ? 'area-test' : 'area-infra';
+        const areaLabel = b.area === 'test' ? 'test' : 'infra';
+        const areaLabelClass = b.area === 'test' ? 'bug-area-test' : 'bug-area-infra';
+        const age = fmtAgo(b.created_at);
+        const affects = b.affects?.length ? `<span class="bug-affects">· ${b.affects.join(', ')}</span>` : '';
+        return `<div class="bug-row ${areaClass}">
+          <span class="bug-num"><a href="${b.url}" target="_blank" rel="noopener">#${b.number}</a></span>
+          <span class="bug-title"><a href="${b.url}" target="_blank" rel="noopener" style="color:var(--text)">${b.title}</a></span>
+          <span class="bug-area ${areaLabelClass}">${areaLabel}</span>
+          <span class="bug-age">${age} ${affects}</span>
+        </div>`;
+      }).join('')}
+    </div>` : '';
 
-  document.getElementById('alert-banner').innerHTML = `
-    <div class="alert-banner">
-      <span class="alert-dot"></span>
-      <span class="alert-text">${failures.length} suite${failures.length>1?'s':''} failing</span>
-      <span class="alert-detail">${summary}</span>
+  // Infra failure list (dedupe by PR)
+  const seenPR = new Set();
+  const infraItems = infraFails.filter(r => {
+    const ctx = prContext(r.id || '');
+    const key = ctx ? `${ctx.repo}#${ctx.num}` : r.id;
+    if (seenPR.has(key)) return false;
+    seenPR.add(key);
+    return true;
+  }).slice(0, 8);
+
+  const infraHtml = infraItems.length ? `
+    <div class="triage-section-head">Pipeline failures — no test data produced (${infraFails.length} runs)</div>
+    ${infraItems.map(r => {
+      const pr = prLabel(r.id || '');
+      const argoUrl = argoHref(r.id);
+      return `<div class="infra-fail-row">
+        <span class="mono"><a href="${argoUrl}" target="_blank" rel="noopener">${r.id.slice(0,32)}…</a></span>
+        ${pr ? `<span>PR: ${pr}</span>` : ''}
+        <span style="color:var(--muted)">${r.label || r.variant}</span>
+        <span style="color:var(--muted)">${r.duration_min ? r.duration_min+'m' : ''}  · ${fmtAgo(r.finished_at||r.started_at)}</span>
+        <span style="color:var(--fail)">no test output</span>
+      </div>`;
+    }).join('')}` : '';
+
+  const stuckHtml = stuck.length ? `
+    <div class="triage-section-head" style="margin-top:12px">Stuck workflows (${stuck.length})</div>
+    ${stuck.map(r => {
+      const dur = Math.round((Date.now() - new Date(r.started_at).getTime()) / 60000);
+      return `<div class="infra-fail-row" style="border-left-color:var(--pending)">
+        <span class="mono"><a href="${argoHref(r.id)}" target="_blank" rel="noopener">${r.id.slice(0,32)}…</a></span>
+        <span style="color:var(--pending)">${dur}m running</span>
+        <span style="color:var(--muted)">${r.label || r.variant}</span>
+      </div>`;
+    }).join('')}` : '';
+
+  document.getElementById('triage-section').innerHTML = `
+    <h2>Triage</h2>
+    <div class="triage-cols">
+      <div>${bugHtml}</div>
+      <div>${infraHtml}${stuckHtml}</div>
     </div>`;
+}
+
+// ── Build failures section ──────────────────────────────────────────────────
+function buildFailures(allData) {
+  const failures = allData.filter(d => d.data?.status === 'failed');
+  if (!failures.length) {
+    document.getElementById('failures-section').innerHTML = '';
+    return;
+  }
 
   const cards = failures.map(f => {
     const d = f.data;
@@ -487,7 +606,7 @@ function buildFailures(allData) {
   }).join('');
 
   document.getElementById('failures-section').innerHTML = `
-    <h2>Failures</h2>
+    <h2>Test Failures</h2>
     <div class="failure-list">${cards}</div>`;
 }
 
@@ -694,7 +813,9 @@ async function buildHistoryBlock(img, allSuiteData) {
     byImage[d.image.slug][d.suite] = d.data;
   }
 
+  buildAlertBanner(allData, stats);
   buildFailures(allData);
+  buildTriage(stats, allData);
   buildStatusTable(IMAGES, allData);
   buildQueue(stats);
   buildCluster(stats);

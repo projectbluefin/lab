@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write
       packages: read
+      issues: read
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -32,15 +33,14 @@ jobs:
         run: |
           echo "$GH_TOKEN" | oras login ghcr.io -u github-actions --password-stdin
           mkdir -p docs/screenshots
-          SLUGS="bluefin-testing bluefin-lts-testing dakota-testing"
-          SUITES="smoke developer system"
+          SLUGS="bluefin-testing bluefin-lts-testing bluefin-bazzite-testing bluefin-aurora-testing dakota-testing"
+          SUITES="smoke developer software system"
           for slug in $SLUGS; do
             for suite in $SUITES; do
               tag="${slug}-${suite}-latest"
               img="ghcr.io/projectbluefin/testsuite/desktop-screenshot:${tag}"
               dest="docs/screenshots/${tag}.png"
               if oras pull "${img}" --output docs/screenshots/ 2>/dev/null; then
-                # oras names the file after the artifact basename used during push
                 pulled="docs/screenshots/desktop-screenshot.png"
                 if [[ -f "${pulled}" ]]; then
                   mv "${pulled}" "${dest}"
@@ -52,16 +52,94 @@ jobs:
             done
           done
 
+      - name: Refresh factory-stats.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch open bug issues
+          gh issue list \
+            --repo projectbluefin/testing-lab \
+            --label bug \
+            --state open \
+            --limit 50 \
+            --json number,title,url,labels,createdAt \
+            > /tmp/bugs-raw.json
+
+          # Compute aggregate stats from result files
+          python3 - <<'PYEOF'
+          import json, os, glob, datetime
+
+          stats_path = 'docs/data/factory-stats.json'
+          with open(stats_path) as f:
+              stats = json.load(f)
+
+          # --- Open bugs ---
+          with open('/tmp/bugs-raw.json') as f:
+              raw = json.load(f)
+
+          # Preserve existing 'affects' and 'area' annotations by number
+          existing = {b['number']: b for b in stats.get('open_bugs', [])}
+          bugs = []
+          for i in raw:
+              prev = existing.get(i['number'], {})
+              bugs.append({
+                  'number':     i['number'],
+                  'title':      i['title'],
+                  'url':        i['url'],
+                  'created_at': i['createdAt'],
+                  'affects':    prev.get('affects', []),
+                  'area':       prev.get('area', 'unknown'),
+              })
+          stats['open_bugs'] = bugs
+
+          # --- Aggregate test coverage from result files ---
+          total_scenarios = 0
+          total_failed = 0
+          for path in glob.glob('docs/results/*.json'):
+              try:
+                  with open(path) as f:
+                      d = json.load(f)
+                  if d.get('status') not in ('pending', None):
+                      total_scenarios += d.get('scenarios', 0)
+                      total_failed    += d.get('failed', 0)
+              except Exception:
+                  pass
+          if total_scenarios > 0:
+              stats.setdefault('test_coverage', {})['scenarios_total'] = total_scenarios
+              stats.setdefault('test_coverage', {})['scenarios_failed'] = total_failed
+
+          # --- GitHub counts ---
+          stats['github']['testing_lab']['open_issues'] = sum(
+              1 for _ in open('/tmp/bugs-raw.json').readlines()
+          )  # rough; overwritten below
+
+          # --- Update generated timestamp ---
+          stats['_meta']['generated'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+          with open(stats_path, 'w') as f:
+              json.dump(stats, f, indent=2)
+          print(f"Updated {stats_path}: {len(bugs)} open bugs, {total_scenarios} scenarios")
+          PYEOF
+
+          # Update open_issues count properly via API
+          ISSUE_COUNT=$(gh issue list --repo projectbluefin/testing-lab --state open --limit 200 --json number | jq length)
+          python3 -c "
+          import json
+          with open('docs/data/factory-stats.json') as f: s = json.load(f)
+          s['github']['testing_lab']['open_issues'] = ${ISSUE_COUNT}
+          with open('docs/data/factory-stats.json','w') as f: json.dump(s,f,indent=2)
+          "
+
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots/
+          git add docs/screenshots/ docs/data/factory-stats.json
           if git diff --cached --quiet; then
-            echo "No screenshot changes to commit"
+            echo "No changes to commit"
           else
             git commit \
-              -m 'chore: update test screenshots from GHCR' \
+              -m 'chore: refresh dashboard data (screenshots, bugs, stats)' \
               -m 'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>'
             git push origin HEAD:main
           fi

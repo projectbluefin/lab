@@ -42,7 +42,6 @@ kubelet disk-pressure, evicting all pods and crashing the cluster.
 | Pipeline | Disk storage location |
 |---|---|
 | Bluefin containerDisk build staging | `/var/mnt/ghost-data/bluefin-cd-build/` |
-| Flatcar hostDisk clones | `/var/mnt/ghost-data/flatcar-test/` |
 | LLM model cache | `/var/mnt/ghost-data/llm-models/` |
 
 **Never use `/var/tmp` for VM disk files.** It is on the nvme OS partition.
@@ -277,15 +276,9 @@ spec:
         image: 192.168.1.102:30500/bluefin-containerdisk:testing
 ```
 
-**hostDisk VMs** (Flatcar only) MUST pin to ghost because hostPath files are only accessible on ghost:
-
-```yaml
-nodeSelector:
-  kubernetes.io/hostname: ghost
-```
-
-Knuckle uses a per-workflow PVC (local-path, RWO) — KubeVirt co-schedules the VM automatically on the same node as the PVC. No explicit nodeSelector needed.
-GnomeOS uses containerDisk (OCI image pushed to zot at build time) — schedules freely on any KubeVirt-capable node.
+**No hostDisk VMs remain.** All VM types use containerDisk or PVC — they schedule freely on any KubeVirt-capable node:
+- **ContainerDisk VMs** (Bluefin, GnomeOS, Dakota, Flatcar): OCI image from Zot. No nodeSelector.
+- **PVC-backed VMs** (Knuckle): `local-path` RWO PVC; KubeVirt auto-schedules on the PVC's node.
 
 **nodeSelector and hostNetwork are NOT required for SSH/kubectl workflow steps.** Pod IPs are routable across nodes via flannel. `kubectl exec` goes through the API server. Only steps that mount hostPath volumes need a nodeSelector matching the node where those files exist.
 
@@ -414,8 +407,8 @@ kubectl delete pod -n <namespace> -l kubevirt.io/vm=<vm-name> --force
 Bluefin VMs no longer use golden disk hostPath files. They use `containerDisk` (OCI image).
 The disk build pipeline is `build-containerdisk` — see section 2 above.
 
-For Flatcar (still uses hostDisk), disk files live under `/var/mnt/ghost-data/flatcar-test/` on ghost. Never `/var/tmp`.
-Knuckle uses a per-workflow PVC. GnomeOS uses containerDisk. Neither writes to ghost disk anymore.
+For Flatcar, disk image is downloaded at workflow start, converted qcow2→raw, wrapped as containerDisk (OCI), and pushed to Zot. No ghost-local disk files.
+Knuckle uses a per-workflow PVC. GnomeOS uses containerDisk. No VM type writes to ghost disk anymore.
 
 `gts` and `lts-hwe` tags do NOT exist. Never use them.
 
@@ -630,7 +623,7 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 | "SSH will come up on its own after VMI Ready — just poll longer." | Fedora 41+ `sshd.service` is a dead shim that never starts. No amount of polling helps. Start `sshd.socket` via guest-exec immediately after VMI Ready (section 5). |
 | "I'll keep the VM up between runs to save time." | No persistent test VMs. The `orphan-vm-cleanup` CronWorkflow will delete it. |
 | "The teardown step can be optional." | A missing `onExit` handler leaks VMs and disk clones on failure. Always required. |
-| "containerDisk VMs must pin to ghost." | Only Flatcar hostDisk VMs need ghost. ContainerDisk VMs (Bluefin, GnomeOS, Dakota) schedule freely. Knuckle uses PVC — co-location is automatic. |
+| "containerDisk VMs must pin to ghost." | No VM type requires a ghost pin. All VMs use containerDisk (Bluefin, GnomeOS, Dakota, Flatcar) or PVC (Knuckle). Adding a node requires no YAML changes. |
 | "Workflow pods need hostNetwork + nodeSelector: ghost to SSH into VMs." | False. Pod IPs route across nodes via flannel. SSH and kubectl exec work from any node. hostNetwork was a workaround for broken exo-1 flannel — not a KubeVirt requirement. |
 | "The zot image from yesterday is still there." | Zot-writable loses its index.json on pod restart. Always check before running the pipeline. |
 | "HostDisk feature gate is probably already on." | Verify with `kubectl get kubevirt kubevirt -n kubevirt -o jsonpath='{.spec.configuration}'`. Don't assume. |
@@ -641,7 +634,7 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 
 ## Red Flags
 
-- A Flatcar hostDisk provision template without `nodeSelector: kubernetes.io/hostname: ghost`
+- A VM provision template with `nodeSelector: kubernetes.io/hostname: ghost` — no VM type requires this anymore (no hostDisk VMs remain)
 - An `onExit` handler that doesn't delete both the VM object AND the disk file
 - Using `gts` or `lts-hwe` as image tags (they don't exist)
 - VMs in namespaces other than the four test namespaces
@@ -671,9 +664,9 @@ Before merging any VM provisioning change:
 
 - [ ] `wait-for-vm-ready` template starts `sshd.socket` via guest-exec (Fedora 41+ packaging); `AccessCredentialsSynchronized` wait added; SSH poll timeout ≤ 300s
 - [ ] kubevirt-manager Role in EVERY VM namespace (`bluefin-test`, `bluefin-lts-test`) includes `pods/exec` (verb: create) — required for guest-exec
-- [ ] Flatcar hostDisk templates have `nodeSelector: kubernetes.io/hostname: ghost`; all other VM types (containerDisk, PVC-backed) have no nodeSelector
+- [ ] No VM provision template has `nodeSelector: kubernetes.io/hostname: ghost` — no hostDisk VMs remain; all types float freely
 - [ ] No `hostNetwork: true` or `nodeSelector: ghost` on SSH/kubectl workflow step pods — flannel handles routing
-- [ ] `onExit` teardown deletes VM object; hostDisk teardown also deletes disk file; PVC-backed teardown deletes the PVC
+- [ ] `onExit` teardown deletes VM object; containerDisk teardown is VM-delete only; PVC-backed teardown also deletes the PVC
 - [ ] Feature gates checked if adding a new VM capability
 - [ ] `just list-vms` shows empty after workflow completion
 - [ ] **All `hostPath` volume paths under `/var/mnt/ghost-data/`, never `/var/tmp`**

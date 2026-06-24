@@ -115,9 +115,11 @@ Every pipeline (Bluefin, Bluefin-LTS, Dakota, Knuckle) provisions a fresh VM on 
 | ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `testing-lab` + `testing-lab-infra` |
 | llm-d | LLM inference (hive node) | http://192.168.1.102:30800 | OpenAI-compatible API; model: Qwen/Qwen3.6-35B-A3B; namespace: `llm-d` |
 
-**HostDisk VMs** (Flatcar only) are pinned to ghost via `nodeSelector: kubernetes.io/hostname: ghost` — their disk files live on ghost's local storage.
-**ContainerDisk VMs** (Bluefin, GnomeOS, Dakota) require no nodeSelector and can schedule on any KubeVirt-capable node (ghost or bazzite).
-**PVC-backed VMs** (Knuckle) use a per-workflow `local-path` PVC — KubeVirt co-schedules the VM automatically on the PVC's node. No explicit nodeSelector needed.
+**No hostDisk VMs remain.** All VM types use containerDisk or PVC:
+- **ContainerDisk VMs** (Bluefin, GnomeOS, Dakota, Flatcar): float freely to any KubeVirt-capable node (ghost or bazzite).
+- **PVC-backed VMs** (Knuckle): `local-path` PVC; KubeVirt co-schedules the VM automatically on the PVC's node. No explicit `nodeSelector` needed.
+
+Adding a new KubeVirt node requires no YAML changes — VMs will schedule there automatically.
 
 ## GitOps Rules
 
@@ -140,7 +142,7 @@ Rules:
 
 ## KubeVirt Feature Gates
 
-- `HostDisk` is required for the Flatcar hostDisk VM flows in this repo.
+- `HostDisk` is required for KubeVirt hostDisk volumes (not currently used; all VMs use containerDisk or PVC).
 - `ExperimentalIgnitionSupport` is required for installer-style VMs that use the `kubevirt.io/ignitiondata` annotation.
 - If VM creation fails with `feature gate is not enabled in kubevirt-config`, treat that as **cluster infra drift** and persist the fix via GitOps under `manifests/`.
 
@@ -368,8 +370,8 @@ phantom resource requests from jobs not yet running.
 
 | Pool key | Pipelines | Nodes | Bootstrap |
 |---|---|---|---|
-| `max-containerdisk-vms` | bluefin-qa-pipeline, dakota-qa-pipeline, knuckle-qa-pipeline | any Ready node | 8 |
-| `max-hostdisk-vms` | flatcar-smoke-test | ghost only | 6 |
+| `max-containerdisk-vms` | bluefin-qa-pipeline, dakota-qa-pipeline, knuckle-qa-pipeline, flatcar-smoke-test | any Ready node | 8 |
+| `max-hostdisk-vms` | (unused — all VMs now use containerDisk or PVC) | — | 6 |
 
 Values live in `manifests/semaphore-config.yaml` and are **recomputed hourly**
 by the `semaphore-tuner` CronWorkflow using live node allocatable memory:

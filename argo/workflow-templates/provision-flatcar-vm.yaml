@@ -6,8 +6,10 @@ metadata:
   annotations:
     description: |
       Provisions a Flatcar Container Linux test VM.
-      Converts /var/mnt/ghost-data/knuckle-test/flatcar_base.img to .raw once (cached),
-      then btrfs reflinks per-VM copy. Cloud-init and guest-agent injection seed SSH access.
+      Downloads the official Flatcar QEMU image, converts it to raw, wraps it as a
+      containerDisk OCI image, pushes to the local Zot registry, and boots a KubeVirt VM.
+      VMs float freely across any KubeVirt-capable node (no ghost pin).
+      SSH access is seeded via cloud-init.
 spec:
   serviceAccountName: argo
   templates:
@@ -18,6 +20,10 @@ spec:
           - name: namespace
             value: "flatcar-test"
           - name: ssh-pubkey
+          - name: flatcar-version
+            value: "current"
+          - name: flatcar-channel
+            value: "stable"
       outputs:
         parameters:
           - name: vm-ip
@@ -28,10 +34,10 @@ spec:
             template: prepare-flatcar-disk
             arguments:
               parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: ssh-pubkey
-                  value: "{{inputs.parameters.ssh-pubkey}}"
+                - name: flatcar-version
+                  value: "{{inputs.parameters.flatcar-version}}"
+                - name: flatcar-channel
+                  value: "{{inputs.parameters.flatcar-channel}}"
         - - name: create-vm
             template: create-flatcar-vm
             arguments:
@@ -56,63 +62,53 @@ spec:
     - name: prepare-flatcar-disk
       inputs:
         parameters:
-          - name: vm-name
-          - name: ssh-pubkey
-      nodeSelector:
-        kubernetes.io/hostname: ghost
+          - name: flatcar-version
+          - name: flatcar-channel
       volumes:
-        - name: knuckle-test
-          hostPath:
-            path: /var/mnt/ghost-data/knuckle-test
-            type: DirectoryOrCreate
-        - name: flatcar-vms
-          hostPath:
-            path: /var/mnt/ghost-data/flatcar-test
-            type: DirectoryOrCreate
+        - name: work
+          emptyDir:
+            sizeLimit: 20Gi
       script:
-        image: quay.io/kubevirt/virt-launcher:v1.8.2
+        image: quay.io/buildah/stable:latest
         command: [bash]
         securityContext:
+          privileged: true
           runAsUser: 0
         resources:
           requests:
-            cpu: 500m
-            memory: 512Mi
-          limits:
-            cpu: "2"
+            cpu: "1"
             memory: 2Gi
+          limits:
+            cpu: "4"
+            memory: 8Gi
         volumeMounts:
-          - name: knuckle-test
-            mountPath: /var/mnt/ghost-data/knuckle-test
-          - name: flatcar-vms
-            mountPath: /var/mnt/ghost-data/flatcar-test
+          - name: work
+            mountPath: /mnt/work
         source: |
           set -euo pipefail
-          VM="{{inputs.parameters.vm-name}}"
-          BASE="/var/mnt/ghost-data/knuckle-test/flatcar-base.raw"
-          DEST="/var/mnt/ghost-data/flatcar-test/${VM}.raw"
-          TARGET="/var/mnt/ghost-data/flatcar-test/${VM}-target.raw"
+          CHANNEL="{{inputs.parameters.flatcar-channel}}"
+          VERSION="{{inputs.parameters.flatcar-version}}"
+          URL="https://stable.release.flatcar-container.net/amd64-usr/${VERSION}/flatcar_production_qemu_image.img"
+          CONTAINERDISK="192.168.1.102:30500/flatcar-containerdisk:latest"
+          # ponytail: :latest tag is fine — no nightly CronWorkflow, runs are sequential
 
-          # One-time: convert qcow2 → raw (cached across runs)
-          if [[ ! -f "${BASE}" ]]; then
-            echo "Converting Flatcar qcow2 → raw (one-time)..."
-            qemu-img convert -p -f qcow2 -O raw /var/mnt/ghost-data/knuckle-test/flatcar_base.img "${BASE}"
-            chown 107:107 "${BASE}" && chmod 664 "${BASE}"
-            chcon -t container_file_t "${BASE}" 2>/dev/null || true
-            echo "Conversion complete: $(du -sh ${BASE} | cut -f1)"
-          fi
+          echo "Installing qemu-img..." >&2
+          dnf install -y -q qemu-img 2>&1 | tail -3
 
-          # Per-VM reflink copy (~24ms CoW)
-          cp --reflink=auto "${BASE}" "${DEST}"
-          chown 107:107 "${DEST}" && chmod 664 "${DEST}"
-          chcon -t container_file_t "${DEST}" 2>/dev/null || true
+          echo "Downloading Flatcar ${CHANNEL} ${VERSION}..." >&2
+          curl -L --fail --retry 3 -o /mnt/work/flatcar.img "${URL}"
 
-          if [[ ! -f "${TARGET}" ]]; then
-            qemu-img create -f raw "${TARGET}" 20G
-          fi
-          chown 107:107 "${TARGET}" && chmod 664 "${TARGET}"
-          chcon -t container_file_t "${TARGET}" 2>/dev/null || true
-          echo "Disks ready: ${DEST}, ${TARGET}"
+          echo "Converting qcow2 → raw..." >&2
+          qemu-img convert -f qcow2 -O raw /mnt/work/flatcar.img /mnt/work/flatcar.raw
+          rm -f /mnt/work/flatcar.img
+
+          echo "Wrapping as containerDisk and pushing to ${CONTAINERDISK}..." >&2
+          CTR=$(buildah from scratch)
+          buildah copy --chown 107:107 "${CTR}" /mnt/work/flatcar.raw /disk/flatcar.raw
+          buildah commit "${CTR}" "${CONTAINERDISK}"
+          buildah push --tls-verify=false "${CONTAINERDISK}"
+          buildah rm "${CTR}" 2>/dev/null || true
+          echo "Flatcar containerDisk ready: ${CONTAINERDISK}" >&2
 
     - name: create-flatcar-vm
       inputs:
@@ -138,8 +134,6 @@ spec:
                 labels:
                   kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
               spec:
-                nodeSelector:
-                  kubernetes.io/hostname: ghost
                 domain:
                   cpu:
                     cores: 2
@@ -151,9 +145,6 @@ spec:
                         disk:
                           bus: virtio
                         bootOrder: 1
-                      - name: targetdisk
-                        disk:
-                          bus: virtio
                       - name: cloudinit
                         disk:
                           bus: virtio
@@ -167,13 +158,8 @@ spec:
                     pod: {}
                 volumes:
                   - name: rootdisk
-                    hostDisk:
-                      path: /var/mnt/ghost-data/flatcar-test/{{inputs.parameters.vm-name}}.raw
-                      type: Disk
-                  - name: targetdisk
-                    hostDisk:
-                      path: /var/mnt/ghost-data/flatcar-test/{{inputs.parameters.vm-name}}-target.raw
-                      type: Disk
+                    containerDisk:
+                      image: 192.168.1.102:30500/flatcar-containerdisk:latest
                   - name: cloudinit
                     cloudInitNoCloud:
                       userData: |

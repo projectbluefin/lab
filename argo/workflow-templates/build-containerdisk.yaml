@@ -250,6 +250,39 @@ spec:
           --via-loopback \
           "${DISK}"
 
+        # Some images (e.g. bluefin-lts/CentOS) disable sshd by default for desktop use.
+        # The test lab requires SSH access, so enable sshd.service in the ostree deployment.
+        echo "[POST-INSTALL] Enabling sshd.service for lab access..."
+        LOOP_DEV=$(losetup -f --show -P "${DISK}")
+        SYSROOT=$(mktemp -d)
+        SSHD_ENABLED=false
+        for PARTNUM in 4 3 2; do
+          PART="${LOOP_DEV}p${PARTNUM}"
+          [ -b "${PART}" ] || continue
+          if mount "${PART}" "${SYSROOT}" 2>/dev/null; then
+            DEPLOY_DIR=$(find "${SYSROOT}/ostree/deploy" -maxdepth 4 -name "*.0" -type d 2>/dev/null | head -1)
+            if [ -n "${DEPLOY_DIR}" ]; then
+              WANTS="${DEPLOY_DIR}/etc/systemd/system/multi-user.target.wants/sshd.service"
+              if [ ! -e "${WANTS}" ]; then
+                mkdir -p "$(dirname "${WANTS}")"
+                ln -sf /usr/lib/systemd/system/sshd.service "${WANTS}"
+                echo "[POST-INSTALL] sshd.service enabled in ${DEPLOY_DIR}"
+              else
+                echo "[POST-INSTALL] sshd.service already enabled"
+              fi
+              SSHD_ENABLED=true
+              umount "${SYSROOT}"
+              break
+            fi
+            umount "${SYSROOT}"
+          fi
+        done
+        rmdir "${SYSROOT}" 2>/dev/null || true
+        losetup -d "${LOOP_DEV}" 2>/dev/null || true
+        if [ "${SSHD_ENABLED}" = false ]; then
+          echo "[POST-INSTALL] WARNING: could not find ostree deploy dir to enable sshd"
+        fi
+
   - name: convert-and-push
     inputs:
       parameters:

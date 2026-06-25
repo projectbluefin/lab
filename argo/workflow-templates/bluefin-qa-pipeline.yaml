@@ -343,7 +343,7 @@ spec:
             --arg started "$NOW" \
             --arg finished "$NOW" \
             --arg trigger "$TRIGGER" \
-            --argjson scores "${SUITE_SCORES:-{}}" \
+            --argjson scores "${SUITE_SCORES}" \
             '{id:$id,overall:$overall,label:$label,variant:$variant,started_at:$started,finished_at:$finished,trigger:$trigger,suite_scores:$scores}')
 
           # Prepend new entry, keep most recent 15, update _meta.generated

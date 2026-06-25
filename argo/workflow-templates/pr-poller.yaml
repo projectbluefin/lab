@@ -215,8 +215,8 @@ spec:
            done
           done
 
-          # --- Pass 2: label-based catch-all for other repos (both orgs) ---
-          LABEL_QUERY=$(jq -rn --arg q "org:projectbluefin org:ublue-os is:pr is:open label:test-on-lab" '$q|@uri')
+          # --- Pass 2: label-based catch-all for projectbluefin repos ---
+          LABEL_QUERY=$(jq -rn --arg q "org:projectbluefin is:pr is:open label:test-on-lab" '$q|@uri')
           LABEL_RESULTS=$(curl -sf \
            -H "Authorization: token ${GITHUB_TOKEN}" \
            -H "Accept: application/vnd.github+json" \

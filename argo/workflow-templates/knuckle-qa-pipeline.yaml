@@ -17,872 +17,893 @@ metadata:
 spec:
   serviceAccountName: argo
   volumeClaimTemplates:
-    - metadata:
-        name: knuckle-test
-      spec:
-        accessModes: [ReadWriteOnce]
-        storageClassName: local-path
-        resources:
-          requests:
-            storage: 30Gi
+  - metadata:
+      name: knuckle-test
+    spec:
+      accessModes: [ReadWriteOnce]
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 30Gi
   # VM concurrency managed by k8s scheduler via virt-launcher pod memory requests.
   activeDeadlineSeconds: 7200
   entrypoint: pipeline
   onExit: teardown
   arguments:
     parameters:
-      - name: branch
-        value: "main"
-      - name: namespace
-        value: "knuckle-test"
-      - name: suite
-        value: "smoke"
-      - name: ssh-key-secret
-        value: "bluefin-test-ssh-key"
-      - name: tests-branch
-        value: "main"
+    - name: branch
+      value: "main"
+    - name: namespace
+      value: "knuckle-test"
+    - name: suite
+      value: "smoke"
+    - name: ssh-key-secret
+      value: "bluefin-test-ssh-key"
+    - name: tests-branch
+      value: "main"
 
   templates:
-    - name: pipeline
-      dag:
-        tasks:
-          - name: clone-source
-            template: resolve-source
-            arguments:
-              parameters:
-                - name: branch
-                  value: "{{workflow.parameters.branch}}"
-
-          - name: build-installer
-            depends: "clone-source.Succeeded"
-            template: build-installer
-            arguments:
-              parameters:
-                - name: branch
-                  value: "{{workflow.parameters.branch}}"
-                - name: commit-sha
-                  value: "{{tasks.clone-source.outputs.parameters.commit-sha}}"
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-
-          - name: push-iso-containerdisk
-            depends: "build-installer.Succeeded"
-            template: push-iso-containerdisk
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-
-          - name: provision-target-vm
-            depends: "push-iso-containerdisk.Succeeded"
-            template: provision-target-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
-
-          - name: boot-installer
-            depends: "provision-target-vm.Succeeded"
-            template: boot-installer
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
-
-          - name: wait-install-complete
-            depends: "boot-installer.Succeeded"
-            template: wait-install-complete
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
-
-          - name: transition-to-installed
-            depends: "wait-install-complete.Succeeded"
-            template: transition-to-installed
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-
-          - name: discover-ip
-            depends: "transition-to-installed.Succeeded"
-            template: discover-installed-ip
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
-
-          - name: run-smoke-tests
-            depends: "discover-ip.Succeeded"
-            templateRef:
-              name: run-gnome-tests
-              template: run-gnome-tests
-            arguments:
-              parameters:
-                - name: vm-ip
-                  value: "{{tasks.discover-ip.outputs.parameters.vm-ip}}"
-                - name: suite
-                  value: "{{workflow.parameters.suite}}"
-                - name: variant
-                  value: "bluefin"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
-                - name: branch
-                  value: "{{workflow.parameters.tests-branch}}"
-
-    - name: push-iso-containerdisk
-      inputs:
-        parameters:
-          - name: vm-name
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 500m
-            memory: 2Gi
-          limits:
-            cpu: "2"
-            memory: 4Gi
-        volumeMounts:
-          - name: knuckle-test
-            mountPath: /var/mnt/ghost-data/knuckle-test
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet curl 2>&1 | tail -2
-          VM="{{inputs.parameters.vm-name}}"
-          WORK="/var/mnt/ghost-data/knuckle-test/.crane-${VM}"
-          mkdir -p "${WORK}"
-
-          curl -fsSL \
-            https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz \
-            | tar xz -C "${WORK}" crane
-          chmod +x "${WORK}/crane"
-
-          ISO="/var/mnt/ghost-data/knuckle-test/${VM}-installer.iso"
-          IMAGE="192.168.1.102:30500/knuckle-iso-${VM}:latest"
-
-          mkdir -p "${WORK}/disk"
-          cp "${ISO}" "${WORK}/disk/installer.iso"
-          tar -C "${WORK}" -czf "${WORK}/layer.tar.gz" disk/installer.iso
-
-          "${WORK}/crane" append \
-            --base scratch \
-            --new_layer "${WORK}/layer.tar.gz" \
-            --image "${IMAGE}" \
-            --insecure
-          rm -rf "${WORK}"
-          echo "Pushed containerDisk: ${IMAGE}" >&2
-
-    - name: resolve-source
-      inputs:
-        parameters:
+  - name: pipeline
+    dag:
+      tasks:
+      - name: clone-source
+        template: resolve-source
+        arguments:
+          parameters:
           - name: branch
-      outputs:
-        parameters:
-          - name: commit-sha
-            valueFrom:
-              path: /work/commit-sha
-      volumes:
-        - name: work
-          emptyDir: {}
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        volumeMounts:
-          - name: work
-            mountPath: /work
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet git 2>&1 | tail -2
-          git ls-remote https://github.com/projectbluefin/knuckle \
-            "refs/heads/{{inputs.parameters.branch}}" | awk '{print $1}' > /work/commit-sha
-          if [[ ! -s /work/commit-sha ]]; then
-            echo "ERROR: branch {{inputs.parameters.branch}} not found" >&2
-            exit 1
-          fi
-          echo "Resolved {{inputs.parameters.branch}} -> $(cat /work/commit-sha)" >&2
+            value: "{{workflow.parameters.branch}}"
 
-    - name: build-installer
-      inputs:
-        parameters:
+      - name: build-installer
+        depends: "clone-source.Succeeded"
+        template: build-installer
+        arguments:
+          parameters:
           - name: branch
+            value: "{{workflow.parameters.branch}}"
           - name: commit-sha
+            value: "{{tasks.clone-source.outputs.parameters.commit-sha}}"
           - name: vm-name
-      activeDeadlineSeconds: 3600
-      volumes:
-        - name: src
-          emptyDir: {}
-      initContainers:
-        - name: git-clone
-          image: quay.io/fedora/fedora:latest
-          command: [bash, -c]
-          args:
-            - |
-              set -euo pipefail
-              dnf install -y --quiet git 2>&1 | tail -2
-              git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
-                https://github.com/projectbluefin/knuckle /src
-          volumeMounts:
-            - name: src
-              mountPath: /src
-      container:
-        image: quay.io/fedora/fedora:latest
-        command: [bash, -c]
-        args:
-          - |
-            set -euo pipefail
-            dnf install -y --quiet \
-              git golang xorriso mtools cpio systemd-boot-unsigned squashfs-tools curl 2>&1 | tail -4
-            cd /src
-            ./scripts/build-iso.sh --channel stable --arch amd64
+            value: "knuckle-test-{{workflow.uid}}"
 
-            ISO_SRC="/src/output/knuckle-installer-stable-amd64.iso"
-            ISO_DEST="/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso"
-            BIN_SRC="/src/bin/knuckle-amd64"
-            BIN_DEST="/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-knuckle"
-
-            cp "${ISO_SRC}" "${ISO_DEST}"
-            cp "${BIN_SRC}" "${BIN_DEST}"
-            chmod 664 "${ISO_DEST}"
-            chmod 755 "${BIN_DEST}"
-            chown 107:107 "${ISO_DEST}"
-            chcon -t container_file_t "${ISO_DEST}" 2>/dev/null || true
-            chcon -t container_file_t "${BIN_DEST}" 2>/dev/null || true
-
-            echo "Built {{inputs.parameters.commit-sha}}" >&2
-            echo "ISO ready: ${ISO_DEST}" >&2
-            echo "Binary ready: ${BIN_DEST}" >&2
-        resources:
-          requests:
-            cpu: "4"
-            memory: 8Gi
-          limits:
-            cpu: "4"
-            memory: 8Gi
-        volumeMounts:
-          - name: knuckle-test
-            mountPath: /var/mnt/ghost-data/knuckle-test
-          - name: src
-            mountPath: /src
-
-    - name: provision-target-vm
-      inputs:
-        parameters:
+      - name: push-iso-containerdisk
+        depends: "build-installer.Succeeded"
+        template: push-iso-containerdisk
+        arguments:
+          parameters:
           - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
+
+      - name: provision-target-vm
+        depends: "push-iso-containerdisk.Succeeded"
+        template: provision-target-vm
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
           - name: namespace
+            value: "{{workflow.parameters.namespace}}"
           - name: ssh-key-secret
-      steps:
-        - - name: write-ignition
-            template: write-ignition
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: ssh-key-secret
-                  value: "{{inputs.parameters.ssh-key-secret}}"
-          - name: create-rootdisk-pvc
-            template: create-rootdisk-pvc
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-        - - name: init-rootdisk
-            template: init-rootdisk
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-        - - name: apply-installer-vm
-            template: apply-installer-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-                - name: ignition-json
-                  value: "{{steps.write-ignition.outputs.parameters.ignition-json}}"
+            value: "{{workflow.parameters.ssh-key-secret}}"
 
-    - name: write-ignition
-      inputs:
-        parameters:
+      - name: boot-installer
+        depends: "provision-target-vm.Succeeded"
+        template: boot-installer
+        arguments:
+          parameters:
           - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
           - name: ssh-key-secret
-      outputs:
-        parameters:
+            value: "{{workflow.parameters.ssh-key-secret}}"
+
+      - name: wait-install-complete
+        depends: "boot-installer.Succeeded"
+        template: wait-install-complete
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
+          - name: ssh-key-secret
+            value: "{{workflow.parameters.ssh-key-secret}}"
+
+      - name: transition-to-installed
+        depends: "wait-install-complete.Succeeded"
+        template: transition-to-installed
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
+
+      - name: discover-ip
+        depends: "transition-to-installed.Succeeded"
+        template: discover-installed-ip
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
+          - name: ssh-key-secret
+            value: "{{workflow.parameters.ssh-key-secret}}"
+
+      - name: run-smoke-tests
+        depends: "discover-ip.Succeeded"
+        templateRef:
+          name: run-gnome-tests
+          template: run-gnome-tests
+        arguments:
+          parameters:
+          - name: vm-ip
+            value: "{{tasks.discover-ip.outputs.parameters.vm-ip}}"
+          - name: suite
+            value: "{{workflow.parameters.suite}}"
+          - name: variant
+            value: "bluefin"
+          - name: ssh-key-secret
+            value: "{{workflow.parameters.ssh-key-secret}}"
+          - name: branch
+            value: "{{workflow.parameters.tests-branch}}"
+
+  - name: push-iso-containerdisk
+    inputs:
+      parameters:
+      - name: vm-name
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 500m
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      volumeMounts:
+      - name: knuckle-test
+        mountPath: /var/mnt/ghost-data/knuckle-test
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        VM="{{inputs.parameters.vm-name}}"
+        WORK="/var/mnt/ghost-data/knuckle-test/.crane-${VM}"
+        mkdir -p "${WORK}"
+
+        curl -fsSL \
+          https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz \
+          | tar xz -C "${WORK}" crane
+        chmod +x "${WORK}/crane"
+
+        ISO="/var/mnt/ghost-data/knuckle-test/${VM}-installer.iso"
+        IMAGE="192.168.1.102:30500/knuckle-iso-${VM}:latest"
+
+        mkdir -p "${WORK}/disk"
+        cp "${ISO}" "${WORK}/disk/installer.iso"
+        tar -C "${WORK}" -czf "${WORK}/layer.tar.gz" disk/installer.iso
+
+        "${WORK}/crane" append \
+          --base scratch \
+          --new_layer "${WORK}/layer.tar.gz" \
+          --image "${IMAGE}" \
+          --insecure
+        rm -rf "${WORK}"
+        echo "Pushed containerDisk: ${IMAGE}" >&2
+        SCRIPT_EOF
+
+  - name: resolve-source
+    inputs:
+      parameters:
+      - name: branch
+    outputs:
+      parameters:
+      - name: commit-sha
+        valueFrom:
+          path: /work/commit-sha
+    volumes:
+    - name: work
+      emptyDir: {}
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      volumeMounts:
+      - name: work
+        mountPath: /work
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        git ls-remote https://github.com/projectbluefin/knuckle \
+          "refs/heads/{{inputs.parameters.branch}}" | awk '{print $1}' > /work/commit-sha
+        if [[ ! -s /work/commit-sha ]]; then
+          echo "ERROR: branch {{inputs.parameters.branch}} not found" >&2
+          exit 1
+        fi
+        echo "Resolved {{inputs.parameters.branch}} -> $(cat /work/commit-sha)" >&2
+        SCRIPT_EOF
+
+  - name: build-installer
+    inputs:
+      parameters:
+      - name: branch
+      - name: commit-sha
+      - name: vm-name
+    activeDeadlineSeconds: 3600
+    volumes:
+    - name: src
+      emptyDir: {}
+    initContainers:
+    - name: git-clone
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh, -c]
+      args:
+      - |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
+          https://github.com/projectbluefin/knuckle /src
+        SCRIPT_EOF
+      volumeMounts:
+      - name: src
+        mountPath: /src
+    container:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh, -c]
+      args:
+      - |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+          git golang xorriso mtools cpio systemd-boot-unsigned squashfs-tools curl 2>&1 | tail -4
+        cd /src
+        ./scripts/build-iso.sh --channel stable --arch amd64
+
+        ISO_SRC="/src/output/knuckle-installer-stable-amd64.iso"
+        ISO_DEST="/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.iso"
+        BIN_SRC="/src/bin/knuckle-amd64"
+        BIN_DEST="/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-knuckle"
+
+        cp "${ISO_SRC}" "${ISO_DEST}"
+        cp "${BIN_SRC}" "${BIN_DEST}"
+        chmod 664 "${ISO_DEST}"
+        chmod 755 "${BIN_DEST}"
+        chown 107:107 "${ISO_DEST}"
+        chcon -t container_file_t "${ISO_DEST}" 2>/dev/null || true
+        chcon -t container_file_t "${BIN_DEST}" 2>/dev/null || true
+
+        echo "Built {{inputs.parameters.commit-sha}}" >&2
+        echo "ISO ready: ${ISO_DEST}" >&2
+        echo "Binary ready: ${BIN_DEST}" >&2
+        SCRIPT_EOF
+      resources:
+        requests:
+          cpu: "4"
+          memory: 8Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+      volumeMounts:
+      - name: knuckle-test
+        mountPath: /var/mnt/ghost-data/knuckle-test
+      - name: src
+        mountPath: /src
+
+  - name: provision-target-vm
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: ssh-key-secret
+    steps:
+    - - name: write-ignition
+        template: write-ignition
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: ssh-key-secret
+            value: "{{inputs.parameters.ssh-key-secret}}"
+      - name: create-rootdisk-pvc
+        template: create-rootdisk-pvc
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+    - - name: init-rootdisk
+        template: init-rootdisk
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+    - - name: apply-installer-vm
+        template: apply-installer-vm
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
           - name: ignition-json
-            valueFrom:
-              path: /work/ignition.json
-      volumes:
-        - name: work
-          emptyDir: {}
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        env:
-          - name: SSH_PUBKEY
-            valueFrom:
-              secretKeyRef:
-                name: "{{inputs.parameters.ssh-key-secret}}"
-                key: id_ed25519.pub
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        volumeMounts:
-          - name: knuckle-test
-            mountPath: /var/mnt/ghost-data/knuckle-test
-          - name: work
-            mountPath: /work
-        source: |
-          set -euo pipefail
-          python3 - <<'PY' > /work/ignition.json
-          import json
-          import os
+            value: "{{steps.write-ignition.outputs.parameters.ignition-json}}"
 
-          print(json.dumps({
-              "ignition": {"version": "3.4.0"},
-              "passwd": {"users": [{"name": "core", "sshAuthorizedKeys": [os.environ["SSH_PUBKEY"]]}]},
-              "systemd": {"units": [{"name": "sshd.service", "enabled": True}]},
-          }, separators=(",", ":")))
-          PY
-          install -D -m 600 /work/ignition.json \
-            "/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.ign"
-          echo "Wrote ignition for {{inputs.parameters.vm-name}}" >&2
+  - name: write-ignition
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: ssh-key-secret
+    outputs:
+      parameters:
+      - name: ignition-json
+        valueFrom:
+          path: /work/ignition.json
+    volumes:
+    - name: work
+      emptyDir: {}
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      env:
+      - name: SSH_PUBKEY
+        valueFrom:
+          secretKeyRef:
+            name: "{{inputs.parameters.ssh-key-secret}}"
+            key: id_ed25519.pub
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      volumeMounts:
+      - name: knuckle-test
+        mountPath: /var/mnt/ghost-data/knuckle-test
+      - name: work
+        mountPath: /work
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        python3 - <<'PY' > /work/ignition.json
+        import json
+        import os
 
-    - name: create-rootdisk-pvc
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-      resource:
-        action: apply
-        manifest: |
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: "{{inputs.parameters.vm-name}}-rootdisk"
-            namespace: "{{inputs.parameters.namespace}}"
-          spec:
-            accessModes: [ReadWriteOnce]
-            storageClassName: local-path
-            resources:
-              requests:
-                storage: 25Gi
+        print(json.dumps({
+            "ignition": {"version": "3.4.0"},
+            "passwd": {"users": [{"name": "core", "sshAuthorizedKeys": [os.environ["SSH_PUBKEY"]]}]},
+            "systemd": {"units": [{"name": "sshd.service", "enabled": True}]},
+        }, separators=(",", ":")))
+        PY
+        install -D -m 600 /work/ignition.json \
+          "/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.ign"
+        echo "Wrote ignition for {{inputs.parameters.vm-name}}" >&2
+        SCRIPT_EOF
 
-    - name: init-rootdisk
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-      resource:
-        action: apply
-        successCondition: status.succeeded == 1
-        failureCondition: status.failed > 0
-        manifest: |
-          apiVersion: batch/v1
-          kind: Job
-          metadata:
-            name: "{{inputs.parameters.vm-name}}-init-rootdisk"
-            namespace: "{{inputs.parameters.namespace}}"
-          spec:
-            ttlSecondsAfterFinished: 300
-            template:
-              spec:
-                containers:
-                  - name: init
-                    image: quay.io/kubevirt/virt-launcher:v1.8.2
-                    command: [bash, -c]
-                    args:
-                      - |
-                        set -euo pipefail
-                        qemu-img create -f raw /mnt/disk.img 20G
-                        chown 107:107 /mnt/disk.img
-                        chmod 664 /mnt/disk.img
-                        chcon -t container_file_t /mnt/disk.img 2>/dev/null || true
-                        echo "Initialized rootdisk at /mnt/disk.img" >&2
-                    securityContext:
-                      runAsUser: 0
-                    resources:
-                      requests:
-                        cpu: 500m
-                        memory: 512Mi
-                      limits:
-                        cpu: "2"
-                        memory: 2Gi
-                    volumeMounts:
-                      - name: rootdisk
-                        mountPath: /mnt
-                volumes:
-                  - name: rootdisk
-                    persistentVolumeClaim:
-                      claimName: "{{inputs.parameters.vm-name}}-rootdisk"
-                restartPolicy: Never
+  - name: create-rootdisk-pvc
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+    resource:
+      action: apply
+      manifest: |
+        apiVersion: v1
+        kind: PersistentVolumeClaim
+        metadata:
+          name: "{{inputs.parameters.vm-name}}-rootdisk"
+          namespace: "{{inputs.parameters.namespace}}"
+        spec:
+          accessModes: [ReadWriteOnce]
+          storageClassName: local-path
+          resources:
+            requests:
+              storage: 25Gi
 
-    - name: apply-installer-vm
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-          - name: ignition-json
-      resource:
-        action: apply
-        manifest: |
-          apiVersion: kubevirt.io/v1
-          kind: VirtualMachine
-          metadata:
-            name: "{{inputs.parameters.vm-name}}"
-            namespace: "{{inputs.parameters.namespace}}"
-            labels:
-              app: knuckle-test
-              argo-workflow: "{{workflow.name}}"
-          spec:
-            runStrategy: Manual
-            template:
-              metadata:
-                labels:
-                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
-                annotations:
-                  kubevirt.io/ignitiondata: >-
-                    {{inputs.parameters.ignition-json}}
-              spec:
-                domain:
-                  firmware:
-                    bootloader:
-                      efi:
-                        secureBoot: false
-                  cpu:
-                    cores: 4
-                  memory:
-                    guest: 8Gi
-                  devices:
-                    disks:
-                      - name: installeriso
-                        cdrom:
-                          bus: sata
-                        bootOrder: 1
-                      - name: rootdisk
-                        disk:
-                          bus: virtio
-                        bootOrder: 2
-                    interfaces:
-                      - name: default
-                        masquerade: {}
-                  machine:
-                    type: q35
-                networks:
-                  - name: default
-                    pod: {}
-                volumes:
-                  - name: installeriso
-                    containerDisk:
-                      image: "192.168.1.102:30500/knuckle-iso-{{inputs.parameters.vm-name}}:latest"
-                  - name: rootdisk
-                    persistentVolumeClaim:
-                      claimName: "{{inputs.parameters.vm-name}}-rootdisk"
+  - name: init-rootdisk
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+    resource:
+      action: apply
+      successCondition: status.succeeded == 1
+      failureCondition: status.failed > 0
+      manifest: |
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: "{{inputs.parameters.vm-name}}-init-rootdisk"
+          namespace: "{{inputs.parameters.namespace}}"
+        spec:
+          ttlSecondsAfterFinished: 300
+          template:
+            spec:
+              containers:
+                - name: init
+                  image: quay.io/kubevirt/virt-launcher:v1.8.2
+                  command: [bash, -c]
+                  args:
+                    - |
+                      set -euo pipefail
+                      qemu-img create -f raw /mnt/disk.img 20G
+                      chown 107:107 /mnt/disk.img
+                      chmod 664 /mnt/disk.img
+                      chcon -t container_file_t /mnt/disk.img 2>/dev/null || true
+                      echo "Initialized rootdisk at /mnt/disk.img" >&2
+                  securityContext:
+                    runAsUser: 0
+                  resources:
+                    requests:
+                      cpu: 500m
+                      memory: 512Mi
+                    limits:
+                      cpu: "2"
+                      memory: 2Gi
+                  volumeMounts:
+                    - name: rootdisk
+                      mountPath: /mnt
+              volumes:
+                - name: rootdisk
+                  persistentVolumeClaim:
+                    claimName: "{{inputs.parameters.vm-name}}-rootdisk"
+              restartPolicy: Never
 
-    - name: boot-installer
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-          - name: ssh-key-secret
-      activeDeadlineSeconds: 1200
-      podSpecPatch: |
-        hostNetwork: true
-        dnsPolicy: ClusterFirstWithHostNet
-      volumes:
-        - name: ssh-key
-          secret:
-            secretName: "{{inputs.parameters.ssh-key-secret}}"
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: "1"
-            memory: 1Gi
-          limits:
-            cpu: "2"
-            memory: 2Gi
-        volumeMounts:
-          - name: knuckle-test
-            mountPath: /var/mnt/ghost-data/knuckle-test
-          - name: ssh-key
-            mountPath: /etc/ssh/test-key
-            readOnly: true
-        env:
-          - name: SSH_PUBKEY
-            valueFrom:
-              secretKeyRef:
-                name: "{{inputs.parameters.ssh-key-secret}}"
-                key: id_ed25519.pub
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet kubernetes-client openssh-clients curl 2>&1 | tail -4
-          curl -fsSL -o /usr/local/bin/virtctl \
-            https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
-          chmod +x /usr/local/bin/virtctl
+  - name: apply-installer-vm
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: ignition-json
+    resource:
+      action: apply
+      manifest: |
+        apiVersion: kubevirt.io/v1
+        kind: VirtualMachine
+        metadata:
+          name: "{{inputs.parameters.vm-name}}"
+          namespace: "{{inputs.parameters.namespace}}"
+          labels:
+            app: knuckle-test
+            argo-workflow: "{{workflow.name}}"
+        spec:
+          runStrategy: Manual
+          template:
+            metadata:
+              labels:
+                kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+              annotations:
+                kubevirt.io/ignitiondata: >-
+                  {{inputs.parameters.ignition-json}}
+            spec:
+              domain:
+                firmware:
+                  bootloader:
+                    efi:
+                      secureBoot: false
+                cpu:
+                  cores: 4
+                memory:
+                  guest: 8Gi
+                devices:
+                  disks:
+                    - name: installeriso
+                      cdrom:
+                        bus: sata
+                      bootOrder: 1
+                    - name: rootdisk
+                      disk:
+                        bus: virtio
+                      bootOrder: 2
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                machine:
+                  type: q35
+              networks:
+                - name: default
+                  pod: {}
+              volumes:
+                - name: installeriso
+                  containerDisk:
+                    image: "192.168.1.102:30500/knuckle-iso-{{inputs.parameters.vm-name}}:latest"
+                - name: rootdisk
+                  persistentVolumeClaim:
+                    claimName: "{{inputs.parameters.vm-name}}-rootdisk"
 
-          NS="{{inputs.parameters.namespace}}"
-          VM="{{inputs.parameters.vm-name}}"
-          KEY="/etc/ssh/test-key/id_ed25519"
-          BIN="/var/mnt/ghost-data/knuckle-test/${VM}-knuckle"
-          SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+  - name: boot-installer
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: ssh-key-secret
+    activeDeadlineSeconds: 1200
+    podSpecPatch: |
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+    volumes:
+    - name: ssh-key
+      secret:
+        secretName: "{{inputs.parameters.ssh-key-secret}}"
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      volumeMounts:
+      - name: knuckle-test
+        mountPath: /var/mnt/ghost-data/knuckle-test
+      - name: ssh-key
+        mountPath: /etc/ssh/test-key
+        readOnly: true
+      env:
+      - name: SSH_PUBKEY
+        valueFrom:
+          secretKeyRef:
+            name: "{{inputs.parameters.ssh-key-secret}}"
+            key: id_ed25519.pub
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        curl -fsSL -o /usr/local/bin/virtctl \
+          https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
+        chmod +x /usr/local/bin/virtctl
 
-          virtctl -n "${NS}" start "${VM}"
-          kubectl wait vmi -n "${NS}" "${VM}" --for=condition=Ready --timeout=300s >&2
+        NS="{{inputs.parameters.namespace}}"
+        VM="{{inputs.parameters.vm-name}}"
+        KEY="/etc/ssh/test-key/id_ed25519"
+        BIN="/var/mnt/ghost-data/knuckle-test/${VM}-knuckle"
+        SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
-          INSTALLER_IP=""
-          for _ in $(seq 1 60); do
-            INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
-            if [[ -n "${INSTALLER_IP}" ]]; then
-              break
-            fi
-            sleep 5
-          done
-          if [[ -z "${INSTALLER_IP}" ]]; then
-            echo "ERROR: installer VM never reported an IP" >&2
-            exit 1
-          fi
+        virtctl -n "${NS}" start "${VM}"
+        kubectl wait vmi -n "${NS}" "${VM}" --for=condition=Ready --timeout=300s >&2
 
-          for _ in $(seq 1 60); do
-            if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true 2>/dev/null; then
-              break
-            fi
-            sleep 5
-          done
-          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true >/dev/null
-
-          scp ${SSH_OPTS} "${BIN}" core@"${INSTALLER_IP}":/tmp/knuckle >/dev/null
-          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'chmod +x /tmp/knuckle'
-
-          TARGET_DISK=$(ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "lsblk -dpno NAME,TYPE | awk '\$2 == \"disk\" {print \$1; exit}'")
-          if [[ -z "${TARGET_DISK}" ]]; then
-            echo "ERROR: unable to resolve target install disk" >&2
-            exit 1
-          fi
-
-          cat > /var/mnt/ghost-data/knuckle-test/${VM}-qa.json <<EOF
-          {"channel":"stable","hostname":"${VM}","timezone":"UTC","network":{"mode":"dhcp"},"users":[{"username":"bluefin-test","ssh_keys":["${SSH_PUBKEY}"]}],"disk":"${TARGET_DISK}","update_strategy":"off","reboot":false}
-          EOF
-          scp ${SSH_OPTS} /var/mnt/ghost-data/knuckle-test/${VM}-qa.json core@"${INSTALLER_IP}":/tmp/qa.json >/dev/null
-
-          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "sudo systemd-run --unit knuckle-headless-install --collect /bin/bash -lc 'set -euo pipefail; trap \"touch /install-failed\" ERR; /tmp/knuckle --headless --config /tmp/qa.json --log-file /tmp/knuckle-install.log; touch /install-complete'"
-          echo "Installer booted and headless install launched against ${TARGET_DISK}" >&2
-
-    - name: wait-install-complete
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-          - name: ssh-key-secret
-      activeDeadlineSeconds: 600
-      podSpecPatch: |
-        hostNetwork: true
-        dnsPolicy: ClusterFirstWithHostNet
-      volumes:
-        - name: ssh-key
-          secret:
-            secretName: "{{inputs.parameters.ssh-key-secret}}"
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 250m
-            memory: 256Mi
-          limits:
-            cpu: "1"
-            memory: 512Mi
-        volumeMounts:
-          - name: ssh-key
-            mountPath: /etc/ssh/test-key
-            readOnly: true
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet kubernetes-client openssh-clients 2>&1 | tail -3
-          NS="{{inputs.parameters.namespace}}"
-          VM="{{inputs.parameters.vm-name}}"
-          KEY="/etc/ssh/test-key/id_ed25519"
-          SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
-
-          for _ in $(seq 1 60); do
-            INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
-            if [[ -z "${INSTALLER_IP}" ]]; then
-              sleep 5
-              continue
-            fi
-            if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-complete' 2>/dev/null; then
-              echo "Install complete on ${INSTALLER_IP}" >&2
-              exit 0
-            fi
-            if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-failed' 2>/dev/null; then
-              echo "Installer reported failure" >&2
-              ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo cat /tmp/knuckle-install.log 2>/dev/null || sudo journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
-              exit 1
-            fi
-            sleep 5
-          done
-
+        INSTALLER_IP=""
+        for _ in $(seq 1 60); do
           INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
           if [[ -n "${INSTALLER_IP}" ]]; then
+            break
+          fi
+          sleep 5
+        done
+        if [[ -z "${INSTALLER_IP}" ]]; then
+          echo "ERROR: installer VM never reported an IP" >&2
+          exit 1
+        fi
+
+        for _ in $(seq 1 60); do
+          if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true 2>/dev/null; then
+            break
+          fi
+          sleep 5
+        done
+        ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true >/dev/null
+
+        scp ${SSH_OPTS} "${BIN}" core@"${INSTALLER_IP}":/tmp/knuckle >/dev/null
+        ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'chmod +x /tmp/knuckle'
+
+        TARGET_DISK=$(ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "lsblk -dpno NAME,TYPE | awk '\$2 == \"disk\" {print \$1; exit}'")
+        if [[ -z "${TARGET_DISK}" ]]; then
+          echo "ERROR: unable to resolve target install disk" >&2
+          exit 1
+        fi
+
+        cat > /var/mnt/ghost-data/knuckle-test/${VM}-qa.json <<EOF
+        {"channel":"stable","hostname":"${VM}","timezone":"UTC","network":{"mode":"dhcp"},"users":[{"username":"bluefin-test","ssh_keys":["${SSH_PUBKEY}"]}],"disk":"${TARGET_DISK}","update_strategy":"off","reboot":false}
+        EOF
+        scp ${SSH_OPTS} /var/mnt/ghost-data/knuckle-test/${VM}-qa.json core@"${INSTALLER_IP}":/tmp/qa.json >/dev/null
+
+        ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "sudo systemd-run --unit knuckle-headless-install --collect /bin/bash -lc 'set -euo pipefail; trap \"touch /install-failed\" ERR; /tmp/knuckle --headless --config /tmp/qa.json --log-file /tmp/knuckle-install.log; touch /install-complete'"
+        echo "Installer booted and headless install launched against ${TARGET_DISK}" >&2
+        SCRIPT_EOF
+
+  - name: wait-install-complete
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: ssh-key-secret
+    activeDeadlineSeconds: 600
+    podSpecPatch: |
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+    volumes:
+    - name: ssh-key
+      secret:
+        secretName: "{{inputs.parameters.ssh-key-secret}}"
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 512Mi
+      volumeMounts:
+      - name: ssh-key
+        mountPath: /etc/ssh/test-key
+        readOnly: true
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        NS="{{inputs.parameters.namespace}}"
+        VM="{{inputs.parameters.vm-name}}"
+        KEY="/etc/ssh/test-key/id_ed25519"
+        SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+
+        for _ in $(seq 1 60); do
+          INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
+          if [[ -z "${INSTALLER_IP}" ]]; then
+            sleep 5
+            continue
+          fi
+          if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-complete' 2>/dev/null; then
+            echo "Install complete on ${INSTALLER_IP}" >&2
+            exit 0
+          fi
+          if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-failed' 2>/dev/null; then
+            echo "Installer reported failure" >&2
             ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo cat /tmp/knuckle-install.log 2>/dev/null || sudo journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
-          fi
-          echo "ERROR: timed out waiting for /install-complete" >&2
-          exit 1
-
-    - name: transition-to-installed
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-      activeDeadlineSeconds: 600
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 250m
-            memory: 256Mi
-          limits:
-            cpu: "1"
-            memory: 512Mi
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet kubernetes-client curl 2>&1 | tail -3
-          curl -fsSL -o /usr/local/bin/virtctl \
-            https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
-          chmod +x /usr/local/bin/virtctl
-
-          NS="{{inputs.parameters.namespace}}"
-          VM="{{inputs.parameters.vm-name}}"
-
-          virtctl -n "${NS}" stop "${VM}" || true
-          for _ in $(seq 1 60); do
-            if ! kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
-              break
-            fi
-            sleep 5
-          done
-          if kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
-            echo "ERROR: installer VMI did not stop" >&2
             exit 1
           fi
+          sleep 5
+        done
 
-          kubectl apply -f - <<EOF
-          apiVersion: kubevirt.io/v1
-          kind: VirtualMachine
-          metadata:
-            name: ${VM}
-            namespace: ${NS}
-            labels:
-              app: knuckle-test
-              argo-workflow: {{workflow.name}}
-          spec:
-            runStrategy: Manual
-            template:
-              metadata:
-                labels:
-                  kubevirt.io/vm: ${VM}
-              spec:
-                domain:
-                  cpu:
-                    cores: 4
-                  memory:
-                    guest: 8Gi
-                  devices:
-                    disks:
-                      - name: rootdisk
-                        disk:
-                          bus: virtio
-                        bootOrder: 1
-                    interfaces:
-                      - name: default
-                        masquerade: {}
-                  machine:
-                    type: q35
-                networks:
-                  - name: default
-                    pod: {}
-                volumes:
-                  - name: rootdisk
-                    persistentVolumeClaim:
-                      claimName: ${VM}-rootdisk
-          EOF
+        INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
+        if [[ -n "${INSTALLER_IP}" ]]; then
+          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo cat /tmp/knuckle-install.log 2>/dev/null || sudo journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
+        fi
+        echo "ERROR: timed out waiting for /install-complete" >&2
+        exit 1
+        SCRIPT_EOF
 
-          virtctl -n "${NS}" start "${VM}"
-          echo "Transitioned ${VM} to installed-disk boot" >&2
+  - name: transition-to-installed
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+    activeDeadlineSeconds: 600
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 512Mi
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        curl -fsSL -o /usr/local/bin/virtctl \
+          https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
+        chmod +x /usr/local/bin/virtctl
 
-    - name: discover-installed-ip
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-          - name: ssh-key-secret
-      outputs:
-        parameters:
-          - name: vm-ip
-            valueFrom:
-              path: /work/vm-ip
-      activeDeadlineSeconds: 600
-      podSpecPatch: |
-        hostNetwork: true
-        dnsPolicy: ClusterFirstWithHostNet
-      volumes:
-        - name: ssh-key
-          secret:
-            secretName: "{{inputs.parameters.ssh-key-secret}}"
-        - name: work
-          emptyDir: {}
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 250m
-            memory: 256Mi
-          limits:
-            cpu: "1"
-            memory: 512Mi
-        volumeMounts:
-          - name: ssh-key
-            mountPath: /etc/ssh/test-key
-            readOnly: true
-          - name: work
-            mountPath: /work
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet kubernetes-client openssh-clients 2>&1 | tail -3
-          NS="{{inputs.parameters.namespace}}"
-          VM="{{inputs.parameters.vm-name}}"
-          KEY="/etc/ssh/test-key/id_ed25519"
-          SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+        NS="{{inputs.parameters.namespace}}"
+        VM="{{inputs.parameters.vm-name}}"
 
-          VM_IP=""
-          for _ in $(seq 1 60); do
-            VM_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
-            if [[ -n "${VM_IP}" ]]; then
-              break
-            fi
-            sleep 5
-          done
-          if [[ -z "${VM_IP}" ]]; then
-            echo "ERROR: installed VM never reported an IP" >&2
-            exit 1
+        virtctl -n "${NS}" stop "${VM}" || true
+        for _ in $(seq 1 60); do
+          if ! kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
+            break
           fi
-
-          for _ in $(seq 1 60); do
-            if ssh ${SSH_OPTS} bluefin-test@"${VM_IP}" true 2>/dev/null; then
-              printf '%s' "${VM_IP}" > /work/vm-ip
-              echo "Installed VM reachable at ${VM_IP}" >&2
-              exit 0
-            fi
-            sleep 5
-          done
-
-          echo "ERROR: installed VM never became SSH reachable at ${VM_IP}" >&2
+          sleep 5
+        done
+        if kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
+          echo "ERROR: installer VMI did not stop" >&2
           exit 1
+        fi
 
-    - name: teardown
-      dag:
-        tasks:
-          - name: teardown-vm
-            templateRef:
-              name: teardown-bluefin-vm
-              template: teardown-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
+        kubectl apply -f - <<EOF
+        apiVersion: kubevirt.io/v1
+        kind: VirtualMachine
+        metadata:
+          name: ${VM}
+          namespace: ${NS}
+          labels:
+            app: knuckle-test
+            argo-workflow: {{workflow.name}}
+        spec:
+          runStrategy: Manual
+          template:
+            metadata:
+              labels:
+                kubevirt.io/vm: ${VM}
+            spec:
+              domain:
+                cpu:
+                  cores: 4
+                memory:
+                  guest: 8Gi
+                devices:
+                  disks:
+                    - name: rootdisk
+                      disk:
+                        bus: virtio
+                      bootOrder: 1
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                machine:
+                  type: q35
+              networks:
+                - name: default
+                  pod: {}
+              volumes:
+                - name: rootdisk
+                  persistentVolumeClaim:
+                    claimName: ${VM}-rootdisk
+        EOF
 
-          - name: delete-rootdisk-pvc
-            depends: "teardown-vm.Succeeded || teardown-vm.Failed"
-            template: delete-rootdisk-pvc
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
+        virtctl -n "${NS}" start "${VM}"
+        echo "Transitioned ${VM} to installed-disk boot" >&2
+        SCRIPT_EOF
 
-          - name: delete-iso-containerdisk
-            depends: "teardown-vm.Succeeded || teardown-vm.Failed"
-            template: delete-iso-containerdisk
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "knuckle-test-{{workflow.uid}}"
+  - name: discover-installed-ip
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: ssh-key-secret
+    outputs:
+      parameters:
+      - name: vm-ip
+        valueFrom:
+          path: /work/vm-ip
+    activeDeadlineSeconds: 600
+    podSpecPatch: |
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+    volumes:
+    - name: ssh-key
+      secret:
+        secretName: "{{inputs.parameters.ssh-key-secret}}"
+    - name: work
+      emptyDir: {}
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 512Mi
+      volumeMounts:
+      - name: ssh-key
+        mountPath: /etc/ssh/test-key
+        readOnly: true
+      - name: work
+        mountPath: /work
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        NS="{{inputs.parameters.namespace}}"
+        VM="{{inputs.parameters.vm-name}}"
+        KEY="/etc/ssh/test-key/id_ed25519"
+        SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
-    - name: delete-rootdisk-pvc
-      inputs:
-        parameters:
+        VM_IP=""
+        for _ in $(seq 1 60); do
+          VM_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
+          if [[ -n "${VM_IP}" ]]; then
+            break
+          fi
+          sleep 5
+        done
+        if [[ -z "${VM_IP}" ]]; then
+          echo "ERROR: installed VM never reported an IP" >&2
+          exit 1
+        fi
+
+        for _ in $(seq 1 60); do
+          if ssh ${SSH_OPTS} bluefin-test@"${VM_IP}" true 2>/dev/null; then
+            printf '%s' "${VM_IP}" > /work/vm-ip
+            echo "Installed VM reachable at ${VM_IP}" >&2
+            exit 0
+          fi
+          sleep 5
+        done
+
+        echo "ERROR: installed VM never became SSH reachable at ${VM_IP}" >&2
+        exit 1
+        SCRIPT_EOF
+
+  - name: teardown
+    dag:
+      tasks:
+      - name: teardown-vm
+        templateRef:
+          name: teardown-bluefin-vm
+          template: teardown-vm
+        arguments:
+          parameters:
           - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
           - name: namespace
-      resource:
-        action: delete
-        manifest: |
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: "{{inputs.parameters.vm-name}}-rootdisk"
-            namespace: "{{inputs.parameters.namespace}}"
+            value: "{{workflow.parameters.namespace}}"
 
-    - name: delete-iso-containerdisk
-      inputs:
-        parameters:
+      - name: delete-rootdisk-pvc
+        depends: "teardown-vm.Succeeded || teardown-vm.Failed"
+        template: delete-rootdisk-pvc
+        arguments:
+          parameters:
           - name: vm-name
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet skopeo 2>&1 | tail -2
-          skopeo delete \
-            --tls-verify=false \
-            "docker://192.168.1.102:30500/knuckle-iso-{{inputs.parameters.vm-name}}:latest" \
-            || true
-          echo "Deleted containerDisk for {{inputs.parameters.vm-name}}" >&2
+            value: "knuckle-test-{{workflow.uid}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
+
+      - name: delete-iso-containerdisk
+        depends: "teardown-vm.Succeeded || teardown-vm.Failed"
+        template: delete-iso-containerdisk
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
+
+  - name: delete-rootdisk-pvc
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+    resource:
+      action: delete
+      manifest: |
+        apiVersion: v1
+        kind: PersistentVolumeClaim
+        metadata:
+          name: "{{inputs.parameters.vm-name}}-rootdisk"
+          namespace: "{{inputs.parameters.namespace}}"
+
+  - name: delete-iso-containerdisk
+    inputs:
+      parameters:
+      - name: vm-name
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        skopeo delete \
+          --tls-verify=false \
+          "docker://192.168.1.102:30500/knuckle-iso-{{inputs.parameters.vm-name}}:latest" \
+          || true
+        echo "Deleted containerDisk for {{inputs.parameters.vm-name}}" >&2
+        SCRIPT_EOF

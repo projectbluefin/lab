@@ -8,165 +8,167 @@ metadata:
 spec:
   serviceAccountName: argo
   templates:
-    - name: run-flatcar-tests
-      metadata:
-        labels:
-          app.kubernetes.io/part-of: bluefin-test-suite
-          bluefin.io/step: run-flatcar-tests
-          bluefin.io/suite: flatcar
-          bluefin.io/variant: "{{inputs.parameters.variant}}"
-        annotations:
-          bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
-          bluefin.io/issue: "{{inputs.parameters.issue-title}}"
-      inputs:
-        parameters:
-          - name: vm-ip
-          - name: variant
-            value: "flatcar"
-          - name: ssh-user
+  - name: run-flatcar-tests
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: bluefin-test-suite
+        bluefin.io/step: run-flatcar-tests
+        bluefin.io/suite: flatcar
+        bluefin.io/variant: "{{inputs.parameters.variant}}"
+      annotations:
+        bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
+        bluefin.io/issue: "{{inputs.parameters.issue-title}}"
+    inputs:
+      parameters:
+      - name: vm-ip
+      - name: variant
+        value: "flatcar"
+      - name: ssh-user
             # Flatcar default user is "core", not bluefin-test
-            value: "core"
-          - name: ssh-key-secret
-            value: "bluefin-test-ssh-key"
-          - name: issue-title
-            value: "manual"
-          - name: behave-tags
-            value: ""
-      activeDeadlineSeconds: 1800
-      podSpecPatch: |
-        securityContext:
-          runAsUser: 0
-      # NOTE: No output artifacts declared — artifact repository is not configured.
+        value: "core"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
+      - name: issue-title
+        value: "manual"
+      - name: behave-tags
+        value: ""
+    activeDeadlineSeconds: 1800
+    podSpecPatch: |
+      securityContext:
+        runAsUser: 0
+     # NOTE: No output artifacts declared — artifact repository is not configured.
       # Results are captured via stdout (pod logs / Loki). Same pattern as run-gnome-tests.
-      container:
-        image: quay.io/fedora/fedora:latest
-        imagePullPolicy: Always
-        resources:
-          requests:
-            cpu: 200m
-            memory: 256Mi
-          limits:
-            cpu: "1"
-            memory: 512Mi
-        env:
-          - name: FLATCAR_VM_IP
-            value: "{{inputs.parameters.vm-ip}}"
-          - name: SSH_USER
-            value: "{{inputs.parameters.ssh-user}}"
-          - name: SSH_KEY_PATH
-            value: /etc/ssh/test-key/id_ed25519
-          - name: BEHAVE_TAGS
-            value: "{{inputs.parameters.behave-tags}}"
-          - name: VARIANT
-            value: "{{inputs.parameters.variant}}"
-          - name: GITHUB_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: github-token
-                key: token
-                optional: true
-        volumeMounts:
-          - name: ssh-key
-            mountPath: /etc/ssh/test-key
-            readOnly: true
-        command: [bash, -c]
-        args:
-          - |
-            set -euo pipefail
-            mkdir -p /tmp/results
+    container:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      imagePullPolicy: Always
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+        limits:
+          cpu: "1"
+          memory: 512Mi
+      env:
+      - name: FLATCAR_VM_IP
+        value: "{{inputs.parameters.vm-ip}}"
+      - name: SSH_USER
+        value: "{{inputs.parameters.ssh-user}}"
+      - name: SSH_KEY_PATH
+        value: /etc/ssh/test-key/id_ed25519
+      - name: BEHAVE_TAGS
+        value: "{{inputs.parameters.behave-tags}}"
+      - name: VARIANT
+        value: "{{inputs.parameters.variant}}"
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: github-token
+            key: token
+            optional: true
+      volumeMounts:
+      - name: ssh-key
+        mountPath: /etc/ssh/test-key
+        readOnly: true
+      command: [sh, -c]
+      args:
+      - |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        mkdir -p /tmp/results
 
-            # Install runtime deps (minimal Fedora image lacks python3, git, and ssh client)
-            dnf install -y -q python3 python3-pip openssh-clients git 2>&1 | tail -3
+        # Install runtime deps (minimal Fedora image lacks python3, git, and ssh client)
 
-            # Install behave in runner pod (no qecore needed — no GNOME desktop)
-            python3 -m pip install --quiet behave 2>&1 | tail -3
+        # Install behave in runner pod (no qecore needed — no GNOME desktop)
+        python3 -m pip install --quiet behave 2>&1 | tail -3
 
-            # Clone tests fresh from git — matches run-gnome-tests pattern, always current
-            git clone --depth 1 https://github.com/projectbluefin/testing-lab /workspace/testing-lab 2>&1 | tail -3
+        # Clone tests fresh from git — matches run-gnome-tests pattern, always current
+        git clone --depth 1 https://github.com/projectbluefin/testing-lab /workspace/testing-lab 2>&1 | tail -3
 
-            # Wait for Flatcar SSH (up to 5 minutes — faster boot than Bluefin)
-            SSH_OPTS="-i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
-            echo "Waiting for SSH on ${FLATCAR_VM_IP}..." >&2
-            timeout 300 bash -c "
-              until ssh ${SSH_OPTS} ${SSH_USER}@${FLATCAR_VM_IP} 'echo ready' 2>/dev/null; do sleep 5; done
-            "
-            echo "Flatcar SSH ready." >&2
+        # Wait for Flatcar SSH (up to 5 minutes — faster boot than Bluefin)
+        SSH_OPTS="-i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+        echo "Waiting for SSH on ${FLATCAR_VM_IP}..." >&2
+        timeout 300 bash -c "
+          until ssh ${SSH_OPTS} ${SSH_USER}@${FLATCAR_VM_IP} 'echo ready' 2>/dev/null; do sleep 5; done
+        "
+        echo "Flatcar SSH ready." >&2
 
-            # Run tests from runner pod; steps SSH into VM using FLATCAR_VM_IP env var
-            TAGS_ARG="${BEHAVE_TAGS:-}"
-            cd /workspace/testing-lab/tests/flatcar/features
+        # Run tests from runner pod; steps SSH into VM using FLATCAR_VM_IP env var
+        TAGS_ARG="${BEHAVE_TAGS:-}"
+        cd /workspace/testing-lab/tests/flatcar/features
 
-            BEHAVE_RC=0
-            behave . \
-              --format json.pretty \
-              --outfile /tmp/results/results.json \
-              --no-capture \
-              ${TAGS_ARG} || BEHAVE_RC=$?
+        BEHAVE_RC=0
+        behave . \
+          --format json.pretty \
+          --outfile /tmp/results/results.json \
+          --no-capture \
+          ${TAGS_ARG} || BEHAVE_RC=$?
 
-            python3 -c "
-            import json
-            try:
-                data = json.load(open('/tmp/results/results.json'))
-                failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
-                total  = sum(len(f.get('elements',[])) for f in data)
-                print(f'{total - failed}/{total} scenarios passed')
-            except Exception:
-                print('results.json not found')
-            "
-            # Push results JSON to GitHub Pages dashboard
-            if [[ -f /tmp/results/results.json && -n "${GITHUB_TOKEN:-}" ]]; then
-              NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-              N_TOTAL=$(jq '[.[].elements | length] | add // 0' /tmp/results/results.json)
-              N_FAILED=$(jq '[.[].elements[] | select(.status=="failed")] | length' /tmp/results/results.json)
-              RUN_STATUS=$( [[ "$N_FAILED" -gt 0 ]] && echo failed || echo passed )
-              FAILED_NAMES=$(jq -c '[.[].elements[] | select(.status=="failed") | .name] | unique' \
-                /tmp/results/results.json 2>/dev/null || echo "[]")
+        python3 -c "
+        import json
+        try:
+            data = json.load(open('/tmp/results/results.json'))
+            failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
+            total  = sum(len(f.get('elements',[])) for f in data)
+            print(f'{total - failed}/{total} scenarios passed')
+        except Exception:
+            print('results.json not found')
+        "
+        # Push results JSON to GitHub Pages dashboard
+        if [[ -f /tmp/results/results.json && -n "${GITHUB_TOKEN:-}" ]]; then
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          N_TOTAL=$(jq '[.[].elements | length] | add // 0' /tmp/results/results.json)
+          N_FAILED=$(jq '[.[].elements[] | select(.status=="failed")] | length' /tmp/results/results.json)
+          RUN_STATUS=$( [[ "$N_FAILED" -gt 0 ]] && echo failed || echo passed )
+          FAILED_NAMES=$(jq -c '[.[].elements[] | select(.status=="failed") | .name] | unique' \
+            /tmp/results/results.json 2>/dev/null || echo "[]")
 
-              # slug: flatcar-<variant> or just flatcar-testing
-              IMG_SLUG="flatcar-${VARIANT:-testing}"
-              SUITE="flatcar"
-              API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/${IMG_SLUG}-${SUITE}.json"
+          # slug: flatcar-<variant> or just flatcar-testing
+          IMG_SLUG="flatcar-${VARIANT:-testing}"
+          SUITE="flatcar"
+          API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/${IMG_SLUG}-${SUITE}.json"
 
-              CURRENT=$(curl -sf \
-                -H "Authorization: token ${GITHUB_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                "${API_URL}" 2>/dev/null || echo "{}")
-              FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
-              HISTORY=$(echo "$CURRENT" | jq -r 'if .content then (.content | gsub("\n";"") | @base64d | fromjson | .history // []) else [] end' 2>/dev/null || echo "[]")
+          CURRENT=$(curl -sf \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API_URL}" 2>/dev/null || echo "{}")
+          FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
+          HISTORY=$(echo "$CURRENT" | jq -r 'if .content then (.content | gsub("\n";"") | @base64d | fromjson | .history // []) else [] end' 2>/dev/null || echo "[]")
 
-              ENTRY=$(jq -nc \
-                --arg rd "$NOW" --arg wf "{{workflow.name}}" \
-                --arg st "$RUN_STATUS" --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
-                '{run_date:$rd,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f}')
+          ENTRY=$(jq -nc \
+            --arg rd "$NOW" --arg wf "{{workflow.name}}" \
+            --arg st "$RUN_STATUS" --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
+            '{run_date:$rd,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f}')
 
-              PAYLOAD_OBJ=$(jq -nc \
-                --arg v "$IMG_SLUG" --arg su "$SUITE" --arg lr "$NOW" \
-                --arg wf "{{workflow.name}}" --arg st "$RUN_STATUS" \
-                --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
-                --argjson fn "$FAILED_NAMES" \
-                --argjson h "$(echo "$HISTORY" | jq -c --argjson e "$ENTRY" '[$e] + . | .[:10]')" \
-                '{variant:$v,suite:$su,last_run:$lr,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f,failed_scenarios:$fn,history:$h}')
+          PAYLOAD_OBJ=$(jq -nc \
+            --arg v "$IMG_SLUG" --arg su "$SUITE" --arg lr "$NOW" \
+            --arg wf "{{workflow.name}}" --arg st "$RUN_STATUS" \
+            --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
+            --argjson fn "$FAILED_NAMES" \
+            --argjson h "$(echo "$HISTORY" | jq -c --argjson e "$ENTRY" '[$e] + . | .[:10]')" \
+            '{variant:$v,suite:$su,last_run:$lr,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f,failed_scenarios:$fn,history:$h}')
 
-              CONTENT=$(echo "$PAYLOAD_OBJ" | base64 -w0)
-              BODY=$(jq -nc \
-                --arg msg "test: update flatcar results for ${IMG_SLUG}" \
-                --arg content "$CONTENT" \
-                --arg sha "$FILE_SHA" \
-                'if $sha != "" then {message:$msg,content:$content,sha:$sha} else {message:$msg,content:$content} end')
+          CONTENT=$(echo "$PAYLOAD_OBJ" | base64 -w0)
+          BODY=$(jq -nc \
+            --arg msg "test: update flatcar results for ${IMG_SLUG}" \
+            --arg content "$CONTENT" \
+            --arg sha "$FILE_SHA" \
+            'if $sha != "" then {message:$msg,content:$content,sha:$sha} else {message:$msg,content:$content} end')
 
-              HTTP_CODE=$(curl -sf -w "%{http_code}" -o /dev/null \
-                -X PUT \
-                -H "Authorization: token ${GITHUB_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                -H "Content-Type: application/json" \
-                -d "$BODY" "${API_URL}" 2>&1) || HTTP_CODE="curl_error"
-              echo "${NOW} pushed ${IMG_SLUG}-${SUITE}: ${RUN_STATUS} (${N_TOTAL} scenarios, ${N_FAILED} failed) http=${HTTP_CODE}" >&2
-            fi
+          HTTP_CODE=$(curl -sf -w "%{http_code}" -o /dev/null \
+            -X PUT \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" "${API_URL}" 2>&1) || HTTP_CODE="curl_error"
+          echo "${NOW} pushed ${IMG_SLUG}-${SUITE}: ${RUN_STATUS} (${N_TOTAL} scenarios, ${N_FAILED} failed) http=${HTTP_CODE}" >&2
+        fi
 
-            exit ${BEHAVE_RC}
-      volumes:
-        - name: ssh-key
-          secret:
-            secretName: "{{inputs.parameters.ssh-key-secret}}"
-            defaultMode: 0400
+        exit ${BEHAVE_RC}
+        SCRIPT_EOF
+    volumes:
+    - name: ssh-key
+      secret:
+        secretName: "{{inputs.parameters.ssh-key-secret}}"
+        defaultMode: 0400

@@ -57,12 +57,13 @@ spec:
         secretName: "{{inputs.parameters.ssh-key-secret}}"
         defaultMode: 0400
     container:
-      image: registry.fedoraproject.org/fedora:41
-      command: [bash, -c]
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh, -c]
       args:
       - |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
         set -uo pipefail
-        dnf install -y --quiet openssh-clients 2>&1 | tail -2
 
         KEY=/etc/ssh/test-key/id_ed25519
         OPTS="-i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
@@ -83,6 +84,7 @@ spec:
         $SSH "systemd-analyze blame --no-pager 2>/dev/null | head -20" 2>&1
 
         echo "=== DONE ==="
+        SCRIPT_EOF
       resources:
         requests:
           cpu: 100m

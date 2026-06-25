@@ -30,379 +30,384 @@ spec:
   # ── parameters ──────────────────────────────────────────────────────────────
   arguments:
     parameters:
-      - name: image
-        value: "ghcr.io/projectbluefin/bluefin"
-      - name: image-tag
-        value: "latest"
-      - name: namespace
-        value: "bluefin-test"
+    - name: image
+      value: "ghcr.io/projectbluefin/bluefin"
+    - name: image-tag
+      value: "latest"
+    - name: namespace
+      value: "bluefin-test"
       # Comma-separated suite names matching tests/ subdirectories
-      - name: suites
-        value: "smoke,developer,software"
+    - name: suites
+      value: "smoke,developer,software"
       # Used to select Ghostty fixtures on dakota builds
-      - name: variant
-        value: "bluefin"
-      - name: ssh-key-secret
-        value: "bluefin-test-ssh-key"
+    - name: variant
+      value: "bluefin"
+    - name: ssh-key-secret
+      value: "bluefin-test-ssh-key"
       # Tag for the containerDisk image in the local Zot registry.
       # Defaults to image-tag for bluefin (testing → bluefin-containerdisk:testing).
       # Override for lts: image-tag=testing (ghcr.io tag) + containerdisk-tag=lts-testing (zot tag).
-      - name: containerdisk-tag
-        value: "{{workflow.parameters.image-tag}}"
+    - name: containerdisk-tag
+      value: "{{workflow.parameters.image-tag}}"
       # git ref the test runner clones (test code + step defs). Default `main`;
       # override to test a PR branch end-to-end without merging.
-      - name: branch
-        value: "main"
+    - name: branch
+      value: "main"
       # Optional: supplied by ARC runner on PR runs; empty on nightly CronWorkflow runs.
       # When sha is non-empty, the onExit handler posts a GitHub commit status.
-      - name: pr-number
-        value: ""
-      - name: sha
-        value: ""
-      - name: repo
-        value: ""
-      - name: vm-memory
-        value: "8Gi"
+    - name: pr-number
+      value: ""
+    - name: sha
+      value: ""
+    - name: repo
+      value: ""
+    - name: vm-memory
+      value: "8Gi"
 
   # ── pipeline DAG ─────────────────────────────────────────────────────────────
   templates:
-    - name: pipeline
-      dag:
-        tasks:
+  - name: pipeline
+    dag:
+      tasks:
           # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.
           # The digest-watch CronWorkflow is responsible for building it when GHCR changes.
-          - name: assert-cd
-            template: assert-cd
-            arguments:
-              parameters:
-                - name: containerdisk-tag
-                  value: "{{workflow.parameters.containerdisk-tag}}"
+      - name: assert-cd
+        template: assert-cd
+        arguments:
+          parameters:
+          - name: containerdisk-tag
+            value: "{{workflow.parameters.containerdisk-tag}}"
 
           # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down
-          - name: test-lane
-            depends: "assert-cd.Succeeded"
-            withItems:
-              - smoke
-              - common
-              - developer
-              - software
-              - system
-            when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
-            template: lane
-            arguments:
-              parameters:
-                - name: suite
-                  value: "{{item}}"
-                - name: vm-name
+      - name: test-lane
+        depends: "assert-cd.Succeeded"
+        withItems:
+        - smoke
+        - common
+        - developer
+        - software
+        - system
+        when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
+        template: lane
+        arguments:
+          parameters:
+          - name: suite
+            value: "{{item}}"
+          - name: vm-name
                   # workflow.name is short (e.g. bluefin-qa-lts-7rvk5) and unique; using it
                   # avoids the 63-char Kubernetes label-value limit that full UUID hits with
                   # long variant names like "bluefin-lts-testing-developer-<36-char-uuid>".
-                  value: "{{workflow.name}}-{{item}}"
-                - name: image-tag
-                  value: "{{workflow.parameters.image-tag}}"
-                - name: containerdisk-tag
-                  value: "{{workflow.parameters.containerdisk-tag}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-                - name: variant
-                  value: "{{workflow.parameters.variant}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
-                - name: branch
-                  value: "{{workflow.parameters.branch}}"
-                - name: vm-memory
-                  value: "{{workflow.parameters.vm-memory}}"
+            value: "{{workflow.name}}-{{item}}"
+          - name: image-tag
+            value: "{{workflow.parameters.image-tag}}"
+          - name: containerdisk-tag
+            value: "{{workflow.parameters.containerdisk-tag}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
+          - name: variant
+            value: "{{workflow.parameters.variant}}"
+          - name: ssh-key-secret
+            value: "{{workflow.parameters.ssh-key-secret}}"
+          - name: branch
+            value: "{{workflow.parameters.branch}}"
+          - name: vm-memory
+            value: "{{workflow.parameters.vm-memory}}"
 
     # ── assert-cd: fail fast if containerDisk is missing from Zot ───────────
     # Does NOT build — the digest-watch CronWorkflow owns that responsibility.
-    - name: assert-cd
-      inputs:
-        parameters:
-          - name: containerdisk-tag
-      script:
-        image: quay.io/skopeo/stable:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-        source: |
-          set -euo pipefail
-          TAG="{{inputs.parameters.containerdisk-tag}}"
-          CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
-          DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
-            "docker://${CD_IMAGE}" 2>/dev/null || echo "")
-          if [[ -n "${DIGEST}" ]]; then
-            echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
-          else
-            echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
-            echo "The digest-watch CronWorkflow builds it when GHCR changes." >&2
-            echo "Check: argo list -n argo --field-selector metadata.name=~build-cd-sync" >&2
-            exit 1
-          fi
+  - name: assert-cd
+    inputs:
+      parameters:
+      - name: containerdisk-tag
+    script:
+      image: quay.io/skopeo/stable:latest
+      command: [bash]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      source: |
+        set -euo pipefail
+        TAG="{{inputs.parameters.containerdisk-tag}}"
+        CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
+        DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
+          "docker://${CD_IMAGE}" 2>/dev/null || echo "")
+        if [[ -n "${DIGEST}" ]]; then
+          echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
+        else
+          echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
+          echo "The digest-watch CronWorkflow builds it when GHCR changes." >&2
+          echo "Check: argo list -n argo --field-selector metadata.name=~build-cd-sync" >&2
+          exit 1
+        fi
 
     # ── lane: provision VM → run suite → teardown (per-suite) ────────────────
-    - name: lane
-      inputs:
-        parameters:
-          - name: suite
-          - name: vm-name
+  - name: lane
+    inputs:
+      parameters:
+      - name: suite
+      - name: vm-name
+      - name: image-tag
+      - name: containerdisk-tag
+      - name: namespace
+      - name: variant
+      - name: ssh-key-secret
+      - name: branch
+      - name: vm-memory
+    steps:
+    - - name: provision
+        templateRef:
+          name: provision-bluefin-vm
+          template: provision-vm
+        arguments:
+          parameters:
           - name: image-tag
-          - name: containerdisk-tag
+            value: "{{inputs.parameters.containerdisk-tag}}"
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
           - name: namespace
-          - name: variant
-          - name: ssh-key-secret
-          - name: branch
+            value: "{{inputs.parameters.namespace}}"
           - name: vm-memory
-      steps:
-        - - name: provision
-            templateRef:
-              name: provision-bluefin-vm
-              template: provision-vm
-            arguments:
-              parameters:
-                - name: image-tag
-                  value: "{{inputs.parameters.containerdisk-tag}}"
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-                - name: vm-memory
-                  value: "{{inputs.parameters.vm-memory}}"
-        - - name: run-tests
-            templateRef:
-              name: run-gnome-tests
-              template: run-gnome-tests
-            arguments:
-              parameters:
-                - name: vm-ip
-                  value: "{{steps.provision.outputs.parameters.vm-ip}}"
-                - name: suite
-                  value: "{{inputs.parameters.suite}}"
-                - name: variant
-                  value: "{{inputs.parameters.variant}}"
-                - name: ssh-key-secret
-                  value: "{{inputs.parameters.ssh-key-secret}}"
-                - name: branch
-                  value: "{{inputs.parameters.branch}}"
-                - name: containerdisk-tag
-                  value: "{{inputs.parameters.containerdisk-tag}}"
-        - - name: teardown
-            templateRef:
-              name: teardown-bluefin-vm
-              template: teardown-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-            continueOn:
-              failed: true
+            value: "{{inputs.parameters.vm-memory}}"
+    - - name: run-tests
+        templateRef:
+          name: run-gnome-tests
+          template: run-gnome-tests
+        arguments:
+          parameters:
+          - name: vm-ip
+            value: "{{steps.provision.outputs.parameters.vm-ip}}"
+          - name: suite
+            value: "{{inputs.parameters.suite}}"
+          - name: variant
+            value: "{{inputs.parameters.variant}}"
+          - name: ssh-key-secret
+            value: "{{inputs.parameters.ssh-key-secret}}"
+          - name: branch
+            value: "{{inputs.parameters.branch}}"
+          - name: containerdisk-tag
+            value: "{{inputs.parameters.containerdisk-tag}}"
+    - - name: teardown
+        templateRef:
+          name: teardown-bluefin-vm
+          template: teardown-vm
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+        continueOn:
+          failed: true
 
     # ── onExit handler: VM cleanup + optional GitHub status + dashboard ──────────
     # cleanup-vms runs first, unconditionally — it deletes any VMs this workflow
     # may have created but not torn down (e.g., when provision fails, lane teardown
     # is skipped, leaving an orphaned VM).  Safe to run even when teardown already
     # deleted the VM (--ignore-not-found).
-    - name: cleanup-and-report
-      dag:
-        tasks:
-          - name: cleanup-vms
-            template: cleanup-orphan-vms
-          - name: post-status
-            template: post-github-status
-            depends: cleanup-vms
-            when: "'{{workflow.parameters.sha}}' != ''"
-          - name: update-dashboard
-            template: update-factory-stats
-            depends: cleanup-vms
+  - name: cleanup-and-report
+    dag:
+      tasks:
+      - name: cleanup-vms
+        template: cleanup-orphan-vms
+      - name: post-status
+        template: post-github-status
+        depends: cleanup-vms
+        when: "'{{workflow.parameters.sha}}' != ''"
+      - name: update-dashboard
+        template: update-factory-stats
+        depends: cleanup-vms
 
     # ── cleanup-orphan-vms: delete any VMs left behind when provision fails ──────
     # The lane teardown step only runs after run-tests; if provision fails, teardown
     # is skipped and the VM is orphaned.  This template deletes all VMs matching
     # {{workflow.name}}-<suite> across all possible suites — idempotent because
     # kubectl delete --ignore-not-found is a no-op for already-deleted VMs.
-    - name: cleanup-orphan-vms
-      script:
-        image: cgr.dev/chainguard/wolfi-base:latest
-        command: [sh]
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        source: |
-          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
-          exec bash <<'SCRIPT_EOF'
-          NS="{{workflow.parameters.namespace}}"
-          WF="{{workflow.name}}"
-          for SUITE in smoke developer software system; do
-            kubectl delete vm -n "${NS}" "${WF}-${SUITE}" --ignore-not-found 2>/dev/null \
-              && echo "Cleaned ${WF}-${SUITE}" || true
-          done
+  - name: cleanup-orphan-vms
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |
+        apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        NS="{{workflow.parameters.namespace}}"
+        WF="{{workflow.name}}"
+        for SUITE in smoke developer software system; do
+          kubectl delete vm -n "${NS}" "${WF}-${SUITE}" --ignore-not-found 2>/dev/null \
+            && echo "Cleaned ${WF}-${SUITE}" || true
+        done
 
-          SCRIPT_EOF
+        SCRIPT_EOF
     # ── update-factory-stats: append recent run to factory-stats.json ─────────
     # Runs on every pipeline exit (success or failure). Patches the recent_runs
     # array in docs/data/factory-stats.json via GitHub Contents API so the
     # dashboard reflects live run data without waiting for the 30-min GHA cron.
-    - name: update-factory-stats
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        env:
-          - name: GITHUB_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: github-token
-                key: token
-        source: |
-          set -euo pipefail
-          dnf install -y --quiet jq 2>/dev/null | tail -1 >&2 || true
-          if ! command -v jq &>/dev/null; then
-            echo "WARNING: jq not available (dnf failed), skipping dashboard update" >&2
-            exit 0
-          fi
+  - name: update-factory-stats
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      env:
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: github-token
+            key: token
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        if ! command -v jq &>/dev/null; then
+          echo "WARNING: jq not available (dnf failed), skipping dashboard update" >&2
+          exit 0
+        fi
 
-          API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/data/factory-stats.json"
-          WF_NAME="{{workflow.name}}"
-          WF_STATUS="{{workflow.status}}"
-          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/data/factory-stats.json"
+        WF_NAME="{{workflow.name}}"
+        WF_STATUS="{{workflow.status}}"
+        NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          # Map workflow status → dashboard overall
-          OVERALL=$([ "$WF_STATUS" = "Succeeded" ] && echo "passed" || echo "fail")
+        # Map workflow status → dashboard overall
+        OVERALL=$([ "$WF_STATUS" = "Succeeded" ] && echo "passed" || echo "fail")
 
-          # Derive image label from pipeline parameters
-          TAG="{{workflow.parameters.image-tag}}"
-          VARIANT="{{workflow.parameters.variant}}"
-          case "$VARIANT" in
-            lts*)     LABEL="bluefin-lts:${TAG}" ;;
-            bazzite*) LABEL="bazzite:${TAG}" ;;
-            aurora*)  LABEL="aurora:${TAG}" ;;
-            dakota*)  LABEL="dakota:${TAG}" ;;
-            *)        LABEL="bluefin:${TAG}" ;;
-          esac
+        # Derive image label from pipeline parameters
+        TAG="{{workflow.parameters.image-tag}}"
+        VARIANT="{{workflow.parameters.variant}}"
+        case "$VARIANT" in
+          lts*)     LABEL="bluefin-lts:${TAG}" ;;
+          bazzite*) LABEL="bazzite:${TAG}" ;;
+          aurora*)  LABEL="aurora:${TAG}" ;;
+          dakota*)  LABEL="dakota:${TAG}" ;;
+          *)        LABEL="bluefin:${TAG}" ;;
+        esac
 
-          # Fetch current file
-          CURRENT=$(curl -sf \
+        # Fetch current file
+        CURRENT=$(curl -sf \
+          -H "Authorization: token ${GITHUB_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "${API_URL}" 2>/dev/null || echo "{}")
+        FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
+
+        if [[ -z "$FILE_SHA" ]]; then
+          echo "Could not fetch factory-stats.json SHA — skipping dashboard update"
+          exit 0
+        fi
+
+        # Decode current content
+        CONTENT_B64=$(echo "$CURRENT" | jq -r '.content // ""' | tr -d '\n')
+        STATS=$(echo "$CONTENT_B64" | base64 -d | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)))" 2>/dev/null || echo "{}")
+
+        # Build new recent_run entry — also fetch per-suite scores from result files
+        PR_NUM="{{workflow.parameters.pr-number}}"
+        TRIGGER=$([ -n "$PR_NUM" ] && echo "pr-poller" || echo "nightly")
+
+        # Determine image slug for result file lookup (mirrors slug derivation in run-gnome-tests)
+        case "$VARIANT" in
+          lts*)     IMG_SLUG="bluefin-lts-${TAG}" ;;
+          bazzite*) IMG_SLUG="bluefin-bazzite-${TAG}" ;;
+          aurora*)  IMG_SLUG="bluefin-aurora-${TAG}" ;;
+          *)        IMG_SLUG="bluefin-${TAG}" ;;
+        esac
+
+        # Fetch per-suite result files and write to temp dir
+        mkdir -p /tmp/suite-scores
+        for SUITE in smoke developer software system; do
+          curl -sf \
             -H "Authorization: token ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "${API_URL}" 2>/dev/null || echo "{}")
-          FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
+            "https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/${IMG_SLUG}-${SUITE}.json" \
+            2>/dev/null \
+          | jq -r 'if .content then (.content | gsub("\n";"") | @base64d) else empty end' 2>/dev/null \
+          > "/tmp/suite-scores/${SUITE}.json" || true
+        done
 
-          if [[ -z "$FILE_SHA" ]]; then
-            echo "Could not fetch factory-stats.json SHA — skipping dashboard update"
-            exit 0
-          fi
+        # Build suite_scores object via jq (one-liner per suite, merge via jq -n)
+        SUITE_SCORES=$(jq -n \
+          --argjson sm "$(test -s /tmp/suite-scores/smoke.json    && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/smoke.json    2>/dev/null || echo 'null')" \
+          --argjson de "$(test -s /tmp/suite-scores/developer.json && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/developer.json 2>/dev/null || echo 'null')" \
+          --argjson sw "$(test -s /tmp/suite-scores/software.json  && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/software.json  2>/dev/null || echo 'null')" \
+          --argjson sy "$(test -s /tmp/suite-scores/system.json    && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/system.json    2>/dev/null || echo 'null')" \
+          '{smoke:$sm,developer:$de,software:$sw,system:$sy} | with_entries(select(.value != null))' \
+        2>/dev/null || echo '{}')
 
-          # Decode current content
-          CONTENT_B64=$(echo "$CURRENT" | jq -r '.content // ""' | tr -d '\n')
-          STATS=$(echo "$CONTENT_B64" | base64 -d | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)))" 2>/dev/null || echo "{}")
+        NEW_RUN=$(jq -nc \
+          --arg id   "$WF_NAME" \
+          --arg overall "$OVERALL" \
+          --arg label "$LABEL" \
+          --arg variant "$VARIANT" \
+          --arg started "$NOW" \
+          --arg finished "$NOW" \
+          --arg trigger "$TRIGGER" \
+          --argjson scores "${SUITE_SCORES}" \
+          '{id:$id,overall:$overall,label:$label,variant:$variant,started_at:$started,finished_at:$finished,trigger:$trigger,suite_scores:$scores}')
 
-          # Build new recent_run entry — also fetch per-suite scores from result files
-          PR_NUM="{{workflow.parameters.pr-number}}"
-          TRIGGER=$([ -n "$PR_NUM" ] && echo "pr-poller" || echo "nightly")
+        # Prepend new entry, keep most recent 15, update _meta.generated
+        UPDATED=$(echo "$STATS" | jq -c \
+          --argjson run "$NEW_RUN" \
+          --arg now "$NOW" \
+          '.recent_runs = ([$run] + (.recent_runs // []) | .[:15])
+           | ._meta.generated = $now')
 
-          # Determine image slug for result file lookup (mirrors slug derivation in run-gnome-tests)
-          case "$VARIANT" in
-            lts*)     IMG_SLUG="bluefin-lts-${TAG}" ;;
-            bazzite*) IMG_SLUG="bluefin-bazzite-${TAG}" ;;
-            aurora*)  IMG_SLUG="bluefin-aurora-${TAG}" ;;
-            *)        IMG_SLUG="bluefin-${TAG}" ;;
-          esac
+        # Push back
+        BODY=$(jq -nc \
+          --arg msg  "chore: update dashboard run data for ${WF_NAME}" \
+          --arg content "$(echo "$UPDATED" | base64 -w0)" \
+          --arg sha  "$FILE_SHA" \
+          '{message:$msg,content:$content,sha:$sha}')
 
-          # Fetch per-suite result files and write to temp dir
-          mkdir -p /tmp/suite-scores
-          for SUITE in smoke developer software system; do
-            curl -sf \
-              -H "Authorization: token ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/${IMG_SLUG}-${SUITE}.json" \
-              2>/dev/null \
-            | jq -r 'if .content then (.content | gsub("\n";"") | @base64d) else empty end' 2>/dev/null \
-            > "/tmp/suite-scores/${SUITE}.json" || true
-          done
+        HTTP_CODE_FILE=$(mktemp)
+        curl -s -w "%{http_code}" -o /dev/null \
+          -X PUT \
+          -H "Authorization: token ${GITHUB_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          -H "Content-Type: application/json" \
+          -d "$BODY" "${API_URL}" > "${HTTP_CODE_FILE}" 2>/dev/null || true
+        HTTP=$(cat "${HTTP_CODE_FILE}"); rm -f "${HTTP_CODE_FILE}"
 
-          # Build suite_scores object via jq (one-liner per suite, merge via jq -n)
-          SUITE_SCORES=$(jq -n \
-            --argjson sm "$(test -s /tmp/suite-scores/smoke.json    && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/smoke.json    2>/dev/null || echo 'null')" \
-            --argjson de "$(test -s /tmp/suite-scores/developer.json && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/developer.json 2>/dev/null || echo 'null')" \
-            --argjson sw "$(test -s /tmp/suite-scores/software.json  && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/software.json  2>/dev/null || echo 'null')" \
-            --argjson sy "$(test -s /tmp/suite-scores/system.json    && jq '{scenarios:.scenarios,failed:.failed,status:.status}' /tmp/suite-scores/system.json    2>/dev/null || echo 'null')" \
-            '{smoke:$sm,developer:$de,software:$sw,system:$sy} | with_entries(select(.value != null))' \
-          2>/dev/null || echo '{}')
-
-          NEW_RUN=$(jq -nc \
-            --arg id   "$WF_NAME" \
-            --arg overall "$OVERALL" \
-            --arg label "$LABEL" \
-            --arg variant "$VARIANT" \
-            --arg started "$NOW" \
-            --arg finished "$NOW" \
-            --arg trigger "$TRIGGER" \
-            --argjson scores "${SUITE_SCORES}" \
-            '{id:$id,overall:$overall,label:$label,variant:$variant,started_at:$started,finished_at:$finished,trigger:$trigger,suite_scores:$scores}')
-
-          # Prepend new entry, keep most recent 15, update _meta.generated
-          UPDATED=$(echo "$STATS" | jq -c \
-            --argjson run "$NEW_RUN" \
-            --arg now "$NOW" \
-            '.recent_runs = ([$run] + (.recent_runs // []) | .[:15])
-             | ._meta.generated = $now')
-
-          # Push back
-          BODY=$(jq -nc \
-            --arg msg  "chore: update dashboard run data for ${WF_NAME}" \
-            --arg content "$(echo "$UPDATED" | base64 -w0)" \
-            --arg sha  "$FILE_SHA" \
-            '{message:$msg,content:$content,sha:$sha}')
-
-          HTTP_CODE_FILE=$(mktemp)
-          curl -s -w "%{http_code}" -o /dev/null \
-            -X PUT \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Content-Type: application/json" \
-            -d "$BODY" "${API_URL}" > "${HTTP_CODE_FILE}" 2>/dev/null || true
-          HTTP=$(cat "${HTTP_CODE_FILE}"); rm -f "${HTTP_CODE_FILE}"
-
-          echo "Dashboard update: ${OVERALL} for ${LABEL} (${WF_NAME}) — http=${HTTP}"
+        echo "Dashboard update: ${OVERALL} for ${LABEL} (${WF_NAME}) — http=${HTTP}"
+        SCRIPT_EOF
 
     # ── post-github-status: posts commit status to GitHub API ──────────────────
-    - name: post-github-status
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        env:
-          - name: GITHUB_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: github-token
-                key: token
-        source: |
-          set -euo pipefail
-          STATE=$([ "{{workflow.status}}" = "Succeeded" ] && echo success || echo failure)
-          URL="http://192.168.1.102:32746/workflows/argo/{{workflow.name}}"
-          PAYLOAD="{\"state\":\"${STATE}\",\"context\":\"ghost-lab\",\"description\":\"Bluefin lab test ${STATE}\",\"target_url\":\"${URL}\"}"
-          echo "Posting ${STATE} to {{workflow.parameters.repo}}@{{workflow.parameters.sha}}" >&2
-          echo "Token length: ${#GITHUB_TOKEN}" >&2
-          HTTP_CODE=$(curl -s -o /tmp/gh-response.json -w "%{http_code}" -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Content-Type: application/json" \
-            "https://api.github.com/repos/{{workflow.parameters.repo}}/statuses/{{workflow.parameters.sha}}" \
-            -d "$PAYLOAD")
-          echo "HTTP code: $HTTP_CODE" >&2
-          cat /tmp/gh-response.json >&2
-          if [[ "$HTTP_CODE" =~ ^2 ]]; then
-            echo "Posted $STATE to {{workflow.parameters.repo}}@{{workflow.parameters.sha}}"
-          else
-            echo "ERROR: GitHub API returned HTTP $HTTP_CODE — failing step for visibility" >&2
-            exit 1
-          fi
+  - name: post-github-status
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      env:
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: github-token
+            key: token
+      source: |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        STATE=$([ "{{workflow.status}}" = "Succeeded" ] && echo success || echo failure)
+        URL="http://192.168.1.102:32746/workflows/argo/{{workflow.name}}"
+        PAYLOAD="{\"state\":\"${STATE}\",\"context\":\"ghost-lab\",\"description\":\"Bluefin lab test ${STATE}\",\"target_url\":\"${URL}\"}"
+        echo "Posting ${STATE} to {{workflow.parameters.repo}}@{{workflow.parameters.sha}}" >&2
+        echo "Token length: ${#GITHUB_TOKEN}" >&2
+        HTTP_CODE=$(curl -s -o /tmp/gh-response.json -w "%{http_code}" -X POST \
+          -H "Authorization: token $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -H "Content-Type: application/json" \
+          "https://api.github.com/repos/{{workflow.parameters.repo}}/statuses/{{workflow.parameters.sha}}" \
+          -d "$PAYLOAD")
+        echo "HTTP code: $HTTP_CODE" >&2
+        cat /tmp/gh-response.json >&2
+        if [[ "$HTTP_CODE" =~ ^2 ]]; then
+          echo "Posted $STATE to {{workflow.parameters.repo}}@{{workflow.parameters.sha}}"
+        else
+          echo "ERROR: GitHub API returned HTTP $HTTP_CODE — failing step for visibility" >&2
+          exit 1
+        fi
+        SCRIPT_EOF

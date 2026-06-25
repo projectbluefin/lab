@@ -24,43 +24,43 @@ spec:
         app.kubernetes.io/part-of: bluefin-test-suite
     spec:
       tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
-        - key: node-role.kubernetes.io/master
-          operator: Exists
-          effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
       hostPID: true
       initContainers:
-        - name: configure-firewalld
-          image: quay.io/fedora/fedora:latest
-          securityContext:
-            privileged: true
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Run firewall-cmd in the host mount namespace via nsenter.
-              # If firewalld is not active (e.g. ghost, exo-1 run no firewall)
-              # firewall-cmd exits non-zero; we treat that as a no-op.
-              nsenter -t 1 -m -- systemctl disable --now firewalld 2>/dev/null \
-                && echo "firewalld disabled" \
-                || echo "firewalld not present, skipping"
-          resources:
-            requests:
-              cpu: 10m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
+      - name: configure-firewalld
+        image: cgr.dev/chainguard/wolfi-base:latest
+        securityContext:
+          privileged: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          # Run firewall-cmd in the host mount namespace via nsenter.
+          # If firewalld is not active (e.g. ghost, exo-1 run no firewall)
+          # firewall-cmd exits non-zero; we treat that as a no-op.
+          nsenter -t 1 -m -- systemctl disable --now firewalld 2>/dev/null \
+            && echo "firewalld disabled" \
+            || echo "firewalld not present, skipping"
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
       containers:
-        - name: pause
-          image: registry.k8s.io/pause:3.9
-          resources:
-            requests:
-              cpu: 1m
-              memory: 4Mi
-            limits:
-              cpu: 10m
-              memory: 16Mi
+      - name: pause
+        image: registry.k8s.io/pause:3.9
+        resources:
+          requests:
+            cpu: 1m
+            memory: 4Mi
+          limits:
+            cpu: 10m
+            memory: 16Mi
       terminationGracePeriodSeconds: 5

@@ -24,32 +24,32 @@ spec:
         app.kubernetes.io/part-of: bluefin-test-suite
     spec:
       tolerations:
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: NoSchedule
-        - key: node-role.kubernetes.io/master
-          operator: Exists
-          effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
       hostPID: true
       initContainers:
-        - name: mask-sleep
-          image: quay.io/fedora/fedora:latest
-          securityContext:
-            privileged: true
-          command:
-            - /bin/sh
-            - -c
-            - |
-              nsenter -t 1 -m -- systemctl mask --now \
-                sleep.target suspend.target hibernate.target hybrid-sleep.target \
-                && echo "sleep targets masked on $(uname -n)"
+      - name: mask-sleep
+        image: cgr.dev/chainguard/wolfi-base:latest
+        securityContext:
+          privileged: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          nsenter -t 1 -m -- systemctl mask --now \
+            sleep.target suspend.target hibernate.target hybrid-sleep.target \
+            && echo "sleep targets masked on $(uname -n)"
       containers:
-        - name: pause
-          image: registry.k8s.io/pause:3.10
-          resources:
-            requests:
-              cpu: 1m
-              memory: 4Mi
-            limits:
-              cpu: 10m
-              memory: 8Mi
+      - name: pause
+        image: registry.k8s.io/pause:3.10
+        resources:
+          requests:
+            cpu: 1m
+            memory: 4Mi
+          limits:
+            cpu: 10m
+            memory: 8Mi

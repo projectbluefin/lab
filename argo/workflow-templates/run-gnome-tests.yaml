@@ -8,516 +8,519 @@ metadata:
 spec:
   serviceAccountName: argo
   templates:
-    - name: run-gnome-tests
-      metadata:
-        labels:
-          app.kubernetes.io/part-of: bluefin-test-suite
-          bluefin.io/step: run-gnome-tests
-          bluefin.io/variant: "{{inputs.parameters.variant}}"
+  - name: run-gnome-tests
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: bluefin-test-suite
+        bluefin.io/step: run-gnome-tests
+        bluefin.io/variant: "{{inputs.parameters.variant}}"
           # Descriptive pod name prefix visible in monitoring:
           #   bluefin-smoke-latest-<workflow-id>  or  bluefin-developer-lts-<id>
-          bluefin.io/suite: "{{inputs.parameters.suite}}"
-        annotations:
-          bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
-          bluefin.io/issue: "{{inputs.parameters.issue-title}}"
-      inputs:
-        parameters:
-          - name: vm-ip
-          - name: suite
+        bluefin.io/suite: "{{inputs.parameters.suite}}"
+      annotations:
+        bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
+        bluefin.io/issue: "{{inputs.parameters.issue-title}}"
+    inputs:
+      parameters:
+      - name: vm-ip
+      - name: suite
             # smoke | developer | software | system
-            value: "smoke"
-          - name: variant
+        value: "smoke"
+      - name: variant
             # latest | lts  (gts does not exist)
-            value: "latest"
-          - name: ssh-user
-            value: "bluefin-test"
-          - name: ssh-key-secret
-            value: "bluefin-test-ssh-key"
-          - name: issue-title
+        value: "latest"
+      - name: ssh-user
+        value: "bluefin-test"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
+      - name: issue-title
             # PR title or issue description for pod annotation; informational only
-            value: "manual"
-          - name: behave-tags
+        value: "manual"
+      - name: behave-tags
             # optional: "--tags @smoke" or "--tags @regression"
-            value: ""
-          - name: branch
+        value: ""
+      - name: branch
             # git ref (branch or commit SHA) the runner clones for test code
             # and step defs. Defaults to main; set per-run to test a PR branch
             # without merging — e.g. `-p branch=fix/test-reliability-and-podgc`
-            value: "main"
-          - name: containerdisk-tag
+        value: "main"
+      - name: containerdisk-tag
             # image tag used to derive the screenshot slug pushed to GHCR
             # e.g. "testing", "lts-testing", "dakota-testing"
-            value: ""
+        value: ""
       # 60-minute ceiling: SSH wait (10min) + dnf install (10min) + test run (30min)
-      activeDeadlineSeconds: 3600
-      podSpecPatch: |
-        securityContext:
-          runAsUser: 0
-        tolerations: []
-      # outputs.artifacts removed: Argo wait sidecar fails with exit 64 when no
+    activeDeadlineSeconds: 3600
+    podSpecPatch: |
+      securityContext:
+        runAsUser: 0
+      tolerations: []
+     # outputs.artifacts removed: Argo wait sidecar fails with exit 64 when no
       # artifact repository is configured, even for optional artifacts.
       # Results are captured via outputs.result (stdout) + kubectl logs.
-      initContainers:
-        - name: git-sync
-          image: quay.io/fedora/fedora:latest
-          env:
-            - name: BRANCH
-              value: "{{inputs.parameters.branch}}"
-          command: [bash, -c]
-          args:
-            - |
-              for attempt in 1 2 3; do
-                # Clear any partial clone from a previous attempt — git clone
-                # refuses to write into a non-empty directory and would skip
-                # both the primary and the SHA-fallback path otherwise.
-                rm -rf /workspace/bluefin-test-suite
-                dnf install -y --quiet git 2>&1 | tail -2
-                # --branch accepts branch names and tags; for commit SHAs we
-                # fall back to a full clone + checkout.
-                if git clone --depth 1 --branch "${BRANCH}" \
-                    https://github.com/projectbluefin/testsuite \
-                    /workspace/bluefin-test-suite 2>&1; then
-                  echo "Synced testsuite @ ${BRANCH} (attempt ${attempt})"
-                  exit 0
-                fi
-                rm -rf /workspace/bluefin-test-suite
-                if git clone https://github.com/projectbluefin/testsuite \
-                    /workspace/bluefin-test-suite 2>&1 && \
-                   git -C /workspace/bluefin-test-suite checkout "${BRANCH}" 2>&1; then
-                  echo "Synced testsuite @ ${BRANCH} via SHA fallback (attempt ${attempt})"
-                  exit 0
-                fi
-                echo "Attempt ${attempt} failed, retrying in 15s..."
-                sleep 15
-              done
-              exit 1
-          volumeMounts:
-            - name: workspace
-              mountPath: /workspace
-      container:
+    initContainers:
+    - name: git-sync
+      image: cgr.dev/chainguard/wolfi-base:latest
+      env:
+      - name: BRANCH
+        value: "{{inputs.parameters.branch}}"
+      command: [sh, -c]
+      args:
+      - |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        for attempt in 1 2 3; do
+          # Clear any partial clone from a previous attempt — git clone
+          # refuses to write into a non-empty directory and would skip
+          # both the primary and the SHA-fallback path otherwise.
+          rm -rf /workspace/bluefin-test-suite
+          # --branch accepts branch names and tags; for commit SHAs we
+          # fall back to a full clone + checkout.
+          if git clone --depth 1 --branch "${BRANCH}" \
+              https://github.com/projectbluefin/testsuite \
+              /workspace/bluefin-test-suite 2>&1; then
+            echo "Synced testsuite @ ${BRANCH} (attempt ${attempt})"
+            exit 0
+          fi
+          rm -rf /workspace/bluefin-test-suite
+          if git clone https://github.com/projectbluefin/testsuite \
+              /workspace/bluefin-test-suite 2>&1 && \
+             git -C /workspace/bluefin-test-suite checkout "${BRANCH}" 2>&1; then
+            echo "Synced testsuite @ ${BRANCH} via SHA fallback (attempt ${attempt})"
+            exit 0
+          fi
+          echo "Attempt ${attempt} failed, retrying in 15s..."
+          sleep 15
+        done
+        exit 1
+        SCRIPT_EOF
+      volumeMounts:
+      - name: workspace
+        mountPath: /workspace
+    container:
         # Fedora: has dnf, python3, pip3 — matches Bluefin (Fedora-based) package names
-        image: quay.io/fedora/fedora:latest
-        imagePullPolicy: Always
-        resources:
-          requests:
-            cpu: "1"
-            memory: 1Gi
-          limits:
-            cpu: "2"
-            memory: 2Gi
-        env:
-          - name: VM_IP
-            value: "{{inputs.parameters.vm-ip}}"
-          - name: VM_USER
-            value: "{{inputs.parameters.ssh-user}}"
-          - name: SUITE
-            value: "{{inputs.parameters.suite}}"
-          - name: VARIANT
-            value: "{{inputs.parameters.variant}}"
-          - name: BEHAVE_TAGS
-            value: "{{inputs.parameters.behave-tags}}"
-          - name: SSH_KEY
-            value: /etc/ssh/test-key/id_ed25519
-          - name: GITHUB_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: github-token
-                key: token
-                optional: true
-        volumeMounts:
-          - name: ssh-key
-            mountPath: /etc/ssh/test-key
-            readOnly: true
-          - name: workspace
-            mountPath: /workspace
-            readOnly: true
-          - name: results-store
-            mountPath: /var/mnt/ghost-data/test-results
-        command: [bash, -c]
-        args:
-          - |
-            set -euo pipefail
-            mkdir -p /tmp/results
-            LOG=/tmp/results/runner.log
-            exec > >(tee -a "$LOG") 2>&1
+      image: cgr.dev/chainguard/wolfi-base:latest
+      imagePullPolicy: Always
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      env:
+      - name: VM_IP
+        value: "{{inputs.parameters.vm-ip}}"
+      - name: VM_USER
+        value: "{{inputs.parameters.ssh-user}}"
+      - name: SUITE
+        value: "{{inputs.parameters.suite}}"
+      - name: VARIANT
+        value: "{{inputs.parameters.variant}}"
+      - name: BEHAVE_TAGS
+        value: "{{inputs.parameters.behave-tags}}"
+      - name: SSH_KEY
+        value: /etc/ssh/test-key/id_ed25519
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: github-token
+            key: token
+            optional: true
+      volumeMounts:
+      - name: ssh-key
+        mountPath: /etc/ssh/test-key
+        readOnly: true
+      - name: workspace
+        mountPath: /workspace
+        readOnly: true
+      - name: results-store
+        mountPath: /var/mnt/ghost-data/test-results
+      command: [sh, -c]
+      args:
+      - |
+        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        mkdir -p /tmp/results
+        LOG=/tmp/results/runner.log
+        exec > >(tee -a "$LOG") 2>&1
 
-            # Install SSH client and jq if not present (base fedora image omits them)
-            PKGS=()
-            command -v ssh &>/dev/null  || PKGS+=(openssh-clients rsync)
-            command -v jq  &>/dev/null  || PKGS+=(jq)
-            if [[ ${#PKGS[@]} -gt 0 ]]; then
-              dnf install -y --quiet "${PKGS[@]}" 2>&1 | tail -3
-            fi
+        # Install SSH client and jq if not present (base fedora image omits them)
+        PKGS=()
+        command -v ssh &>/dev/null  || PKGS+=(openssh-clients rsync)
+        command -v jq  &>/dev/null  || PKGS+=(jq)
+        if [[ ${#PKGS[@]} -gt 0 ]]; then
+        fi
 
-            SSH_OPTS="-i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
-            SSH="ssh ${SSH_OPTS} ${VM_USER}@${VM_IP}"
-            SCP="scp ${SSH_OPTS} -r"
-            # Root SSH: used for VM readiness check and bluefin-test key bootstrap.
-            # Root pubkey auth is set up by bootc --root-ssh-authorized-keys.
-            ROOT_SSH="ssh ${SSH_OPTS} root@${VM_IP}"
+        SSH_OPTS="-i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
+        SSH="ssh ${SSH_OPTS} ${VM_USER}@${VM_IP}"
+        SCP="scp ${SSH_OPTS} -r"
+        # Root SSH: used for VM readiness check and bluefin-test key bootstrap.
+        # Root pubkey auth is set up by bootc --root-ssh-authorized-keys.
+        ROOT_SSH="ssh ${SSH_OPTS} root@${VM_IP}"
 
-            # ── Wait for VM SSH to become ready (up to 10 minutes) ──────────
-            echo "Waiting for SSH on ${VM_IP} (root, up to 10 min)..." >&2
-            # Verbose first attempt to capture the exact auth failure for root.
-            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              -o ConnectTimeout=15 -o LogLevel=DEBUG3 \
-              root@${VM_IP} 'echo root-ssh-diag-ready' 2>&1 || true
-            echo "--- root SSH diagnostic complete; starting retry loop ---" >&2
-            # Wait for root SSH — bootc-native mechanism means this is reliable.
-            timeout 600 bash -c "
-              until ssh -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                      -o ConnectTimeout=10 -o LogLevel=ERROR root@'${VM_IP}' 'echo ready' 2>/dev/null; do
-                sleep 10
-              done
-            "
-            echo "Root SSH ready." >&2
+        # ── Wait for VM SSH to become ready (up to 10 minutes) ──────────
+        echo "Waiting for SSH on ${VM_IP} (root, up to 10 min)..." >&2
+        # Verbose first attempt to capture the exact auth failure for root.
+        ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=15 -o LogLevel=DEBUG3 \
+          root@${VM_IP} 'echo root-ssh-diag-ready' 2>&1 || true
+        echo "--- root SSH diagnostic complete; starting retry loop ---" >&2
+        # Wait for root SSH — bootc-native mechanism means this is reliable.
+        timeout 600 bash -c "
+          until ssh -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                  -o ConnectTimeout=10 -o LogLevel=ERROR root@'${VM_IP}' 'echo ready' 2>/dev/null; do
+            sleep 10
+          done
+        "
+        echo "Root SSH ready." >&2
 
-            # ── Bootstrap bluefin-test user + SSH keys via root ──────────────
-            # Create the test user at runtime so this works even if btrfs
-            # post-install changes did not survive the qcow2/OCI pipeline.
-            # SSH keys are set up here rather than relying on disk injection.
-            echo "Bootstrapping bluefin-test user and SSH access via root..." >&2
-            SSH_PUBKEY="$(cat ${SSH_KEY}.pub)"
-            ${ROOT_SSH} "
-              set -euo pipefail
-              # Create bluefin-test user if not already present (uid 1001, wheel)
-              if ! id bluefin-test &>/dev/null; then
-                useradd -m -u 1001 -g 1001 -G wheel -s /bin/bash \
-                  -d /var/home/bluefin-test bluefin-test
-                echo '[ROOT] bluefin-test user created'
-              else
-                echo '[ROOT] bluefin-test user exists'
-              fi
-              # Unlock account: useradd without a password locks the account (!).
-              # With UsePAM no, sshd rejects locked accounts before checking keys.
-              passwd -u bluefin-test 2>/dev/null || usermod -p '*' bluefin-test
-              # Ensure home directory and .ssh exist with correct ownership/permissions.
-              mkdir -p /var/home/bluefin-test/.ssh
-              chown -R 1001:1001 /var/home/bluefin-test
-              chmod 750 /var/home/bluefin-test
-              chmod 700 /var/home/bluefin-test/.ssh
-              # Write key to ~/.ssh/authorized_keys (KubeVirt accessCredentials target)
-              # and to /etc/ssh/test-authorized-keys (old containerdisk sshd config).
-              # Both paths covered so this works across all disk versions.
-              printf '%s\n' '${SSH_PUBKEY}' > /var/home/bluefin-test/.ssh/authorized_keys
-              chown 1001:1001 /var/home/bluefin-test/.ssh/authorized_keys
-              chmod 600 /var/home/bluefin-test/.ssh/authorized_keys
-              printf '%s\n' '${SSH_PUBKEY}' >> /etc/ssh/test-authorized-keys 2>/dev/null || true
-              mkdir -p /etc/ssh/authorized_keys
-              printf '%s\n' '${SSH_PUBKEY}' > /etc/ssh/authorized_keys/bluefin-test 2>/dev/null || true
-              # Ensure sudoers entry
-              echo 'bluefin-test ALL=(ALL) NOPASSWD:ALL' \
-                > /etc/sudoers.d/bluefin-test
-              chmod 440 /etc/sudoers.d/bluefin-test
-              # Enable user lingering so rootless Podman services survive login/logout.
-              # Required by the developer suite 'User lingering is enabled' assertion.
-              loginctl enable-linger bluefin-test 2>/dev/null || true
-              echo '[ROOT] bluefin-test bootstrap complete'
-            "
-            # Wait for bluefin-test SSH (KubeVirt injects key; give it a moment).
-            echo "Verifying bluefin-test SSH..." >&2
-            # One verbose probe to capture exact server refusal before silent retry loop.
-            ssh -v -i "${SSH_KEY}" \
-              -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-              -o ConnectTimeout=10 -o PasswordAuthentication=no \
-              ${VM_USER}@${VM_IP} 'echo ok' 2>&1 | \
-              grep -iE 'debug1|debug2.*key|denied|accept|authentications|offer|refused|pubkey' | head -20 || true
-            # Show authorized_keys and sshd -T for bluefin-test (diagnosis only).
-            ${ROOT_SSH} "
-              echo '=== authorized_keys:'; cat /var/home/bluefin-test/.ssh/authorized_keys 2>/dev/null | wc -c || echo missing
-              echo '=== sshd -T authorizedkeysfile:'; sshd -T -C user=${VM_USER},addr=127.0.0.1,host=localhost,laddr=127.0.0.1,lport=22 2>/dev/null | grep -i 'authorizedkeys\|strictmodes\|pubkey\|pam' | head -10 || true
-              echo '=== sshd journal:'; journalctl -u sshd -n 20 --no-pager 2>/dev/null || true
-            " 2>/dev/null || true
-            timeout 120 bash -c "
-              until ${SSH} 'echo ready' 2>/dev/null; do
-                echo '[bluefin-test SSH] not ready, retrying...' >&2
-                sleep 5
-              done
-            "
-            echo "SSH ready (bluefin-test)." >&2
+        # ── Bootstrap bluefin-test user + SSH keys via root ──────────────
+        # Create the test user at runtime so this works even if btrfs
+        # post-install changes did not survive the qcow2/OCI pipeline.
+        # SSH keys are set up here rather than relying on disk injection.
+        echo "Bootstrapping bluefin-test user and SSH access via root..." >&2
+        SSH_PUBKEY="$(cat ${SSH_KEY}.pub)"
+        ${ROOT_SSH} "
+          set -euo pipefail
+          # Create bluefin-test user if not already present (uid 1001, wheel)
+          if ! id bluefin-test &>/dev/null; then
+            useradd -m -u 1001 -g 1001 -G wheel -s /bin/bash \
+              -d /var/home/bluefin-test bluefin-test
+            echo '[ROOT] bluefin-test user created'
+          else
+            echo '[ROOT] bluefin-test user exists'
+          fi
+          # Unlock account: useradd without a password locks the account (!).
+          # With UsePAM no, sshd rejects locked accounts before checking keys.
+          passwd -u bluefin-test 2>/dev/null || usermod -p '*' bluefin-test
+          # Ensure home directory and .ssh exist with correct ownership/permissions.
+          mkdir -p /var/home/bluefin-test/.ssh
+          chown -R 1001:1001 /var/home/bluefin-test
+          chmod 750 /var/home/bluefin-test
+          chmod 700 /var/home/bluefin-test/.ssh
+          # Write key to ~/.ssh/authorized_keys (KubeVirt accessCredentials target)
+          # and to /etc/ssh/test-authorized-keys (old containerdisk sshd config).
+          # Both paths covered so this works across all disk versions.
+          printf '%s\n' '${SSH_PUBKEY}' > /var/home/bluefin-test/.ssh/authorized_keys
+          chown 1001:1001 /var/home/bluefin-test/.ssh/authorized_keys
+          chmod 600 /var/home/bluefin-test/.ssh/authorized_keys
+          printf '%s\n' '${SSH_PUBKEY}' >> /etc/ssh/test-authorized-keys 2>/dev/null || true
+          mkdir -p /etc/ssh/authorized_keys
+          printf '%s\n' '${SSH_PUBKEY}' > /etc/ssh/authorized_keys/bluefin-test 2>/dev/null || true
+          # Ensure sudoers entry
+          echo 'bluefin-test ALL=(ALL) NOPASSWD:ALL' \
+            > /etc/sudoers.d/bluefin-test
+          chmod 440 /etc/sudoers.d/bluefin-test
+          # Enable user lingering so rootless Podman services survive login/logout.
+          # Required by the developer suite 'User lingering is enabled' assertion.
+          loginctl enable-linger bluefin-test 2>/dev/null || true
+          echo '[ROOT] bluefin-test bootstrap complete'
+        "
+        # Wait for bluefin-test SSH (KubeVirt injects key; give it a moment).
+        echo "Verifying bluefin-test SSH..." >&2
+        # One verbose probe to capture exact server refusal before silent retry loop.
+        ssh -v -i "${SSH_KEY}" \
+          -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=10 -o PasswordAuthentication=no \
+          ${VM_USER}@${VM_IP} 'echo ok' 2>&1 | \
+          grep -iE 'debug1|debug2.*key|denied|accept|authentications|offer|refused|pubkey' | head -20 || true
+        # Show authorized_keys and sshd -T for bluefin-test (diagnosis only).
+        ${ROOT_SSH} "
+          echo '=== authorized_keys:'; cat /var/home/bluefin-test/.ssh/authorized_keys 2>/dev/null | wc -c || echo missing
+          echo '=== sshd -T authorizedkeysfile:'; sshd -T -C user=${VM_USER},addr=127.0.0.1,host=localhost,laddr=127.0.0.1,lport=22 2>/dev/null | grep -i 'authorizedkeys\|strictmodes\|pubkey\|pam' | head -10 || true
+          echo '=== sshd journal:'; journalctl -u sshd -n 20 --no-pager 2>/dev/null || true
+        " 2>/dev/null || true
+        timeout 120 bash -c "
+          until ${SSH} 'echo ready' 2>/dev/null; do
+            echo '[bluefin-test SSH] not ready, retrying...' >&2
+            sleep 5
+          done
+        "
+        echo "SSH ready (bluefin-test)." >&2
 
-            # ── Install test dependencies inside the VM ──────────────────────
-            # Bluefin VMs are ephemeral bootc images with read-only /usr.
-            # dnf/rpm-ostree are blocked by bootc policy; use pip --user for pure Python deps.
-            # GUI suites need qecore/dogtail/ponytail (already in image); system suite needs behave.
-            ${SSH} "
-              set -euo pipefail
-              if [[ "${SUITE}" == "system" ]]; then
-                if python3 -c 'import behave' 2>/dev/null; then
-                  echo 'System-suite dependencies already installed, skipping.' >&2
-                else
-                  echo 'Installing system-suite dependencies via pip...' >&2
-                  # Ensure pip is available. Use || true so missing pip3/ensurepip is not fatal.
-                  pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 || true
-                  python3 -m pip install --user behave 2>&1
-                  # Verify behave installed successfully.
-                  python3 -c 'import behave' || { echo 'FATAL: behave not installed' >&2; exit 1; }
-                fi
-              else
-                if python3 -c 'import qecore, behave, dogtail' 2>/dev/null && \
-                   rpm -q gnome-ponytail-daemon python3-gnome-ponytail-daemon &>/dev/null && \
-                   [[ -x \"\$HOME/.local/bin/qecore-headless\" ]]; then
-                  echo 'Test dependencies already installed, skipping.' >&2
-                else
-                  echo 'Installing test dependencies...' >&2
-                  sudo ostree admin unlock 2>/dev/null || true
-                  sudo dnf clean packages -q 2>/dev/null || true
-                  sudo dnf install -y --quiet gnome-ponytail-daemon python3-gnome-ponytail-daemon python3-pip python3-virtualenv python3-behave 2>&1 | tail -3
-                  pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
-                  python3 -m pip install --quiet --user qecore dogtail python-uinput 2>&1 | tail -3
-                  for f in \$HOME/.local/bin/qecore_*; do sudo ln -sf \"\$f\" /usr/local/bin/\$(basename \"\$f\") 2>/dev/null; done
-                fi
-                sudo modprobe uinput 2>/dev/null || true
-                sudo chmod 0666 /dev/uinput 2>/dev/null || true
-                sudo chcon -t uinput_device_t /dev/uinput 2>/dev/null || true
-              fi
-            "
-            echo "Dependencies ready." >&2
-
-            # ── Copy test suite to VM ────────────────────────────────────────
-            echo "Copying tests/${SUITE}/ to VM..." >&2
-            ${SSH} "mkdir -p /tmp/bluefin-tests /tmp/results"
-            ${SCP} /workspace/bluefin-test-suite/tests/${SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
-            # Copy tests/shared/ so environment.py can resolve 'tests.shared.*' imports.
-            ${SSH} "mkdir -p /tmp/bluefin-tests/tests"
-            ${SCP} /workspace/bluefin-test-suite/tests/shared ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/tests/
-            ${SSH} "touch /tmp/bluefin-tests/__init__.py /tmp/bluefin-tests/tests/__init__.py" || true
-
-            if [[ "${SUITE}" != "system" ]]; then
-              WAIT_FOR_SHELL=/workspace/bluefin-test-suite/tests/shared/wait_for_shell.py
-              ${SCP} "${WAIT_FOR_SHELL}" ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/${SUITE}/wait_for_shell.py
-            fi
-
-            # ── Run tests ────────────────────────────────────────────────────
-            # GUI suites (smoke) use qecore-headless inside the VM.
-            # The common suite is SSH-driven from this runner container.
-            # The system suite runs behave directly inside the VM via SSH.
-            echo "Running behave suite..." >&2
-            TAGS_ARG="--tags ~@wip"
-            if [[ -n "${BEHAVE_TAGS}" ]]; then
-              TAGS_ARG="${BEHAVE_TAGS}"
-            fi
-
-            # Record test start time for journalctl --since filtering (issue #6)
-            echo "Recording test start time..." >&2
-            ${SSH} "date --iso-8601=seconds > /tmp/results/test-start-time.txt" || true
-
-            BEHAVE_RC=0
-            if [[ "${SUITE}" == "system" ]]; then
-              ${SSH} "
-                export PATH=\$HOME/.local/bin:\$PATH
-                export PYTHONPATH=/tmp/bluefin-tests
-                python3 -m behave /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}
-              " || BEHAVE_RC=$?
-            elif [[ "${SUITE}" == "common" ]]; then
-              # common suite is SSH-driven from the runner container (no AT-SPI/display).
-              # It reads VM_IP, VM_USER, and SSH_KEY from the environment, which are
-              # available here but NOT inside the VM. Run behave from this container
-              # so it can reach the test SSH key at ${SSH_KEY}.
-              if ! python3 -c 'import behave' 2>/dev/null; then
-                pip3 install --quiet behave 2>&1 | tail -3
-              fi
-              export VM_IP="${VM_IP}"
-              export VM_USER="${VM_USER}"
-              export SSH_KEY="${SSH_KEY}"
-              PYTHONPATH=/workspace/bluefin-test-suite \
-              python3 -m behave /workspace/bluefin-test-suite/tests/common/features/ \
-                --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
+        # ── Install test dependencies inside the VM ──────────────────────
+        # Bluefin VMs are ephemeral bootc images with read-only /usr.
+        # dnf/rpm-ostree are blocked by bootc policy; use pip --user for pure Python deps.
+        # GUI suites need qecore/dogtail/ponytail (already in image); system suite needs behave.
+        ${SSH} "
+          set -euo pipefail
+          if [[ "${SUITE}" == "system" ]]; then
+            if python3 -c 'import behave' 2>/dev/null; then
+              echo 'System-suite dependencies already installed, skipping.' >&2
             else
-              # Write a runner script to the VM to avoid shell-quoting issues
-              # when passing compound commands to qecore-headless.
-              ${SSH} "printf '%s\n' '#!/bin/bash' 'set -euo pipefail' \
-                'export PATH=\$HOME/.local/bin:\$PATH' \
-                'export PYTHONPATH=/tmp/bluefin-tests' \
-                'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py' \
-                '# Start gnome-ponytail-daemon after GNOME Shell is ready.' \
-                '# D-Bus cannot auto-activate it (ServiceUnknown) in the qecore-headless' \
-                '# session because the service file is installed after first boot.' \
-                '# Starting it explicitly here ensures it registers before behave runs.' \
-                '/usr/libexec/gnome-ponytail-daemon &' \
-                'sleep 2' \
-                'exec \$(which behave) /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}' \
-                > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
-              ${SSH} "
-                export PATH=\$HOME/.local/bin:\$PATH
-                # Stop any lingering qecore-headless process from a prior run.
-                # IMPORTANT: pgrep -f matches CMDLINE strings, and because this
-                # entire heredoc is passed as a bash -c argument, any pgrep pattern
-                # that appears in the heredoc would self-match and kill the current
-                # shell (causing SSH exit 255).
-                # Instead: inspect /proc/*/exe symlinks. The running bash process
-                # has exe=/usr/bin/bash — only actual qecore-headless processes have
-                # a qecore binary as their exe. No self-match possible.
-                for _pid in \$(ls -la /proc/[0-9]*/exe 2>/dev/null \
-                               | awk '/qecore/{match(\$0, /\\/proc\\/([0-9]+)\\//, m); print m[1]}'); do
-                  kill \"\$_pid\" 2>/dev/null || true
-                done
-                unset _pid
-                # Stop any lingering gnome-ponytail-daemon from the prior suite so the
-                # next suite can register its own instance on the D-Bus session.
-                for _pid in \$(ls -la /proc/[0-9]*/exe 2>/dev/null \
-                               | awk '/gnome-ponytail/{match(\$0, /\\/proc\\/([0-9]+)\\//, m); print m[1]}'); do
-                  kill \"\$_pid\" 2>/dev/null || true
-                done
-                unset _pid
-                sleep 2
-                rm -f /tmp/headless* /tmp/qecore* /tmp/.headless* 2>/dev/null || true
-                \$HOME/.local/bin/qecore-headless \
-                  --session-type wayland \
-                  --session-desktop gnome \
-                  \"/tmp/run-suite.sh\"
-              " || BEHAVE_RC=$?
+              echo 'Installing system-suite dependencies via pip...' >&2
+              # Ensure pip is available. Use || true so missing pip3/ensurepip is not fatal.
+              pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 || true
+              python3 -m pip install --user behave 2>&1
+              # Verify behave installed successfully.
+              python3 -c 'import behave' || { echo 'FATAL: behave not installed' >&2; exit 1; }
             fi
-
-            # ── Collect results ──────────────────────────────────────────────
-            # Always SCP even when behave exits non-zero (test failures), so
-            # artifacts are available for inspection on failed runs.
-            # Use trailing /. on source to copy CONTENTS not the directory itself
-            # (avoids /tmp/results/results/ nesting when dest already exists).
-            echo "Collecting results..." >&2
-            # common suite writes results.json locally in this container; skip VM SCP.
-            if [[ "${SUITE}" != "common" ]]; then
-              ${SCP} ${VM_USER}@${VM_IP}:/tmp/results/. /tmp/results/ || true
-            fi
-
-            # Persist results + screenshots to ghost disk for release evidence
-            RESULT_DIR="/var/mnt/ghost-data/test-results/{{workflow.name}}/${SUITE}"
-            mkdir -p "${RESULT_DIR}"
-            cp -r /tmp/results/. "${RESULT_DIR}/" 2>/dev/null || true
-            echo "Results saved to ${RESULT_DIR}" >&2
-
-            # Derive image slug for screenshot tag and results JSON push.
-            # Convention: testing -> bluefin-testing, lts-testing -> bluefin-lts-testing,
-            # bazzite-testing -> bazzite-testing, aurora-testing -> aurora-testing,
-            # dakota-testing -> dakota-testing.
-            VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
-            case "${VARIANT_TAG}" in
-              lts-*)     IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
-              dakota-*)  IMG_SLUG="${VARIANT_TAG}" ;;
-              bazzite-*) IMG_SLUG="${VARIANT_TAG}" ;;
-              aurora-*)  IMG_SLUG="${VARIANT_TAG}" ;;
-              *)         IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
-            esac
-
-            # Push desktop screenshot to GHCR as OCI artifact for release notes.
-            # Convention matches projectbluefin/testsuite/e2e.yml:
-            #   ghcr.io/projectbluefin/testsuite/desktop-screenshot:<slug>-<suite>-latest
-            SHOT=$(find /tmp/results/ -name "*.png" | head -1)
-            if [[ -n "$SHOT" && -f "$SHOT" ]]; then
-              if ! command -v oras &>/dev/null; then
-                ORAS_VER="1.2.3"
-                curl -sSfL "https://github.com/oras-project/oras/releases/download/v${ORAS_VER}/oras_${ORAS_VER}_linux_amd64.tar.gz" \
-                  | tar xz -C /usr/local/bin/ oras 2>/dev/null || true
-              fi
-              if command -v oras &>/dev/null; then
-                SCREENSHOT_IMAGE="ghcr.io/projectbluefin/testsuite/desktop-screenshot"
-                PUSH_TAG="${IMG_SLUG}-${SUITE}-latest"
-                if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-                  echo "${GITHUB_TOKEN}" | oras login ghcr.io -u github-actions --password-stdin 2>/dev/null || true
-                  cp "$SHOT" /tmp/desktop-screenshot.png
-                  oras push "${SCREENSHOT_IMAGE}:${PUSH_TAG}" \
-                    --annotation "org.opencontainers.image.description=Bluefin desktop screenshot from lab e2e suite: ${SUITE}" \
-                    --annotation "io.github.projectbluefin.caller_repo=projectbluefin/testing-lab" \
-                    /tmp/desktop-screenshot.png:image/png 2>&1 || true
-                  echo "Screenshot pushed to ${SCREENSHOT_IMAGE}:${PUSH_TAG}" >&2
-                else
-                  echo "No GITHUB_TOKEN - skipping GHCR screenshot push" >&2
-                fi
-              fi
-            fi
-
-            # Push results JSON to GitHub for Pages dashboard at
-            # https://projectbluefin.github.io/testing-lab/
-            # Uses the GitHub Contents API (PUT /repos/.../contents/...).
-            # curl+jq only — no inline Python (colons break YAML block scalars).
-            PUSH_LOG="${RESULT_DIR}/pages-push.log"
-            if [[ -f /tmp/results/results.json && -n "${GITHUB_TOKEN:-}" && -n "${IMG_SLUG:-}" ]]; then
-              API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/${IMG_SLUG}-${SUITE}.json"
-              NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-              N_TOTAL=$(jq '[.[].elements | length] | add // 0' /tmp/results/results.json)
-              N_FAILED=$(jq '[.[].elements[] | select(.status=="failed")] | length' /tmp/results/results.json)
-              RUN_STATUS=$( [[ "$N_FAILED" -gt 0 ]] && echo failed || echo passed )
-
-              # GET current file for sha + history
-              CURRENT=$(curl -sf \
-                -H "Authorization: token ${GITHUB_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                "${API_URL}" 2>/dev/null || echo "{}")
-              FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
-              HISTORY=$(echo "$CURRENT" | jq -r 'if .content then (.content | gsub("\n";"") | @base64d | fromjson | .history // []) else [] end' 2>/dev/null || echo "[]")
-
-              # Capture failing scenario names for the dashboard
-              FAILED_NAMES=$(jq -c '[.[].elements[] | select(.status=="failed") | .name] | unique' \
-                /tmp/results/results.json 2>/dev/null || echo "[]")
-
-              ENTRY=$(jq -nc \
-                --arg rd "$NOW" --arg wf "{{workflow.name}}" \
-                --arg st "$RUN_STATUS" --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
-                '{run_date:$rd,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f}')
-
-              PAYLOAD_OBJ=$(jq -nc \
-                --arg v "$IMG_SLUG" --arg su "$SUITE" --arg lr "$NOW" \
-                --arg wf "{{workflow.name}}" --arg st "$RUN_STATUS" \
-                --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
-                --argjson fn "$FAILED_NAMES" \
-                --arg ss "https://projectbluefin.github.io/testing-lab/screenshots/${IMG_SLUG}-${SUITE}-latest.png" \
-                --argjson h "$(echo "$HISTORY" | jq -c --argjson e "$ENTRY" '[$e] + . | .[:10]')" \
-                '{variant:$v,suite:$su,last_run:$lr,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f,failed_scenarios:$fn,screenshot_url:$ss,history:$h}')
-
-              CONTENT=$(echo "$PAYLOAD_OBJ" | base64 -w0)
-              BODY=$(jq -nc \
-                --arg msg "test: update results for ${IMG_SLUG}-${SUITE}" \
-                --arg content "$CONTENT" \
-                --arg sha "$FILE_SHA" \
-                'if $sha != "" then {message:$msg,content:$content,sha:$sha} else {message:$msg,content:$content} end')
-
-              HTTP_CODE=$(curl -sf -w "%{http_code}" -o /tmp/push-result-response.json \
-                -X PUT \
-                -H "Authorization: token ${GITHUB_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                -H "Content-Type: application/json" \
-                -d "$BODY" "${API_URL}" 2>&1) || HTTP_CODE="curl_error"
-
-              echo "${NOW} pushed ${IMG_SLUG}-${SUITE}: ${RUN_STATUS} (${N_TOTAL} scenarios, ${N_FAILED} failed) http=${HTTP_CODE}" \
-                | tee -a "${PUSH_LOG}" >&2
-              if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
-                echo "PUT response: $(cat /tmp/push-result-response.json 2>/dev/null)" \
-                  | tee -a "${PUSH_LOG}" >&2
-              fi
+          else
+            if python3 -c 'import qecore, behave, dogtail' 2>/dev/null && \
+               rpm -q gnome-ponytail-daemon python3-gnome-ponytail-daemon &>/dev/null && \
+               [[ -x \"\$HOME/.local/bin/qecore-headless\" ]]; then
+              echo 'Test dependencies already installed, skipping.' >&2
             else
-              echo "Skipping Pages push: GITHUB_TOKEN=$(test -n "${GITHUB_TOKEN:-}" && echo set || echo empty) IMG_SLUG=${IMG_SLUG:-empty}" \
-                | tee -a "${PUSH_LOG}" >&2
+              echo 'Installing test dependencies...' >&2
+              sudo ostree admin unlock 2>/dev/null || true
+              sudo dnf clean packages -q 2>/dev/null || true
+              pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
+              python3 -m pip install --quiet --user qecore dogtail python-uinput 2>&1 | tail -3
+              for f in \$HOME/.local/bin/qecore_*; do sudo ln -sf \"\$f\" /usr/local/bin/\$(basename \"\$f\") 2>/dev/null; done
             fi
+            sudo modprobe uinput 2>/dev/null || true
+            sudo chmod 0666 /dev/uinput 2>/dev/null || true
+            sudo chcon -t uinput_device_t /dev/uinput 2>/dev/null || true
+          fi
+        "
+        echo "Dependencies ready." >&2
 
-            echo "Done. Results in /tmp/results/" >&2
-            # Print full results JSON to stderr — captured by Loki and Argo MCP get_workflow_logs
-            if [[ -f /tmp/results/results.json ]]; then
-              echo "=== BEHAVE RESULTS JSON ===" >&2
-              cat /tmp/results/results.json >&2
-              echo "=== END BEHAVE RESULTS ===" >&2
+        # ── Copy test suite to VM ────────────────────────────────────────
+        echo "Copying tests/${SUITE}/ to VM..." >&2
+        ${SSH} "mkdir -p /tmp/bluefin-tests /tmp/results"
+        ${SCP} /workspace/bluefin-test-suite/tests/${SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
+        # Copy tests/shared/ so environment.py can resolve 'tests.shared.*' imports.
+        ${SSH} "mkdir -p /tmp/bluefin-tests/tests"
+        ${SCP} /workspace/bluefin-test-suite/tests/shared ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/tests/
+        ${SSH} "touch /tmp/bluefin-tests/__init__.py /tmp/bluefin-tests/tests/__init__.py" || true
+
+        if [[ "${SUITE}" != "system" ]]; then
+          WAIT_FOR_SHELL=/workspace/bluefin-test-suite/tests/shared/wait_for_shell.py
+          ${SCP} "${WAIT_FOR_SHELL}" ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/${SUITE}/wait_for_shell.py
+        fi
+
+        # ── Run tests ────────────────────────────────────────────────────
+        # GUI suites (smoke) use qecore-headless inside the VM.
+        # The common suite is SSH-driven from this runner container.
+        # The system suite runs behave directly inside the VM via SSH.
+        echo "Running behave suite..." >&2
+        TAGS_ARG="--tags ~@wip"
+        if [[ -n "${BEHAVE_TAGS}" ]]; then
+          TAGS_ARG="${BEHAVE_TAGS}"
+        fi
+
+        # Record test start time for journalctl --since filtering (issue #6)
+        echo "Recording test start time..." >&2
+        ${SSH} "date --iso-8601=seconds > /tmp/results/test-start-time.txt" || true
+
+        BEHAVE_RC=0
+        if [[ "${SUITE}" == "system" ]]; then
+          ${SSH} "
+            export PATH=\$HOME/.local/bin:\$PATH
+            export PYTHONPATH=/tmp/bluefin-tests
+            python3 -m behave /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}
+          " || BEHAVE_RC=$?
+        elif [[ "${SUITE}" == "common" ]]; then
+          # common suite is SSH-driven from the runner container (no AT-SPI/display).
+          # It reads VM_IP, VM_USER, and SSH_KEY from the environment, which are
+          # available here but NOT inside the VM. Run behave from this container
+          # so it can reach the test SSH key at ${SSH_KEY}.
+          if ! python3 -c 'import behave' 2>/dev/null; then
+            pip3 install --quiet behave 2>&1 | tail -3
+          fi
+          export VM_IP="${VM_IP}"
+          export VM_USER="${VM_USER}"
+          export SSH_KEY="${SSH_KEY}"
+          PYTHONPATH=/workspace/bluefin-test-suite \
+          python3 -m behave /workspace/bluefin-test-suite/tests/common/features/ \
+            --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
+        else
+          # Write a runner script to the VM to avoid shell-quoting issues
+          # when passing compound commands to qecore-headless.
+          ${SSH} "printf '%s\n' '#!/bin/bash' 'set -euo pipefail' \
+            'export PATH=\$HOME/.local/bin:\$PATH' \
+            'export PYTHONPATH=/tmp/bluefin-tests' \
+            'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py' \
+            '# Start gnome-ponytail-daemon after GNOME Shell is ready.' \
+            '# D-Bus cannot auto-activate it (ServiceUnknown) in the qecore-headless' \
+            '# session because the service file is installed after first boot.' \
+            '# Starting it explicitly here ensures it registers before behave runs.' \
+            '/usr/libexec/gnome-ponytail-daemon &' \
+            'sleep 2' \
+            'exec \$(which behave) /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}' \
+            > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
+          ${SSH} "
+            export PATH=\$HOME/.local/bin:\$PATH
+            # Stop any lingering qecore-headless process from a prior run.
+            # IMPORTANT: pgrep -f matches CMDLINE strings, and because this
+            # entire heredoc is passed as a bash -c argument, any pgrep pattern
+            # that appears in the heredoc would self-match and kill the current
+            # shell (causing SSH exit 255).
+            # Instead: inspect /proc/*/exe symlinks. The running bash process
+            # has exe=/usr/bin/bash — only actual qecore-headless processes have
+            # a qecore binary as their exe. No self-match possible.
+            for _pid in \$(ls -la /proc/[0-9]*/exe 2>/dev/null \
+                           | awk '/qecore/{match(\$0, /\\/proc\\/([0-9]+)\\//, m); print m[1]}'); do
+              kill \"\$_pid\" 2>/dev/null || true
+            done
+            unset _pid
+            # Stop any lingering gnome-ponytail-daemon from the prior suite so the
+            # next suite can register its own instance on the D-Bus session.
+            for _pid in \$(ls -la /proc/[0-9]*/exe 2>/dev/null \
+                           | awk '/gnome-ponytail/{match(\$0, /\\/proc\\/([0-9]+)\\//, m); print m[1]}'); do
+              kill \"\$_pid\" 2>/dev/null || true
+            done
+            unset _pid
+            sleep 2
+            rm -f /tmp/headless* /tmp/qecore* /tmp/.headless* 2>/dev/null || true
+            \$HOME/.local/bin/qecore-headless \
+              --session-type wayland \
+              --session-desktop gnome \
+              \"/tmp/run-suite.sh\"
+          " || BEHAVE_RC=$?
+        fi
+
+        # ── Collect results ──────────────────────────────────────────────
+        # Always SCP even when behave exits non-zero (test failures), so
+        # artifacts are available for inspection on failed runs.
+        # Use trailing /. on source to copy CONTENTS not the directory itself
+        # (avoids /tmp/results/results/ nesting when dest already exists).
+        echo "Collecting results..." >&2
+        # common suite writes results.json locally in this container; skip VM SCP.
+        if [[ "${SUITE}" != "common" ]]; then
+          ${SCP} ${VM_USER}@${VM_IP}:/tmp/results/. /tmp/results/ || true
+        fi
+
+        # Persist results + screenshots to ghost disk for release evidence
+        RESULT_DIR="/var/mnt/ghost-data/test-results/{{workflow.name}}/${SUITE}"
+        mkdir -p "${RESULT_DIR}"
+        cp -r /tmp/results/. "${RESULT_DIR}/" 2>/dev/null || true
+        echo "Results saved to ${RESULT_DIR}" >&2
+
+        # Derive image slug for screenshot tag and results JSON push.
+        # Convention: testing -> bluefin-testing, lts-testing -> bluefin-lts-testing,
+        # bazzite-testing -> bazzite-testing, aurora-testing -> aurora-testing,
+        # dakota-testing -> dakota-testing.
+        VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
+        case "${VARIANT_TAG}" in
+          lts-*)     IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
+          dakota-*)  IMG_SLUG="${VARIANT_TAG}" ;;
+          bazzite-*) IMG_SLUG="${VARIANT_TAG}" ;;
+          aurora-*)  IMG_SLUG="${VARIANT_TAG}" ;;
+          *)         IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
+        esac
+
+        # Push desktop screenshot to GHCR as OCI artifact for release notes.
+        # Convention matches projectbluefin/testsuite/e2e.yml:
+        #   ghcr.io/projectbluefin/testsuite/desktop-screenshot:<slug>-<suite>-latest
+        SHOT=$(find /tmp/results/ -name "*.png" | head -1)
+        if [[ -n "$SHOT" && -f "$SHOT" ]]; then
+          if ! command -v oras &>/dev/null; then
+            ORAS_VER="1.2.3"
+            curl -sSfL "https://github.com/oras-project/oras/releases/download/v${ORAS_VER}/oras_${ORAS_VER}_linux_amd64.tar.gz" \
+              | tar xz -C /usr/local/bin/ oras 2>/dev/null || true
+          fi
+          if command -v oras &>/dev/null; then
+            SCREENSHOT_IMAGE="ghcr.io/projectbluefin/testsuite/desktop-screenshot"
+            PUSH_TAG="${IMG_SLUG}-${SUITE}-latest"
+            if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+              echo "${GITHUB_TOKEN}" | oras login ghcr.io -u github-actions --password-stdin 2>/dev/null || true
+              cp "$SHOT" /tmp/desktop-screenshot.png
+              oras push "${SCREENSHOT_IMAGE}:${PUSH_TAG}" \
+                --annotation "org.opencontainers.image.description=Bluefin desktop screenshot from lab e2e suite: ${SUITE}" \
+                --annotation "io.github.projectbluefin.caller_repo=projectbluefin/testing-lab" \
+                /tmp/desktop-screenshot.png:image/png 2>&1 || true
+              echo "Screenshot pushed to ${SCREENSHOT_IMAGE}:${PUSH_TAG}" >&2
+            else
+              echo "No GITHUB_TOKEN - skipping GHCR screenshot push" >&2
             fi
-            # Only the final result summary goes to stdout (Argo outputs.result)
-            python3 -c "
-            import json, sys
-            try:
-                data = json.load(open('/tmp/results/results.json'))
-                failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
-                total  = sum(len(f.get('elements',[])) for f in data)
-                print(f'{total - failed}/{total} scenarios passed')
-            except Exception:
-                print('results.json not found')
-            " 2>/dev/null || echo "(python3 summary unavailable)"
-            # Re-raise behave's exit code so Argo marks the step failed on test failures.
-            exit ${BEHAVE_RC}
-      volumes:
-        - name: ssh-key
-          secret:
-            secretName: "{{inputs.parameters.ssh-key-secret}}"
-            defaultMode: 0400
-        - name: workspace
-          emptyDir: {}
-        - name: results-store
-          hostPath:
-            path: /var/mnt/ghost-data/test-results
-            type: DirectoryOrCreate
+          fi
+        fi
+
+        # Push results JSON to GitHub for Pages dashboard at
+        # https://projectbluefin.github.io/testing-lab/
+        # Uses the GitHub Contents API (PUT /repos/.../contents/...).
+        # curl+jq only — no inline Python (colons break YAML block scalars).
+        PUSH_LOG="${RESULT_DIR}/pages-push.log"
+        if [[ -f /tmp/results/results.json && -n "${GITHUB_TOKEN:-}" && -n "${IMG_SLUG:-}" ]]; then
+          API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/results/${IMG_SLUG}-${SUITE}.json"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          N_TOTAL=$(jq '[.[].elements | length] | add // 0' /tmp/results/results.json)
+          N_FAILED=$(jq '[.[].elements[] | select(.status=="failed")] | length' /tmp/results/results.json)
+          RUN_STATUS=$( [[ "$N_FAILED" -gt 0 ]] && echo failed || echo passed )
+
+          # GET current file for sha + history
+          CURRENT=$(curl -sf \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "${API_URL}" 2>/dev/null || echo "{}")
+          FILE_SHA=$(echo "$CURRENT" | jq -r '.sha // empty')
+          HISTORY=$(echo "$CURRENT" | jq -r 'if .content then (.content | gsub("\n";"") | @base64d | fromjson | .history // []) else [] end' 2>/dev/null || echo "[]")
+
+          # Capture failing scenario names for the dashboard
+          FAILED_NAMES=$(jq -c '[.[].elements[] | select(.status=="failed") | .name] | unique' \
+            /tmp/results/results.json 2>/dev/null || echo "[]")
+
+          ENTRY=$(jq -nc \
+            --arg rd "$NOW" --arg wf "{{workflow.name}}" \
+            --arg st "$RUN_STATUS" --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
+            '{run_date:$rd,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f}')
+
+          PAYLOAD_OBJ=$(jq -nc \
+            --arg v "$IMG_SLUG" --arg su "$SUITE" --arg lr "$NOW" \
+            --arg wf "{{workflow.name}}" --arg st "$RUN_STATUS" \
+            --argjson sc "$N_TOTAL" --argjson f "$N_FAILED" \
+            --argjson fn "$FAILED_NAMES" \
+            --arg ss "https://projectbluefin.github.io/testing-lab/screenshots/${IMG_SLUG}-${SUITE}-latest.png" \
+            --argjson h "$(echo "$HISTORY" | jq -c --argjson e "$ENTRY" '[$e] + . | .[:10]')" \
+            '{variant:$v,suite:$su,last_run:$lr,workflow_name:$wf,status:$st,scenarios:$sc,failed:$f,failed_scenarios:$fn,screenshot_url:$ss,history:$h}')
+
+          CONTENT=$(echo "$PAYLOAD_OBJ" | base64 -w0)
+          BODY=$(jq -nc \
+            --arg msg "test: update results for ${IMG_SLUG}-${SUITE}" \
+            --arg content "$CONTENT" \
+            --arg sha "$FILE_SHA" \
+            'if $sha != "" then {message:$msg,content:$content,sha:$sha} else {message:$msg,content:$content} end')
+
+          HTTP_CODE=$(curl -sf -w "%{http_code}" -o /tmp/push-result-response.json \
+            -X PUT \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" "${API_URL}" 2>&1) || HTTP_CODE="curl_error"
+
+          echo "${NOW} pushed ${IMG_SLUG}-${SUITE}: ${RUN_STATUS} (${N_TOTAL} scenarios, ${N_FAILED} failed) http=${HTTP_CODE}" \
+            | tee -a "${PUSH_LOG}" >&2
+          if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
+            echo "PUT response: $(cat /tmp/push-result-response.json 2>/dev/null)" \
+              | tee -a "${PUSH_LOG}" >&2
+          fi
+        else
+          echo "Skipping Pages push: GITHUB_TOKEN=$(test -n "${GITHUB_TOKEN:-}" && echo set || echo empty) IMG_SLUG=${IMG_SLUG:-empty}" \
+            | tee -a "${PUSH_LOG}" >&2
+        fi
+
+        echo "Done. Results in /tmp/results/" >&2
+        # Print full results JSON to stderr — captured by Loki and Argo MCP get_workflow_logs
+        if [[ -f /tmp/results/results.json ]]; then
+          echo "=== BEHAVE RESULTS JSON ===" >&2
+          cat /tmp/results/results.json >&2
+          echo "=== END BEHAVE RESULTS ===" >&2
+        fi
+        # Only the final result summary goes to stdout (Argo outputs.result)
+        python3 -c "
+        import json, sys
+        try:
+            data = json.load(open('/tmp/results/results.json'))
+            failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
+            total  = sum(len(f.get('elements',[])) for f in data)
+            print(f'{total - failed}/{total} scenarios passed')
+        except Exception:
+            print('results.json not found')
+        " 2>/dev/null || echo "(python3 summary unavailable)"
+        # Re-raise behave's exit code so Argo marks the step failed on test failures.
+        exit ${BEHAVE_RC}
+        SCRIPT_EOF
+    volumes:
+    - name: ssh-key
+      secret:
+        secretName: "{{inputs.parameters.ssh-key-secret}}"
+        defaultMode: 0400
+    - name: workspace
+      emptyDir: {}
+    - name: results-store
+      hostPath:
+        path: /var/mnt/ghost-data/test-results
+        type: DirectoryOrCreate

@@ -13,233 +13,232 @@ metadata:
 spec:
   serviceAccountName: argo
   templates:
-    - name: provision-vm
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-            value: "flatcar-test"
-          - name: ssh-pubkey
+  - name: provision-vm
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+        value: "flatcar-test"
+      - name: ssh-pubkey
+      - name: flatcar-version
+        value: "current"
+      - name: flatcar-channel
+        value: "stable"
+    outputs:
+      parameters:
+      - name: vm-ip
+        valueFrom:
+          parameter: "{{steps.wait-for-vm.outputs.result}}"
+    steps:
+    - - name: prepare-disk
+        template: prepare-flatcar-disk
+        arguments:
+          parameters:
           - name: flatcar-version
-            value: "current"
+            value: "{{inputs.parameters.flatcar-version}}"
           - name: flatcar-channel
-            value: "stable"
-      outputs:
-        parameters:
-          - name: vm-ip
-            valueFrom:
-              parameter: "{{steps.wait-for-vm.outputs.result}}"
-      steps:
-        - - name: prepare-disk
-            template: prepare-flatcar-disk
-            arguments:
-              parameters:
-                - name: flatcar-version
-                  value: "{{inputs.parameters.flatcar-version}}"
-                - name: flatcar-channel
-                  value: "{{inputs.parameters.flatcar-channel}}"
-        - - name: create-vm
-            template: create-flatcar-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-                - name: ssh-pubkey
-                  value: "{{inputs.parameters.ssh-pubkey}}"
-        - - name: wait-for-vm
-            template: wait-for-flatcar-ready
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-                - name: ssh-pubkey
-                  value: "{{inputs.parameters.ssh-pubkey}}"
-
-    - name: prepare-flatcar-disk
-      inputs:
-        parameters:
-          - name: flatcar-version
-          - name: flatcar-channel
-      volumes:
-        - name: work
-          emptyDir:
-            sizeLimit: 20Gi
-      script:
-        image: quay.io/buildah/stable:latest
-        command: [bash]
-        securityContext:
-          privileged: true
-          runAsUser: 0
-        resources:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "4"
-            memory: 8Gi
-        volumeMounts:
-          - name: work
-            mountPath: /mnt/work
-        source: |
-          set -euo pipefail
-          CHANNEL="{{inputs.parameters.flatcar-channel}}"
-          VERSION="{{inputs.parameters.flatcar-version}}"
-          URL="https://stable.release.flatcar-linux.net/amd64-usr/${VERSION}/flatcar_production_qemu_image.img.bz2"
-          CONTAINERDISK="192.168.1.102:30500/flatcar-containerdisk:latest"
-          # ponytail: :latest tag is fine — no nightly CronWorkflow, runs are sequential
-
-          echo "Installing qemu-img and bzip2..." >&2
-          dnf install -y -q qemu-img bzip2 2>&1 | tail -3
-
-          echo "Downloading Flatcar ${CHANNEL} ${VERSION}..." >&2
-          curl -L --fail --retry 3 -o /mnt/work/flatcar.img.bz2 "${URL}"
-
-          echo "Decompressing bz2..." >&2
-          bzip2 -d /mnt/work/flatcar.img.bz2
-
-          echo "Converting qcow2 → raw..." >&2
-          qemu-img convert -f qcow2 -O raw /mnt/work/flatcar.img /mnt/work/flatcar.raw
-          rm -f /mnt/work/flatcar.img
-
-          echo "Wrapping as containerDisk and pushing to ${CONTAINERDISK}..." >&2
-          CTR=$(buildah from scratch)
-          buildah copy --chown 107:107 "${CTR}" /mnt/work/flatcar.raw /disk/flatcar.raw
-          buildah commit "${CTR}" "${CONTAINERDISK}"
-          buildah push --tls-verify=false "${CONTAINERDISK}"
-          buildah rm "${CTR}" 2>/dev/null || true
-          echo "Flatcar containerDisk ready: ${CONTAINERDISK}" >&2
-
-    - name: create-flatcar-vm
-      inputs:
-        parameters:
+            value: "{{inputs.parameters.flatcar-channel}}"
+    - - name: create-vm
+        template: create-flatcar-vm
+        arguments:
+          parameters:
           - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
           - name: namespace
+            value: "{{inputs.parameters.namespace}}"
           - name: ssh-pubkey
-      resource:
-        action: apply
-        manifest: |
-          apiVersion: kubevirt.io/v1
-          kind: VirtualMachine
-          metadata:
-            name: "{{inputs.parameters.vm-name}}"
-            namespace: "{{inputs.parameters.namespace}}"
-            labels:
-              app: flatcar-test
-              argo-workflow: "{{workflow.name}}"
-          spec:
-            runStrategy: Always
-            template:
-              metadata:
-                labels:
-                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
-              spec:
-                domain:
-                  cpu:
-                    cores: 2
-                  memory:
-                    guest: 4Gi
-                  devices:
-                    blockMultiQueue: true
-                    rng: {}
-                    disks:
-                      - name: rootdisk
-                        disk:
-                          bus: virtio
-                        bootOrder: 1
-                      - name: cloudinit
-                        disk:
-                          bus: virtio
-                    interfaces:
-                      - name: default
-                        masquerade: {}
-                  machine:
-                    type: q35
-                networks:
-                  - name: default
-                    pod: {}
-                volumes:
-                  - name: rootdisk
-                    containerDisk:
-                      image: 192.168.1.102:30500/flatcar-containerdisk:latest
-                  - name: cloudinit
-                    cloudInitNoCloud:
-                      userData: |
-                        #cloud-config
-                        ssh_authorized_keys:
-                          - {{inputs.parameters.ssh-pubkey}}
-
-    - name: wait-for-flatcar-ready
-      inputs:
-        parameters:
+            value: "{{inputs.parameters.ssh-pubkey}}"
+    - - name: wait-for-vm
+        template: wait-for-flatcar-ready
+        arguments:
+          parameters:
           - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
           - name: namespace
+            value: "{{inputs.parameters.namespace}}"
           - name: ssh-pubkey
-      script:
-        image: cgr.dev/chainguard/wolfi-base:latest
-        command: [sh]
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        env:
-          - name: SSH_PUBKEY
-            valueFrom:
-              secretKeyRef:
-                name: bluefin-test-ssh-key
-                key: id_ed25519.pub
-        source: |
-          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
-          exec bash <<'SCRIPT_EOF'
+            value: "{{inputs.parameters.ssh-pubkey}}"
+
+  - name: prepare-flatcar-disk
+    inputs:
+      parameters:
+      - name: flatcar-version
+      - name: flatcar-channel
+    volumes:
+    - name: work
+      emptyDir:
+        sizeLimit: 20Gi
+    script:
+      image: quay.io/buildah/stable:latest
+      command: [bash]
+      securityContext:
+        privileged: true
+        runAsUser: 0
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+      volumeMounts:
+      - name: work
+        mountPath: /mnt/work
+      source: |
+        set -euo pipefail
+        CHANNEL="{{inputs.parameters.flatcar-channel}}"
+        VERSION="{{inputs.parameters.flatcar-version}}"
+        URL="https://stable.release.flatcar-linux.net/amd64-usr/${VERSION}/flatcar_production_qemu_image.img.bz2"
+        CONTAINERDISK="192.168.1.102:30500/flatcar-containerdisk:latest"
+        # ponytail: :latest tag is fine — no nightly CronWorkflow, runs are sequential
+
+        echo "Installing qemu-img and bzip2..." >&2
+
+        echo "Downloading Flatcar ${CHANNEL} ${VERSION}..." >&2
+        curl -L --fail --retry 3 -o /mnt/work/flatcar.img.bz2 "${URL}"
+
+        echo "Decompressing bz2..." >&2
+        bzip2 -d /mnt/work/flatcar.img.bz2
+
+        echo "Converting qcow2 → raw..." >&2
+        qemu-img convert -f qcow2 -O raw /mnt/work/flatcar.img /mnt/work/flatcar.raw
+        rm -f /mnt/work/flatcar.img
+
+        echo "Wrapping as containerDisk and pushing to ${CONTAINERDISK}..." >&2
+        CTR=$(buildah from scratch)
+        buildah copy --chown 107:107 "${CTR}" /mnt/work/flatcar.raw /disk/flatcar.raw
+        buildah commit "${CTR}" "${CONTAINERDISK}"
+        buildah push --tls-verify=false "${CONTAINERDISK}"
+        buildah rm "${CTR}" 2>/dev/null || true
+        echo "Flatcar containerDisk ready: ${CONTAINERDISK}" >&2
+
+  - name: create-flatcar-vm
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: ssh-pubkey
+    resource:
+      action: apply
+      manifest: |
+        apiVersion: kubevirt.io/v1
+        kind: VirtualMachine
+        metadata:
+          name: "{{inputs.parameters.vm-name}}"
+          namespace: "{{inputs.parameters.namespace}}"
+          labels:
+            app: flatcar-test
+            argo-workflow: "{{workflow.name}}"
+        spec:
+          runStrategy: Always
+          template:
+            metadata:
+              labels:
+                kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+            spec:
+              domain:
+                cpu:
+                  cores: 2
+                memory:
+                  guest: 4Gi
+                devices:
+                  blockMultiQueue: true
+                  rng: {}
+                  disks:
+                    - name: rootdisk
+                      disk:
+                        bus: virtio
+                      bootOrder: 1
+                    - name: cloudinit
+                      disk:
+                        bus: virtio
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                machine:
+                  type: q35
+              networks:
+                - name: default
+                  pod: {}
+              volumes:
+                - name: rootdisk
+                  containerDisk:
+                    image: 192.168.1.102:30500/flatcar-containerdisk:latest
+                - name: cloudinit
+                  cloudInitNoCloud:
+                    userData: |
+                      #cloud-config
+                      ssh_authorized_keys:
+                        - {{inputs.parameters.ssh-pubkey}}
+
+  - name: wait-for-flatcar-ready
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: ssh-pubkey
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      env:
+      - name: SSH_PUBKEY
+        valueFrom:
+          secretKeyRef:
+            name: bluefin-test-ssh-key
+            key: id_ed25519.pub
+      source: |-
+        apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        exec 3>&1
+        exec 1>&2
+        NS="{{inputs.parameters.namespace}}"
+        VM="{{inputs.parameters.vm-name}}"
+        LABEL="kubevirt.io/vm=${VM}"
+        # Use pubkey from secret (parameter kept for API compat but ignored)
+        PUBKEY="${SSH_PUBKEY}"
+
+        echo "Waiting for VMI ready..." >&2
+        kubectl wait vmi -n "${NS}" "${VM}" \
+          --for=condition=Ready --timeout=300s >&2
+
+        echo "Waiting for guest agent..." >&2
+        timeout 120 bash -c \
+          "until kubectl get vmi -n '${NS}' '${VM}' -o jsonpath='{.status.conditions[?(@.type==\"AgentConnected\")].status}' | grep -q True; do sleep 5; done"
+
+        LAUNCHER_POD=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+          -o jsonpath='{.items[0].metadata.name}')
+        DOMAIN="${NS}_${VM}"
+
+        echo "Injecting SSH key via guest agent..." >&2
+        kubectl exec -n "${NS}" "${LAUNCHER_POD}" -c compute -- bash -lc '
           set -euo pipefail
-          exec 3>&1
-          exec 1>&2
-          NS="{{inputs.parameters.namespace}}"
-          VM="{{inputs.parameters.vm-name}}"
-          LABEL="kubevirt.io/vm=${VM}"
-          # Use pubkey from secret (parameter kept for API compat but ignored)
-          PUBKEY="${SSH_PUBKEY}"
+          domain="'"${DOMAIN}"'"
+          key="'"${PUBKEY}"'"
+          payload=$(cat <<EOF
+        {"execute":"guest-exec","arguments":{"path":"/usr/bin/sh","arg":["-lc","mkdir -p /home/core/.ssh && printf '\''%s\\n'\'' '\''${key}'\'' > /home/core/.ssh/authorized_keys && chown -R core:core /home/core/.ssh && chmod 700 /home/core/.ssh && chmod 600 /home/core/.ssh/authorized_keys"],"capture-output":true}}
+        EOF
+          )
+          resp=$(virsh qemu-agent-command "${domain}" "${payload}")
+          pid=$(printf "%s" "${resp}" | sed -n "s/.*\"pid\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p")
+          sleep 2
+          virsh qemu-agent-command "${domain}" "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":${pid}}}"
+        ' >&2
 
-          echo "Waiting for VMI ready..." >&2
-          kubectl wait vmi -n "${NS}" "${VM}" \
-            --for=condition=Ready --timeout=300s >&2
+        POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+          -o jsonpath='{.items[0].status.podIP}')
 
-          echo "Waiting for guest agent..." >&2
-          timeout 120 bash -c \
-            "until kubectl get vmi -n '${NS}' '${VM}' -o jsonpath='{.status.conditions[?(@.type==\"AgentConnected\")].status}' | grep -q True; do sleep 5; done"
+        echo "Waiting for SSH on ${POD_IP}..." >&2
+        timeout 60 bash -c \
+          "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
 
-          LAUNCHER_POD=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
-            -o jsonpath='{.items[0].metadata.name}')
-          DOMAIN="${NS}_${VM}"
+        echo "${POD_IP}" >&3
 
-          echo "Injecting SSH key via guest agent..." >&2
-          kubectl exec -n "${NS}" "${LAUNCHER_POD}" -c compute -- bash -lc '
-            set -euo pipefail
-            domain="'"${DOMAIN}"'"
-            key="'"${PUBKEY}"'"
-            payload=$(cat <<EOF
-          {"execute":"guest-exec","arguments":{"path":"/usr/bin/sh","arg":["-lc","mkdir -p /home/core/.ssh && printf '\''%s\\n'\'' '\''${key}'\'' > /home/core/.ssh/authorized_keys && chown -R core:core /home/core/.ssh && chmod 700 /home/core/.ssh && chmod 600 /home/core/.ssh/authorized_keys"],"capture-output":true}}
-          EOF
-            )
-            resp=$(virsh qemu-agent-command "${domain}" "${payload}")
-            pid=$(printf "%s" "${resp}" | sed -n "s/.*\"pid\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p")
-            sleep 2
-            virsh qemu-agent-command "${domain}" "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":${pid}}}"
-          ' >&2
-
-          POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
-            -o jsonpath='{.items[0].status.podIP}')
-
-          echo "Waiting for SSH on ${POD_IP}..." >&2
-          timeout 60 bash -c \
-            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
-
-          echo "${POD_IP}" >&3
-
-          SCRIPT_EOF
+        SCRIPT_EOF

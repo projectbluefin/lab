@@ -14,349 +14,348 @@ metadata:
       The published GNOME OS nightly is currently a hybrid GPT ISO that is usable as a raw disk.
 spec:
   templates:
-    - name: provision-vm
-      inputs:
-        parameters:
+  - name: provision-vm
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+        value: "gnomeos-test"
+      - name: image-url
+      - name: image-sha256
+        value: ""
+      - name: image-format
+        value: "raw"
+      - name: console-hook-config-map
+        value: ""
+    outputs:
+      parameters:
+      - name: vm-ip
+        valueFrom:
+          parameter: "{{steps.wait-for-vm.outputs.result}}"
+    steps:
+    - - name: prepare-disk
+        template: prepare-gnomeos-disk
+        arguments:
+          parameters:
           - name: vm-name
-          - name: namespace
-            value: "gnomeos-test"
+            value: "{{inputs.parameters.vm-name}}"
           - name: image-url
+            value: "{{inputs.parameters.image-url}}"
           - name: image-sha256
-            value: ""
+            value: "{{inputs.parameters.image-sha256}}"
           - name: image-format
-            value: "raw"
+            value: "{{inputs.parameters.image-format}}"
           - name: console-hook-config-map
-            value: ""
-      outputs:
-        parameters:
-          - name: vm-ip
-            valueFrom:
-              parameter: "{{steps.wait-for-vm.outputs.result}}"
-      steps:
-        - - name: prepare-disk
-            template: prepare-gnomeos-disk
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: image-url
-                  value: "{{inputs.parameters.image-url}}"
-                - name: image-sha256
-                  value: "{{inputs.parameters.image-sha256}}"
-                - name: image-format
-                  value: "{{inputs.parameters.image-format}}"
-                - name: console-hook-config-map
-                  value: "{{inputs.parameters.console-hook-config-map}}"
-        - - name: create-vm
-            when: "'{{inputs.parameters.console-hook-config-map}}' == ''"
-            template: create-gnomeos-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-          - name: create-vm-with-hook
-            when: "'{{inputs.parameters.console-hook-config-map}}' != ''"
-            template: create-gnomeos-vm-with-hook
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-                - name: console-hook-config-map
-                  value: "{{inputs.parameters.console-hook-config-map}}"
-        - - name: wait-for-vm
-            template: wait-for-gnomeos-boot
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-
-    - name: prepare-gnomeos-disk
-      inputs:
-        parameters:
+            value: "{{inputs.parameters.console-hook-config-map}}"
+    - - name: create-vm
+        when: "'{{inputs.parameters.console-hook-config-map}}' == ''"
+        template: create-gnomeos-vm
+        arguments:
+          parameters:
           - name: vm-name
-          - name: image-url
-          - name: image-sha256
-          - name: image-format
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+      - name: create-vm-with-hook
+        when: "'{{inputs.parameters.console-hook-config-map}}' != ''"
+        template: create-gnomeos-vm-with-hook
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
           - name: console-hook-config-map
-      volumes:
-        - name: work
-          emptyDir:
-            sizeLimit: 40Gi
-      script:
-        image: quay.io/buildah/stable:latest
-        command: [bash]
-        securityContext:
-          privileged: true
-          runAsUser: 0
-        resources:
-          requests:
-            cpu: "1"
-            memory: 2Gi
-          limits:
-            cpu: "4"
-            memory: 8Gi
-        volumeMounts:
-          - name: work
-            mountPath: /mnt/work
-        source: |
-          set -euo pipefail
-          microdnf install -y curl jq >/dev/null 2>&1
-          URL="{{inputs.parameters.image-url}}"
-          SHA="{{inputs.parameters.image-sha256}}"
-          FORMAT="{{inputs.parameters.image-format}}"
-          WORK="/mnt/work"
-          CONTAINERDISK="192.168.1.102:30500/gnomeos-containerdisk:latest"
+            value: "{{inputs.parameters.console-hook-config-map}}"
+    - - name: wait-for-vm
+        template: wait-for-gnomeos-boot
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
 
-          if [[ -z "${URL}" ]]; then
-            echo "ERROR: image-url is required" >&2
-            exit 1
+  - name: prepare-gnomeos-disk
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: image-url
+      - name: image-sha256
+      - name: image-format
+      - name: console-hook-config-map
+    volumes:
+    - name: work
+      emptyDir:
+        sizeLimit: 40Gi
+    script:
+      image: quay.io/buildah/stable:latest
+      command: [bash]
+      securityContext:
+        privileged: true
+        runAsUser: 0
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+      volumeMounts:
+      - name: work
+        mountPath: /mnt/work
+      source: |
+        set -euo pipefail
+        URL="{{inputs.parameters.image-url}}"
+        SHA="{{inputs.parameters.image-sha256}}"
+        FORMAT="{{inputs.parameters.image-format}}"
+        WORK="/mnt/work"
+        CONTAINERDISK="192.168.1.102:30500/gnomeos-containerdisk:latest"
+
+        if [[ -z "${URL}" ]]; then
+          echo "ERROR: image-url is required" >&2
+          exit 1
+        fi
+
+        download_file() {
+          local url="$1"
+          local out="$2"
+          if command -v curl >/dev/null 2>&1; then
+            curl -L --fail --retry 3 --output "${out}" "${url}"
+            return
           fi
-
-          download_file() {
-            local url="$1"
-            local out="$2"
-            if command -v curl >/dev/null 2>&1; then
-              curl -L --fail --retry 3 --output "${out}" "${url}"
-              return
-            fi
-            if command -v wget >/dev/null 2>&1; then
-              wget -O "${out}" "${url}"
-              return
-            fi
-            if command -v python3 >/dev/null 2>&1; then
-              python3 - "${url}" "${out}" <<'PY'
-              import sys
-              from urllib.request import urlopen
-
-              url, out = sys.argv[1], sys.argv[2]
-              with urlopen(url) as src, open(out, "wb") as dst:
-                  while True:
-                      chunk = src.read(1024 * 1024)
-                      if not chunk:
-                          break
-                      dst.write(chunk)
-              PY
-              return
-            fi
-            echo "ERROR: no downloader available (need curl, wget, or python3)" >&2
-            exit 1
-          }
-
-          raw_from_xz() {
-            local src="$1"
-            local out="$2"
-            if command -v xzcat >/dev/null 2>&1; then
-              xzcat "${src}" > "${out}"
-              return
-            fi
-            if command -v python3 >/dev/null 2>&1; then
-              python3 - "${src}" "${out}" <<'PY'
-              import lzma
-              import shutil
-              import sys
-
-              src, out = sys.argv[1], sys.argv[2]
-              with lzma.open(src, "rb") as fsrc, open(out, "wb") as fdst:
-                  shutil.copyfileobj(fsrc, fdst)
-              PY
-              return
-            fi
-            echo "ERROR: cannot unpack xz artifact (need xzcat or python3)" >&2
-            exit 1
-          }
-
-          ARTIFACT_NAME="$(basename "${URL%%\?*}")"
-          DOWNLOADED="${WORK}/${ARTIFACT_NAME}"
-          case "${FORMAT}" in
-            raw)
-              if [[ "${ARTIFACT_NAME}" == *.raw ]]; then
-                BASE_RAW="${WORK}/${ARTIFACT_NAME}"
-              else
-                BASE_RAW="${WORK}/${ARTIFACT_NAME}.raw"
-              fi
-              ;;
-            raw.xz)
-              BASE_RAW="${WORK}/${ARTIFACT_NAME%.xz}"
-              ;;
-            *)
-              echo "ERROR: unsupported image-format '${FORMAT}' (expected raw or raw.xz)" >&2
-              exit 1
-              ;;
-          esac
-
-          echo "Downloading GNOME OS artifact: ${URL}" >&2
-          download_file "${URL}" "${DOWNLOADED}"
-
-          if [[ -n "${SHA}" ]]; then
-            echo "${SHA}  ${DOWNLOADED}" | sha256sum -c -
+          if command -v wget >/dev/null 2>&1; then
+            wget -O "${out}" "${url}"
+            return
           fi
+          if command -v python3 >/dev/null 2>&1; then
+            python3 - "${url}" "${out}" <<'PY'
+            import sys
+            from urllib.request import urlopen
 
-          case "${FORMAT}" in
-            raw)
-              [[ "${DOWNLOADED}" != "${BASE_RAW}" ]] && mv "${DOWNLOADED}" "${BASE_RAW}"
-              ;;
-            raw.xz)
-              raw_from_xz "${DOWNLOADED}" "${BASE_RAW}"
-              rm -f "${DOWNLOADED}"
-              ;;
-          esac
+            url, out = sys.argv[1], sys.argv[2]
+            with urlopen(url) as src, open(out, "wb") as dst:
+                while True:
+                    chunk = src.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    dst.write(chunk)
+            PY
+            return
+          fi
+          echo "ERROR: no downloader available (need curl, wget, or python3)" >&2
+          exit 1
+        }
 
-          echo "Wrapping ${BASE_RAW} as containerDisk OCI image..." >&2
-          CTR=$(buildah from scratch)
-          buildah copy --chown 107:107 "${CTR}" "${BASE_RAW}" /disk/gnomeos.raw
-          buildah commit "${CTR}" "${CONTAINERDISK}"
-          echo "Pushing to ${CONTAINERDISK}..." >&2
-          buildah push --tls-verify=false "${CONTAINERDISK}"
-          buildah rm "${CTR}" 2>/dev/null || true
-          echo "GNOME OS containerDisk ready: ${CONTAINERDISK}" >&2
+        raw_from_xz() {
+          local src="$1"
+          local out="$2"
+          if command -v xzcat >/dev/null 2>&1; then
+            xzcat "${src}" > "${out}"
+            return
+          fi
+          if command -v python3 >/dev/null 2>&1; then
+            python3 - "${src}" "${out}" <<'PY'
+            import lzma
+            import shutil
+            import sys
 
-    - name: create-gnomeos-vm
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-      resource:
-        action: apply
-        manifest: |
-          apiVersion: kubevirt.io/v1
-          kind: VirtualMachine
-          metadata:
-            name: "{{inputs.parameters.vm-name}}"
-            namespace: "{{inputs.parameters.namespace}}"
-            labels:
-              app: gnomeos-test
-              argo-workflow: "{{workflow.name}}"
-          spec:
-            runStrategy: Always
-            template:
-              metadata:
-                labels:
-                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
-              spec:
-                domain:
-                  firmware:
-                    bootloader:
-                      efi:
-                        secureBoot: false
-                  cpu:
-                    cores: 4
-                  memory:
-                    guest: 8Gi
-                  devices:
-                    blockMultiQueue: true
-                    rng: {}
-                    disks:
-                      - name: rootdisk
-                        disk:
-                          bus: virtio
-                        bootOrder: 1
-                    interfaces:
-                      - name: default
-                        masquerade: {}
-                  machine:
-                    type: q35
-                networks:
-                  - name: default
-                    pod: {}
-                volumes:
-                  - name: rootdisk
-                    containerDisk:
-                      image: 192.168.1.102:30500/gnomeos-containerdisk:latest
+            src, out = sys.argv[1], sys.argv[2]
+            with lzma.open(src, "rb") as fsrc, open(out, "wb") as fdst:
+                shutil.copyfileobj(fsrc, fdst)
+            PY
+            return
+          fi
+          echo "ERROR: cannot unpack xz artifact (need xzcat or python3)" >&2
+          exit 1
+        }
 
-    - name: create-gnomeos-vm-with-hook
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-          - name: console-hook-config-map
-      resource:
-        action: apply
-        manifest: |
-          apiVersion: kubevirt.io/v1
-          kind: VirtualMachine
-          metadata:
-            name: "{{inputs.parameters.vm-name}}"
-            namespace: "{{inputs.parameters.namespace}}"
-            labels:
-              app: gnomeos-test
-              argo-workflow: "{{workflow.name}}"
-          spec:
-            runStrategy: Always
-            template:
-              metadata:
-                labels:
-                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
-                annotations:
-                  hooks.kubevirt.io/hookSidecars: >-
-                    [{"args":["--version","v1alpha2"],"configMap":{"name":"{{inputs.parameters.console-hook-config-map}}","key":"onDefineDomain","hookPath":"/usr/bin/onDefineDomain"}}]
-              spec:
-                domain:
-                  firmware:
-                    bootloader:
-                      efi:
-                        secureBoot: false
-                  cpu:
-                    cores: 4
-                  memory:
-                    guest: 8Gi
-                  devices:
-                    disks:
-                      - name: rootdisk
-                        disk:
-                          bus: virtio
-                        bootOrder: 1
-                    interfaces:
-                      - name: default
-                        masquerade: {}
-                  machine:
-                    type: q35
-                networks:
-                  - name: default
-                    pod: {}
-                volumes:
-                  - name: rootdisk
-                    containerDisk:
-                      image: 192.168.1.102:30500/gnomeos-containerdisk:latest
+        ARTIFACT_NAME="$(basename "${URL%%\?*}")"
+        DOWNLOADED="${WORK}/${ARTIFACT_NAME}"
+        case "${FORMAT}" in
+          raw)
+            if [[ "${ARTIFACT_NAME}" == *.raw ]]; then
+              BASE_RAW="${WORK}/${ARTIFACT_NAME}"
+            else
+              BASE_RAW="${WORK}/${ARTIFACT_NAME}.raw"
+            fi
+            ;;
+          raw.xz)
+            BASE_RAW="${WORK}/${ARTIFACT_NAME%.xz}"
+            ;;
+          *)
+            echo "ERROR: unsupported image-format '${FORMAT}' (expected raw or raw.xz)" >&2
+            exit 1
+            ;;
+        esac
 
-    - name: wait-for-gnomeos-boot
-      inputs:
-        parameters:
-          - name: vm-name
-          - name: namespace
-      script:
-        image: cgr.dev/chainguard/wolfi-base:latest
-        command: [sh]
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        source: |
-          apk add --no-cache bash curl jq kubectl git python3 xz >/dev/null 2>&1
-          exec bash <<'SCRIPT_EOF'
-          set -euo pipefail
-          exec 3>&1
-          exec 1>&2
-          NS="{{inputs.parameters.namespace}}"
-          VM="{{inputs.parameters.vm-name}}"
-          LABEL="kubevirt.io/vm=${VM}"
+        echo "Downloading GNOME OS artifact: ${URL}" >&2
+        download_file "${URL}" "${DOWNLOADED}"
 
-          echo "Waiting for GNOME OS VMI ready..." >&2
-          kubectl wait vmi -n "${NS}" "${VM}" \
-            --for=condition=Ready --timeout=600s >&2
+        if [[ -n "${SHA}" ]]; then
+          echo "${SHA}  ${DOWNLOADED}" | sha256sum -c -
+        fi
 
-          POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
-            -o jsonpath='{.items[0].status.podIP}')
+        case "${FORMAT}" in
+          raw)
+            [[ "${DOWNLOADED}" != "${BASE_RAW}" ]] && mv "${DOWNLOADED}" "${BASE_RAW}"
+            ;;
+          raw.xz)
+            raw_from_xz "${DOWNLOADED}" "${BASE_RAW}"
+            rm -f "${DOWNLOADED}"
+            ;;
+        esac
 
-          echo "VMI ready; pod IP is ${POD_IP}" >&2
-          echo "${POD_IP}" >&3
+        echo "Wrapping ${BASE_RAW} as containerDisk OCI image..." >&2
+        CTR=$(buildah from scratch)
+        buildah copy --chown 107:107 "${CTR}" "${BASE_RAW}" /disk/gnomeos.raw
+        buildah commit "${CTR}" "${CONTAINERDISK}"
+        echo "Pushing to ${CONTAINERDISK}..." >&2
+        buildah push --tls-verify=false "${CONTAINERDISK}"
+        buildah rm "${CTR}" 2>/dev/null || true
+        echo "GNOME OS containerDisk ready: ${CONTAINERDISK}" >&2
 
-          SCRIPT_EOF
+  - name: create-gnomeos-vm
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+    resource:
+      action: apply
+      manifest: |
+        apiVersion: kubevirt.io/v1
+        kind: VirtualMachine
+        metadata:
+          name: "{{inputs.parameters.vm-name}}"
+          namespace: "{{inputs.parameters.namespace}}"
+          labels:
+            app: gnomeos-test
+            argo-workflow: "{{workflow.name}}"
+        spec:
+          runStrategy: Always
+          template:
+            metadata:
+              labels:
+                kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+            spec:
+              domain:
+                firmware:
+                  bootloader:
+                    efi:
+                      secureBoot: false
+                cpu:
+                  cores: 4
+                memory:
+                  guest: 8Gi
+                devices:
+                  blockMultiQueue: true
+                  rng: {}
+                  disks:
+                    - name: rootdisk
+                      disk:
+                        bus: virtio
+                      bootOrder: 1
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                machine:
+                  type: q35
+              networks:
+                - name: default
+                  pod: {}
+              volumes:
+                - name: rootdisk
+                  containerDisk:
+                    image: 192.168.1.102:30500/gnomeos-containerdisk:latest
+
+  - name: create-gnomeos-vm-with-hook
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+      - name: console-hook-config-map
+    resource:
+      action: apply
+      manifest: |
+        apiVersion: kubevirt.io/v1
+        kind: VirtualMachine
+        metadata:
+          name: "{{inputs.parameters.vm-name}}"
+          namespace: "{{inputs.parameters.namespace}}"
+          labels:
+            app: gnomeos-test
+            argo-workflow: "{{workflow.name}}"
+        spec:
+          runStrategy: Always
+          template:
+            metadata:
+              labels:
+                kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+              annotations:
+                hooks.kubevirt.io/hookSidecars: >-
+                  [{"args":["--version","v1alpha2"],"configMap":{"name":"{{inputs.parameters.console-hook-config-map}}","key":"onDefineDomain","hookPath":"/usr/bin/onDefineDomain"}}]
+            spec:
+              domain:
+                firmware:
+                  bootloader:
+                    efi:
+                      secureBoot: false
+                cpu:
+                  cores: 4
+                memory:
+                  guest: 8Gi
+                devices:
+                  disks:
+                    - name: rootdisk
+                      disk:
+                        bus: virtio
+                      bootOrder: 1
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                machine:
+                  type: q35
+              networks:
+                - name: default
+                  pod: {}
+              volumes:
+                - name: rootdisk
+                  containerDisk:
+                    image: 192.168.1.102:30500/gnomeos-containerdisk:latest
+
+  - name: wait-for-gnomeos-boot
+    inputs:
+      parameters:
+      - name: vm-name
+      - name: namespace
+    script:
+      image: cgr.dev/chainguard/wolfi-base:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |-
+        apk add --no-cache bash curl jq kubectl git python3 xz >/dev/null 2>&1
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        exec 3>&1
+        exec 1>&2
+        NS="{{inputs.parameters.namespace}}"
+        VM="{{inputs.parameters.vm-name}}"
+        LABEL="kubevirt.io/vm=${VM}"
+
+        echo "Waiting for GNOME OS VMI ready..." >&2
+        kubectl wait vmi -n "${NS}" "${VM}" \
+          --for=condition=Ready --timeout=600s >&2
+
+        POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+          -o jsonpath='{.items[0].status.podIP}')
+
+        echo "VMI ready; pod IP is ${POD_IP}" >&2
+        echo "${POD_IP}" >&3
+
+        SCRIPT_EOF

@@ -15,8 +15,6 @@ spec:
   startingDeadlineSeconds: 300
   workflowSpec:
     serviceAccountName: argo
-    podGC:
-      strategy: OnWorkflowCompletion
     ttlStrategy:
       secondsAfterSuccess: 86400
       secondsAfterFailure: 604800
@@ -41,19 +39,19 @@ spec:
                     print(r['version'])
                     break
             ")
-            echo "Latest kernel.org stable: \$LATEST"
+            echo "Latest kernel.org stable: ${LATEST}"
 
             # Read last-seen version from ConfigMap
             SEEN=$(kubectl get configmap flatcar-kernel-polling-state \
               -n argo -o jsonpath='{.data.kernel-stable}' 2>/dev/null || echo "")
-            echo "Last built: \$SEEN"
+            echo "Last built: ${SEEN}"
 
-            if [ "\$LATEST" = "\$SEEN" ]; then
+            if [ "${LATEST}" = "${SEEN}" ]; then
               echo "No change — skipping build"
               exit 0
             fi
 
-            echo "New kernel detected: \$LATEST — triggering build"
+            echo "New kernel detected: ${LATEST} — triggering build"
             kubectl create -f - <<MANIFEST_EOF
             apiVersion: argoproj.io/v1alpha1
             kind: Workflow
@@ -66,11 +64,11 @@ spec:
               arguments:
                 parameters:
                   - name: kernel-version
-                    value: "\$LATEST"
+                    value: "${LATEST}"
             MANIFEST_EOF
 
             # Update state so we don't re-trigger on next poll
             kubectl patch configmap flatcar-kernel-polling-state \
               -n argo --type=merge \
-              -p "{\"data\":{\"kernel-stable\":\"\$LATEST\"}}"
+              -p "{\"data\":{\"kernel-stable\":\"${LATEST}\"}}"
             SCRIPT_EOF

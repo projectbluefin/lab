@@ -224,6 +224,7 @@ spec:
         # (bootc-dev/bootc docs/src/bootc-install.md, via-loopback section)
         mkdir -p /etc/containers
         printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
+        printf '[storage]\ndriver = "btrfs"\ngraphroot = "/var/lib/containers/storage"\n' > /etc/containers/storage.conf
 
         # Clean stale image data from any previous failed build.
         echo "Cleaning containers storage for fresh pull..."
@@ -677,3 +678,4 @@ spec:
         rm -f "${RAW}" "${QCOW}"
 
         echo "Done: ${DEST}"
+

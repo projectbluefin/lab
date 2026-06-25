@@ -345,9 +345,9 @@ spec:
         auto-sync = no
         EOF
 
-            # Set up board
+            # Set up board (no --skip-chroot-upgrade: not a valid flag in this SDK version)
             /mnt/host/source/src/scripts/setup_board \
-              --board=amd64-usr --default --skip-chroot-upgrade
+              --board=amd64-usr --default
 
             # Build kernel packages
             emerge-amd64-usr --quiet --jobs=28 \

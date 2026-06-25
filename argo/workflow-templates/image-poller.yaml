@@ -167,7 +167,7 @@ spec:
           bluefin.io/step: update-digest
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
-        command: [sh]
+        command: [bash]
         resources:
           requests:
             cpu: 100m
@@ -179,30 +179,14 @@ spec:
           set -euo pipefail
           KEY="{{inputs.parameters.state-key}}"
           REMOTE="{{inputs.parameters.remote-digest}}"
-          
+
           if [[ "${REMOTE}" == "none" ]]; then
             echo "No remote digest fetched. Skipping." >&2
             echo "false" > /tmp/changed
             exit 0
           fi
-          
-          STORED=$(kubectl get configmap image-polling-digests -n argo -o jsonpath="{.data.${KEY}}" 2>/dev/null || true)
-          
-          echo "Remote:  ${REMOTE}" >&2
-          echo "Stored:  ${STORED:-<none>}" >&2
-          
-          if [[ "${REMOTE}" == "${STORED}" ]]; then
-            echo "No change." >&2
-            echo "false" > /tmp/changed
-          else
-            echo "Digest changed — updating ConfigMap key ${KEY}" >&2
-            kubectl patch configmap image-polling-digests -n argo --type merge -p "{"data":{"${KEY}":"${REMOTE}"}}" 2>/dev/null ||             kubectl create configmap image-polling-digests -n argo --from-literal="${KEY}=${REMOTE}"
-            echo "true" > /tmp/changed
-          fi
 
-          # Read stored digest from ConfigMap
-          STORED=$(kubectl get configmap image-polling-digests \
-            -n argo \
+          STORED=$(kubectl get configmap image-polling-digests -n argo \
             -o jsonpath="{.data.${KEY}}" 2>/dev/null || true)
 
           echo "Remote:  ${REMOTE}" >&2
@@ -217,7 +201,6 @@ spec:
               -n argo --type merge \
               -p "{\"data\":{\"${KEY}\":\"${REMOTE}\"}}" 2>/dev/null \
               || kubectl create configmap image-polling-digests \
-                   -n argo \
-                   --from-literal="${KEY}=${REMOTE}"
+                   -n argo --from-literal="${KEY}=${REMOTE}"
             echo "true" > /tmp/changed
           fi

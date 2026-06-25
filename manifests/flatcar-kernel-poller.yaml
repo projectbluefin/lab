@@ -24,10 +24,11 @@ spec:
     templates:
       - name: poll-and-trigger
         script:
-          image: cgr.dev/chainguard/kubectl:latest-dev
+          image: registry.fedoraproject.org/fedora-hummingbird:latest
           command: [bash]
           source: |
             set -euo pipefail
+          microdnf install -y curl jq >/dev/null 2>&1
 
             # Fetch latest stable kernel version from kernel.org
             LATEST=$(curl -sf https://www.kernel.org/releases.json \

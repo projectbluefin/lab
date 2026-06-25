@@ -99,7 +99,7 @@ spec:
           - name: containerdisk-tag
       script:
         image: quay.io/skopeo/stable:latest
-        command: [bash]
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -195,7 +195,7 @@ spec:
     - name: update-factory-stats
       script:
         image: quay.io/fedora/fedora:latest
-        command: [bash]
+        command: [sh]
         env:
           - name: GITHUB_TOKEN
             valueFrom:
@@ -251,7 +251,7 @@ spec:
     - name: post-github-status
       script:
         image: quay.io/fedora/fedora:latest
-        command: [bash]
+        command: [sh]
         env:
           - name: GITHUB_TOKEN
             valueFrom:

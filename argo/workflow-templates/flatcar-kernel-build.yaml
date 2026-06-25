@@ -34,7 +34,7 @@ spec:
       - name: sdk-version
         value: "4593.0.0"
       - name: vm-name
-        value: "flatcar-kernel-build"
+        value: "flatcar-build-{{workflow.name}}"
       - name: namespace
         value: "flatcar-test"
 
@@ -152,7 +152,7 @@ spec:
 
     - name: wait-for-ssh
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -166,6 +166,7 @@ spec:
                 key: id_ed25519.pub
         source: |
           set -euo pipefail
+          microdnf install -y curl jq >/dev/null 2>&1
           exec 3>&1; exec 1>&2
           NS="{{workflow.parameters.namespace}}"
           VM="{{workflow.parameters.vm-name}}"
@@ -247,7 +248,7 @@ spec:
               path: /tmp/filename.txt
       activeDeadlineSeconds: 10800
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         securityContext:
           runAsUser: 0
@@ -263,6 +264,7 @@ spec:
                 key: id_ed25519
         source: |
           set -euo pipefail
+          microdnf install -y curl jq >/dev/null 2>&1
           apk add --no-cache openssh-client 2>&1 | tail -5
           VM_IP="{{inputs.parameters.vm-ip}}"
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
@@ -317,7 +319,7 @@ spec:
           # Run ephemeral SDK container just for manifest generation
           docker run --rm \
             -v \${BUILD_DIR}/scripts/\${OVERLAY_DEST}:/overlay \
-            ghcr.io/flatcar/flatcar-sdk-amd64:\${SDK_VERSION} \
+            192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION} \
             bash -c "
               ebuild /overlay/sys-kernel/coreos-sources/coreos-sources-\${KERNEL_VERSION}.ebuild manifest
               ebuild /overlay/sys-kernel/coreos-kernel/coreos-kernel-\${KERNEL_VERSION}.ebuild manifest 2>/dev/null || true
@@ -407,7 +409,7 @@ spec:
           - name: size
           - name: filename
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -415,6 +417,7 @@ spec:
             memory: 128Mi
         source: |
           set -euo pipefail
+          microdnf install -y curl jq >/dev/null 2>&1
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
           NEBRASKA_URL="http://192.168.1.102:30802"
           FLATCAR_APP_ID="e96281a6-d1af-4bde-9a0a-97b76e56dc57"

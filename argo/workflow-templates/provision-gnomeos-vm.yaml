@@ -106,6 +106,7 @@ spec:
             mountPath: /mnt/work
         source: |
           set -euo pipefail
+          microdnf install -y curl jq >/dev/null 2>&1
           URL="{{inputs.parameters.image-url}}"
           SHA="{{inputs.parameters.image-sha256}}"
           FORMAT="{{inputs.parameters.image-format}}"
@@ -329,7 +330,7 @@ spec:
           - name: vm-name
           - name: namespace
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -340,6 +341,7 @@ spec:
             memory: 256Mi
         source: |
           set -euo pipefail
+          microdnf install -y curl jq >/dev/null 2>&1
           exec 3>&1
           exec 1>&2
           NS="{{inputs.parameters.namespace}}"

@@ -58,7 +58,7 @@ spec:
             valueFrom:
               path: /tmp/changed
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: registry.fedoraproject.org/fedora-hummingbird:latest
         command: [bash]
         resources:
           requests:
@@ -75,6 +75,7 @@ spec:
                 key: token
         source: |
           set -euo pipefail
+          microdnf install -y curl jq >/dev/null 2>&1
           REPO="{{workflow.parameters.repo}}"
           BRANCH="{{workflow.parameters.branch}}"
           KEY="{{workflow.parameters.state-key}}"

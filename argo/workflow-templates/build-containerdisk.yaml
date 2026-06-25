@@ -277,7 +277,7 @@ spec:
       source: |
         set -euo pipefail
 
-        dnf install -y qemu-img buildah
+        dnf install -y qemu-img jq buildah
 
         # Flush all page-cache dirty pages to disk before reading the raw disk.
         # The install-to-disk pod's btrfs writes land in the kernel page cache for
@@ -309,7 +309,7 @@ spec:
         CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         IMAGE="{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
         REMOTE_DIGEST=$(skopeo inspect --no-creds "docker://${IMAGE}" 2>/dev/null \
-          | python3 -c "import sys,json; print(json.load(sys.stdin).get('Digest',''))" \
+          | jq -r .Digest \
           || echo "")
         if [[ -n "${REMOTE_DIGEST}" ]]; then
           curl -sf --cacert "${CACERT}" \

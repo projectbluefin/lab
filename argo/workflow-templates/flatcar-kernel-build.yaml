@@ -307,6 +307,13 @@ spec:
           OVERLAY_DEST=sdk_container/src/third_party/flatcar-kernel-overlay
           cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${OVERLAY_DEST}
 
+          echo "=== Move Docker data-root to PVC (SDK image is ~15GB) ==="
+          sudo systemctl stop docker || true
+          sudo mkdir -p \${BUILD_DIR}/docker
+          echo '{"data-root": "/var/tmp/build/docker"}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl start docker
+          sudo systemctl is-active docker
+
           echo "=== Regenerate Manifest checksums via SDK ==="
           # Run ephemeral SDK container just for manifest generation
           docker run --rm \

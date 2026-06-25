@@ -710,3 +710,8 @@ When debugging `Permission denied (publickey)`:
 - `sshd_config.d/` files reset at boot: ostree restores files that exist in image's `usr/etc/`
 - `var/` writes missing from running VM: qemu-img sparse conversion may drop newly-written btrfs blocks
 - `authorized_keys` baked into disk missing from VM: same cause as above
+
+### containerDisk.json capacity requirement
+When building a custom containerDisk from `scratch` (using `buildah`), KubeVirt *requires* a `/containerDisk.json` file at the root of the image to declare the disk capacity:
+`{"volumes":[{"image":"disk.qcow2", "capacity":"25Gi"}]}`
+Without this file, `virt-controller` defaults the pod's `ephemeral-storage` limit to 50M. This results in the virt-launcher pod being evicted immediately upon extracting the disk image, causing a `No disk capacity` error. Always inject this JSON metadata during the build step.

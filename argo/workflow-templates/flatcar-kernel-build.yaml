@@ -166,7 +166,7 @@ spec:
                 key: id_ed25519.pub
         source: |
           set -euo pipefail
-          microdnf install -y curl jq >/dev/null 2>&1
+          apk add --no-cache curl jq >/dev/null 2>&1
           exec 3>&1; exec 1>&2
           NS="{{workflow.parameters.namespace}}"
           VM="{{workflow.parameters.vm-name}}"
@@ -264,7 +264,7 @@ spec:
                 key: id_ed25519
         source: |
           set -euo pipefail
-          microdnf install -y curl jq >/dev/null 2>&1
+          apk add --no-cache curl jq >/dev/null 2>&1
           apk add --no-cache openssh-client 2>&1 | tail -5
           VM_IP="{{inputs.parameters.vm-ip}}"
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
@@ -417,7 +417,7 @@ spec:
             memory: 128Mi
         source: |
           set -euo pipefail
-          microdnf install -y curl jq >/dev/null 2>&1
+          apk add --no-cache curl jq >/dev/null 2>&1
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
           NEBRASKA_URL="http://192.168.1.102:30802"
           FLATCAR_APP_ID="e96281a6-d1af-4bde-9a0a-97b76e56dc57"

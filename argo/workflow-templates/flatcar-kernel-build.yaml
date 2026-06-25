@@ -234,7 +234,7 @@ spec:
           - name: sdk-version
       activeDeadlineSeconds: 10800
       script:
-        image: quay.io/fedora/fedora:latest
+        image: cgr.dev/chainguard/kubectl:latest-dev
         command: [bash]
         resources:
           requests:
@@ -248,7 +248,6 @@ spec:
                 key: id_ed25519
         source: |
           set -euo pipefail
-          dnf install -y --setopt=install_weak_deps=False openssh-clients 2>&1 | tail -3
           VM_IP="{{inputs.parameters.vm-ip}}"
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
           SCRIPTS_REF="{{inputs.parameters.flatcar-scripts-ref}}"

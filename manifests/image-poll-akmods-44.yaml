@@ -32,8 +32,8 @@ spec:
           labels:
             app.kubernetes.io/part-of: testing-lab
         script:
-          image: quay.io/skopeo/stable:latest
-          command: [sh]
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          command: [bash]
           resources:
             requests:
               cpu: 100m
@@ -49,6 +49,7 @@ spec:
                   key: token
           source: |
             set -euo pipefail
+            apk add --no-cache skopeo >/dev/null 2>&1
             IMAGE_REF="ghcr.io/ublue-os/akmods:main-44"
             STATE_KEY="digest-akmods-main-44"
             DERIVED_KEY="digest-aurora-testing"

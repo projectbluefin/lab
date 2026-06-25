@@ -346,7 +346,6 @@ spec:
       source: "set -euo pipefail\npkgs=\"\"\ncommand -v jq     >/dev/null 2>&1 ||\
         \ pkgs=\"$pkgs jq\"\ncommand -v skopeo >/dev/null 2>&1 || pkgs=\"$pkgs skopeo\"\
         \ncommand -v ssh    >/dev/null 2>&1 || pkgs=\"$pkgs openssh-clients\"\nif\
-        \ [[ -n \"$pkgs\" ]]; then\n  dnf install -y --quiet $pkgs 2>&1 | tail -3\n\
         fi\n\nVM_IP=\"{{inputs.parameters.vm-ip}}\"\nSSH_USER=\"{{inputs.parameters.ssh-user}}\"\
         \nKEY=\"/etc/ssh/test-key/id_ed25519\"\nLEGACY_IMAGE_REF=\"{{inputs.parameters.legacy-image-ref}}\"\
         \nCHUNKAH_IMAGE_REF=\"{{inputs.parameters.chunkah-image-ref}}\"\nOUTPUT_ROOT=\"\
@@ -413,7 +412,7 @@ spec:
     script:
       command:
       - bash
-      image: quay.io/fedora/fedora:latest
+      image: cgr.dev/chainguard/wolfi-base:latest
       resources:
         limits:
           cpu: '1'
@@ -502,7 +501,7 @@ spec:
     script:
       command:
       - bash
-      image: quay.io/fedora/fedora:latest
+      image: cgr.dev/chainguard/wolfi-base:latest
       resources:
         limits:
           cpu: '1'
@@ -586,7 +585,7 @@ spec:
     script:
       command:
       - bash
-      image: quay.io/fedora/fedora:latest
+      image: cgr.dev/chainguard/wolfi-base:latest
       resources:
         limits:
           cpu: 500m
@@ -640,7 +639,7 @@ spec:
     script:
       command:
       - bash
-      image: quay.io/fedora/fedora:latest
+      image: cgr.dev/chainguard/wolfi-base:latest
       resources:
         limits:
           cpu: '1'
@@ -770,7 +769,7 @@ spec:
     script:
       command:
       - bash
-      image: quay.io/fedora/fedora:latest
+      image: cgr.dev/chainguard/wolfi-base:latest
       resources:
         limits:
           cpu: 500m

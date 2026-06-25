@@ -154,8 +154,8 @@ spec:
         parameters:
           - name: vm-name
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 500m
@@ -167,8 +167,9 @@ spec:
           - name: knuckle-test
             mountPath: /var/mnt/ghost-data/knuckle-test
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          dnf install -y --quiet curl 2>&1 | tail -2
           VM="{{inputs.parameters.vm-name}}"
           WORK="/var/mnt/ghost-data/knuckle-test/.crane-${VM}"
           mkdir -p "${WORK}"
@@ -193,6 +194,7 @@ spec:
           rm -rf "${WORK}"
           echo "Pushed containerDisk: ${IMAGE}" >&2
 
+          SCRIPT_EOF
     - name: resolve-source
       inputs:
         parameters:
@@ -206,8 +208,8 @@ spec:
         - name: work
           emptyDir: {}
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -219,8 +221,9 @@ spec:
           - name: work
             mountPath: /work
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          dnf install -y --quiet git 2>&1 | tail -2
           git ls-remote https://github.com/projectbluefin/knuckle \
             "refs/heads/{{inputs.parameters.branch}}" | awk '{print $1}' > /work/commit-sha
           if [[ ! -s /work/commit-sha ]]; then
@@ -229,6 +232,7 @@ spec:
           fi
           echo "Resolved {{inputs.parameters.branch}} -> $(cat /work/commit-sha)" >&2
 
+          SCRIPT_EOF
     - name: build-installer
       inputs:
         parameters:
@@ -241,24 +245,27 @@ spec:
           emptyDir: {}
       initContainers:
         - name: git-clone
-          image: quay.io/fedora/fedora:latest
-          command: [bash, -c]
+          image: cgr.dev/chainguard/wolfi-base:latest
+          command: [sh, -c]
           args:
             - |
+              apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+              exec bash <<'SCRIPT_EOF'
               set -euo pipefail
-              dnf install -y --quiet git 2>&1 | tail -2
               git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
                 https://github.com/projectbluefin/knuckle /src
+              SCRIPT_EOF
           volumeMounts:
             - name: src
               mountPath: /src
       container:
-        image: quay.io/fedora/fedora:latest
-        command: [bash, -c]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh, -c]
         args:
           - |
+            apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
+            exec bash <<'SCRIPT_EOF'
             set -euo pipefail
-            dnf install -y --quiet \
               git golang xorriso mtools cpio systemd-boot-unsigned squashfs-tools curl 2>&1 | tail -4
             cd /src
             ./scripts/build-iso.sh --channel stable --arch amd64
@@ -279,6 +286,7 @@ spec:
             echo "Built {{inputs.parameters.commit-sha}}" >&2
             echo "ISO ready: ${ISO_DEST}" >&2
             echo "Binary ready: ${BIN_DEST}" >&2
+            SCRIPT_EOF
         resources:
           requests:
             cpu: "4"
@@ -348,8 +356,8 @@ spec:
         - name: work
           emptyDir: {}
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         env:
           - name: SSH_PUBKEY
             valueFrom:
@@ -369,6 +377,8 @@ spec:
           - name: work
             mountPath: /work
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
           python3 - <<'PY' > /work/ignition.json
           import json
@@ -384,6 +394,7 @@ spec:
             "/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.ign"
           echo "Wrote ignition for {{inputs.parameters.vm-name}}" >&2
 
+          SCRIPT_EOF
     - name: create-rootdisk-pvc
       inputs:
         parameters:
@@ -530,8 +541,8 @@ spec:
           secret:
             secretName: "{{inputs.parameters.ssh-key-secret}}"
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: "1"
@@ -552,8 +563,9 @@ spec:
                 name: "{{inputs.parameters.ssh-key-secret}}"
                 key: id_ed25519.pub
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          dnf install -y --quiet kubernetes-client openssh-clients curl 2>&1 | tail -4
           curl -fsSL -o /usr/local/bin/virtctl \
             https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
           chmod +x /usr/local/bin/virtctl
@@ -605,6 +617,7 @@ spec:
           ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "sudo systemd-run --unit knuckle-headless-install --collect /bin/bash -lc 'set -euo pipefail; trap \"touch /install-failed\" ERR; /tmp/knuckle --headless --config /tmp/qa.json --log-file /tmp/knuckle-install.log; touch /install-complete'"
           echo "Installer booted and headless install launched against ${TARGET_DISK}" >&2
 
+          SCRIPT_EOF
     - name: wait-install-complete
       inputs:
         parameters:
@@ -620,8 +633,8 @@ spec:
           secret:
             secretName: "{{inputs.parameters.ssh-key-secret}}"
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 250m
@@ -634,8 +647,9 @@ spec:
             mountPath: /etc/ssh/test-key
             readOnly: true
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          dnf install -y --quiet kubernetes-client openssh-clients 2>&1 | tail -3
           NS="{{inputs.parameters.namespace}}"
           VM="{{inputs.parameters.vm-name}}"
           KEY="/etc/ssh/test-key/id_ed25519"
@@ -666,6 +680,7 @@ spec:
           echo "ERROR: timed out waiting for /install-complete" >&2
           exit 1
 
+          SCRIPT_EOF
     - name: transition-to-installed
       inputs:
         parameters:
@@ -673,8 +688,8 @@ spec:
           - name: namespace
       activeDeadlineSeconds: 600
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 250m
@@ -683,8 +698,9 @@ spec:
             cpu: "1"
             memory: 512Mi
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          dnf install -y --quiet kubernetes-client curl 2>&1 | tail -3
           curl -fsSL -o /usr/local/bin/virtctl \
             https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
           chmod +x /usr/local/bin/virtctl
@@ -748,6 +764,7 @@ spec:
           virtctl -n "${NS}" start "${VM}"
           echo "Transitioned ${VM} to installed-disk boot" >&2
 
+          SCRIPT_EOF
     - name: discover-installed-ip
       inputs:
         parameters:
@@ -770,8 +787,8 @@ spec:
         - name: work
           emptyDir: {}
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 250m
@@ -786,8 +803,9 @@ spec:
           - name: work
             mountPath: /work
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          dnf install -y --quiet kubernetes-client openssh-clients 2>&1 | tail -3
           NS="{{inputs.parameters.namespace}}"
           VM="{{inputs.parameters.vm-name}}"
           KEY="/etc/ssh/test-key/id_ed25519"
@@ -818,6 +836,7 @@ spec:
           echo "ERROR: installed VM never became SSH reachable at ${VM_IP}" >&2
           exit 1
 
+          SCRIPT_EOF
     - name: teardown
       dag:
         tasks:
@@ -869,8 +888,8 @@ spec:
         parameters:
           - name: vm-name
       script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -879,10 +898,13 @@ spec:
             cpu: 500m
             memory: 256Mi
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          dnf install -y --quiet skopeo 2>&1 | tail -2
           skopeo delete \
             --tls-verify=false \
             "docker://192.168.1.102:30500/knuckle-iso-{{inputs.parameters.vm-name}}:latest" \
             || true
           echo "Deleted containerDisk for {{inputs.parameters.vm-name}}" >&2
+
+          SCRIPT_EOF

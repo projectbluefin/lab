@@ -94,7 +94,6 @@ spec:
                         qemuGuestAgent:
                           users:
                             - root
-                            - bluefin-test
                 domain:
                   cpu:
                     cores: 4
@@ -181,6 +180,15 @@ spec:
             fi
             sleep 5
           done
+
+          # Retry sshd.socket now that guest agent is confirmed up.
+          VIRT_POD2=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "Retrying sshd.socket start via guest agent (agent now online)..." >&2
+          kubectl exec -n "${NS}" "${VIRT_POD2}" -c compute -- \
+            virsh qemu-agent-command 1 \
+            '{"execute":"guest-exec","arguments":{"path":"systemctl","arg":["start","sshd.socket"],"capture-output":false}}' \
+            >&2 || echo "WARNING: sshd.socket retry failed, SSH poll will be the arbiter" >&2
 
           POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
             -o jsonpath='{.items[0].status.podIP}')

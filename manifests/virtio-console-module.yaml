@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: virtio-console-module
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: virtio-console-module
+    app.kubernetes.io/component: node-tuning
+    app.kubernetes.io/part-of: bluefin-test-suite
+  annotations:
+    bluefin.io/description: |
+      Loads the virtio_console kernel module on every node. Required for
+      KubeVirt qemu-guest-agent communication (uses virtio-serial channels).
+      Without this module, AccessCredentialsSynchronized stays False and SSH
+      key injection never completes on nodes that don't auto-load the module
+      (e.g. Flatcar Linux workers).
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: virtio-console-module
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: virtio-console-module
+        app.kubernetes.io/component: node-tuning
+        app.kubernetes.io/part-of: bluefin-test-suite
+    spec:
+      tolerations:
+        - operator: Exists
+      hostPID: true
+      initContainers:
+        - name: modprobe
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          securityContext:
+            privileged: true
+          command: [sh, -c]
+          args:
+            - |
+              nsenter -t 1 -m -- modprobe virtio_console && echo "virtio_console loaded" \
+                || echo "virtio_console already present or not needed"
+      containers:
+        - name: sleep
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          command: [sh, -c, "while true; do sleep 3600; done"]
+          resources:
+            requests:
+              cpu: 1m
+              memory: 8Mi
+            limits:
+              cpu: 10m
+              memory: 16Mi

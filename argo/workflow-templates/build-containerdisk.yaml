@@ -158,13 +158,9 @@ spec:
       hostPath:
         path: /var/mnt/ghost-data/bluefin-cd-build
         type: DirectoryOrCreate
-    - name: containers-lib
-      hostPath:
-        path: /var/mnt/ghost-data/bluefin-cd-build/containers-lib
-        type: DirectoryOrCreate
     script:
-      image: quay.io/podman/stable:latest
-      command: [sh]
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      command: [bash]
       securityContext:
         privileged: true
         runAsUser: 0
@@ -181,11 +177,6 @@ spec:
           secretKeyRef:
             name: bluefin-test-ssh-key
             key: id_ed25519.pub
-      - name: GITHUB_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: github-token
-            key: token
       volumeMounts:
       - name: dev
         mountPath: /dev
@@ -193,8 +184,6 @@ spec:
         mountPath: /run/udev
       - name: staging
         mountPath: /mnt/staging
-      - name: containers-lib
-        mountPath: /var/lib/containers
       source: |
         set -euo pipefail
         TAG="{{inputs.parameters.containerdisk-tag}}"
@@ -207,398 +196,54 @@ spec:
         exec > >(tee -a "${BUILDLOG}") 2>&1
 
         echo "[BUILD] start: $(date -u) image=${IMAGE} disk-size={{inputs.parameters.disk-size}}"
-        echo "[BUILD] outer SELinux context: $(cat /proc/self/attr/current 2>/dev/null || echo unavailable)"
 
         if [[ -f "${DISK}" ]]; then
           echo "Removing stale disk: ${DISK}"
-          losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
+          losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d 2>/dev/null || true
           rm -f "${DISK}"
         fi
 
         truncate -s "{{inputs.parameters.disk-size}}" "${DISK}"
 
-        # /var/lib/containers is mounted from the ghost SSD hostPath so podman
-        # stores image layers on the data disk, not the pod's ephemeral overlay.
-        # Per bootc install docs: "-v /var/lib/containers:/var/lib/containers is
-        # required in order for the container to access its own underlying image."
-        # (bootc-dev/bootc docs/src/bootc-install.md, via-loopback section)
-        mkdir -p /etc/containers
-        printf '[engine]\ncgroup_manager = "cgroupfs"\n' > /etc/containers/containers.conf
-        printf '[storage]\ndriver = "btrfs"\ngraphroot = "/var/lib/containers/storage"\n' > /etc/containers/storage.conf
-
-        # Clean stale image data from any previous failed build.
-        echo "Cleaning containers storage for fresh pull..."
-        rm -rf /var/lib/containers/* 2>/dev/null || true
-
-        # Authenticate with GHCR to avoid rate limits and to support private images.
-        echo "${GITHUB_TOKEN}" | podman login ghcr.io -u _ --password-stdin
-        # Pull image — lands in /var/lib/containers/storage (ghost SSD).
-        podman pull --tls-verify=true "${IMAGE}"
-
-        echo "[OUTER] SSH_AUTHORIZED_KEYS prefix: ${SSH_AUTHORIZED_KEYS:0:30}..."
-
-        # Write key to a staging file for --root-ssh-authorized-keys.
-        # bootc install handles root SSH key injection natively; this is the
-        # most reliable mechanism (no post-install ostree-etc-merge concerns).
         echo "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/root-ssh-keys"
 
-        PODMAN_EXIT=0
-        # --security-opt label=type:unconfined_t is the canonical bootc install flag.
-        # Per bootc-dev/bootc docs/src/bootc-install.md via-loopback section.
-        podman run --rm --privileged --pid=host --ipc=host \
-          --security-opt label=type:unconfined_t \
-          -v /dev:/dev \
-          -v /run/udev:/run/udev \
-          -v "${STAGING}:/output" \
-          -v /var/lib/containers:/var/lib/containers \
-          -e "SSH_AUTHORIZED_KEYS=${SSH_AUTHORIZED_KEYS}" \
-          "${IMAGE}" \
-          bash -c "
-            set -euo pipefail
-
-            echo \"[INNER] SSH_AUTHORIZED_KEYS prefix: \${SSH_AUTHORIZED_KEYS:0:30}...\"
-            echo \"[INNER] SELinux context: \$(cat /proc/self/attr/current 2>/dev/null || echo unavailable)\"
-
-            # fsetxattr(security.selinux) EINVAL: host SELinux policy (Bluefin) rejects
-            # xattr labels from foreign images (aurora, lts, dakota have different contexts).
-            # Compile a wrapper inside this container (same glibc, no ABI/label issues)
-            # that silently drops EINVAL on security.* xattrs. Safe: VM boots selinux=0.
-            if which gcc &>/dev/null; then
-              printf '%s\n' \
-                '#define _GNU_SOURCE' \
-                '#include <dlfcn.h>' \
-                '#include <string.h>' \
-                '#include <errno.h>' \
-                '#include <stddef.h>' \
-                'typedef int (*fn_t)(int,const char*,const void*,size_t,int);' \
-                'int fsetxattr(int fd,const char*n,const void*v,size_t s,int f){' \
-                '  static fn_t real;' \
-                '  if(!real)real=(fn_t)dlsym(RTLD_NEXT,\"fsetxattr\");' \
-                '  int r=real(fd,n,v,s,f);' \
-                '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,\"security.\",9)==0){errno=0;return 0;}' \
-                '  return r;}' \
-                > /tmp/fsetxattr_wrap.c
-              gcc -shared -fPIC -o /tmp/fsetxattr_wrapper.so /tmp/fsetxattr_wrap.c -ldl
-              LD_PRELOAD_VAR=/tmp/fsetxattr_wrapper.so
-              echo '[INNER] fsetxattr wrapper compiled and loaded'
-            else
-              echo '[INNER] WARNING: gcc not found, no fsetxattr wrapper'
-            fi
-
-            # bootupd is required by bootc install to-disk for ostree-based images.
-            # Some images (e.g. dakota) don't ship it; install from package manager.
-            if [[ ! -f /usr/libexec/bootupd ]]; then
-              echo '[INNER] bootupd missing, installing...'
-              if which dnf >/dev/null 2>&1; then dnf install -y bootupd 2>&1 | tail -3; elif which yum >/dev/null 2>&1; then yum install -y bootupd 2>&1 | tail -3; else apk add --no-cache bootupd 2>&1 | tail -3 || echo '[INNER] WARNING: could not install bootupd'; fi
-            fi
-
-            # --via-loopback: upstream recommended pattern for VM disk creation.
-            # --root-ssh-authorized-keys: bootc-native root SSH key injection.
-            LD_PRELOAD=${LD_PRELOAD_VAR:-} bootc install to-disk \
-                      --source-imgref 'docker://192.168.1.102:30501/'"${IMAGE#*/}" \
-              --generic-image \
-              --filesystem=btrfs \
-              --target-no-signature-verification \
-              --disable-selinux \
-              --karg=selinux=0 \
-              --karg=systemd.device-timeout=5 \
-              --root-ssh-authorized-keys /output/root-ssh-keys \
-              --via-loopback /output/disk.raw
-
-            echo '[INNER] bootc done, mounting for post-install'
-
-            # Post-install: user, GDM autologin, sshd, SSH key injection.
-            # bootc released its loop device; create a new one for our work.
-            # qecore-headless starts GDM and requires autologin for a non-root
-            # user (gitlab.com/dogtail/qecore README).
-            LOOP=\$(losetup -f --show -P /output/disk.raw)
-            echo '[INNER] post-install loop: '\${LOOP}
-
-            cleanup() {
-              umount /tmp/installed 2>/dev/null || true
-              losetup -d \"\${LOOP}\" 2>/dev/null || true
-            }
-            trap cleanup EXIT
-
-            mkdir -p /tmp/installed
-            mount -t btrfs \"\${LOOP}p3\" /tmp/installed
-
-            DEPLOY=\$(find /tmp/installed/ostree/deploy/*/deploy/ \
-              -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -1)
-            if [[ -z \"\${DEPLOY}\" ]]; then
-              echo '[INNER] ERROR: ostree deploy path not found' >&2
-              exit 1
-            fi
-            echo '[INNER] deploy: '\${DEPLOY}
-            ETC=\"\${DEPLOY}/etc\"
-
-            # User: bluefin-test (uid/gid 1001)
-            grep -q '^bluefin-test:' \"\${ETC}/passwd\" 2>/dev/null || \
-              echo 'bluefin-test:x:1001:1001:Test User:/var/home/bluefin-test:/bin/bash' \
-                >> \"\${ETC}/passwd\"
-            grep -q '^bluefin-test:' \"\${ETC}/shadow\" 2>/dev/null || \
-              echo 'bluefin-test:*:19000:0:99999:7:::' >> \"\${ETC}/shadow\"
-            grep -q '^bluefin-test:' \"\${ETC}/group\" 2>/dev/null || \
-              echo 'bluefin-test:x:1001:' >> \"\${ETC}/group\"
-            sed -i 's/^\(wheel:x:10:.*\)$/\1,bluefin-test/' \"\${ETC}/group\" 2>/dev/null || true
-
-            # GDM autologin
-            mkdir -p \"\${ETC}/gdm\"
-            printf '[daemon]\nAutomaticLoginEnable=True\nAutomaticLogin=bluefin-test\n' \
-              > \"\${ETC}/gdm/custom.conf\"
-
-            # sshd: use socket activation only (sshd.socket, NOT sshd.service).
-            # Reason: sshd.socket has Conflicts=sshd.service — enabling both causes
-            # systemd to stop sshd.socket when sshd.service tries to start, creating a
-            # race where port 22 briefly disappears. sshd.socket alone is the correct
-            # socket-activated pattern: it opens port 22 at sockets.target (before
-            # multi-user.target), which is much earlier in the boot sequence.
-            mkdir -p \"\${ETC}/systemd/system/sockets.target.wants\"
-            ln -sf /usr/lib/systemd/system/sshd.socket \
-              \"\${ETC}/systemd/system/sockets.target.wants/sshd.socket\" \
-              && echo '[INNER] sshd.socket symlink created' \
-              || echo '[INNER] WARNING: sshd.socket symlink failed'
-            # Remove sshd.service from wants if image had it; mask it so it never
-            # races with sshd.socket. Socket activation handles all connections.
-            rm -f \"\${ETC}/systemd/system/multi-user.target.wants/sshd.service\" 2>/dev/null || true
-            ln -sf /dev/null \"\${ETC}/systemd/system/sshd.service\" \
-              && echo '[INNER] sshd.service masked (socket activation only)' \
-              || echo '[INNER] WARNING: failed to mask sshd.service'
-            # Enable qemu-guest-agent — required for KubeVirt accessCredentials
-            # (SSH key injection) and for virsh qemu-agent-command (sshd.socket).
-            # bluefin:testing has it enabled by default; bluefin-lts:testing does
-            # not, so we enable it explicitly here for all variants.
-            mkdir -p \"\${ETC}/systemd/system/multi-user.target.wants\"
-            ln -sf /usr/lib/systemd/system/qemu-guest-agent.service \
-              \"\${ETC}/systemd/system/multi-user.target.wants/qemu-guest-agent.service\" \
-              && echo '[INNER] qemu-guest-agent.service symlink created' \
-              || echo '[INNER] WARNING: qemu-guest-agent.service symlink failed'
-            mkdir -p \"\${ETC}/ssh/sshd_config.d\"
-            # Note: 'UsePAM no' is NOT supported in this Fedora openssh build.
-            # Use PermitRootLogin yes (most permissive) to allow root pubkey auth.
-            # AuthorizedKeysFile: check BOTH home-relative and absolute path.
-            # The Include directive at line 15 of sshd_config means drop-ins win
-            # over anything after line 15 in the main file — so set both paths
-            # here in the drop-in. %%u in printf emits the literal %u token.
-            printf 'PubkeyAuthentication yes\nStrictModes no\nPermitRootLogin yes\nAuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%%u\n' \
-              > \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
-
-            # Also patch the main sshd_config in case Include is not at the top
-            # or another drop-in overrides PermitRootLogin. First replace existing
-            # lines; append PermitRootLogin yes if not already present.
-            sed -i 's/^[[:space:]]*PermitRootLogin.*/PermitRootLogin yes/' \
-              \"\${ETC}/ssh/sshd_config\" 2>/dev/null || true
-            grep -q '^PermitRootLogin' \"\${ETC}/ssh/sshd_config\" 2>/dev/null || \
-              echo 'PermitRootLogin yes' >> \"\${ETC}/ssh/sshd_config\"
-
-            # Diagnostic: confirm the drop-in and patched sshd_config.
-            echo '[INNER] sshd drop-in:' && cat \"\${ETC}/ssh/sshd_config.d/10-test.conf\"
-            echo '[INNER] sshd_config PermitRootLogin:' && grep -i 'PermitRootLogin' \"\${ETC}/ssh/sshd_config\" || echo '(not found)'
-
-            # sudoers
-            mkdir -p \"\${ETC}/sudoers.d\"
-            printf 'bluefin-test ALL=(ALL) NOPASSWD:ALL\n' \
-              > \"\${ETC}/sudoers.d/bluefin-test\"
-            chmod 440 \"\${ETC}/sudoers.d/bluefin-test\"
-
-            # Mask services that cause long boot delays in KubeVirt test VMs:
-            # - NetworkManager-wait-online: waits up to 120s for "full" network
-            #   connectivity. Not needed for SSH (which only needs network.target).
-            #   sshd.socket listens before NM-wait-online blocks anything.
-            # - kdump: tries to load a crash kernel; no kdumpctl in KubeVirt VMs.
-            # - insights-client-boot: contacts Red Hat Insights CDN (no account).
-            # - sssd: SSSD without any configured identity provider backends;
-            #   boots then times out trying to reach non-existent domains.
-            # Masking via /dev/null symlink in etc/systemd/system/ takes precedence
-            # over all wants symlinks and preset rules, surviving the ostree merge.
-            for _svc in \
-              NetworkManager-wait-online.service \
-              kdump.service \
-              insights-client-boot.service \
-              sssd.service; do
-              ln -sf /dev/null \"\${ETC}/systemd/system/\${_svc}\" \
-                && echo \"[INNER] masked \${_svc}\" \
-                || echo \"[INNER] WARNING: failed to mask \${_svc}\"
-            done
-
-
-            # containerDisk VMs — device UUID is never detected because the
-            # partitions are part of the containerDisk (not separate block devs).
-            # Robust patch: match ANY options string in /boot lines, not just
-            # 'defaults'. RHEL10/el10 /boot/efi uses 'umask=0077,shortname=winnt'
-            # (not 'defaults'), so the old sed would silently skip it.
-            # Groups: \1=device+ws, \2=mountpoint+ws, \3=fstype+ws, \4=options
-            if [[ -f \"\${ETC}/fstab\" ]]; then
-              echo '[INNER] original fstab:'
-              cat \"\${ETC}/fstab\"
-              sed -i '/[[:space:]]\/boot/{ /nofail/! s/^\([^[:space:]]*[[:space:]]\+\)\([^[:space:]]*[[:space:]]\+\)\([^[:space:]]*[[:space:]]\+\)\([^[:space:]]*\)/\1\2\3\4,nofail,x-systemd.device-timeout=5s/ }' \"\${ETC}/fstab\" 2>/dev/null || true
-              echo '[INNER] patched fstab:'
-              cat \"\${ETC}/fstab\"
-            else
-              echo '[INNER] no fstab found (normal for some bootc images)'
-            fi
-
-            # Belt-and-suspenders: set global device timeout via systemd config.
-            # This covers any fstab entries the sed above might miss and applies
-            # the same 5s timeout to all device units system-wide.
-            mkdir -p \"\${ETC}/systemd/system.conf.d\"
-            printf '[Manager]\nDefaultDeviceTimeoutSec=5\n' \
-              > \"\${ETC}/systemd/system.conf.d/10-device-timeout.conf\"
-            echo '[INNER] set DefaultDeviceTimeoutSec=5 via drop-in'
-
-            # ── EFI BOOT fallback ──────────────────────────────────────────────
-            # OVMF (used by KubeVirt) has ephemeral NVRAM — no persistent boot entries.
-            # It falls back to /EFI/BOOT/BOOTX64.EFI on the EFI partition.
-            # Fedora bootc creates this fallback; RHEL10/el10 bootc only creates
-            # /EFI/redhat/ — OVMF never finds the bootloader and the VM hangs.
-            # Fix: mount p1 (EFI) and copy shim there if not already present.
-            mkdir -p /tmp/efi-part
-            if mount \"\${LOOP}p1\" /tmp/efi-part 2>/dev/null; then
-              echo '[INNER] EFI dirs:' && ls /tmp/efi-part/EFI/ 2>/dev/null || true
-              if [[ ! -f /tmp/efi-part/EFI/BOOT/BOOTX64.EFI ]]; then
-                echo '[INNER] No /EFI/BOOT/BOOTX64.EFI — creating OVMF fallback'
-                mkdir -p /tmp/efi-part/EFI/BOOT
-                SHIM_SRC=\$(find /tmp/efi-part/EFI -name 'shimx64.efi' -o -name 'shim.efi' 2>/dev/null | head -1)
-                GRUB_SRC=\$(find /tmp/efi-part/EFI -name 'grubx64.efi' 2>/dev/null | head -1)
-                EFI_SRC=\"\${SHIM_SRC:-\${GRUB_SRC:-}}\"
-                if [[ -n \"\${EFI_SRC}\" ]]; then
-                  cp \"\${EFI_SRC}\" /tmp/efi-part/EFI/BOOT/BOOTX64.EFI
-                  echo \"[INNER] Copied \${EFI_SRC} -> /EFI/BOOT/BOOTX64.EFI\"
-                else
-                  echo '[INNER] WARNING: no shim or grubx64.efi found — OVMF may not find bootloader'
-                fi
-              else
-                echo '[INNER] /EFI/BOOT/BOOTX64.EFI already exists'
-              fi
-              sync
-              umount /tmp/efi-part
-            else
-              echo '[INNER] WARNING: could not mount EFI partition (p1) — skipping BOOTX64.EFI check'
-            fi
-
-            # ── Key injection ──────────────────────────────────────────────────
-            # btrfs subvolume list returns EMPTY for this bootc layout — there are no
-            # named subvolumes. ostree/deploy/<stateroot>/var/ IS the real /var content.
-            STATEROOT=\$(ls /tmp/installed/ostree/deploy/ 2>/dev/null | head -1)
-            VAR_DIR=\"/tmp/installed/ostree/deploy/\${STATEROOT}/var\"
-            echo '[INNER] var dir: '\${VAR_DIR}
-
-            # Root: /var/roothome/.ssh (runtime: /root -> symlink -> /var/roothome)
-            mkdir -p \"\${VAR_DIR}/roothome/.ssh\"
-            printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${VAR_DIR}/roothome/.ssh/authorized_keys\"
-            chmod 700 \"\${VAR_DIR}/roothome/.ssh\"
-            chmod 600 \"\${VAR_DIR}/roothome/.ssh/authorized_keys\"
-            echo '[INNER] root key -> var/roothome/.ssh/authorized_keys'
-
-            # bluefin-test: /var/home/bluefin-test/.ssh
-            mkdir -p \"\${VAR_DIR}/home/bluefin-test/.ssh\"
-            printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${VAR_DIR}/home/bluefin-test/.ssh/authorized_keys\"
-            chmod 700 \"\${VAR_DIR}/home/bluefin-test/.ssh\"
-            chmod 600 \"\${VAR_DIR}/home/bluefin-test/.ssh/authorized_keys\"
-            chown -R 1001:1001 \"\${VAR_DIR}/home/bluefin-test\"
-            echo '[INNER] bt key -> var/home/bluefin-test/.ssh/authorized_keys'
-
-            # Absolute fallback in ostree etc layer — no home-dir dependency
-            mkdir -p \"\${ETC}/ssh/authorized_keys\"
-            printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ETC}/ssh/authorized_keys/root\"
-            printf '%s\n' \"\${SSH_AUTHORIZED_KEYS}\" > \"\${ETC}/ssh/authorized_keys/bluefin-test\"
-            chmod 644 \"\${ETC}/ssh/authorized_keys/root\" \"\${ETC}/ssh/authorized_keys/bluefin-test\"
-            echo '[INNER] fallback keys -> etc/ssh/authorized_keys/{root,bluefin-test}'
-
-            # Patch main sshd_config AuthorizedKeysFile to check BOTH paths.
-            # First-occurrence-wins: if Include is after AuthorizedKeysFile in the main file,
-            # the drop-in cannot override it — so patch the main file directly.
-            sed -i 's|^[[:space:]]*AuthorizedKeysFile.*|AuthorizedKeysFile .ssh/authorized_keys /etc/ssh/authorized_keys/%u|' \
-              \"\${ETC}/ssh/sshd_config\"
-            echo '[INNER] sshd_config AuthorizedKeysFile:' && grep 'AuthorizedKeysFile' \"\${ETC}/ssh/sshd_config\"
-            echo '[INNER] Include line:' && grep -n 'Include' \"\${ETC}/ssh/sshd_config\" | head -3
-
-            # Explicitly sync+umount BEFORE the container exits so btrfs commits
-            # all transactions to the backing file (disk.raw).  The cleanup trap
-            # uses '|| true' which silences failures; a lazy namespace teardown on
-            # container exit does NOT flush dirty btrfs pages.  Without this hard
-            # umount the outer verify step sees the original (unmodified) disk.
-            echo '[INNER] syncing btrfs...'
-            btrfs filesystem sync /tmp/installed
-            echo '[INNER] unmounting btrfs...'
-            umount /tmp/installed
-            losetup -d \"\${LOOP}\"
-            echo '[INNER] disk committed.'
-
-          " || PODMAN_EXIT=$?
-
-        echo "[DIAG] podman exit=${PODMAN_EXIT}"
-
-        if [[ "${PODMAN_EXIT}" -ne 0 ]]; then
-          echo "ERROR: bootc install failed with exit ${PODMAN_EXIT} — deleting disk" >&2
-          losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
-          rm -f "${DISK}"
-          exit "${PODMAN_EXIT}"
+        if [[ ! -f /usr/libexec/bootupd ]]; then
+          echo '[INNER] bootupd missing, installing...'
+          if which dnf >/dev/null 2>&1; then dnf install -y bootupd 2>&1 | tail -3; elif which yum >/dev/null 2>&1; then yum install -y bootupd 2>&1 | tail -3; else apk add --no-cache bootupd 2>&1 | tail -3 || echo '[INNER] WARNING: could not install bootupd'; fi
         fi
 
-        # Clean up any leftover loop devices for this file
-        losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d
-
-        # Verify post-install writes persisted to raw disk before conversion.
-        # This mounts the btrfs from the OUTER script to confirm inner-container
-        # writes made it through to the backing file.
-        echo "--- Verifying post-install writes in raw disk (outer mount) ---"
-        VL=$(losetup -f --show -P "${DISK}")
-        echo "[VERIFY] loop: ${VL}"
-        partprobe "${VL}" 2>/dev/null || true
-        sleep 1
-        mkdir -p /mnt/verify
-        if mount -t btrfs "${VL}p3" /mnt/verify; then
-          VDP=$(find /mnt/verify/ostree/deploy/*/deploy/ \
-            -maxdepth 1 -mindepth 1 -type d 2>/dev/null | head -1)
-          echo "[VERIFY] deploy: ${VDP}"
-          echo "[VERIFY] 10-test.conf:"
-          cat "${VDP}/etc/ssh/sshd_config.d/10-test.conf" 2>&1 || echo "MISSING"
-          echo "[VERIFY] authorized_keys/root:"
-          cat "${VDP}/etc/ssh/authorized_keys/root" 2>&1 || echo "MISSING"
-          echo "[VERIFY] sshd wants symlinks:"
-          ls -la "${VDP}/etc/systemd/system/sockets.target.wants/sshd.socket" 2>&1 || echo "MISSING: sshd.socket symlink not found"
-          ls "${VDP}/etc/systemd/system/sshd.service" 2>&1 && echo "[VERIFY] sshd.service mask present" || echo "MISSING: sshd.service mask"
-          ls "${VDP}/etc/systemd/system/multi-user.target.wants/sshd.service" 2>&1 && echo "WARNING: sshd.service in multi-user.target.wants (should be absent)" || echo "[VERIFY] sshd.service not in multi-user.target.wants (correct)"
-          echo "[VERIFY] slow-service masks:"
-          for _s in NetworkManager-wait-online.service kdump.service insights-client-boot.service sssd.service; do
-            ls -la "${VDP}/etc/systemd/system/${_s}" 2>&1 || echo "MISSING mask: ${_s}"
-          done
-          echo "[VERIFY] fstab (nofail check):"
-          grep -v '^#' "${VDP}/etc/fstab" 2>/dev/null | grep -v '^$' || echo "(no fstab entries)"
-          echo "[VERIFY] device-timeout drop-in:"
-          cat "${VDP}/etc/systemd/system.conf.d/10-device-timeout.conf" 2>&1 || echo "MISSING: drop-in not found"
-          echo "[VERIFY] var/roothome/.ssh:"
-          STATEROOT_V=$(ls /mnt/verify/ostree/deploy/ 2>/dev/null | head -1)
-          ls -la /mnt/verify/ostree/deploy/${STATEROOT_V}/var/roothome/.ssh/ 2>&1 || echo "MISSING"
-          # Best-effort sync; btrfs-progs may not be in the outer pod image.
-          # The inner container's hard umount already committed all writes.
-          btrfs filesystem sync /mnt/verify 2>/dev/null || true
-          umount /mnt/verify
-          echo "[VERIFY] EFI BOOT fallback:"
-          mkdir -p /mnt/verify-efi
-          if mount "${VL}p1" /mnt/verify-efi 2>/dev/null; then
-            ls /mnt/verify-efi/EFI/ 2>/dev/null || echo "(no EFI dir)"
-            ls -la /mnt/verify-efi/EFI/BOOT/BOOTX64.EFI 2>/dev/null || echo "MISSING: /EFI/BOOT/BOOTX64.EFI not found"
-            umount /mnt/verify-efi
-          else
-            echo "(could not mount EFI partition)"
-          fi
-        else
-          echo "[VERIFY] ERROR: could not mount btrfs partition from raw disk"
+        # fsetxattr EINVAL fix
+        if which gcc &>/dev/null; then
+          printf '%s\n' \
+            '#define _GNU_SOURCE' \
+            '#include <dlfcn.h>' \
+            '#include <string.h>' \
+            '#include <errno.h>' \
+            '#include <stddef.h>' \
+            'typedef int (*fn_t)(int,const char*,const void*,size_t,int);' \
+            'int fsetxattr(int fd,const char*n,const void*v,size_t s,int f){' \
+            '  static fn_t real;' \
+            '  if(!real)real=(fn_t)dlsym(RTLD_NEXT,"fsetxattr");' \
+            '  int r=real(fd,n,v,s,f);' \
+            '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,"security.",9)==0){errno=0;return 0;}' \
+            '  return r;}' \
+            > /tmp/fsetxattr_wrap.c
+          gcc -shared -fPIC -o /tmp/fsetxattr_wrapper.so /tmp/fsetxattr_wrap.c -ldl
+          export LD_PRELOAD=/tmp/fsetxattr_wrapper.so
+          echo '[INNER] fsetxattr wrapper compiled and loaded'
         fi
-        losetup -d "${VL}" 2>/dev/null || true
-        echo "--- Verification done ---"
 
-        chown 107:107 "${DISK}"
-
-        echo "Cleaning containers storage after build..."
-        rm -rf /var/lib/containers/* 2>/dev/null || true
-
-        echo "install-to-disk complete: ${DISK}"
-
-    # ─── convert-and-push ─────────────────────────────────────────────────────
-    # qemu-img raw→qcow2, buildah OCI image, push to local Zot, cleanup staging.
+        LOCAL_IMAGE="192.168.1.102:30501/${IMAGE#*/}"
+        
+        bootc install to-disk \
+          --source-imgref "docker://${IMAGE}" \
+          --generic-image \
+          --filesystem=btrfs \
+          --target-no-signature-verification \
+          --disable-selinux \
+          --root-ssh-authorized-keys "${STAGING}/root-ssh-keys" \
+          --via-loopback \
+          "${DISK}"
 
   - name: convert-and-push
     inputs:
@@ -679,6 +324,8 @@ spec:
         rm -f "${RAW}" "${QCOW}"
 
         echo "Done: ${DEST}"
+
+
 
 
 

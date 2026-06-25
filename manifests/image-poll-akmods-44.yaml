@@ -31,9 +31,27 @@ spec:
         metadata:
           labels:
             app.kubernetes.io/part-of: testing-lab
+        dag:
+          tasks:
+            - name: fetch
+              template: fetch-remote
+            - name: update
+              depends: "fetch.Succeeded"
+              template: update-local
+              arguments:
+                parameters:
+                  - name: remote-digest
+                    value: "{{tasks.fetch.outputs.parameters.digest}}"
+
+      - name: fetch-remote
+        outputs:
+          parameters:
+            - name: digest
+              valueFrom:
+                path: /tmp/digest
         script:
-          image: cgr.dev/chainguard/kubectl:latest-dev
-          command: [bash]
+          image: quay.io/skopeo/stable:latest
+          command: [sh]
           resources:
             requests:
               cpu: 100m
@@ -48,24 +66,57 @@ spec:
                   name: github-token
                   key: token
           source: |
-            set -euo pipefail
-            apk add --no-cache skopeo >/dev/null 2>&1
+            set -eu
             IMAGE_REF="ghcr.io/ublue-os/akmods:main-44"
+            REMOTE=""
+            for i in 1 2 3; do
+              REMOTE=$(skopeo inspect \
+                --no-tags \
+                --format json \
+                --creds "_token:${GITHUB_TOKEN}" \
+                "docker://${IMAGE_REF}" 2>/dev/null | jq -r .Digest || true)
+              [ -n "${REMOTE}" ] && [ "${REMOTE}" != "null" ] && break
+              echo "skopeo attempt ${i}/3 failed for ${IMAGE_REF}; retrying in $(( i * 15 ))s" >&2
+              sleep $(( i * 15 ))
+            done
+            
+            if [ -z "${REMOTE}" ] || [ "${REMOTE}" = "null" ]; then
+              echo "Failed to resolve digest" >&2
+              echo "none" > /tmp/digest
+            else
+              echo "${REMOTE}" > /tmp/digest
+            fi
+
+      - name: update-local
+        inputs:
+          parameters:
+            - name: remote-digest
+        script:
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          command: [bash]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          source: |
+            set -euo pipefail
             STATE_KEY="digest-akmods-main-44"
             DERIVED_KEY="digest-aurora-testing"
+            REMOTE="{{inputs.parameters.remote-digest}}"
 
-            REMOTE=$(skopeo inspect --no-tags --format '{{.Digest}}' \
-              --creds "_token:${GITHUB_TOKEN}" \
-              "docker://${IMAGE_REF}" 2>/dev/null || true)
-            if [[ -z "${REMOTE}" ]]; then
-              echo "Failed to resolve digest for ${IMAGE_REF}; skipping" >&2
+            if [[ "${REMOTE}" == "none" ]]; then
+              echo "No remote digest fetched. Skipping." >&2
               exit 0
             fi
-            echo "Remote: ${REMOTE}" >&2
 
-            STORED=$(kubectl get configmap image-polling-digests \
-              -n argo -o jsonpath="{.data.${STATE_KEY}}" 2>/dev/null || true)
-            echo "Stored: ${STORED:-<none>}" >&2
+            STORED=$(kubectl get configmap image-polling-digests -n argo \
+              -o jsonpath="{.data.${STATE_KEY}}" 2>/dev/null || true)
+
+            echo "Remote:  ${REMOTE}" >&2
+            echo "Stored:  ${STORED:-<none>}" >&2
 
             if [[ "${REMOTE}" == "${STORED}" ]]; then
               echo "No change in akmods:main-44 — skipping" >&2
@@ -74,5 +125,7 @@ spec:
 
             echo "akmods:main-44 changed — updating state and resetting aurora-testing state" >&2
             kubectl patch configmap image-polling-digests -n argo --type merge \
-              -p "{\"data\":{\"${STATE_KEY}\":\"${REMOTE}\",\"${DERIVED_KEY}\":\"\"}}"
+              -p "{\"data\":{\"${STATE_KEY}\":\"${REMOTE}\",\"${DERIVED_KEY}\":\"\"}}" \
+              || kubectl create configmap image-polling-digests -n argo \
+                   --from-literal="${STATE_KEY}=${REMOTE}" --from-literal="${DERIVED_KEY}="
             echo "Reset ${DERIVED_KEY} to empty — image-poll-aurora-testing will trigger on next run" >&2

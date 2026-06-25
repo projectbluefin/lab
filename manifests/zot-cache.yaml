@@ -79,7 +79,7 @@ data:
     }
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: zot-cache
   namespace: local-registry
@@ -87,7 +87,6 @@ metadata:
     app.kubernetes.io/part-of: testing-lab
     app.kubernetes.io/component: registry-cache
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: zot-cache
@@ -97,8 +96,6 @@ spec:
         app: zot-cache
         app.kubernetes.io/part-of: testing-lab
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       containers:
         - name: zot
           image: ghcr.io/project-zot/zot-linux-amd64:v2.1.1
@@ -126,7 +123,7 @@ spec:
             name: zot-cache-config
         - name: data
           hostPath:
-            path: /var/mnt/ghost-data/zot-cache
+            path: /var/mnt/framework-cache/zot-cache
             type: DirectoryOrCreate
 ---
 apiVersion: v1
@@ -152,6 +149,7 @@ metadata:
     app.kubernetes.io/part-of: testing-lab
 spec:
   type: NodePort
+  externalTrafficPolicy: Local
   selector:
     app: zot-cache
   ports:

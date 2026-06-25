@@ -9,8 +9,8 @@
 #   - No recipe SSHes to ghost; do NOT add workstation SSH hops.
 #   - Cluster bootstrap (setup-ssh-secret, setup-argocd) runs once from workstation.
 
-image     := env_var_or_default("BLUEFIN_IMAGE", "ghcr.io/ublue-os/bluefin:latest")
-image_tag := env_var_or_default("BLUEFIN_IMAGE_TAG", "latest")
+image     := env_var_or_default("BLUEFIN_IMAGE", "ghcr.io/projectbluefin/bluefin:testing")
+image_tag := env_var_or_default("BLUEFIN_IMAGE_TAG", "testing")
 argo_ns   := "argo"
 
 # List all available recipes
@@ -66,8 +66,8 @@ argocd-status:
 # Usage: just ensure-disk
 # Usage: just ensure-disk lts
 ensure-disk tag=image_tag:
-    argo submit --from workflowtemplate/bib-build-and-push \
-        -p image="ghcr.io/ublue-os/bluefin:{{ tag }}" \
+    argo submit --from workflowtemplate/build-containerdisk \
+        -p image="ghcr.io/projectbluefin/bluefin:{{ tag }}" \
         -p image-tag="{{ tag }}" \
         -n {{ argo_ns }} \
         --watch

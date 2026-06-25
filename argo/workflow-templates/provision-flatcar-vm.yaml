@@ -69,7 +69,7 @@ spec:
       emptyDir:
         sizeLimit: 20Gi
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: quay.io/fedora/fedora:latest
       command: [bash]
       securityContext:
         privileged: true
@@ -93,7 +93,7 @@ spec:
         # ponytail: :latest tag is fine — no nightly CronWorkflow, runs are sequential
 
         echo "Installing qemu-img and bzip2..." >&2
-        apk add -q qemu-img bzip2 buildah curl
+        dnf install -y -q qemu-img bzip2 buildah
 
         echo "Downloading Flatcar ${CHANNEL} ${VERSION}..." >&2
         curl -L --fail --retry 3 -o /mnt/work/flatcar.img.bz2 "${URL}"
@@ -179,7 +179,7 @@ spec:
       - name: namespace
       - name: ssh-pubkey
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: quay.io/fedora/fedora:latest
       command: [sh]
       resources:
         requests:

@@ -260,7 +260,8 @@ spec:
           PART="${LOOP_DEV}p${PARTNUM}"
           [ -b "${PART}" ] || continue
           if mount "${PART}" "${SYSROOT}" 2>/dev/null; then
-            DEPLOY_DIR=$(find "${SYSROOT}/ostree/deploy" -maxdepth 4 -name "*.0" -type d 2>/dev/null | head -1)
+            # Match ostree/deploy/<osname>/deploy/<hash>.0 (not backing/<hash>.0)
+            DEPLOY_DIR=$(find "${SYSROOT}/ostree/deploy" -maxdepth 5 -path "*/deploy/*.0" -type d 2>/dev/null | head -1)
             if [ -n "${DEPLOY_DIR}" ]; then
               WANTS="${DEPLOY_DIR}/etc/systemd/system/multi-user.target.wants/sshd.service"
               if [ ! -e "${WANTS}" ]; then

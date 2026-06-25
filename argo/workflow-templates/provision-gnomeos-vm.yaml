@@ -330,8 +330,8 @@ spec:
           - name: vm-name
           - name: namespace
       script:
-        image: registry.fedoraproject.org/fedora-hummingbird:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -340,8 +340,9 @@ spec:
             cpu: 500m
             memory: 256Mi
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          microdnf install -y curl jq >/dev/null 2>&1
           exec 3>&1
           exec 1>&2
           NS="{{inputs.parameters.namespace}}"
@@ -357,3 +358,5 @@ spec:
 
           echo "VMI ready; pod IP is ${POD_IP}" >&2
           echo "${POD_IP}" >&3
+
+          SCRIPT_EOF

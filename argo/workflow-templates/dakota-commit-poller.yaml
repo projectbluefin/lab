@@ -58,8 +58,8 @@ spec:
             valueFrom:
               path: /tmp/changed
       script:
-        image: registry.fedoraproject.org/fedora-hummingbird:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -74,8 +74,9 @@ spec:
                 name: github-token
                 key: token
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          microdnf install -y curl jq >/dev/null 2>&1
           REPO="{{workflow.parameters.repo}}"
           BRANCH="{{workflow.parameters.branch}}"
           KEY="{{workflow.parameters.state-key}}"
@@ -109,3 +110,5 @@ spec:
               -p "{\"data\":{\"${KEY}\":\"${REMOTE}\"}}"
             echo "true" > /tmp/changed
           fi
+
+          SCRIPT_EOF

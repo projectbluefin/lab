@@ -16,8 +16,8 @@ spec:
           app.kubernetes.io/part-of: bluefin-test-suite
           bluefin.io/step: pr-poller
       script:
-        image: registry.fedoraproject.org/fedora-hummingbird:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -32,8 +32,9 @@ spec:
                 name: github-token
                 key: token
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
-          microdnf install -y curl jq >/dev/null 2>&1
 
           CONTEXT="ghost-lab"
           API="https://api.github.com"
@@ -261,3 +262,5 @@ spec:
              dispatch_pr "$PR"
            done < <(echo "$LABEL_RESULTS" | jq -c '.items[]')
           fi
+
+          SCRIPT_EOF

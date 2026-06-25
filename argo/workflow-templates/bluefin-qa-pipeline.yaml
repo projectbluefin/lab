@@ -228,8 +228,8 @@ spec:
     # kubectl delete --ignore-not-found is a no-op for already-deleted VMs.
     - name: cleanup-orphan-vms
       script:
-        image: registry.fedoraproject.org/fedora-hummingbird:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -238,6 +238,8 @@ spec:
             cpu: 500m
             memory: 256Mi
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           NS="{{workflow.parameters.namespace}}"
           WF="{{workflow.name}}"
           for SUITE in smoke developer software system; do
@@ -245,6 +247,7 @@ spec:
               && echo "Cleaned ${WF}-${SUITE}" || true
           done
 
+          SCRIPT_EOF
     # ── update-factory-stats: append recent run to factory-stats.json ─────────
     # Runs on every pipeline exit (success or failure). Patches the recent_runs
     # array in docs/data/factory-stats.json via GitHub Contents API so the

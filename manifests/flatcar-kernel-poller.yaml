@@ -24,10 +24,13 @@ spec:
     templates:
       - name: poll-and-trigger
         script:
-          image: registry.fedoraproject.org/fedora-hummingbird:latest
-          command: [bash]
+          image: cgr.dev/chainguard/wolfi-base:latest
+          command: [sh]
           source: |
+            apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+            exec bash <<'SCRIPT_EOF'
             set -euo pipefail
+            SCRIPT_EOF
           microdnf install -y curl jq >/dev/null 2>&1
 
             # Fetch latest stable kernel version from kernel.org

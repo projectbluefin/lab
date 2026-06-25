@@ -179,8 +179,8 @@ spec:
           - name: namespace
           - name: ssh-pubkey
       script:
-        image: registry.fedoraproject.org/fedora-hummingbird:latest
-        command: [bash]
+        image: cgr.dev/chainguard/wolfi-base:latest
+        command: [sh]
         resources:
           requests:
             cpu: 100m
@@ -195,6 +195,8 @@ spec:
                 name: bluefin-test-ssh-key
                 key: id_ed25519.pub
         source: |
+          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
           exec 3>&1
           exec 1>&2
@@ -239,3 +241,5 @@ spec:
             "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
 
           echo "${POD_IP}" >&3
+
+          SCRIPT_EOF

@@ -10,8 +10,9 @@
 > - [`docs/dogtail-testing.md`](dogtail-testing.md) — writing GUI tests
 > - [`AGENTS.md`](../AGENTS.md) — hard policy and tenets
 
-> [!WARNING]
-> **Use Kubernetes MCP tools for all cluster reads/mutations. Never SSH to ghost from a workstation.** Use Argo MCP for workflow and CronWorkflow inspection/control. The only SSH in this system is **in-cluster**: workflow pods and probe pods SSH into test VMs as the test execution mechanism. Workstation operators and agents have no SSH path to anything.
+> [!NOTE]
+> **CLI-first.** Tool hierarchy: `just` (lifecycle recipes) → `argo`/`kubectl` (cluster ops) → `ssh jorge@ghost` (OS-level only).
+> MCP tools are optional — never block on them. One bash call beats a tool search + MCP roundtrip every time.
 
 ---
 
@@ -20,8 +21,8 @@
 | Situation | Run |
 |---|---|
 | Validate a smoke test or step change | `just run-tests-tag testing` |
-| Validate atomic OS contract checks | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=system` |
-| Validate developer or software suites | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=developer` or `suites=software` |
+| Validate atomic OS contract checks | `argo submit -n argo --from workflowtemplate/bluefin-qa-pipeline -p suites=system` |
+| Validate developer or software suites | `argo submit -n argo --from workflowtemplate/bluefin-qa-pipeline -p suites=developer` |
 | Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate a single Bluefin tag end-to-end | `just run-tests-tag <testing\|lts-testing>` |
 | Validate released (stable) image | `just run-tests-tag stable` or `just run-tests-tag lts-stable` |
@@ -35,7 +36,7 @@
 | Lint Argo YAML | `just lint` |
 | Bootstrap repo-owner workstation access | §9 |
 
-Rule: **if a `just` recipe exists, use it.** Otherwise use Kubernetes MCP / Argo MCP recipes from this guide; do not fall back to workstation `kubectl`/`argo`.
+Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.
 
 ---
 
@@ -54,7 +55,7 @@ Run `just logs` first. Then match a row:
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |
 | `outputs.result` is `Waiting...` or other debug text | Send debug output to `>&2`; keep stdout for the result only |
-| VM stuck `Terminating` | Use `kubernetes-mcp-pods_delete` on the matching `virt-launcher-*` pod |
+| VM stuck `Terminating` | `kubectl delete pod -n bluefin-test $(kubectl get pod -n bluefin-test -l kubevirt.io/vm=<name> -o name)` |
 | `qemu-img: command not found` (Flatcar prep) | Use `quay.io/fedora/fedora:latest` for the Flatcar prep image |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
 | Workflow stuck `Pending` | Run §3 |
@@ -67,7 +68,7 @@ If no row matches:
 2. Query Loki for "=== BEHAVE RESULTS JSON ==="
 3. Query Loki for "STEP_ERROR"
 4. Query Loki for "AT-SPI tree written"
-5. argo-mcp-get_workflow <workflow-name>
+5. argo get -n argo <workflow-name>
 ```
 
 Loki: <http://192.168.1.102:30100>. Pod label: `app.kubernetes.io/part-of=bluefin-test-suite`.
@@ -78,16 +79,16 @@ Loki: <http://192.168.1.102:30100>. Pod label: `app.kubernetes.io/part-of=bluefi
 
 ```text
 1. just list-workflows
-2. kubernetes-mcp-nodes_top
-3. kubernetes-mcp-resources_list apiVersion=kubevirt.io/v1 kind=VirtualMachineInstance
-4. kubernetes-mcp-pods_list fieldSelector=status.phase=Pending
-5. kubernetes-mcp-pods_top all_namespaces=true
+2. kubectl top nodes
+3. kubectl get vmi -A
+4. kubectl get pods -A --field-selector=status.phase=Pending
+5. kubectl top pods -A
 ```
 
 | Symptom | Action |
 |---|---|
-| Workflows `Pending` | Use `kubernetes-mcp-pods_top` to identify the current CPU hog before submitting more work |
-| Many `virt-launcher-*` pods with no corresponding live workflow | Use Kubernetes MCP to create a one-shot cleanup Job from `orphan-vm-cleanup` |
+| Workflows `Pending` | `kubectl top nodes` to identify the current CPU hog before submitting more work |
+| Many `virt-launcher-*` pods with no corresponding live workflow | `argo submit -n argo --from workflowtemplate/orphan-vm-cleanup` |
 
 Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limits**.
 
@@ -95,9 +96,9 @@ Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limit
 
 ## 4. ArgoCD — my template change did not take effect
 
-### kubernetes-mcp handles ALL Argo/ArgoCD resources
+### kubectl handles ALL Argo/ArgoCD resources
 
-**`kubernetes-mcp-resources_*` tools work for any CRD, including:**
+**`kubectl get/apply/delete` works for any CRD, including:**
 
 | Resource | apiVersion | kind |
 |---|---|---|
@@ -106,32 +107,26 @@ Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limit
 | Argo CronWorkflow | `argoproj.io/v1alpha1` | `CronWorkflow` |
 | Argo WorkflowTemplate | `argoproj.io/v1alpha1` | `WorkflowTemplate` |
 
-**Do not guess or fall back to SSH.** Use `kubernetes-mcp-resources_get/list/create_or_update/delete` for all of the above before reaching for any other tool.
-
 **Trigger an ArgoCD sync:**
-```text
-kubernetes-mcp-resources_create_or_update:
-  apiVersion: argoproj.io/v1alpha1
-  kind: Application
-  metadata:
-    name: testing-lab-infra    # or: testing-lab
-    namespace: argocd
-  operation:
-    initiatedBy:
-      username: copilot-mcp
-    sync:
-      syncStrategy:
-        hook: {}
+```bash
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl -n argocd annotate application testing-lab \
+  argocd.argoproj.io/refresh=normal --overwrite
+# or via argocd CLI:
+argocd app sync testing-lab
 ```
 
 **Read ArgoCD Application state:**
-```text
-kubernetes-mcp-resources_get apiVersion=argoproj.io/v1alpha1 kind=Application name=testing-lab-infra namespace=argocd
+```bash
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl get application testing-lab-infra -n argocd \
+  -o jsonpath='{.status.sync.status} {.status.health.status}'
 ```
 Key fields: `.status.operationState.phase`, `.status.sync.status`, `.status.operationState.message`, `.status.operationState.operation.sync.revision`
 
 **Cancel a stuck operation** (PreSync hook looping):
-Patch the Application with `operation:` field removed — ArgoCD will stop the current sync and re-evaluate.
+```bash
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl patch application testing-lab -n argocd \
+  --type=json -p='[{"op":"remove","path":"/operation"}]'
+```
 
 ```text
 1. git log -1 origin/main -- argo/workflow-templates/<file>
@@ -146,7 +141,7 @@ Patch the Application with `operation:` field removed — ArgoCD will stop the c
    -> expected: `testing-lab` is Healthy.
    -> if not Healthy: inspect the reported condition, fix the rejected field in git, push again, then repeat step 2.
 
-4. argo-mcp-get_workflow_template <name>
+4. argo template get -n argo <name>
    -> expected: the new field value is live.
    -> if still old: rerun `just argocd-sync`, wait for health, then re-check.
 
@@ -161,17 +156,21 @@ Do **not** `kubectl apply` a rejected WorkflowTemplate.
 
 ## 5. CronWorkflow ops — pause / resume / backfill
 
-```text
-Suspend during a debugging session:
-- argo-mcp-suspend_cron_workflow nightly-smoke
-- argo-mcp-suspend_cron_workflow nightly-smoke-lts
+```bash
+# List all cron workflows
+argo cron list -n argo
 
-Resume:
-- argo-mcp-resume_cron_workflow nightly-smoke
-- argo-mcp-resume_cron_workflow nightly-smoke-lts
+# Suspend during a debugging session:
+argo cron suspend nightly-smoke -n argo
+argo cron suspend nightly-smoke-lts -n argo
 
-Backfill / run now:
-- Use Kubernetes MCP to create a one-shot Job cloned from `nightly-smoke`, `nightly-smoke-lts`, or `orphan-vm-cleanup`
+# Resume:
+argo cron resume nightly-smoke -n argo
+argo cron resume nightly-smoke-lts -n argo
+
+# Backfill / run now:
+argo submit -n argo --from cronworkflow/nightly-smoke
+argo submit -n argo --from cronworkflow/orphan-vm-cleanup
 ```
 
 | Name | Schedule (UTC) | Purpose |
@@ -237,17 +236,17 @@ qemuGuestAgent accessCredentials, not baked into the disk image.
 Mandatory gate for `knuckle`, `dakota`, and this repo's PRs.
 
 1. Run the lab loop end-to-end — `just run-tests-tag testing` minimum, `just run-tests-matrix` for high-risk changes.
-2. Collect **real evidence** using **MCP tools only** — not bash `argo`/`kubectl` commands:
-   - Workflow status/steps → `argo-mcp-get_workflow` / `argo-mcp-list_workflows`
-   - Log output → `argo-mcp-logs_workflow`
-   - Pod/VMI state → `kubernetes-mcp-pods_get` / `kubernetes-mcp-resources_list`
+2. Collect **real evidence** using CLI tools:
+   - Workflow status/steps → `argo get -n argo <name>` / `argo list -n argo`
+   - Log output → `argo logs -n argo <name>`
+   - Pod/VMI state → `kubectl get pods -n argo` / `kubectl get vmi -A`
 3. Post a report on the PR using the template at [`docs/vanguard-report-template.md`](vanguard-report-template.md).
 4. Only then apply `agent-tested` and approve / queue.
 
 Hard exit checklist:
 
 - [ ] Real VM-backed lab evidence exists.
-- [ ] Evidence was collected via MCP tools (not bash CLI fallback).
+- [ ] Evidence was collected via CLI tools (`argo`, `kubectl`).
 - [ ] The entire loop was tested, not isolated commands.
 - [ ] A canonical Vanguard report with real data is posted on the PR.
 - [ ] Any blocker is filed as an issue in the owning repo.
@@ -264,8 +263,8 @@ Hard exit checklist:
 
 Single-VM deletion:
 
-```text
-Use `kubernetes-mcp-resources_delete` with `apiVersion: kubevirt.io/v1`, `kind: VirtualMachine`, the VM name, and the target namespace.
+```bash
+kubectl delete vm -n bluefin-test <name>
 ```
 
 ---
@@ -284,9 +283,9 @@ just run-tests-tag testing
 
 ## 10. Self-check before claiming cluster healthy
 
-```text
+```bash
 1. just argocd-status
-2. argo-mcp-list_cron_workflows namespace=argo
+2. argo cron list -n argo
 3. just list-vms
 4. just list-workflows
 5. just run-tests-tag testing
@@ -305,19 +304,19 @@ When no jobs are queued, `arc-runners` namespace is empty — that is correct.
 Runners are ephemeral and only exist while a job is running.
 
 **Check ARC is healthy:**
-```text
-kubernetes-mcp-pods_list namespace=arc-systems
+```bash
+kubectl get pods -n arc-systems
 ```
 Expected: `arc-systems-gha-rs-controller-*` Running + `ghost-runners-*-listener` Running.
 
 **Check a runner set is registered:**
-```text
-kubernetes-mcp-resources_list apiVersion=actions.github.com/v1alpha1 kind=AutoscalingRunnerSet namespace=arc-runners
+```bash
+kubectl get autoscalingrunnersets -n arc-runners
 ```
 Expected: `ghost-runners` with MINIMUM=0 MAXIMUM=4.
 
 **If listener is missing** (arc-systems has only the controller pod, no listener):
-1. Check controller logs: `kubernetes-mcp-pods_log namespace=arc-systems <controller-pod>`
+1. Check controller logs: `kubectl logs -n arc-systems <controller-pod>`
 2. If error is `no route to host` / DNS failure: the controller landed on bazzite (bazzite has no cluster DNS — ARC controller must run on ghost).
    Delete the controller pod — it will reschedule to ghost where DNS works.
 3. If error is GitHub API auth failure: check `arc-github-secret` exists in `arc-runners`.
@@ -338,12 +337,14 @@ installed on the `projectbluefin` org. Credentials in `arc-github-secret`
 ---
 
 ## 12. Discover live cluster facts — do not trust stale docs
+
+| Fact | Command |
 |---|---|
-| SSH key fingerprint | `kubernetes-mcp-resources_get` the `bluefin-test-ssh-key` Secret, decode `.data.id_ed25519.pub`, then run `ssh-keygen -lf -` locally |
-| Live WorkflowTemplate body | `argo-mcp-get_workflow_template <name>` |
-| CronWorkflow schedules | `argo-mcp-list_cron_workflows namespace=argo` |
+| SSH key fingerprint | `kubectl get secret bluefin-test-ssh-key -n argo -o jsonpath='{.data.id_ed25519\.pub}' \| base64 -d \| ssh-keygen -lf -` |
+| Live WorkflowTemplate body | `argo template get -n argo <name>` |
+| CronWorkflow schedules | `argo cron list -n argo` |
 | ArgoCD revision in cluster | `just argocd-status` |
-| Pending pods | `kubernetes-mcp-pods_list fieldSelector=status.phase=Pending` |
+| Pending pods | `kubectl get pods -A --field-selector=status.phase=Pending` |
 
 ---
 
@@ -354,12 +355,12 @@ Model: `Qwen/Qwen3.6-35B-A3B` Q4_K_M GGUF via `ghcr.io/ggml-org/llama.cpp:server
 Namespace: `llm-d`. Managed by GitOps (`testing-lab-infra` ArgoCD app).
 
 **Check status:**
-```text
-kubernetes-mcp-pods_list namespace=llm-d
+```bash
+kubectl get pods -n llm-d
 ```
 
 **Test the API:**
-```text
+```bash
 curl http://192.168.1.102:30800/v1/models
 curl http://192.168.1.102:30800/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -367,21 +368,21 @@ curl http://192.168.1.102:30800/v1/chat/completions \
 ```
 
 **If pod is stuck Pending:** Check two things:
-1. AMD ROCm device plugin registered: `kubernetes-mcp-pods_list namespace=kube-system` — look for `amdgpu-device-plugin`. After a k3s restart the plugin needs a pod delete/respawn to re-register with kubelet. Verify `amd.com/gpu` appears in `kubernetes-mcp-resources_get kind=Node name=ghost` allocatable.
+1. AMD ROCm device plugin registered: `kubectl get pods -n kube-system | grep amdgpu` — look for `amdgpu-device-plugin`. After a k3s restart the plugin needs a pod delete/respawn to re-register with kubelet. Verify `amd.com/gpu` appears in `kubectl get node ghost -o jsonpath='{.status.allocatable}'`.
 2. Memory fits: ghost has ~62.5Gi allocatable. Manifest requests 48Gi — check for other large pods consuming RAM if you see `Insufficient memory`.
 
-**If k3s is down** (MCP returns "connection refused" on all calls):
-k3s can stop after host sleep/resume. Recovery requires SSH (no API available):
+**If k3s is down** (kubectl returns "connection refused"):
+k3s can stop after host sleep/resume. Recovery:
 ```bash
-ssh ghost "sudo systemctl start k3s"
+ssh jorge@ghost "sudo systemctl start k3s"
 ```
 After restart, delete the `amdgpu-device-plugin` pod so it re-registers with the new kubelet socket.
 
-**kubelet device-plugin socket path:** `/var/lib/kubelet/device-plugins/kubelet.sock` (standard path — NOT the rancher/k3s path). Verify with: `ssh ghost "sudo ss -lx | grep kubelet"`.
+**kubelet device-plugin socket path:** `/var/lib/kubelet/device-plugins/kubelet.sock` (standard path — NOT the rancher/k3s path). Verify with: `ssh jorge@ghost "sudo ss -lx | grep kubelet"`.
 
 **If pod is CrashLoopBackOff:** Check init container logs first — it downloads the GGUF on first start:
 ```bash
-kubernetes-mcp-pods_logs namespace=llm-d container=download-gguf
+kubectl logs -n llm-d <pod-name> -c download-gguf
 ```
 The GGUF (`Qwen3.6-35B-A3B-Q4_K_M.gguf`) is cached at `/var/tmp/llm-models/` on ghost.
 If the file is missing, delete the pod and let the init container re-download it (~21GB from HuggingFace).

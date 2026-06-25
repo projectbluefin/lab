@@ -1,10 +1,11 @@
 # bluefin-test-suite Justfile
 # GitOps policy:
 #   - WorkflowTemplate changes go via git push to main; ArgoCD auto-syncs.
-#   - Do NOT kubectl apply templates directly. Do NOT SSH to ghost or exo-1.
-#   - Workflow submission and monitoring: use these just targets or Argo MCP tools.
-#   - These recipes are convenience wrappers for the repo owner on a workstation.
-#   - Agents and automated systems should use MCP instead of invoking local kubectl/argo.
+#   - Do NOT kubectl apply templates directly.
+#   - Workflow submission and monitoring: use these just targets (argo/kubectl CLI).
+#   - These recipes are the canonical interface for all routine lifecycle operations.
+#   - Agents use these recipes or call argo/kubectl directly. No MCP required.
+#   - ssh jorge@ghost is permitted for OS-level tasks only (k3s restart, systemd, brew).
 #   - No recipe SSHes to ghost; do NOT add workstation SSH hops.
 #   - Cluster bootstrap (setup-ssh-secret, setup-argocd) runs once from workstation.
 
@@ -122,8 +123,7 @@ run-migration-test tag=image_tag:
         -n {{ argo_ns }} \
         --watch
 
-# One-time: write SSH banner on ghost warning agents to use the K8s MCP.
-# Runs as a WorkflowTemplate (not a manifest Job) to avoid ArgoCD reconcile loops.
+# One-time: write SSH banner on ghost.
 setup-ghost-ssh-banner:
     argo submit --from workflowtemplate/setup-ghost-ssh-banner \
         -n {{ argo_ns }} \
@@ -150,7 +150,6 @@ run-flatcar-smoke:
         --watch
 
 # ── Observation ─────────────────────────────────────────────────────────────
-# Repo-owner convenience wrappers only; agents and automation should observe/clean up via MCP, never via SSH.
 
 # List all test workflows
 list-workflows:

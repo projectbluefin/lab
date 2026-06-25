@@ -67,17 +67,24 @@ When deciding what to test or prioritize:
 
 **When in doubt, don't post.** If the only thing to report is "tests pass", post nothing.
 
-## Core Tenet: All Agent Operations Are API-Driven
+## Core Tenet: CLI-First Operations
 
-**Use Kubernetes MCP tools for all cluster reads/mutations. Never SSH to ghost from a workstation.**
+This lab is containers and VMs. Every operation has a deterministic CLI equivalent.
+Use the tool lowest on this hierarchy that gets the job done:
 
-The only SSH in this system is **in-cluster**: workflow pods and probe pods SSH into test VMs (fresh KubeVirt VMs) as the test execution mechanism. That is not an operator access pattern — it is how behave/qecore delivers tests. Workstation operators and agents have no SSH path to anything; they submit workflows and query the API.
+| Tier | Tool | When to use |
+|---|---|---|
+| 1 | `just` | Any routine lifecycle operation that has a recipe — run tests, list/delete workflows, disk ops, ArgoCD sync, lint |
+| 2 | `argo` / `kubectl` | Workflow submission, template inspection, cron ops, pod/VM/node/secret management, resource reads |
+| 3 | `ssh jorge@ghost` | OS-level only: k3s restart after crash, brew services, systemd units, hardware/disk ops not reachable via k8s API |
+
+**MCP tools are optional.** Use them if they are available and convenient, but never block on them.
+A missing or offline MCP server is not a reason to stop — fall back to `argo`/`kubectl` bash calls.
+CLI bash = one tool call, deterministic, logged, and works regardless of MCP server state.
 
 For canonical commands — workflow submission, ArgoCD actions, CronWorkflow operations,
 key secret rotation, PR queue steps, safe cleanup, bootstrap, and live fact lookup — see
 [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md).
-
-If an MCP tool doesn't exist for an operation, the right fix is to build or deploy that capability — not to fall back to workstation `kubectl`/`argo`, and never to SSH.
 
 ## Core Tenet: Knuckle VM Lifecycle Is Argo-Native
 
@@ -229,7 +236,7 @@ tests/
 AGENTS.md                        This file
 RUNBOOK.md                       Timeless architecture + failure modes
 SECURITY.md                      Accepted homelab trade-offs and risks
-Justfile                         Repo-owner convenience wrappers (require kubectl/argo access; agents use MCP)
+Justfile                         Canonical lifecycle recipes — argo/kubectl CLI calls; agents and operators both use these
 ```
 
 ## ARC Runners (GitHub Actions on ghost)

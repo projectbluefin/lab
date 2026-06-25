@@ -36,7 +36,6 @@ spec:
           exec bash <<'SCRIPT_EOF'
           set -euo pipefail
 
-          CONTEXT="ghost-lab"
           API="https://api.github.com"
           # Max new dispatches per run — prevents burst storms when many PRs are in
           # failure state after a cluster outage.
@@ -90,33 +89,7 @@ spec:
              VM_MEM="8Gi"
            fi
 
-           # Idempotency: skip if ghost-lab status already posted for this SHA
-           EXISTING=$(curl -sf \
-             -H "Authorization: token ${GITHUB_TOKEN}" \
-             -H "Accept: application/vnd.github+json" \
-             "${API}/repos/${REPO}/statuses/${SHA}" \
-             | jq -r --arg ctx "$CONTEXT" \
-               '.[] | select(.context == $ctx) | .state' | head -1)
-
-           # Skip only if already in-flight (pending) or passed (success).
-           # Re-test on error/failure so stale or failed runs get retried.
-           if [[ "$EXISTING" == "pending" || "$EXISTING" == "success" ]]; then
-             echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: status=${EXISTING}, skip" >&2
-             return
-           fi
-
-           # Lock: post pending before dispatching to prevent duplicate runs
-           curl -sf -X POST \
-             -H "Authorization: token ${GITHUB_TOKEN}" \
-             -H "Accept: application/vnd.github+json" \
-             -H "Content-Type: application/json" \
-             "${API}/repos/${REPO}/statuses/${SHA}" \
-             -d "$(jq -n --arg ctx "$CONTEXT" \
-               '{state:"pending",context:$ctx,description:"Ghost lab queued"}')" \
-             > /dev/null
-           echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: locked + dispatching" >&2
-
-          # Route to matching WorkflowTemplate + derive per-repo params
+           # Route to matching WorkflowTemplate + derive per-repo params
            case "$REPO" in
              */dakota)       TMPL="dakota-qa-pipeline"
                              EXTRA_PARAMS="" ;;

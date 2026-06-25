@@ -185,9 +185,6 @@ spec:
   - name: cleanup-and-report
     dag:
       tasks:
-      - name: post-status
-        template: post-github-status
-        when: "'{{workflow.parameters.sha}}' != ''"
       - name: update-dashboard
         template: update-factory-stats
 
@@ -248,35 +245,4 @@ spec:
           -H "Content-Type: application/json" \
           -d "$BODY" "${API_URL}" 2>&1) || HTTP="error"
         echo "Dashboard update: ${OVERALL} for ${LABEL} (${WF_NAME}) — http=${HTTP}"
-        SCRIPT_EOF
-
-    # ── post-github-status ────────────────────────────────────────────────────
-  - name: post-github-status
-    script:
-      image: cgr.dev/chainguard/wolfi-base:latest
-      command: [sh]
-      env:
-      - name: GITHUB_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: github-token
-            key: token
-      source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
-        exec bash <<'SCRIPT_EOF'
-        STATE=$([ "{{workflow.status}}" = "Succeeded" ] && echo success || echo failure)
-        PAYLOAD=$(jq -n \
-          --arg state "$STATE" \
-          --arg ctx  "ghost-lab" \
-          --arg desc "Dakota lab test $STATE" \
-          --arg url  "http://192.168.1.102:32746/workflows/argo/{{workflow.name}}" \
-          '{state:$state,context:$ctx,description:$desc,target_url:$url}')
-        curl -sf -X POST \
-          -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github+json" \
-          -H "Content-Type: application/json" \
-          "https://api.github.com/repos/{{workflow.parameters.repo}}/statuses/{{workflow.parameters.sha}}" \
-          -d "$PAYLOAD" \
-        && echo "Posted $STATE to {{workflow.parameters.repo}}@{{workflow.parameters.sha}}" \
-        || echo "WARNING: failed to post commit status (non-fatal)"
         SCRIPT_EOF

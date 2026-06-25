@@ -153,6 +153,8 @@ spec:
     - name: wait-for-ssh
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
+        securityContext:
+          runAsUser: 0
         command: [bash]
         resources:
           requests:
@@ -249,6 +251,8 @@ spec:
       activeDeadlineSeconds: 10800
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
+        securityContext:
+          runAsUser: 0
         command: [bash]
         securityContext:
           runAsUser: 0
@@ -410,6 +414,8 @@ spec:
           - name: filename
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
+        securityContext:
+          runAsUser: 0
         command: [bash]
         resources:
           requests:

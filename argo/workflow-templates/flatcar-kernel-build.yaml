@@ -333,12 +333,12 @@ spec:
         ./run_sdk_container --rm \
           -m \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay:/overlay \
           -V \${SDK_VERSION} \
-          -- sudo bash -c "
+          -- bash -c "
             set -euo pipefail
 
             # Register overlay in portage repos.conf
-            mkdir -p /etc/portage/repos.conf
-            cat > /etc/portage/repos.conf/flatcar-kernel.conf << EOF
+            sudo mkdir -p /etc/portage/repos.conf
+            sudo tee /etc/portage/repos.conf/flatcar-kernel.conf << EOF
         [flatcar-kernel]
         location = /overlay
         masters = portage-stable coreos

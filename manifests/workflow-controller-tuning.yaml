@@ -1,14 +1,6 @@
-# Patch workflow-controller Deployment to reclaim idle memory.
-#
-# GODEBUG=madvdontneed=1 — instructs the Go runtime to return unused memory
-# pages to the OS immediately when idle, instead of retaining them in the Go
-# heap pool. Without this, RSS stays elevated after a burst of workflow runs
-# even though the heap is mostly empty.
-#
-# GOGC=50 — triggers GC at 50% heap growth instead of the default 100%.
-# More aggressive collection; trade: ~5% more CPU at peak, ~50% less idle RSS.
-#
-# ServerSideApply patches only the env block — Helm-owned fields stay intact.
+# Patch workflow-controller: 2 replicas spread across ghost and exo-0,
+# remove ghost hostname pin, keep memory tuning.
+# ServerSideApply patches only these fields — Helm-owned fields stay intact.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +10,8 @@ spec:
   replicas: 2
   template:
     spec:
+      nodeSelector:
+        kubernetes.io/os: linux
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

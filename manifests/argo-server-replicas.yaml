@@ -1,5 +1,6 @@
-# Keep argo-server at 2 replicas so it survives a single-node hiccup.
-# ServerSideApply patches only replicas — Helm-owned fields stay intact.
+# Keep argo-server at 2 replicas spread across ghost and exo-0.
+# Removes the ghost hostname pin set by the Helm chart.
+# ServerSideApply patches only these fields — Helm-owned fields stay intact.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,6 +10,8 @@ spec:
   replicas: 2
   template:
     spec:
+      nodeSelector:
+        kubernetes.io/os: linux
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

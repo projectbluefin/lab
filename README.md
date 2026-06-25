@@ -28,17 +28,19 @@ image-poll → test → screenshot → release pipeline.
 
 ---
 
-## Bluefin Integration
+## Continuous Image Integration & Testing
 
-Three images are under continuous test:
+The lab continuously validates the core operating system family across multiple hardware-profile targets and variants:
 
-| Image | Tag | Schedule |
-|---|---|---|
-| `ghcr.io/projectbluefin/bluefin` | `testing` | Nightly 02:00 UTC + on every new digest |
-| `ghcr.io/projectbluefin/bluefin-lts` | `testing` | Nightly 02:30 UTC + on every new digest |
-| `ghcr.io/projectbluefin/dakota` | latest | Nightly 03:00 UTC + on every BST build |
+| Image | Tag | Schedule / Trigger | Purpose / Suite |
+|---|---|---|---|
+| `ghcr.io/projectbluefin/bluefin` | `testing`, `stable` | Nightly 02:00 UTC + on every OCI digest change | Primary standard GNOME image (full suite) |
+| `ghcr.io/projectbluefin/bluefin-lts` | `testing`, `stable` | Nightly 02:30 UTC + on every OCI digest change | Long-term support GNOME enterprise target |
+| `ghcr.io/ublue-os/aurora` | `testing`, `stable` | Hourly OCI digest poll on upstream change | KDE variant validation (system suite) |
+| `ghcr.io/ublue-os/bazzite` | `testing`, `stable` | Hourly OCI digest poll on upstream change | Steam/gaming variant validation (system suite) |
+| `ghcr.io/projectbluefin/dakota` | `latest` | Nightly 03:00 UTC + on every BST build trigger | BuildStream (BST) flatcar-substrate variant |
 
-**Image-poll trigger:** hourly CronWorkflows check the ghcr.io digest against a stored
+**Image-poll trigger:** hourly CronWorkflows check the OCI registry digests against a stored
 ConfigMap state. When the digest changes, a full `bluefin-qa-pipeline` run fires
 automatically — no human needed.
 

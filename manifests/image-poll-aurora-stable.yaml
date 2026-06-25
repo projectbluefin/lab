@@ -1,0 +1,42 @@
+# CronWorkflow: polls ghcr.io/ublue-os/aurora:stable hourly.
+# Triggers bluefin-qa-pipeline (system suite only — aurora uses KDE)
+# only when OCI digest changes vs ConfigMap state.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-aurora-stable
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+    bluefin.io/trigger: digest-poll
+spec:
+  schedules:
+    - "30 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    workflowTemplateRef:
+      name: image-poller
+    arguments:
+      parameters:
+        - name: image
+          value: "ghcr.io/ublue-os/aurora"
+        - name: image-tag
+          value: "stable"
+        - name: containerdisk-tag
+          value: "aurora-stable"
+        - name: state-key
+          value: "digest-aurora-stable"
+        - name: namespace
+          value: "aurora-test"
+        - name: suites
+          value: "system"
+        - name: variant
+          value: "aurora"

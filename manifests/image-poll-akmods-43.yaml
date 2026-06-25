@@ -1,0 +1,77 @@
+# CronWorkflow: polls ghcr.io/ublue-os/akmods:main-43 (bazzite kernel modules) hourly.
+# When the akmods image digest changes, resets digest-bazzite-testing to "" so the next
+# image-poll-bazzite-testing run detects a "change" and queues a QA pipeline run.
+# Bazzite kernel modules are built from akmods:main-43 — an akmods update means bazzite:testing
+# will be rebuilt with new kernel modules.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-akmods-43
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+    bluefin.io/trigger: digest-poll
+    bluefin.io/role: base-image-watcher
+spec:
+  schedules:
+    - "55 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    entrypoint: watch-base
+    templates:
+      - name: watch-base
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: testing-lab
+        script:
+          image: quay.io/skopeo/stable:latest
+          command: [bash]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          env:
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token
+                  key: token
+          source: |
+            set -euo pipefail
+            IMAGE_REF="ghcr.io/ublue-os/akmods:main-43"
+            STATE_KEY="digest-akmods-main-43"
+            DERIVED_KEY="digest-bazzite-testing"
+
+            REMOTE=$(skopeo inspect --no-tags --format '{{.Digest}}' \
+              --creds "_token:${GITHUB_TOKEN}" \
+              "docker://${IMAGE_REF}" 2>/dev/null || true)
+            if [[ -z "${REMOTE}" ]]; then
+              echo "Failed to resolve digest for ${IMAGE_REF}; skipping" >&2
+              exit 0
+            fi
+            echo "Remote: ${REMOTE}" >&2
+
+            STORED=$(kubectl get configmap image-polling-digests \
+              -n argo -o jsonpath="{.data.${STATE_KEY}}" 2>/dev/null || true)
+            echo "Stored: ${STORED:-<none>}" >&2
+
+            if [[ "${REMOTE}" == "${STORED}" ]]; then
+              echo "No change in akmods:main-43 — skipping" >&2
+              exit 0
+            fi
+
+            echo "akmods:main-43 changed — updating state and resetting bazzite-testing state" >&2
+            kubectl patch configmap image-polling-digests -n argo --type merge \
+              -p "{\"data\":{\"${STATE_KEY}\":\"${REMOTE}\",\"${DERIVED_KEY}\":\"\"}}"
+            echo "Reset ${DERIVED_KEY} to empty — image-poll-bazzite-testing will trigger on next run" >&2

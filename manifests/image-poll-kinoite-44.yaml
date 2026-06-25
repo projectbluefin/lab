@@ -1,0 +1,69 @@
+# CronWorkflow: polls quay.io/fedora-ostree-desktops/kinoite:44 (aurora base image) hourly.
+# When the base image digest changes, resets digest-aurora-testing to "" so the next
+# image-poll-aurora-testing run detects a "change" and queues a QA pipeline run.
+# Aurora is built from kinoite:44 — a base update means aurora:testing will be rebuilt.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-kinoite-44
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+    bluefin.io/trigger: digest-poll
+    bluefin.io/role: base-image-watcher
+spec:
+  schedules:
+    - "50 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    entrypoint: watch-base
+    templates:
+      - name: watch-base
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: testing-lab
+        script:
+          image: quay.io/skopeo/stable:latest
+          command: [bash]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          source: |
+            set -euo pipefail
+            IMAGE_REF="quay.io/fedora-ostree-desktops/kinoite:44"
+            STATE_KEY="digest-kinoite-44"
+            DERIVED_KEY="digest-aurora-testing"
+
+            REMOTE=$(skopeo inspect --no-tags --format '{{.Digest}}' \
+              "docker://${IMAGE_REF}" 2>/dev/null || true)
+            if [[ -z "${REMOTE}" ]]; then
+              echo "Failed to resolve digest for ${IMAGE_REF}; skipping" >&2
+              exit 0
+            fi
+            echo "Remote: ${REMOTE}" >&2
+
+            STORED=$(kubectl get configmap image-polling-digests \
+              -n argo -o jsonpath="{.data.${STATE_KEY}}" 2>/dev/null || true)
+            echo "Stored: ${STORED:-<none>}" >&2
+
+            if [[ "${REMOTE}" == "${STORED}" ]]; then
+              echo "No change in kinoite:44 — skipping" >&2
+              exit 0
+            fi
+
+            echo "kinoite:44 changed — updating state and resetting aurora-testing state" >&2
+            kubectl patch configmap image-polling-digests -n argo --type merge \
+              -p "{\"data\":{\"${STATE_KEY}\":\"${REMOTE}\",\"${DERIVED_KEY}\":\"\"}}"
+            echo "Reset ${DERIVED_KEY} to empty — image-poll-aurora-testing will trigger on next run" >&2

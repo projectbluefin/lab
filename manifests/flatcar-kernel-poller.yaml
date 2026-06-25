@@ -1,7 +1,5 @@
-# CronWorkflow: polls kernel.org for the latest stable kernel weekly.
+# CronWorkflow: polls kernel.org for the latest stable kernel every 10 minutes.
 # When the version changes vs ConfigMap state, triggers flatcar-kernel-build.
-# Weekly cadence is appropriate for a homelab — kernel.org stable releases
-# are typically every few weeks, hourly polling is unnecessary waste.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -11,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: testing-lab
 spec:
   schedules:
-    - "0 4 * * 1"
+    - "*/10 * * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300

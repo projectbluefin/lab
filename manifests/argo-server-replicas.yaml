@@ -7,3 +7,14 @@ metadata:
   namespace: argo
 spec:
   replicas: 2
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: argo-server
+                topologyKey: kubernetes.io/hostname

@@ -66,6 +66,14 @@ spec:
               parameters:
                 - name: kernel-version
                   value: "{{workflow.parameters.kernel-version}}"
+                - name: sha1
+                  value: "{{steps.build-kernel.outputs.parameters.sha1}}"
+                - name: sha256
+                  value: "{{steps.build-kernel.outputs.parameters.sha256}}"
+                - name: size
+                  value: "{{steps.build-kernel.outputs.parameters.size}}"
+                - name: filename
+                  value: "{{steps.build-kernel.outputs.parameters.filename}}"
 
     - name: create-build-pvc
       resource:
@@ -145,6 +153,10 @@ spec:
                         runcmd:
                           - mkdir -p /home/core/.ssh
                           - chmod 700 /home/core/.ssh
+                          - mkfs.ext4 -F /dev/vdb
+                          - mkdir -p /var/tmp/build
+                          - mount /dev/vdb /var/tmp/build
+                          - chown core:core /var/tmp/build
 
     - name: wait-for-ssh
       script:
@@ -204,17 +216,10 @@ spec:
           timeout 120 bash -c \
             "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
 
-          # Format and mount the build disk inside the VM
-          kubectl exec -n "${NS}" "${LAUNCHER}" -c compute -- bash -lc '
-            set -euo pipefail
-            domain="'"${DOMAIN}"'"
-            disk_cmd="lsblk -rno NAME,TYPE | awk '\''\$2==\"disk\" && \$1!=\"vda\"{print \$1; exit}'\'' | xargs -I{} sh -c \"mkfs.ext4 -F /dev/{} && mkdir -p /var/tmp/build && mount /dev/{} /var/tmp/build && chown core:core /var/tmp/build\""
-            payload="{\"execute\":\"guest-exec\",\"arguments\":{\"path\":\"/usr/bin/sh\",\"arg\":[\"-lc\",\"${disk_cmd}\"],\"capture-output\":true}}"
-            resp=$(virsh qemu-agent-command "${domain}" "${payload}")
-            pid=$(printf "%s" "${resp}" | sed -n "s/.*\"pid\"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p")
-            sleep 3
-            virsh qemu-agent-command "${domain}" "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":${pid}}}"
-          ' || true
+          # Brief pause to let sshd fully accept connections after the port opens.
+          # The build disk (vdb) is formatted and mounted by cloud-init runcmd at
+          # first boot, before SSH becomes available.
+          sleep 3
 
           echo "${POD_IP}" >&3
 
@@ -224,6 +229,8 @@ spec:
     # scripts ref pinned to stable-4593.2.3 to match SDK 4593.0.0.
     # Manifest is regenerated inside the SDK with `ebuild manifest`.
     # Output: /var/tmp/build/output/flatcar_production_update.gz on the build-data PVC.
+    # Payload is copied directly to the Nebraska pod so register-package only
+    # needs to call the REST API with the checksums from output parameters.
     # -------------------------------------------------------------------------
     - name: build-kernel
       inputs:
@@ -232,6 +239,20 @@ spec:
           - name: kernel-version
           - name: flatcar-scripts-ref
           - name: sdk-version
+      outputs:
+        parameters:
+          - name: sha1
+            valueFrom:
+              path: /tmp/sha1.txt
+          - name: sha256
+            valueFrom:
+              path: /tmp/sha256.txt
+          - name: size
+            valueFrom:
+              path: /tmp/size.txt
+          - name: filename
+            valueFrom:
+              path: /tmp/filename.txt
       activeDeadlineSeconds: 10800
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
@@ -248,6 +269,7 @@ spec:
                 key: id_ed25519
         source: |
           set -euo pipefail
+          apk add --no-cache openssh-client 2>&1 | tail -5
           VM_IP="{{inputs.parameters.vm-ip}}"
           KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
           SCRIPTS_REF="{{inputs.parameters.flatcar-scripts-ref}}"
@@ -341,18 +363,29 @@ spec:
           REMOTE
 
           echo "Copying output from VM..."
-          scp -i /tmp/id_ed25519 -o StrictHostKeyChecking=no \
-            core@${VM_IP}:/var/tmp/build/output/flatcar_production_update.gz /tmp/
-          scp -i /tmp/id_ed25519 -o StrictHostKeyChecking=no \
-            core@${VM_IP}:/var/tmp/build/output/sha1.txt /tmp/
-          scp -i /tmp/id_ed25519 -o StrictHostKeyChecking=no \
-            core@${VM_IP}:/var/tmp/build/output/sha256.txt /tmp/
-          scp -i /tmp/id_ed25519 -o StrictHostKeyChecking=no \
-            core@${VM_IP}:/var/tmp/build/output/size.txt /tmp/
-          echo "Output files ready"
+          SCP_OPTS="-i /tmp/id_ed25519 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          scp ${SCP_OPTS} core@${VM_IP}:/var/tmp/build/output/sha1.txt /tmp/sha1.txt
+          scp ${SCP_OPTS} core@${VM_IP}:/var/tmp/build/output/sha256.txt /tmp/sha256.txt
+          scp ${SCP_OPTS} core@${VM_IP}:/var/tmp/build/output/size.txt /tmp/size.txt
+          scp ${SCP_OPTS} core@${VM_IP}:/var/tmp/build/output/flatcar_production_update.gz \
+            /tmp/flatcar_production_update.gz
+
+          FILENAME="flatcar_production_update-kernel${KERNEL_VERSION}.gz"
+          echo "${FILENAME}" > /tmp/filename.txt
+
+          # Copy payload directly to Nebraska so register-package only needs the checksums.
+          NEBRASKA_POD=$(kubectl get pod -n flatcar-update \
+            -l app=nebraska -o jsonpath='{.items[0].metadata.name}')
+          echo "Copying payload to Nebraska pod ${NEBRASKA_POD}..."
+          kubectl cp /tmp/flatcar_production_update.gz \
+            "flatcar-update/${NEBRASKA_POD}:/packages/${FILENAME}"
+          echo "Build and payload upload complete"
 
     # -------------------------------------------------------------------------
-    # register-package: copies payload to Nebraska pod and registers via REST API.
+    # register-package: registers the payload with Nebraska via REST API.
+    # The payload file is already in Nebraska's /packages/ directory — copied
+    # there by the build-kernel step. This step only needs the checksums and
+    # size, passed as output parameters from build-kernel.
     # Nebraska URL field = base path; Nebraska constructs full URL as url+filename.
     # flatcar_action.sha256 is required for valid Omaha action metadata.
     # Version uses 9999.MAJOR.MINOR for real semver precedence over stock Flatcar.
@@ -361,6 +394,10 @@ spec:
       inputs:
         parameters:
           - name: kernel-version
+          - name: sha1
+          - name: sha256
+          - name: size
+          - name: filename
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
         command: [bash]
@@ -374,23 +411,17 @@ spec:
           NEBRASKA_URL="http://192.168.1.102:30802"
           FLATCAR_APP_ID="e96281a6-d1af-4bde-9a0a-97b76e56dc57"
 
-          PAYLOAD=/tmp/flatcar_production_update.gz
-          SHA1=$(cat /tmp/sha1.txt)
-          SHA256=$(cat /tmp/sha256.txt)
-          SIZE=$(cat /tmp/size.txt)
+          SHA1="{{inputs.parameters.sha1}}"
+          SHA256="{{inputs.parameters.sha256}}"
+          SIZE="{{inputs.parameters.size}}"
+          FILENAME="{{inputs.parameters.filename}}"
 
           # Version: 9999.MAJOR.MINOR gives real semver precedence > any stock Flatcar
           KERNEL_MAJOR=$(echo "${KERNEL_VERSION}" | cut -d. -f1)
           KERNEL_MINOR=$(echo "${KERNEL_VERSION}" | cut -d. -f2)
           VERSION="9999.${KERNEL_MAJOR}.${KERNEL_MINOR}"
-          FILENAME="flatcar_production_update-kernel${KERNEL_VERSION}.gz"
 
           echo "Registering kernel ${KERNEL_VERSION} as Flatcar version ${VERSION}"
-
-          # Copy payload into Nebraska's /packages/ directory
-          NEBRASKA_POD=$(kubectl get pod -n flatcar-update \
-            -l app=nebraska -o jsonpath='{.items[0].metadata.name}')
-          kubectl cp "${PAYLOAD}" "flatcar-update/${NEBRASKA_POD}:/packages/${FILENAME}"
 
           # Nebraska serves files at {nebraska-url}/flatcar/{filename}
           # The `url` field in the API must be the BASE PATH only —

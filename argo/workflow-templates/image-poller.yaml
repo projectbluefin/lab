@@ -23,6 +23,10 @@ spec:
       # Zot containerdisk tag; defaults to image-tag when not set (works for bluefin:testing → "testing")
       - name: containerdisk-tag
         value: "{{workflow.parameters.image-tag}}"
+      - name: branch
+        value: "main"
+      - name: ssh-key-secret
+        value: "bluefin-test-ssh-key"
 
   templates:
     - name: check-and-trigger
@@ -58,6 +62,10 @@ spec:
                   value: "{{workflow.parameters.suites}}"
                 - name: variant
                   value: "{{workflow.parameters.variant}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+                - name: ssh-key-secret
+                  value: "{{workflow.parameters.ssh-key-secret}}"
 
     - name: poll-digest
       inputs:

@@ -51,6 +51,12 @@ kubelet disk-pressure, evicting all pods and crashing the cluster.
 Bluefin test VMs use KubeVirt `containerDisk` — an OCI image containing the qcow2
 disk image, stored in the local Zot registry. No reflink, no hostDisk, no golden disk.
 
+**Critical `containerDisk.json` requirement:** When building a custom containerDisk from `scratch` (using `buildah`), KubeVirt *requires* a `/containerDisk.json` file at the root of the image to declare the disk capacity:
+```json
+{"volumes":[{"image":"disk.qcow2", "capacity":"25Gi"}]}
+```
+Without this file, `virt-controller` attempts to fetch the uncompressed size from the registry API. If that fails (e.g. against an insecure local registry without proper credentials), KubeVirt defaults the pod's `ephemeral-storage` limit to 50M. This results in the virt-launcher pod being evicted immediately upon extracting the disk image, causing a `No disk capacity` error. Always inject this JSON metadata during the build step.
+
 ```
 build-containerdisk (build-containerdisk.yaml)
   ├─ check       — skopeo: exists in 192.168.1.102:30500/bluefin-containerdisk:<tag>?
@@ -657,6 +663,7 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 - LTS VM goes `Stopped` immediately after creation — `bluefin-test-ssh-pubkey` secret missing from `bluefin-lts-test` namespace. The manifest must create the secret in **both** `bluefin-test` and `bluefin-lts-test`. Check with `kubectl get secret -n bluefin-lts-test bluefin-test-ssh-pubkey`.
 - VM goes `Stopped` with `FailedCreate` and `metadata.labels: must be no more than 63 characters` — VM name exceeds Kubernetes label-value limit. `bluefin-lts-testing-developer-<36-char-uuid>` = 67 chars, fails. `smoke` (5 chars) just passes; `developer` (9 chars) overflows. Fix: use `{{workflow.name}}-{{item}}` instead of `{{workflow.parameters.variant}}-{{item}}-{{workflow.uid}}` — workflow names are short and unique. Fixed in `bluefin-qa-pipeline` commit `7fca070`.
 - Orphaned VMs from a prior workflow consuming ghost resources — run `just list-vms` before submitting a new matrix run; delete orphans with `kubernetes-mcp-resources_delete` if present. Four concurrent VMs on ghost can cause VMI Ready timeouts.
+- **VM immediately fails with `No disk capacity`** — virt-launcher was evicted because its `ephemeral-storage` limit was exceeded during disk extraction. This usually means `disk.Capacity == nil` in KubeVirt because the containerDisk image is missing the `/containerDisk.json` metadata file. See section 2.
 - **SSH always times out with 1800s poll even though VMI is Ready** — Fedora 41+ OpenSSH packaging: `sshd.service` is a dead shim, never starts. `sshd.socket` is enabled but requires explicit activation via guest-exec. Check with `systemctl is-active sshd.socket` via guest agent; if inactive, the `wait-for-vm-ready` template is missing the guest-exec start step (section 5). The 1800s timeout is the smoke alarm, not the root cause.
 - **Flatcar containerdisk build: `curl: (6) Could not resolve host: stable.release.flatcar-container.net`** — that domain is NXDOMAIN. Use `stable.release.flatcar-linux.net`. See `provision-flatcar-vm.yaml`.
 - **Flatcar containerdisk build: `bzip2: (stdin) is not a bzip2 file`** — old URL returned bare qcow2; new URL returns `.img.bz2`. Run `bzip2 -d` before `qemu-img convert`.
@@ -682,6 +689,7 @@ Before merging any VM provisioning change:
 - [ ] Zot-writable index checked before running pipeline: `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` > 100 bytes
 - [ ] `bluefin-test-ssh-pubkey` secret exists in **both** `bluefin-test` and `bluefin-lts-test` namespaces
 - [ ] Runtime user bootstrap sets home dir ownership (`chown 1001:1001 /var/home/bluefin-test`) before pip/pip3 installs
+- [ ] **containerDisk builds**: Image contains `/containerDisk.json` with the correct `capacity` explicitly declared (prevents `No disk capacity` limits)
 - [ ] **LTS containerDisk**: disk build includes `/EFI/BOOT/BOOTX64.EFI` fallback creation (section 13a)
 - [ ] **LTS containerDisk**: fstab field-aware sed adds `nofail,x-systemd.device-timeout=5s` to ALL `/boot/*` entries (section 13b)
 - [ ] **LTS containerDisk**: `bootc install to-disk` uses `--karg=systemd.device-timeout=5` (section 13b)

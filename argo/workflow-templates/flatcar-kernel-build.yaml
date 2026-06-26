@@ -342,9 +342,9 @@ spec:
         echo "=== Install kernel overlay ==="
         OVERLAY_DEST=src/third_party/flatcar-kernel-overlay
         cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
-        sudo chown -R 1000:1000 \${BUILD_DIR} || true
-        sudo chmod -R a+rX \${BUILD_DIR} || true
         chmod -R a+w \${BUILD_DIR}/\${OVERLAY_DEST}
+        sudo chmod -R a+rX \${BUILD_DIR} || true
+        sudo chown -R 1000:1000 \${BUILD_DIR} || true
 
         echo "=== Move Docker data-root to PVC (SDK image is ~15GB) ==="
         sudo systemctl stop docker || true

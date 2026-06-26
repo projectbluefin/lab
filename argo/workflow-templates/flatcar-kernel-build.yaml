@@ -342,6 +342,7 @@ spec:
         echo "=== Install kernel overlay ==="
         OVERLAY_DEST=src/third_party/flatcar-kernel-overlay
         cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
+        sudo chown -R 1000:1000 \${BUILD_DIR} || true
         sudo chmod -R a+rX \${BUILD_DIR} || true
         chmod -R a+w \${BUILD_DIR}/\${OVERLAY_DEST}
 

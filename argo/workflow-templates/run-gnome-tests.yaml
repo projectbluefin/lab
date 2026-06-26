@@ -190,7 +190,7 @@ spec:
             elif getent group 1001 &>/dev/null; then
               G_ARG="-g 1001"
             fi
-            useradd -m -u 1001 ${G_ARG} -G wheel -s /bin/bash \
+            useradd -m -u 1001 \${G_ARG} -G wheel -s /bin/bash \
               -d /var/home/bluefin-test bluefin-test
             echo '[ROOT] bluefin-test user created'
           else

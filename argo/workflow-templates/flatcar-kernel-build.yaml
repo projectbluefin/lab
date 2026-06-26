@@ -37,6 +37,14 @@ spec:
       value: "flatcar-build-{{workflow.name}}"
     - name: namespace
       value: "flatcar-test"
+    - name: cores
+      value: "16"
+    - name: memory
+      value: "16Gi"
+    - name: storage
+      value: "120Gi"
+    - name: ssh-timeout
+      value: "600s"
 
   templates:
     # -------------------------------------------------------------------------
@@ -89,7 +97,7 @@ spec:
           storageClassName: local-path
           resources:
             requests:
-              storage: 120Gi
+              storage: "{{workflow.parameters.storage}}"
 
   - name: create-vm
     resource:
@@ -112,9 +120,9 @@ spec:
             spec:
               domain:
                 cpu:
-                  cores: 28
+                  cores: {{workflow.parameters.cores}}
                 memory:
-                  guest: 32Gi
+                  guest: {{workflow.parameters.memory}}
                 devices:
                   blockMultiQueue: true
                   rng: {}
@@ -176,7 +184,7 @@ spec:
 
         echo "Waiting for VMI ready..."
         kubectl wait vmi -n "${NS}" "${VM}" \
-          --for=condition=Ready --timeout=300s
+          --for=condition=Ready --timeout={{workflow.parameters.ssh-timeout}}
 
         echo "Waiting for guest agent..."
         timeout 180 bash -c \
@@ -345,7 +353,7 @@ spec:
               --board=amd64-usr --default
 
             # Build kernel packages
-            emerge-amd64-usr --quiet --jobs=28 \
+            emerge-amd64-usr --quiet --jobs={{workflow.parameters.cores}} \
               =sys-kernel/coreos-sources-\${KERNEL_VERSION} \
               =sys-kernel/coreos-kernel-\${KERNEL_VERSION} \
               =sys-kernel/coreos-modules-\${KERNEL_VERSION}

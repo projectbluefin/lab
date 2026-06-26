@@ -218,10 +218,19 @@ via root SSH immediately after root SSH is confirmed working:
 ```bash
 # In the test runner, after root SSH is ready:
 ROOT_SSH "
-  # Create user if not present (uid 1001, wheel group)
-  id bluefin-test &>/dev/null || \
-    useradd -m -u 1001 -g 1001 -G wheel -s /bin/bash \
-      -d /var/home/bluefin-test bluefin-test
+  # Create user and group robustly to handle potential UID/GID 1001 conflicts
+  if ! id bluefin-test &>/dev/null; then
+    if ! getent group bluefin-test &>/dev/null; then
+      groupadd -g 1001 bluefin-test 2>/dev/null || groupadd bluefin-test 2>/dev/null || true
+    fi
+    G_ARG=\"\"
+    if getent group bluefin-test &>/dev/null; then
+      G_ARG=\"-g bluefin-test\"
+    elif getent group 1001 &>/dev/null; then
+      G_ARG=\"-g 1001\"
+    fi
+    useradd -m -u 1001 \${G_ARG} -G wheel -s /bin/bash -d /var/home/bluefin-test bluefin-test
+  fi
   # Always fix home dir ownership — install -d creates parent dirs as root
   mkdir -p /var/home/bluefin-test
   chown 1001:1001 /var/home/bluefin-test
@@ -715,3 +724,12 @@ When debugging `Permission denied (publickey)`:
 When building a custom containerDisk from `scratch` (using `buildah`), KubeVirt *requires* a `/containerDisk.json` file at the root of the image to declare the disk capacity:
 `{"volumes":[{"image":"disk.qcow2", "capacity":"25Gi"}]}`
 Without this file, `virt-controller` defaults the pod's `ephemeral-storage` limit to 50M. This results in the virt-launcher pod being evicted immediately upon extracting the disk image, causing a `No disk capacity` error. Always inject this JSON metadata during the build step.
+
+### 14. Custom Flatcar kernel builds & Portage SLOT errors
+When maintaining custom ebuilds in `flatcar/kernel-overlay/` for Flatcar kernel compilation inside the SDK container:
+* **Required Metadata**: All custom `.ebuild` files MUST explicitly define both `LICENSE` and `SLOT` variables (e.g., `LICENSE="GPL-2"`, `SLOT="0"`).
+* **Portage Masking**: If left undefined, Portage will reject and mask the ebuild packages during SDK compilation with `invalid: SLOT: invalid value: '', SLOT: undefined` errors.
+
+### 15. Default root filesystem for bootc install
+* **Missing Filesystem Error**: If a bootc container image does not define a default root filesystem in `/usr/lib/bootc/install/00-<osname>.toml`, running `bootc install to-disk` will fail with: `error: Installing to disk: No root filesystem specified`.
+* **The Override**: To bypass this, parameterize the build template and explicitly pass `--filesystem <type>` (e.g., `--filesystem btrfs` or `--filesystem xfs`) during the `bootc install to-disk` command invocation.

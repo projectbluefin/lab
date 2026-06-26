@@ -402,6 +402,10 @@ spec:
           '/mnt/host/source/src/scripts/setup_board \' \
           '  --board=amd64-usr --default' \
           '' \
+          '# Mock pahole to avoid compiling massive dependencies (cmake, perl, gettext) on board root' \
+          'sudo mkdir -p /build/amd64-usr/etc/portage/profile' \
+          'echo "dev-util/pahole-1.24_p20221024" | sudo tee -a /build/amd64-usr/etc/portage/profile/package.provided >/dev/null' \
+          '' \
           '# Build kernel packages' \
           'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --quiet --jobs={{workflow.parameters.cores}} \' \
           '  =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}} \' \

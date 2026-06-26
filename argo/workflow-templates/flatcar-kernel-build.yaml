@@ -434,9 +434,8 @@ spec:
         echo "=== Run SDK build via run_sdk_container ==="
         cd \${BUILD_DIR}/src/scripts
 
-        echo "=== Set final world-readable permissions and correct SDK ownership ==="
+        echo "=== Set final world-readable permissions ==="
         sudo chmod -R a+rX \${BUILD_DIR} || true
-        sudo chown -R 1000:1000 \${BUILD_DIR} || true
 
         # run_sdk_container detects Docker and uses it natively
         ./run_sdk_container --rm \

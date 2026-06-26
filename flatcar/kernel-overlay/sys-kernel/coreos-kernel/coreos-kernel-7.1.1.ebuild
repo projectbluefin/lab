@@ -14,6 +14,8 @@ inherit cros-workon toolchain-funcs savedconfig
 
 DESCRIPTION="Builds the CoreOS (Flatcar) kernel binary"
 HOMEPAGE="https://www.kernel.org"
+LICENSE="GPL-2"
+SLOT="0"
 
 # Uses sources installed by coreos-sources
 RDEPEND="=sys-kernel/coreos-sources-${PV}"

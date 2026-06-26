@@ -8,6 +8,8 @@ EAPI=7
 
 DESCRIPTION="Builds and installs CoreOS (Flatcar) kernel modules"
 HOMEPAGE="https://www.kernel.org"
+LICENSE="GPL-2"
+SLOT="0"
 
 DEPEND="=sys-kernel/coreos-kernel-${PV}
 	=sys-kernel/coreos-sources-${PV}"

@@ -38,6 +38,8 @@ spec:
       # To re-measure: skopeo inspect docker://<image>:<tag> | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(l['Size'] for l in d['LayersData'])//1024//1024,'MB')"
     - name: disk-size
       value: "25G"
+    - name: filesystem
+      value: ""
   templates:
 
     # ─── Top-level DAG ────────────────────────────────────────────────────────
@@ -52,6 +54,8 @@ spec:
         value: "false"
       - name: disk-size          # raw disk pre-allocation for bootc install
         value: "25G"
+      - name: filesystem
+        value: ""
     dag:
       tasks:
           # check always runs; when force=true it short-circuits to "missing" inside the script.
@@ -79,6 +83,8 @@ spec:
             value: "{{inputs.parameters.containerdisk-tag}}"
           - name: disk-size
             value: "{{inputs.parameters.disk-size}}"
+          - name: filesystem
+            value: "{{inputs.parameters.filesystem}}"
 
           # Skipped when check=exists (install-to-disk skipped → this skips too).
       - name: convert-and-push
@@ -147,6 +153,8 @@ spec:
       - name: containerdisk-tag
       - name: disk-size
         value: "25G"
+      - name: filesystem
+        value: ""
     nodeSelector:
       kubernetes.io/hostname: ghost
     volumes:
@@ -237,11 +245,17 @@ spec:
 
         LOCAL_IMAGE="192.168.1.102:30501/${IMAGE#*/}"
 
-        # Use the image's native filesystem (no --filesystem override).
+        # Use the image's native filesystem unless --filesystem override is specified.
         # bluefin:testing → Fedora → btrfs (native).
         # bluefin-lts:testing → CentOS/RHEL → xfs (native).
         # Forcing btrfs on LTS broke GRUB EFI: CentOS grubx64.efi lacks btrfs.mod.
+        FS_ARG=""
+        if [[ -n "{{inputs.parameters.filesystem}}" ]]; then
+          FS_ARG="--filesystem {{inputs.parameters.filesystem}}"
+        fi
+
         bootc install to-disk \
+          ${FS_ARG} \
           --source-imgref "docker://${IMAGE}" \
           --generic-image \
           --target-no-signature-verification \

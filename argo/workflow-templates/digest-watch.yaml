@@ -64,6 +64,8 @@ spec:
                   value: "dakota-latest"
                 - name: disk-size
                   value: "25G"
+                - name: filesystem
+                  value: "btrfs"
 
           - name: watch-bazzite-testing
             template: watch-variant
@@ -159,6 +161,8 @@ spec:
           - name: containerdisk-tag  # ConfigMap key + Zot tag: e.g. testing, lts-testing
           - name: disk-size       # raw disk size for bootc install-to-disk; 25G for bluefin/lts/dakota, 40G for aurora/bazzite
             value: "25G"
+          - name: filesystem
+            value: ""
       script:
         image: quay.io/skopeo/stable:latest
         command: [sh]
@@ -263,6 +267,7 @@ spec:
                   {\"name\": \"image-tag\", \"value\": \"${IMAGE_TAG}\"},
                   {\"name\": \"containerdisk-tag\", \"value\": \"${CD_TAG}\"},
                   {\"name\": \"disk-size\", \"value\": \"{{inputs.parameters.disk-size}}\"},
+                  {\"name\": \"filesystem\", \"value\": \"{{inputs.parameters.filesystem}}\"},
                   {\"name\": \"force\", \"value\": \"false\"}
                 ]}
               }

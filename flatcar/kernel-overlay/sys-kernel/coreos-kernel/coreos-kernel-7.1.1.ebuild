@@ -20,8 +20,7 @@ SLOT="0"
 # Uses sources installed by coreos-sources
 RDEPEND="=sys-kernel/coreos-sources-${PV}"
 DEPEND="${RDEPEND}
-	sys-kernel/linux-headers
-	dev-util/pahole"
+	sys-kernel/linux-headers"
 
 KEYWORDS="amd64 arm64"
 IUSE="custom-cflags"

@@ -22,7 +22,7 @@ SRC_URI="${KERNEL_URI}"
 PATCH_DIR="${FILESDIR}/${KV_MAJOR}.${KV_MINOR}"
 
 # make modules_prepare depends on pahole
-RDEPEND="dev-util/pahole"
+RDEPEND=""
 
 KEYWORDS="amd64 arm64"
 IUSE=""

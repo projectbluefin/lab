@@ -285,6 +285,7 @@ spec:
             key: id_ed25519
       source: |
         set -euo pipefail
+        git config --global --add safe.directory "*"
         apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
         apk add --no-cache openssh-client 2>&1 | tail -5
         VM_IP="{{inputs.parameters.vm-ip}}"
@@ -303,6 +304,7 @@ spec:
 
         $SSH bash -s << REMOTE
         set -euo pipefail
+        git config --global --add safe.directory "*"
 
         echo "=== Formatting and mounting build PVC (/dev/vdb) ==="
         sudo grep -q "/dev/vdb" /proc/mounts || sudo mkfs.ext4 -F /dev/vdb

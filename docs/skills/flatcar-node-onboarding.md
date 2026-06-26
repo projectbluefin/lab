@@ -225,6 +225,82 @@ responses without it.
 
 ---
 
+## Bare-Metal Custom Kernel Builds
+
+When the KubeVirt / Argo VM pipeline (`flatcar-kernel-build.yaml`) is blocked by resource constraints, TTY errors, or Portage overlay mapping bugs, build the custom kernel directly on a bare-metal Flatcar host (such as `exo-0`).
+
+### Core Process
+
+1. **Stop k3s to free resources**:
+   ```bash
+   sudo systemctl disable --now k3s-agent
+   ```
+
+2. **Setup workspace and clone build tools**:
+   ```bash
+   mkdir -p ~/work && cd ~/work
+   git clone --filter=blob:none https://github.com/flatcar/scripts.git
+   git clone https://github.com/projectbluefin/testing-lab.git
+   cd scripts
+   git checkout flatcar-4593  # Match the running Stable branch
+   ```
+
+3. **Vendor the local overlay**:
+   ```bash
+   OVERLAY_DST=sdk_container/src/third_party/coreos-overlay/sys-kernel
+   OVERLAY_SRC=~/work/testing-lab/flatcar/kernel-overlay/sys-kernel
+   rsync -av "$OVERLAY_SRC"/ "$OVERLAY_DST"/
+   ```
+
+4. **Prepare the overlay and kernel defconfig**:
+   - Upstream Linux 7.1.1 compiles cleanly with an empty `UNIPATCH_LIST` inside `sys-kernel/coreos-sources-7.1.1.ebuild`. Do not include stale 6.12 patches in 7.1.1.
+   - Seed a 7.1 defconfig:
+     `cp sdk_container/src/third_party/coreos-overlay/sys-kernel/coreos-modules/files/amd64_defconfig-6.12 sdk_container/src/third_party/coreos-overlay/sys-kernel/coreos-modules/files/amd64_defconfig-7.1`
+
+5. **Generate the SDK command script inside `sdk_container/tmp`**:
+   The host's `sdk_container/` directory is mapped to `/mnt/host/source/` inside the container. Command files must be written under `${PWD}/sdk_container/tmp/` on the host to be visible inside the container at `/mnt/host/source/tmp/`.
+   ```bash
+   mkdir -p sdk_container/tmp
+   cat > sdk_container/tmp/inside-sdk.sh <<'EOF'
+   #!/usr/bin/env bash
+   set -euo pipefail
+   KVER=7.1.1
+   # Patch kernel-2.eclass to accept EAPI 7/8
+   ECLASS=/mnt/host/source/src/third_party/portage-stable/eclass/kernel-2.eclass
+   if [ -f "$ECLASS" ] && grep -q '2|3|4|5|6)$' "$ECLASS"; then
+     sudo sed -i 's/2|3|4|5|6)$/2|3|4|5|6|7|8)/' "$ECLASS"
+   fi
+   # Ebuild manifest and emerge
+   cd /mnt/host/source/src/third_party/coreos-overlay/sys-kernel/coreos-sources
+   ebuild "coreos-sources-${KVER}.ebuild" manifest
+   setup_board --board=amd64-usr --default --force
+   emerge-amd64-usr -v sys-kernel/coreos-sources sys-kernel/coreos-modules sys-kernel/coreos-kernel
+   # Build image update payload
+   /mnt/host/source/src/scripts/build_packages --board=amd64-usr
+   /mnt/host/source/src/scripts/build_image --board=amd64-usr prod
+   EOF
+   chmod +x sdk_container/tmp/inside-sdk.sh
+   ```
+
+6. **Run the container without `-t` in background**:
+   Do **not** use the TTY `-t` flag when running via `nohup` or background tasks, or docker will crash with `the input device is not a TTY` (exit code 137).
+   ```bash
+   ./run_sdk_container -- /mnt/host/source/tmp/inside-sdk.sh
+   ```
+
+7. **Stage and apply update**:
+   The build outputs `flatcar_production_update.gz` to `../build/images/amd64-usr/developer-latest/`. Mount this to a local nginx container, append `SERVER=http://127.0.0.1:8080/` to `/etc/flatcar/update.conf`, trigger `sudo update_engine_client -update`, and reboot.
+
+### Red Flags
+
+- `mkdir: cannot create directory /var/home`: On Flatcar, the home directory is `/home/jorge/`, not `/var/home/jorge/`.
+- `/mnt/host/source/tmp/inside-sdk.sh: No such file or directory`: Script was written to `/tmp/` on the host instead of `sdk_container/tmp/`.
+- `docker run exits with status 137` on background start: Remove the `-t` TTY flag from `run_sdk_container` invocation.
+- `Unable to dry-run patch unipatch failure`: Stale 6.12 patch files are missing or do not apply to 7.1. Set `UNIPATCH_LIST=""` in `coreos-sources-7.1.1.ebuild`.
+
+
+---
+
 ## Common Rationalizations
 
 | Rationalization | Reality |

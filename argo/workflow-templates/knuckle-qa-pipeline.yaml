@@ -245,27 +245,24 @@ spec:
       emptyDir: {}
     initContainers:
     - name: git-clone
-      image: cgr.dev/chainguard/wolfi-base:latest
-      command: [sh, -c]
+      image: quay.io/fedora/fedora:latest
+      command: [bash, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
-        exec bash <<'SCRIPT_EOF'
         set -euo pipefail
+        dnf install -y --quiet git 2>&1 | tail -2
         git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
           https://github.com/projectbluefin/knuckle /src
-        SCRIPT_EOF
       volumeMounts:
       - name: src
         mountPath: /src
     container:
-      image: cgr.dev/chainguard/wolfi-base:latest
-      command: [sh, -c]
+      image: quay.io/fedora/fedora:latest
+      command: [bash, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
-        exec bash <<'SCRIPT_EOF'
         set -euo pipefail
+        dnf install -y --quiet \
           git golang xorriso mtools cpio systemd-boot-unsigned squashfs-tools curl 2>&1 | tail -4
         cd /src
         ./scripts/build-iso.sh --channel stable --arch amd64
@@ -286,7 +283,6 @@ spec:
         echo "Built {{inputs.parameters.commit-sha}}" >&2
         echo "ISO ready: ${ISO_DEST}" >&2
         echo "Binary ready: ${BIN_DEST}" >&2
-        SCRIPT_EOF
       resources:
         requests:
           cpu: "4"
@@ -436,16 +432,8 @@ spec:
             spec:
               containers:
                 - name: init
-                  image: quay.io/kubevirt/virt-launcher:v1.8.2
-                  command: [bash, -c]
-                  args:
-                    - |
-                      set -euo pipefail
-                      qemu-img create -f raw /mnt/disk.img 20G
-                      chown 107:107 /mnt/disk.img
-                      chmod 664 /mnt/disk.img
-                      chcon -t container_file_t /mnt/disk.img 2>/dev/null || true
-                      echo "Initialized rootdisk at /mnt/disk.img" >&2
+                  image: 192.168.1.102:30500/fsdk/qemu-img:latest
+                  command: [qemu-img, create, -f, raw, /mnt/disk.img, 20G]
                   securityContext:
                     runAsUser: 0
                   resources:
@@ -888,7 +876,7 @@ spec:
       parameters:
       - name: vm-name
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: quay.io/skopeo/stable:latest
       command: [sh]
       resources:
         requests:
@@ -898,12 +886,9 @@ spec:
           cpu: 500m
           memory: 256Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
-        exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         skopeo delete \
           --tls-verify=false \
           "docker://192.168.1.102:30500/knuckle-iso-{{inputs.parameters.vm-name}}:latest" \
           || true
         echo "Deleted containerDisk for {{inputs.parameters.vm-name}}" >&2
-        SCRIPT_EOF

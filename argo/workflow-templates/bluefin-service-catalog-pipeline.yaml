@@ -73,6 +73,13 @@ spec:
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
         command: [bash, -c]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         source: |
           set -euo pipefail
           NS="{{inputs.parameters.namespace}}"
@@ -159,6 +166,13 @@ spec:
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
         command: [bash, -c]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         source: |
           set -euo pipefail
           NS="service-catalog-{{workflow.uid}}"

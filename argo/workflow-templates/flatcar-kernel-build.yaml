@@ -322,9 +322,31 @@ spec:
         git clone --depth=1 --branch "\${SCRIPTS_REF}" \
           https://github.com/flatcar/scripts \${BUILD_DIR}/src/scripts
 
-        echo "=== Bypassing login shell profile scripts inside SDK container ==="
-        sed -i '/--entrypoint \/bin\/bash/{n;n;d}' \${BUILD_DIR}/src/scripts/run_sdk_container
-        sed -i '/setup_board/d' \${BUILD_DIR}/src/scripts/sdk_lib/sdk_entry.sh
+        echo "=== Creating pre-configured repos.conf directory on host ==="
+        mkdir -p \${BUILD_DIR}/repos.conf
+        cat > \${BUILD_DIR}/repos.conf/coreos.conf <<'EOF'
+[coreos]
+location = /mnt/host/source/src/third_party/coreos-overlay
+masters = portage-stable
+auto-sync = no
+EOF
+        cat > \${BUILD_DIR}/repos.conf/coreos-overlay.conf <<'EOF'
+[coreos-overlay]
+location = /mnt/host/source/src/third_party/coreos-overlay
+masters = portage-stable
+auto-sync = no
+EOF
+        cat > \${BUILD_DIR}/repos.conf/flatcar-kernel.conf <<'EOF'
+[flatcar-kernel]
+location = /overlay
+masters = portage-stable coreos
+auto-sync = no
+EOF
+        cat > \${BUILD_DIR}/repos.conf/portage-stable.conf <<'EOF'
+[portage-stable]
+location = /mnt/host/source/src/third_party/portage-stable
+auto-sync = no
+EOF
 
         echo "=== Clone flatcar/coreos-overlay @ main ==="
         mkdir -p \${BUILD_DIR}/src/scripts/sdk_container/src/third_party
@@ -437,6 +459,7 @@ spec:
           -v \${SDK_VERSION} \
           -m \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
           -m \${BUILD_DIR}/portage-temp:/build/amd64-usr/var/tmp/portage \
+          -m \${BUILD_DIR}/repos.conf:/etc/portage/repos.conf \
           -V \${SDK_VERSION} \
           -- /mnt/host/source/src/scripts/build-inside-sdk.sh
 

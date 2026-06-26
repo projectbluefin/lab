@@ -327,7 +327,7 @@ spec:
         echo "=== Bypassing login shell profile scripts inside SDK container ==="
         sed -i '/--entrypoint \/bin\/bash/{n;n;d}' \${BUILD_DIR}/src/scripts/run_sdk_container
         sed -i '/setup_board/d' \${BUILD_DIR}/src/scripts/sdk_lib/sdk_entry.sh
-        sed -i '/update_chroot/d' \${BUILD_DIR}/src/scripts/setup_board
+        sed -i 's/.*update_chroot.*/true/g' \${BUILD_DIR}/src/scripts/setup_board
 
         echo "=== Clone flatcar/coreos-overlay @ main ==="
         mkdir -p \${BUILD_DIR}/src/scripts/sdk_container/src/third_party

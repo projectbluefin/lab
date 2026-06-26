@@ -304,10 +304,20 @@ spec:
         SDK_VERSION="${SDK_VERSION}"
         BUILD_DIR=/var/tmp/build
 
+        echo "=== Create standard workspace directories ==="
+        mkdir -p \${BUILD_DIR}/src/third_party
+
         echo "=== Clone flatcar/scripts @ \${SCRIPTS_REF} ==="
         git clone --depth=1 --branch "\${SCRIPTS_REF}" \
-          https://github.com/flatcar/scripts \${BUILD_DIR}/scripts
-        cd \${BUILD_DIR}/scripts
+          https://github.com/flatcar/scripts \${BUILD_DIR}/src/scripts
+
+        echo "=== Clone flatcar/coreos-overlay @ main ==="
+        git clone --depth=1 --branch main \
+          https://github.com/flatcar/coreos-overlay \${BUILD_DIR}/src/third_party/coreos-overlay
+
+        echo "=== Clone flatcar/portage-stable @ main ==="
+        git clone --depth=1 --branch main \
+          https://github.com/flatcar/portage-stable \${BUILD_DIR}/src/third_party/portage-stable
 
         echo "=== Clone testing-lab for kernel overlay ==="
         git clone --depth=1 \
@@ -315,8 +325,8 @@ spec:
           \${BUILD_DIR}/testing-lab
 
         echo "=== Install kernel overlay ==="
-        OVERLAY_DEST=sdk_container/src/third_party/flatcar-kernel-overlay
-        cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${OVERLAY_DEST}
+        OVERLAY_DEST=src/third_party/flatcar-kernel-overlay
+        cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
 
         echo "=== Move Docker data-root to PVC (SDK image is ~15GB) ==="
         sudo systemctl stop docker || true
@@ -328,7 +338,9 @@ spec:
         echo "=== Regenerate Manifest checksums via SDK ==="
         # Run ephemeral SDK container just for manifest generation
         docker run --rm \
-          -v \${BUILD_DIR}/scripts/\${OVERLAY_DEST}:/overlay \
+          -v \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
+          -v \${BUILD_DIR}/src/third_party/coreos-overlay:/mnt/host/source/src/third_party/coreos-overlay \
+          -v \${BUILD_DIR}/src/third_party/portage-stable:/mnt/host/source/src/third_party/portage-stable \
           192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION} \
           bash -c "
             ebuild /overlay/sys-kernel/coreos-sources/coreos-sources-\${KERNEL_VERSION}.ebuild manifest
@@ -365,18 +377,19 @@ spec:
           'mkdir -p /mnt/host/source/src/build/output' \
           'cp /mnt/host/source/src/build/images/amd64-usr/latest/flatcar_production_update.gz \' \
           '   /mnt/host/source/src/build/output/flatcar_production_update.gz' \
-          > \${BUILD_DIR}/scripts/build-inside-sdk.sh
-        chmod +x \${BUILD_DIR}/scripts/build-inside-sdk.sh
+          > \${BUILD_DIR}/src/scripts/build-inside-sdk.sh
+        chmod +x \${BUILD_DIR}/src/scripts/build-inside-sdk.sh
 
         echo "=== Run SDK build via run_sdk_container ==="
+        cd \${BUILD_DIR}/src/scripts
         # run_sdk_container detects Docker and uses it natively
         ./run_sdk_container --rm \
-          -m \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay:/overlay \
+          -m \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
           -V \${SDK_VERSION} \
           -- /mnt/host/source/src/scripts/build-inside-sdk.sh
 
         # Collect output metadata
-        PAYLOAD=\${BUILD_DIR}/scripts/src/build/output/flatcar_production_update.gz
+        PAYLOAD=\${BUILD_DIR}/src/build/output/flatcar_production_update.gz
         mkdir -p \${BUILD_DIR}/output
         cp "\${PAYLOAD}" \${BUILD_DIR}/output/
         sha1sum "\${PAYLOAD}" | awk '{print \$1}' > \${BUILD_DIR}/output/sha1.txt

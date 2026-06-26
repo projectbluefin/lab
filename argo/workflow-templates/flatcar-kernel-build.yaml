@@ -25,6 +25,12 @@ spec:
   entrypoint: pipeline
   onExit: teardown-build-vm
   serviceAccountName: argo
+  activeDeadlineSeconds: 10800   # ponytail: 3h active deadline for kernel compile
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+    secondsAfterFailure: 604800
   arguments:
     parameters:
     - name: kernel-version

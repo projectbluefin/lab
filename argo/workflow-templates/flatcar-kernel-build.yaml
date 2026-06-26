@@ -312,12 +312,13 @@ spec:
           https://github.com/flatcar/scripts \${BUILD_DIR}/src/scripts
 
         echo "=== Clone flatcar/coreos-overlay @ main ==="
+        mkdir -p \${BUILD_DIR}/src/scripts/sdk_container/src/third_party
         git clone --depth=1 --branch main \
-          https://github.com/flatcar/coreos-overlay \${BUILD_DIR}/src/third_party/coreos-overlay
+          https://github.com/flatcar/coreos-overlay \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/coreos-overlay
 
         echo "=== Clone flatcar/portage-stable @ main ==="
         git clone --depth=1 --branch main \
-          https://github.com/flatcar/portage-stable \${BUILD_DIR}/src/third_party/portage-stable
+          https://github.com/flatcar/portage-stable \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/portage-stable
 
         echo "=== Clone testing-lab for kernel overlay ==="
         git clone --depth=1 \
@@ -327,6 +328,7 @@ spec:
         echo "=== Install kernel overlay ==="
         OVERLAY_DEST=src/third_party/flatcar-kernel-overlay
         cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
+        chmod -R a+w \${BUILD_DIR}/\${OVERLAY_DEST}
 
         echo "=== Move Docker data-root to PVC (SDK image is ~15GB) ==="
         sudo systemctl stop docker || true
@@ -339,8 +341,8 @@ spec:
         # Run ephemeral SDK container just for manifest generation
         docker run --rm \
           -v \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
-          -v \${BUILD_DIR}/src/third_party/coreos-overlay:/mnt/host/source/src/third_party/coreos-overlay \
-          -v \${BUILD_DIR}/src/third_party/portage-stable:/mnt/host/source/src/third_party/portage-stable \
+          -v \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/coreos-overlay:/mnt/host/source/src/third_party/coreos-overlay \
+          -v \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/portage-stable:/mnt/host/source/src/third_party/portage-stable \
           192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION} \
           bash -c "
             ebuild /overlay/sys-kernel/coreos-sources/coreos-sources-\${KERNEL_VERSION}.ebuild manifest

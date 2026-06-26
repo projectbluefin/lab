@@ -169,6 +169,7 @@ Common failure table from RUNBOOK.md:
 | Clock/quick-settings miss targets | GNOME Shell 50 AT-SPI gap | Use Shell.Eval |
 | `outputs.result` has debug text | Script wrote to stdout | Move debug to `>&2` |
 | Test hangs on `qecore-headless` | Missing Wayland session flag | Add `--session-type wayland --session-desktop gnome` |
+| Behave exits with 127 "command not found" | `behave` missing from VM pip install block for non-system suites | Add `behave` to pip install list inside `run-gnome-tests.yaml` |
 
 ### 9. qecore `context.failed_setup` — check `is not None`, not `hasattr`
 
@@ -260,6 +261,7 @@ See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
 - Optional dependency (e.g. Podman Desktop) initialized inside the main try/except — causes ALL tests to appear as setup failures when the optional app is absent
 - `grep -c ... || echo 0` in a bash step — `grep -c` exits 1 on zero matches; `|| echo 0` fires and doubles the output; use `|| true` instead
 - No `sleep()` between a keyboard shortcut (e.g. `<Shift><Ctrl><T>`) and the AT-SPI check that follows — race condition; add `sleep(1)` before checking widget state
+- Omission of `behave` from the VM pip install block for non-system suites inside `run-gnome-tests.yaml` — results in exit code 127 ("command not found") at suite run-time
 
 ## Verification
 

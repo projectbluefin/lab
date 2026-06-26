@@ -385,6 +385,11 @@ spec:
           'echo "masters = portage-stable" | sudo tee -a /etc/portage/repos.conf/coreos.conf /build/amd64-usr/etc/portage/repos.conf/coreos.conf >/dev/null' \
           'echo "auto-sync = no" | sudo tee -a /etc/portage/repos.conf/coreos.conf /build/amd64-usr/etc/portage/repos.conf/coreos.conf >/dev/null' \
           '' \
+          'echo "[coreos-overlay]" | sudo tee /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
+          'echo "location = /mnt/host/source/src/third_party/coreos-overlay" | sudo tee -a /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
+          'echo "masters = portage-stable" | sudo tee -a /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
+          'echo "auto-sync = no" | sudo tee -a /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
+          '' \
           'sudo rm -f /etc/portage/repos.conf/portage-stable*.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable*.conf' \
           'echo "[portage-stable]" | sudo tee /etc/portage/repos.conf/portage-stable.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable.conf >/dev/null' \
           'echo "location = /mnt/host/source/src/third_party/portage-stable" | sudo tee -a /etc/portage/repos.conf/portage-stable.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable.conf >/dev/null' \

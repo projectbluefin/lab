@@ -369,6 +369,7 @@ spec:
           'set -euo pipefail' \
           'export GENERATE_SLSA_PROVENANCE=false' \
           'export generate_slsa_provenance_report=no' \
+          'export FEATURES="-sandbox -usersandbox -userpriv"' \
           '' \
           '# Register overlay in portage repos.conf (both host and board)' \
           'sudo mkdir -p /etc/portage/repos.conf /build/amd64-usr/etc/portage/repos.conf' \
@@ -402,7 +403,7 @@ spec:
           '  --board=amd64-usr --default' \
           '' \
           '# Build kernel packages' \
-          'emerge-amd64-usr --quiet --jobs={{workflow.parameters.cores}} \' \
+          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --quiet --jobs={{workflow.parameters.cores}} \' \
           '  =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}} \' \
           '  =sys-kernel/coreos-kernel-{{inputs.parameters.kernel-version}} \' \
           '  =sys-kernel/coreos-modules-{{inputs.parameters.kernel-version}}' \

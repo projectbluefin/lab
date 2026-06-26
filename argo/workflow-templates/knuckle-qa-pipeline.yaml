@@ -154,7 +154,7 @@ spec:
       parameters:
       - name: vm-name
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -167,7 +167,6 @@ spec:
       - name: knuckle-test
         mountPath: /var/mnt/ghost-data/knuckle-test
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         VM="{{inputs.parameters.vm-name}}"
@@ -208,7 +207,7 @@ spec:
     - name: work
       emptyDir: {}
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -221,7 +220,6 @@ spec:
       - name: work
         mountPath: /work
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         git ls-remote https://github.com/projectbluefin/knuckle \
@@ -352,7 +350,7 @@ spec:
     - name: work
       emptyDir: {}
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [sh]
       env:
       - name: SSH_PUBKEY
@@ -373,7 +371,6 @@ spec:
       - name: work
         mountPath: /work
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         python3 - <<'PY' > /work/ignition.json
@@ -527,9 +524,9 @@ spec:
     volumes:
     - name: ssh-key
       secret:
-        secretName: "{{inputs.parameters.ssh-key-secret}}"
+         secretName: "{{inputs.parameters.ssh-key-secret}}"
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -551,7 +548,6 @@ spec:
             name: "{{inputs.parameters.ssh-key-secret}}"
             key: id_ed25519.pub
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         curl -fsSL -o /usr/local/bin/virtctl \
@@ -621,7 +617,7 @@ spec:
       secret:
         secretName: "{{inputs.parameters.ssh-key-secret}}"
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -635,7 +631,6 @@ spec:
         mountPath: /etc/ssh/test-key
         readOnly: true
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         NS="{{inputs.parameters.namespace}}"
@@ -676,7 +671,7 @@ spec:
       - name: namespace
     activeDeadlineSeconds: 600
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -686,7 +681,6 @@ spec:
           cpu: "1"
           memory: 512Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         curl -fsSL -o /usr/local/bin/virtctl \
@@ -775,7 +769,7 @@ spec:
     - name: work
       emptyDir: {}
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -791,7 +785,6 @@ spec:
       - name: work
         mountPath: /work
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         NS="{{inputs.parameters.namespace}}"

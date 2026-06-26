@@ -420,9 +420,14 @@ spec:
 
         echo "=== Run SDK build via run_sdk_container ==="
         cd \${BUILD_DIR}/src/scripts
+        # Create Portage temp directory on PVC to avoid overlayfs issues
+        mkdir -p \${BUILD_DIR}/portage-temp
+        chmod 777 \${BUILD_DIR}/portage-temp
+
         # run_sdk_container detects Docker and uses it natively
         ./run_sdk_container --rm \
           -m \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
+          -m \${BUILD_DIR}/portage-temp:/build/amd64-usr/var/tmp/portage \
           -V \${SDK_VERSION} \
           -- /mnt/host/source/src/scripts/build-inside-sdk.sh
 

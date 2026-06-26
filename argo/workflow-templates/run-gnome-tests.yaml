@@ -184,11 +184,11 @@ spec:
             if ! getent group bluefin-test &>/dev/null; then
               groupadd -g 1001 bluefin-test 2>/dev/null || groupadd bluefin-test 2>/dev/null || true
             fi
-            G_ARG=""
+            G_ARG=\"\"
             if getent group bluefin-test &>/dev/null; then
-              G_ARG="-g bluefin-test"
+              G_ARG=\"-g bluefin-test\"
             elif getent group 1001 &>/dev/null; then
-              G_ARG="-g 1001"
+              G_ARG=\"-g 1001\"
             fi
             useradd -m -u 1001 \${G_ARG} -G wheel -s /bin/bash \
               -d /var/home/bluefin-test bluefin-test

@@ -211,6 +211,41 @@ responses without it.
 
 ---
 
+## Kernel Lifecycle (3-node simple mode)
+
+Use one update group (`GROUP=stable`) for all Flatcar nodes. Keep canary behavior as
+an operational gate: **exo-0 must validate first for 24h** before the same package is
+considered promoted for the rest of the cluster.
+
+This keeps config simple while preserving staged rollout discipline.
+
+### Promotion policy
+
+1. Build and register a new candidate package via `flatcar-kernel-build`.
+2. Validate on exo-0 for 24h:
+   - exo-0 remains `Ready`
+   - `flatcar-update` pods remain healthy
+   - one successful update/reboot validation completes on exo-0
+3. Promote by keeping the new package as the active stable target.
+4. On failure, roll back by re-pointing to the last-known-good package/version.
+
+### Exo-0 7.1 verification (ponytail path)
+
+```bash
+# Node kernel (cluster truth)
+kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'
+
+# Nebraska package list (latest entries)
+curl -s "http://192.168.1.102:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages" | jq '.[-5:]'
+
+# Confirm update.conf on exo-0
+POD=$(kubectl get pods -n flatcar-update -l app=flatcar-update-configurator -o wide \
+  | awk '/exo-0/ {print $1; exit}')
+kubectl exec -n flatcar-update "$POD" -- nsenter --target 1 --mount -- cat /etc/flatcar/update.conf
+```
+
+---
+
 ## Node Addition Checklist (copy-paste for each new node)
 
 ```
@@ -220,6 +255,7 @@ responses without it.
 [ ] kubectl exec nsenter confirms /etc/flatcar/update.conf is correct
 [ ] Nebraska logs show first processEvent for this machineId
 [ ] (Optional) flatcar-kernel-build workflow run to register new kernel package
+[ ] exo-0 canary gate passes 24h (Ready, healthy flatcar-update pods, reboot validation)
 [ ] kubectl get nodes -o wide confirms node is Running with expected kernel
 ```
 
@@ -325,5 +361,6 @@ When the KubeVirt / Argo VM pipeline (`flatcar-kernel-build.yaml`) is blocked by
 - [ ] `kubectl get pods -n flatcar-update -o wide` shows 1 Running pod per node
 - [ ] `kubectl exec <pod> -- nsenter --target 1 --mount -- cat /etc/flatcar/update.conf` shows Nebraska URL
 - [ ] Nebraska logs contain `processEvent` with `appID=e96281a6-d1af-4bde-9a0a-97b76e56dc57` for the new node
+- [ ] `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}'` reports `7.1.x` after promotion
 - [ ] `kubectl get nodes` shows node as Ready
 - [ ] No pods in ErrImagePull, CrashLoopBackOff in `flatcar-update` namespace

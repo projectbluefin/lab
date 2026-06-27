@@ -28,6 +28,7 @@
 | Validate released (stable) image | `just run-tests-tag stable` or `just run-tests-tag lts-stable` |
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
 | Validate the Flatcar lane | `just run-flatcar-smoke` |
+| Check exo-0 kernel canary status (7.1 target) | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` |
 | Validate the dakota BST element graph (fast, no build) | `just run-dakota-validate` |
 | Build a dakota variant via BST on ghost | `just run-dakota-build [variant=default\|nvidia\|all]` |
 | Tail the most recent workflow's logs | `just logs` |
@@ -57,6 +58,8 @@ Run `just logs` first. Then match a row:
 | `outputs.result` is `Waiting...` or other debug text | Send debug output to `>&2`; keep stdout for the result only |
 | VM stuck `Terminating` | `kubectl delete pod -n bluefin-test $(kubectl get pod -n bluefin-test -l kubevirt.io/vm=<name> -o name)` |
 | `qemu-img: command not found` (Flatcar prep) | Use `quay.io/fedora/fedora:latest` for the Flatcar prep image |
+| exo-0 not on expected 7.1 kernel | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` then verify Nebraska packages: `curl -s http://192.168.1.102:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages \| jq '.[-5:]'` |
+| Kernel poller keeps retriggering wrong versions | Check state: `kubectl get configmap flatcar-kernel-polling-state -n argo -o yaml` and verify CronWorkflow policy is `Forbid`: `kubectl get cronworkflow flatcar-kernel-poller -n argo -o jsonpath='{.spec.concurrencyPolicy}{"\n"}'` |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
 | Workflow stuck `Pending` | Run §3 |
 | Template change did not take effect | Run §4 |

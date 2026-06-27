@@ -1,7 +1,6 @@
-# RBAC for flatcar-kernel-poller CronWorkflow and flatcar-kernel-build WorkflowTemplate.
-# Allows the argo SA to patch the flatcar-kernel-polling-state ConfigMap.
-# (The argo SA already has broader ConfigMap access via argo-default-sa-rbac.yaml;
-# this Role is a belt-and-suspenders scoped grant for clarity.)
+# RBAC for the Flatcar kernel poller/build/gate workflows.
+# Grants the argo SA read/patch access to lifecycle state in argo, read access to
+# flatcar-update pods, and cluster-scope node reads for the exo-0 promotion gate.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -12,11 +11,10 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: [configmaps]
-    resourceNames: [flatcar-kernel-polling-state]
-    verbs: [get, patch]
+    verbs: [get, list, watch, patch]
   - apiGroups: [argoproj.io]
     resources: [workflows]
-    verbs: [create]
+    verbs: [create, get, list, watch, patch]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -27,9 +25,63 @@ metadata:
     app.kubernetes.io/part-of: testing-lab
 subjects:
   - kind: ServiceAccount
-    name: default
+    name: argo
     namespace: argo
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: flatcar-kernel-state-patcher
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: flatcar-kernel-gate-reader
+  namespace: flatcar-update
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: flatcar-kernel-gate-reader
+  namespace: flatcar-update
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+subjects:
+  - kind: ServiceAccount
+    name: argo
+    namespace: argo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: flatcar-kernel-gate-reader
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: flatcar-kernel-gate-node-reader
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flatcar-kernel-gate-node-reader
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+subjects:
+  - kind: ServiceAccount
+    name: argo
+    namespace: argo
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flatcar-kernel-gate-node-reader

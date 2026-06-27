@@ -1,0 +1,118 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: flatcar-kernel-gate
+  namespace: argo
+  annotations:
+    description: |
+      Evaluates the exo-0 Flatcar kernel canary gate for the current candidate.
+      The gate passes only after the candidate is at least 24 hours old, exo-0
+      stays Ready, flatcar-update pods are healthy, and a successful exo-0
+      update/reboot validation workflow marker exists for the candidate. On pass
+      the candidate is promoted to stable state; on fail gate-status is set to
+      fail and the workflow exits non-zero with an explicit reason.
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  entrypoint: gate-candidate
+  serviceAccountName: argo
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+    secondsAfterFailure: 604800
+  templates:
+    - name: gate-candidate
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        securityContext:
+          runAsUser: 0
+        command: [bash]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 128Mi
+          limits:
+            cpu: 50m
+            memory: 512Mi
+        source: |
+          set -euo pipefail
+          apk add --no-cache coreutils >/dev/null 2>&1
+
+          STATE_CM="flatcar-kernel-lifecycle-state"
+          GATE_WINDOW_SECONDS=86400
+          VALIDATION_SELECTOR_BASE="flatcar-kernel-validation-node=exo-0,flatcar-kernel-validation-status=pass"
+
+          fail() {
+            local reason="${1}"
+            local ts
+            ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            kubectl patch configmap "${STATE_CM}" -n argo --type=merge \
+              -p '{"data":{"gate-status":"fail"}}' >/dev/null
+            echo "gate_status=fail reason=${reason} timestamp=${ts}"
+            exit 1
+          }
+
+          mapfile -t candidate_state < <(
+            kubectl get configmap "${STATE_CM}" -n argo -o go-template='{{index .data "candidate-version"}}{{"\n"}}{{index .data "candidate-package"}}{{"\n"}}{{index .data "candidate-created-at"}}{{"\n"}}'
+          )
+
+          candidate_version="${candidate_state[0]:-}"
+          candidate_package="${candidate_state[1]:-}"
+          candidate_created_at="${candidate_state[2]:-}"
+
+          [ -n "${candidate_version}" ] || fail "candidate-version missing from ${STATE_CM}"
+          [ -n "${candidate_package}" ] || fail "candidate-package missing from ${STATE_CM}"
+          [ -n "${candidate_created_at}" ] || fail "candidate-created-at missing from ${STATE_CM}"
+
+          candidate_epoch="$(date -u -d "${candidate_created_at}" +%s 2>/dev/null)" \
+            || fail "candidate-created-at is not valid RFC3339: ${candidate_created_at}"
+          now_epoch="$(date -u +%s)"
+          elapsed_seconds="$((now_epoch - candidate_epoch))"
+
+          if [ "${elapsed_seconds}" -lt 0 ]; then
+            fail "candidate-created-at is in the future: ${candidate_created_at}"
+          fi
+          if [ "${elapsed_seconds}" -lt "${GATE_WINDOW_SECONDS}" ]; then
+            fail "candidate age ${elapsed_seconds}s is below 24h gate"
+          fi
+
+          node_ready="$(kubectl get node exo-0 -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{@.status}{end}')"
+          if [ "${node_ready}" != "True" ]; then
+            fail "exo-0 Ready condition is ${node_ready:-missing}"
+          fi
+
+          pod_rows="$(
+            kubectl get pods -n flatcar-update \
+              -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.phase}{"|"}{range .status.conditions[?(@.type=="Ready")]}{@.status}{end}{"\n"}{end}'
+          )"
+          [ -n "${pod_rows}" ] || fail "flatcar-update namespace has no pods"
+
+          unhealthy_pods="$(
+            printf '%s\n' "${pod_rows}" \
+              | awk -F'|' 'NF && $2 != "Succeeded" && !($2 == "Running" && $3 == "True") {print $1 ":" $2 ":" ($3 == "" ? "NotReady" : $3)}'
+          )"
+          if [ -n "${unhealthy_pods}" ]; then
+            fail "flatcar-update unhealthy pods $(printf '%s' "${unhealthy_pods}" | paste -sd ',' -)"
+          fi
+
+          validation_rows="$(
+            kubectl get workflows.argoproj.io -n argo \
+              -l "${VALIDATION_SELECTOR_BASE},flatcar-kernel-candidate-version=${candidate_version}" \
+              -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.metadata.creationTimestamp}{"|"}{.status.phase}{"\n"}{end}'
+          )"
+          validation_workflow="$(
+            printf '%s\n' "${validation_rows}" \
+              | awk -F'|' -v min_ts="${candidate_created_at}" '$3 == "Succeeded" && $2 >= min_ts {print $1; exit}'
+          )"
+          [ -n "${validation_workflow}" ] || fail "no successful exo-0 validation marker for candidate ${candidate_version}"
+
+          kubectl patch configmap "${STATE_CM}" -n argo --type=merge -p "{
+            \"data\": {
+              \"gate-status\": \"pass\",
+              \"stable-version\": \"${candidate_version}\",
+              \"stable-package\": \"${candidate_package}\"
+            }
+          }" >/dev/null
+
+          echo "gate_status=pass candidate_version=${candidate_version} stable_package=${candidate_package} validation_workflow=${validation_workflow} elapsed_seconds=${elapsed_seconds}"

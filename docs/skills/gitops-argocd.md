@@ -107,6 +107,8 @@ names to track resources. Always use a fixed `name:`.
 
 **Dynamic ConfigMap Key Avoidance:** When a ConfigMap tracks dynamic, runtime-managed state (such as image digests or the last-seen kernel version), do **not** declare placeholder keys (e.g., `kernel-stable: ""`) in the Git manifest's `data:` block. Under Server-Side Apply, defining a field in Git forces ArgoCD to continuously reconcile and overwrite that specific field, resetting it to the placeholder and triggering infinite polling or build loops. To prevent this, omit the dynamic keys entirely from the Git manifest. Server-Side Apply will bootstrap the empty ConfigMap object and leave dynamically added keys untouched at runtime.
 
+**Exception — intentional runtime-state ConfigMap contract:** If the Git manifest must define an explicit set of runtime keys (for example, to document a lifecycle-state contract with known empty marker keys), scope an `ignoreDifferences` rule to that one ConfigMap and ignore `/data`, then enable `RespectIgnoreDifferences=true` on the Application. This keeps the key contract in git without ArgoCD patching live runtime values back to placeholders.
+
 ### 6. Sync status and forced sync
 
 ```bash

@@ -8,9 +8,11 @@ metadata:
       Evaluates the exo-0 Flatcar kernel canary gate for the current candidate.
       The gate passes only after the candidate is at least 24 hours old, exo-0
       stays Ready, flatcar-update pods are healthy, and a successful exo-0
-      update/reboot validation workflow marker exists for the candidate. On pass
-      the candidate is promoted to stable state; on fail gate-status is set to
-      fail and the workflow exits non-zero with an explicit reason.
+      update/reboot validation marker exists for the candidate. The validation
+      marker may come from a labeled successful workflow or from explicit marker
+      keys in the lifecycle ConfigMap. On pass the candidate is promoted to
+      stable state; on fail gate-status is set to fail and the workflow exits
+      non-zero with an explicit reason.
   labels:
     app.kubernetes.io/part-of: testing-lab
 spec:
@@ -42,6 +44,10 @@ spec:
           STATE_CM="flatcar-kernel-lifecycle-state"
           GATE_WINDOW_SECONDS=86400
           VALIDATION_SELECTOR_BASE="flatcar-kernel-validation-node=exo-0,flatcar-kernel-validation-status=pass"
+          VALIDATION_MARKER_NODE_KEY="validation-marker-node"
+          VALIDATION_MARKER_STATUS_KEY="validation-marker-status"
+          VALIDATION_MARKER_VERSION_KEY="validation-marker-version"
+          VALIDATION_MARKER_CREATED_AT_KEY="validation-marker-created-at"
 
           fail() {
             local reason="${1}"
@@ -54,12 +60,16 @@ spec:
           }
 
           mapfile -t candidate_state < <(
-            kubectl get configmap "${STATE_CM}" -n argo -o go-template='{{index .data "candidate-version"}}{{"\n"}}{{index .data "candidate-package"}}{{"\n"}}{{index .data "candidate-created-at"}}{{"\n"}}'
+            kubectl get configmap "${STATE_CM}" -n argo -o go-template='{{index .data "candidate-version"}}{{"\n"}}{{index .data "candidate-package"}}{{"\n"}}{{index .data "candidate-created-at"}}{{"\n"}}{{index .data "validation-marker-node"}}{{"\n"}}{{index .data "validation-marker-status"}}{{"\n"}}{{index .data "validation-marker-version"}}{{"\n"}}{{index .data "validation-marker-created-at"}}{{"\n"}}'
           )
 
           candidate_version="${candidate_state[0]:-}"
           candidate_package="${candidate_state[1]:-}"
           candidate_created_at="${candidate_state[2]:-}"
+          validation_marker_node="${candidate_state[3]:-}"
+          validation_marker_status="${candidate_state[4]:-}"
+          validation_marker_version="${candidate_state[5]:-}"
+          validation_marker_created_at="${candidate_state[6]:-}"
 
           [ -n "${candidate_version}" ] || fail "candidate-version missing from ${STATE_CM}"
           [ -n "${candidate_package}" ] || fail "candidate-package missing from ${STATE_CM}"
@@ -105,7 +115,22 @@ spec:
             printf '%s\n' "${validation_rows}" \
               | awk -F'|' -v min_ts="${candidate_created_at}" '$3 == "Succeeded" && $2 >= min_ts {print $1; exit}'
           )"
-          [ -n "${validation_workflow}" ] || fail "no successful exo-0 validation marker for candidate ${candidate_version}"
+
+          validation_source=""
+          if [ -n "${validation_workflow}" ]; then
+            validation_source="workflow/${validation_workflow}"
+          else
+            [ "${validation_marker_node}" = "exo-0" ] || fail "${VALIDATION_MARKER_NODE_KEY} must be exo-0 when workflow marker is absent"
+            [ "${validation_marker_status}" = "pass" ] || fail "${VALIDATION_MARKER_STATUS_KEY} must be pass when workflow marker is absent"
+            [ "${validation_marker_version}" = "${candidate_version}" ] || fail "${VALIDATION_MARKER_VERSION_KEY} must match candidate-version when workflow marker is absent"
+            [ -n "${validation_marker_created_at}" ] || fail "${VALIDATION_MARKER_CREATED_AT_KEY} missing when workflow marker is absent"
+            validation_marker_epoch="$(date -u -d "${validation_marker_created_at}" +%s 2>/dev/null)" \
+              || fail "${VALIDATION_MARKER_CREATED_AT_KEY} is not valid RFC3339: ${validation_marker_created_at}"
+            if [ "${validation_marker_epoch}" -lt "${candidate_epoch}" ]; then
+              fail "${VALIDATION_MARKER_CREATED_AT_KEY} predates candidate-created-at"
+            fi
+            validation_source="configmap/${VALIDATION_MARKER_STATUS_KEY}"
+          fi
 
           kubectl patch configmap "${STATE_CM}" -n argo --type=merge -p "{
             \"data\": {
@@ -115,4 +140,4 @@ spec:
             }
           }" >/dev/null
 
-          echo "gate_status=pass candidate_version=${candidate_version} stable_package=${candidate_package} validation_workflow=${validation_workflow} elapsed_seconds=${elapsed_seconds}"
+          echo "gate_status=pass candidate_version=${candidate_version} stable_package=${candidate_package} validation_source=${validation_source} elapsed_seconds=${elapsed_seconds}"

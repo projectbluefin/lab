@@ -27,10 +27,17 @@ spec:
         - .spec.template.spec.domain.firmware
         - .spec.template.spec.domain.resources
         - .spec.template.spec.volumes[]?.hostDisk.capacity
+    - group: ""
+      kind: ConfigMap
+      name: flatcar-kernel-lifecycle-state
+      namespace: argo
+      jsonPointers:
+        - /data
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      - RespectIgnoreDifferences=true
       - ServerSideApply=true

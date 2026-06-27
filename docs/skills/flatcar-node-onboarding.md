@@ -222,8 +222,15 @@ This keeps config simple while preserving staged rollout discipline.
 | Key | Meaning |
 |---|---|
 | `candidate-version` | Kernel version currently under exo-0 canary gate |
+| `candidate-package` | Nebraska package filename for the current candidate |
+| `candidate-created-at` | RFC3339 timestamp when the current candidate entered the gate |
 | `gate-status` | `pending`, `pass`, or `fail` for the current candidate |
 | `stable-version` | Last promoted known-good kernel version |
+| `stable-package` | Nebraska package filename for the last promoted stable kernel |
+| `validation-marker-node` | Manual/runtime validation marker node name (`exo-0` for the canary gate fallback path) |
+| `validation-marker-status` | Manual/runtime validation marker status (`pass` when no labeled workflow marker exists) |
+| `validation-marker-version` | Candidate version validated by the manual/runtime marker |
+| `validation-marker-created-at` | RFC3339 timestamp for the manual/runtime validation marker |
 
 ### Promotion policy
 
@@ -231,7 +238,7 @@ This keeps config simple while preserving staged rollout discipline.
 2. Validate on exo-0 for 24h:
    - exo-0 remains `Ready`
    - `flatcar-update` pods remain healthy
-   - one successful update/reboot validation completes on exo-0
+   - one successful update/reboot validation completes on exo-0, recorded either as a labeled successful workflow or as the explicit `validation-marker-*` ConfigMap keys
 3. Promote by keeping the new package as the active stable target.
 4. On failure, roll back by re-pointing to the last-known-good package/version.
 

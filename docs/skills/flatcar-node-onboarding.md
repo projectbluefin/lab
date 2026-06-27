@@ -7,7 +7,10 @@ description: >
   server. Covers k3s sysext install, DaemonSet auto-configuration, and
   validating the update pipeline end-to-end.
 metadata:
-  context7-sources: []
+  context7-sources:
+    - /websites/flatcar
+    - /argoproj/argo-workflows
+    - /kubernetes/website
 ---
 
 # Flatcar Node Onboarding — testing-lab Skill

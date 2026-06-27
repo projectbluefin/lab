@@ -88,6 +88,14 @@ spec:
             value: "{{steps.build-kernel.outputs.parameters.size}}"
           - name: filename
             value: "{{steps.build-kernel.outputs.parameters.filename}}"
+    - - name: record-candidate-state
+        template: record-candidate-state
+        arguments:
+          parameters:
+          - name: kernel-version
+            value: "{{workflow.parameters.kernel-version}}"
+          - name: filename
+            value: "{{steps.build-kernel.outputs.parameters.filename}}"
 
   - name: create-build-pvc
     resource:
@@ -554,6 +562,36 @@ spec:
         echo "Version: ${VERSION}  (kernel ${KERNEL_VERSION})"
         echo "URL:     ${PKG_BASE_URL}${FILENAME}"
         echo "update_engine on Flatcar nodes will pick this up on next check-in"
+
+  - name: record-candidate-state
+    inputs:
+      parameters:
+      - name: kernel-version
+      - name: filename
+    script:
+      image: cgr.dev/chainguard/kubectl:latest-dev
+      securityContext:
+        runAsUser: 0
+      command: [bash]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 128Mi
+        limits:
+          cpu: 50m
+          memory: 512Mi
+      source: |
+        set -euo pipefail
+        apk add --no-cache bash kubectl >/dev/null 2>&1
+        TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        kubectl patch configmap flatcar-kernel-lifecycle-state -n argo --type=merge -p "{
+          \"data\": {
+            \"candidate-version\": \"{{inputs.parameters.kernel-version}}\",
+            \"candidate-package\": \"{{inputs.parameters.filename}}\",
+            \"candidate-created-at\": \"${TS}\",
+            \"gate-status\": \"pending\"
+          }
+        }"
 
     # -------------------------------------------------------------------------
     # teardown-build-vm: always runs via onExit. Deletes the KubeVirt VM and

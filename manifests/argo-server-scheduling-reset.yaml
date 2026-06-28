@@ -1,0 +1,11 @@
+# Explicitly clear topology spread constraints previously added by patch.
+# Keep scheduling at Kubernetes defaults for argo-server.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argo-server
+  namespace: argo
+spec:
+  template:
+    spec:
+      topologySpreadConstraints: []

@@ -732,7 +732,15 @@ function buildStatsBar(stats) {
 
 
 async function load(url) {
-  try { const r = await fetch(url); return r.ok ? r.json() : null; }
+  try {
+    const sep = url.includes('?') ? '&' : '?';
+    const bust = `${Date.now()}`;
+    const r = await fetch(`${url}${sep}t=${bust}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    return r.ok ? r.json() : null;
+  }
   catch { return null; }
 }
 

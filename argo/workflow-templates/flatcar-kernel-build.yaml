@@ -375,13 +375,6 @@ spec:
           'export generate_slsa_provenance_report=no' \
           'export FEATURES="-sandbox -usersandbox -userpriv"' \
           '' \
-          '# Register overlay in portage repos.conf on board' \
-          'sudo mkdir -p /build/amd64-usr/etc/portage/repos.conf' \
-          'echo "[flatcar-kernel]" | sudo tee /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
-          'echo "location = /overlay" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
-          'echo "masters = portage-stable coreos-overlay" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
-          'echo "auto-sync = no" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
-          '' \
           '# Register overlay in portage repos.conf (both host and board)' \
           'sudo mkdir -p /etc/portage/repos.conf /build/amd64-usr/etc/portage/repos.conf' \
           'echo "[coreos-overlay]" | sudo tee /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
@@ -397,6 +390,13 @@ spec:
           '# Set up board (no --skip-chroot-upgrade: not a valid flag in this SDK version)' \
           '/mnt/host/source/src/scripts/setup_board \' \
           '  --board=amd64-usr --default --force --skip_chroot_upgrade --skip_toolchain_update' \
+          '' \
+          '# Register flatcar-kernel overlay after setup_board --force recreates board root' \
+          'sudo mkdir -p /build/amd64-usr/etc/portage/repos.conf' \
+          'echo "[flatcar-kernel]" | sudo tee /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
+          'echo "location = /overlay" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
+          'echo "masters = portage-stable coreos-overlay" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
+          'echo "auto-sync = no" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
           '' \
           '# Mock pahole to avoid compiling massive dependencies (cmake, perl, gettext) on board root' \
           'sudo mkdir -p /build/amd64-usr/etc/portage/profile' \

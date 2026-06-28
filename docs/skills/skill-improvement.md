@@ -63,6 +63,7 @@ Route by area changed:
 | `provision-vm`, `KubeVirt`, `btrfs reflink` | `docs/skills/kubevirt-vms.md` |
 | ArgoCD Applications, `argocd/`, `manifests/` | `docs/skills/gitops-argocd.md` |
 | `tests/`, `behave`, `dogtail`, `qecore` | `docs/skills/test-authoring.md` |
+| `.github/workflows/` | `docs/skills/ci-tooling.md` |
 | Bootstrap cluster setup, `argo/bootstrap/` | `docs/bootstrap.md` |
 | Cluster topology, namespaces, RBAC | `AGENTS.md` |
 | Agent operations, MCP tools | `docs/agent-cheatsheet.md` |
@@ -136,6 +137,7 @@ All skill files live in `docs/skills/`:
 
 ```
 docs/skills/
+├── ci-tooling.md        GitHub Actions workflow patterns for dashboard/CI reliability
 ├── argo-workflows.md     WorkflowTemplate authoring, lint, parameter passing
 ├── gitops-argocd.md      ArgoCD sync model, managed vs bootstrap distinction
 ├── kubevirt-vms.md       Ephemeral VM lifecycle, btrfs reflink, golden disk

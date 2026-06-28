@@ -51,9 +51,10 @@ src_install() {
 	addwrite "${KSRC}"
 	cd "${KSRC}"
 	local kv=$(make -s ARCH=x86_64 kernelrelease)
-	dodir /boot
-	install -m0644 arch/x86_64/boot/bzImage "${D}/boot/vmlinuz-${kv}"
-	install -m0644 System.map "${D}/boot/System.map-${kv}"
-	install -m0644 .config "${D}/boot/config-${kv}"
-	dosym "vmlinuz-${kv}" /boot/vmlinuz
+	# coreos-postinst expects the kernel in /usr/boot (merged-usr layout)
+	insinto /usr/boot
+	newins arch/x86_64/boot/bzImage "vmlinuz-${kv}"
+	dosym "vmlinuz-${kv}" /usr/boot/vmlinuz
+	insinto "/usr/lib/modules/${kv}/build"
+	doins System.map .config
 }

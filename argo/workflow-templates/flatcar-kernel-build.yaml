@@ -426,6 +426,10 @@ spec:
           'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr \' \
           '  --unmerge =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}} || true' \
           '' \
+          '# Diagnose check_root failures explicitly before build_image' \
+          'echo "=== check_root usr ===" ; ROOT=/build/amd64-usr /mnt/host/source/src/scripts/build_library/check_root usr 2>&1 || true' \
+          'echo "=== check_root symlink ===" ; sudo ROOT=/build/amd64-usr /mnt/host/source/src/scripts/build_library/check_root symlink 2>&1 || true' \
+          '' \
           '# Build the full Flatcar OS image (generates update payload)' \
           '/mnt/host/source/src/scripts/build_image \' \
           '  --board=amd64-usr prod' \

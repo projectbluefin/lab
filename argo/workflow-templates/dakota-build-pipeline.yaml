@@ -6,7 +6,7 @@ metadata:
   annotations:
     description: |
       Parallel dakota BST build pipeline. Builds bluefin and bluefin-nvidia OCI variants
-      in parallel against the in-cluster buildbox-casd CAS on ghost. Triggered by push to
+      in parallel against the in-cluster buildbox-casd CAS service. Triggered by push to
       dakota:testing via dakota-commit-poller CronWorkflow. On success, exports to local Zot (:30500).
       Uses bst-build PriorityClass — preemptable by lab-test-vm pods.
   labels:
@@ -23,6 +23,8 @@ spec:
         value: "https://github.com/projectbluefin/dakota.git"
       - name: ref
         value: "testing"
+      - name: registry
+        value: "192.168.1.102:30500"
 
   entrypoint: build
 
@@ -35,6 +37,8 @@ spec:
             value: "{{workflow.parameters.ref}}"
           - name: repo
             value: "{{workflow.parameters.repo}}"
+          - name: registry
+            value: "{{workflow.parameters.registry}}"
       dag:
         tasks:
           - name: build-bluefin
@@ -49,6 +53,8 @@ spec:
                   value: "{{inputs.parameters.ref}}"
                 - name: repo
                   value: "{{inputs.parameters.repo}}"
+                - name: registry
+                  value: "{{inputs.parameters.registry}}"
           - name: build-bluefin-nvidia
             template: bst-build
             arguments:
@@ -61,6 +67,8 @@ spec:
                   value: "{{inputs.parameters.ref}}"
                 - name: repo
                   value: "{{inputs.parameters.repo}}"
+                - name: registry
+                  value: "{{inputs.parameters.registry}}"
 
     - name: bst-build
       priorityClassName: bst-build
@@ -70,6 +78,7 @@ spec:
           - name: tag
           - name: ref
           - name: repo
+          - name: registry
       volumes:
         - name: fuse
           hostPath:
@@ -77,7 +86,7 @@ spec:
         - name: bst-cache
           emptyDir: {}
       script:
-        image: 192.168.1.102:30500/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d
+        image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
         command: [bash]
         securityContext:
           privileged: true
@@ -135,7 +144,7 @@ spec:
           # Load the OCI layout into podman local storage, then push by image ID.
           # docker:// transport prefix is required for podman push to a registry.
           IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-          podman push "${IMAGE_ID}" "docker://192.168.1.102:30500/${TAG}:latest" --tls-verify=false
+          podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
           podman rmi "${IMAGE_ID}" 2>/dev/null || true
 
-          echo "=== Build complete: 192.168.1.102:30500/${TAG}:latest ==="
+          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="

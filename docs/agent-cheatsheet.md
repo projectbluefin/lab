@@ -29,8 +29,7 @@
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
 | Validate the Flatcar lane | `just run-flatcar-smoke` |
 | Check exo-0 kernel canary status (7.1 target) | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` |
-| Validate the dakota BST element graph (fast, no build) | `just run-dakota-validate` |
-| Build a dakota variant via BST on ghost | `just run-dakota-build [variant=default\|nvidia\|all]` |
+| Submit Dakota BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
 | Tail the most recent workflow's logs | `just logs` |
 | List workflows / VMs | `just list-workflows` · `just list-vms` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |

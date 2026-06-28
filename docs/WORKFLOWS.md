@@ -21,11 +21,11 @@
 - **Just recipe:** `run-tests`, `run-tests-tag`, `run-tests-matrix`.
 
 ### dakota-qa-pipeline
-- **Purpose:** Validate Dakota BuildStream output, export/push an OCI image, convert it into a golden disk, boot an ephemeral VM, and run smoke tests.
-- **Parameters:** `branch`, `variant`, `namespace`, `suites`, `ssh-key-secret`, `tests-branch`.
-- **DAG:** `bst-validate` → `bst-build-export-push` → `ensure-disk` → `provision` → `run-smoke`; `onExit: teardown`.
-- **Resource profile:** Dakota BST validate/build on ghost, then the same containerDisk build + provision + `run-gnome-tests` building blocks as Bluefin.
-- **Just recipe:** `run-dakota-qa` (with `run-dakota-validate` and `run-dakota-build` for subpaths).
+- **Purpose:** Validate the existing Dakota containerDisk by provisioning ephemeral VMs and running selected suites in parallel lanes.
+- **Parameters:** `image`, `image-tag`, `containerdisk-tag`, `namespace`, `suites`, `variant`, `ssh-key-secret`, `branch`, `vm-memory`.
+- **DAG:** `assert-cd` → parallel `test-lane` items (`smoke`, `developer`, `system`); `onExit: cleanup-orphan-vms`.
+- **Resource profile:** Per-suite VM provision + `run-gnome-tests`; fails fast if containerDisk is missing from Zot.
+- **Just recipe:** `run-dakota-qa`.
 
 ### knuckle-qa-pipeline
 - **Purpose:** Build the Knuckle installer ISO/binary, provision a blank VM, run the headless installer in-cluster, boot the installed system, rediscover SSH reachability, and run smoke tests.
@@ -43,7 +43,7 @@
 | `teardown-bluefin-vm` | Shared Bluefin/Dakota/Knuckle VM cleanup. Deletes the KubeVirt VM and removes the matching hostDisk from the pipeline test root. |
 | `run-gnome-tests` | Shared test runner. Clones `projectbluefin/testsuite` (the single source of truth), waits for SSH, installs test dependencies, copies `tests/<suite>`, and runs `behave`. GUI suites (smoke) run via `qecore-headless` inside the VM. The `common` suite runs from the runner container with `VM_IP`/`SSH_KEY` exported so its SSH steps reach the VM directly — do NOT run common via qecore-headless. The `system` suite runs inside the VM without a display. |
 | `run-incluster-tests` | Shared in-cluster pytest runner. Git-syncs `testing-lab`, runs a pytest module against a live k8s workload, emits JUnit XML. |
-| `dakota-bst` | Dakota-specific build path. `bst-validate` performs a fast graph check; `bst-build-export-push` builds on ghost, pushes `192.168.1.102:5000/dakota:<tag>`, and returns `image-ref` to `dakota-qa-pipeline`. |
+| `dakota-build-pipeline` | Dakota BST build path. Builds `oci/bluefin.bst` and `oci/bluefin-nvidia.bst` in parallel via in-cluster buildbox-casd and pushes tags to local Zot. |
 
 ## Nightly Schedule
 
@@ -56,12 +56,11 @@
 
 ## Ghost-Heavy-Compute Mutex
 
-`ghost-heavy-compute` serialises the host-local heavy work that would otherwise contend on ghost CPU, memory, loop-device I/O, and shared storage.
+`ghost-heavy-compute` serialises host-local heavy work for shared disk builders.
 
 Templates that hold it:
 - `build-containerdisk/install-to-disk`
 - `build-containerdisk/convert-and-push`
-- `dakota-bst/bst-build-export-push`
 - `knuckle-qa-pipeline/build-installer`
 
 In practice this means Bluefin/Dakota containerDisk work, Dakota BST builds, and Knuckle installer builds queue instead of racing each other.
@@ -87,8 +86,7 @@ Pod resource requests/limits used by workflow steps:
 | `wait-for-vm-ready` | 100m / 500m | 128Mi / 256Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
 | `delete-hostdisk` | 50m / 200m | 64Mi / 128Mi |
-| `dakota-bst-validate` | 2 / 2 | 4Gi / 4Gi |
-| `dakota-bst-build-export-push` | 24 / 24 | 48Gi / 48Gi |
+| `dakota-build-pipeline/bst-build` | 4 / 8 | 14Gi / 28Gi |
 | `knuckle resolve-source` | 100m / 500m | 128Mi / 256Mi |
 | `knuckle build-installer` | 4 / 4 | 8Gi / 8Gi |
 | `knuckle write-ignition` | 100m / 500m | 128Mi / 256Mi |

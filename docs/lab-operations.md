@@ -43,8 +43,7 @@ The normal operator path is now **fresh-VM only**. Persistent titan recovery flo
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
 | Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate Flatcar | `just run-flatcar-smoke` |
-| Validate dakota BST graph | `just run-dakota-validate` |
-| Build a dakota variant on ghost | `just run-dakota-build [variant=default|nvidia|all]` |
+| Submit Dakota BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
 
 Rule: if a `just` recipe exists, use it. Otherwise use MCP, not workstation `kubectl`/`argo`.
 

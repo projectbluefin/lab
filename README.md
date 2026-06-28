@@ -138,10 +138,8 @@ testing-lab/
 │   │   ├── teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
 │   │   ├── teardown-gnomeos-vm.yaml      delete GNOME OS VM
 │   │   ├── collect-vm-logs.yaml          gather VM journal logs post-test
-│   │   ├── bst-build.yaml               BuildStream (BST) build + zot push
-│   │   ├── bst-cache-warm.yaml          warm BST cache on ghost
-│   │   ├── dakota-bst.yaml              Dakota BST validate / build pipeline
-│   │   ├── dakota-iso-pr-test.yaml      Dakota ISO PR end-to-end pipeline
+│   │   ├── dakota-build-pipeline.yaml   Dakota BST build pipeline (bluefin + nvidia)
+│   │   ├── dakota-commit-poller.yaml    Poll dakota:testing commits and trigger BST builds
 │   │   ├── dakota-qa-pipeline.yaml      Full Dakota QA: BST → VM → tests
 │   │   ├── knuckle-qa-pipeline.yaml     Knuckle installer QA pipeline
 │   │   ├── image-poller.yaml            Digest-polling trigger for image-poll CronWorkflows

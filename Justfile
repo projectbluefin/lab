@@ -243,45 +243,33 @@ lab-report pr_number status workflow:
         --method POST \
         --field state="${STATE}" \
         --field description="${DESC}" \
-        --field context="ghost-lab / bst-build" \
+        --field context="testing-lab / bst-build" \
         --field target_url="http://192.168.1.102:2746/workflows/argo/{{ workflow }}"
     gh pr edit {{ pr_number }} --repo "${REPO}" \
         --add-label "${LABEL}" --remove-label "${REMOVE}" 2>/dev/null || true
 
-# Run a BST build for a variant and push to local zot registry
-# Usage: just run-bst-build dakota
-run-bst-build variant="dakota" tag="latest":
-    argo submit --from workflowtemplate/bst-build \
-        -p variant={{ variant }} \
-        -p image-tag={{ tag }} \
-        -n {{ argo_ns }} \
-        --watch
-
-# Validate dakota element graph (bst show, no build — fast)
-# ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA
-run-dakota-validate ref_type="branch" ref_value="main":
-    argo submit --from workflowtemplate/dakota-bst \
-      -p ref_type={{ ref_type }} \
-      -p ref_value={{ ref_value }} \
-      --entrypoint bst-validate \
+# Run Dakota BST pipeline (build bluefin + bluefin-nvidia variants in parallel)
+# Usage: just run-bst-build
+# Usage: just run-bst-build testing https://github.com/projectbluefin/dakota.git
+run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
+    argo submit --from workflowtemplate/dakota-build-pipeline \
+      -p ref={{ ref }} \
+      -p repo={{ repo }} \
       -n {{ argo_ns }} --watch
 
-# Build a dakota variant (default | nvidia | all) and lint the result
-# ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA
-run-dakota-build variant="default" ref_type="branch" ref_value="main":
-    argo submit --from workflowtemplate/dakota-bst \
-      -p variant={{ variant }} \
-      -p ref_type={{ ref_type }} \
-      -p ref_value={{ ref_value }} \
-      -n {{ argo_ns }} --watch
+# Compatibility alias for older docs/callers.
+run-dakota-validate ref="testing" repo="https://github.com/projectbluefin/dakota.git":
+    just run-bst-build {{ ref }} {{ repo }}
 
-# Full Dakota QA pipeline: BST build → BIB disk → VM → smoke tests
-# ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA
-run-dakota-qa variant="default" ref_type="branch" ref_value="main":
+# Compatibility alias for older docs/callers.
+run-dakota-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
+    just run-bst-build {{ ref }} {{ repo }}
+
+# Full Dakota QA pipeline: VM-based suite run against dakota containerdisk.
+run-dakota-qa branch="main" variant="dakota":
     argo submit --from workflowtemplate/dakota-qa-pipeline \
       -p variant={{ variant }} \
-      -p ref_type={{ ref_type }} \
-      -p ref_value={{ ref_value }} \
+      -p branch={{ branch }} \
       -n {{ argo_ns }} --watch
 
 # ── Validation ───────────────────────────────────────────────────────────────
@@ -293,7 +281,7 @@ apply-bootstrap:
 
 # Lint all Argo YAML manifests.
 # WorkflowTemplates are linted together (--offline) so cross-file templateRef
-# references (e.g. dakota-qa-pipeline → dakota-bst) resolve without needing
+# references (e.g. dakota-commit-poller → dakota-build-pipeline) resolve without needing
 # the Argo server to have the new templates already synced.
 # Standalone Workflow files (argo/*.yaml) reference server-side templates and
 # are linted individually against the live server.

@@ -398,23 +398,20 @@ spec:
           'echo "masters = portage-stable coreos-overlay" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
           'echo "auto-sync = no" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
           '' \
-          '# Mock pahole to avoid compiling massive dependencies (cmake, perl, gettext) on board root' \
+          '# Mock pahole and other heavyweight packages not needed for kernel compile' \
           'sudo mkdir -p /build/amd64-usr/etc/portage/profile' \
           'echo "dev-util/pahole-1.24_p20221024" | sudo tee -a /build/amd64-usr/etc/portage/profile/package.provided >/dev/null' \
           '' \
-          '# Break util-linux <-> cryptsetup cycle in this SDK snapshot for kernel package build' \
-          'sudo mkdir -p /build/amd64-usr/etc/portage/package.use' \
-          'echo "sys-apps/util-linux build -cryptsetup" | sudo tee /build/amd64-usr/etc/portage/package.use/zz-flatcar-kernel-build >/dev/null' \
-          'echo "sys-libs/pam -systemd" | sudo tee -a /build/amd64-usr/etc/portage/package.use/zz-flatcar-kernel-build >/dev/null' \
-          '' \
-          '# Build kernel packages' \
-          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --quiet --jobs={{workflow.parameters.cores}} \' \
-          '  =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}} \' \
-          '  =sys-kernel/coreos-kernel-{{inputs.parameters.kernel-version}} \' \
+          '# Build kernel packages one at a time with --nodeps to avoid cyclic dependency' \
+          '# resolution in portage-stable@4593. coreos-sources has no board deps (just' \
+          '# unpacks tarballs); coreos-kernel requires sources to be present; coreos-modules' \
+          '# requires the built kernel. --nodeps bypasses the full sysroot dep graph.' \
+          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --nodeps --jobs={{workflow.parameters.cores}} \' \
+          '  =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}}' \
+          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --nodeps --jobs={{workflow.parameters.cores}} \' \
+          '  =sys-kernel/coreos-kernel-{{inputs.parameters.kernel-version}}' \
+          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --nodeps --jobs={{workflow.parameters.cores}} \' \
           '  =sys-kernel/coreos-modules-{{inputs.parameters.kernel-version}}' \
-          '' \
-          '# Restore default util-linux USE after staged kernel package merge' \
-          'sudo rm -f /build/amd64-usr/etc/portage/package.use/zz-flatcar-kernel-build' \
           '' \
           '# Build the full Flatcar OS image (generates update payload)' \
           '/mnt/host/source/src/scripts/build_image \' \

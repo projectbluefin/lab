@@ -739,7 +739,6 @@ async function load(url) {
     const bust = `${Date.now()}`;
     const r = await fetch(`${url}${sep}t=${bust}`, {
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
     });
     return r.ok ? r.json() : null;
   }
@@ -751,7 +750,6 @@ async function loadGithubStats() {
     const sep = GH_STATS_API.includes('?') ? '&' : '?';
     const r = await fetch(`${GH_STATS_API}${sep}t=${Date.now()}`, {
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
     });
     if (!r.ok) return null;
     const payload = await r.json();

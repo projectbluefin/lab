@@ -392,6 +392,7 @@
 <script>
 const ARGO_UI   = 'http://192.168.1.102:32746';
 const GH_REPO   = 'https://github.com/projectbluefin/testing-lab';
+const GH_STATS_API = 'https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/data/factory-stats.json?ref=main';
 const LIVE_STATS_URL = 'https://raw.githubusercontent.com/projectbluefin/testing-lab/main/docs/data/factory-stats.json';
 const SUITES    = ['smoke', 'developer', 'software', 'system'];
 
@@ -743,6 +744,22 @@ async function load(url) {
     return r.ok ? r.json() : null;
   }
   catch { return null; }
+}
+
+async function loadGithubStats() {
+  try {
+    const sep = GH_STATS_API.includes('?') ? '&' : '?';
+    const r = await fetch(`${GH_STATS_API}${sep}t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!r.ok) return null;
+    const payload = await r.json();
+    if (!payload?.content) return null;
+    return JSON.parse(atob(payload.content.replace(/\n/g, '')));
+  } catch {
+    return null;
+  }
 }
 
 function fmtAgo(iso) {
@@ -1645,7 +1662,7 @@ function filterStatusTable(failingOnly) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 (async () => {
-  const stats = await load(LIVE_STATS_URL) || await load('data/factory-stats.json') || {};
+  const stats = await loadGithubStats() || await load(LIVE_STATS_URL) || await load('data/factory-stats.json') || {};
   const IMAGES = (stats.images||[]).length ? stats.images : [
     { slug:'bluefin-testing',         label:'bluefin:testing' },
     { slug:'bluefin-lts-testing',     label:'bluefin-lts:testing' },

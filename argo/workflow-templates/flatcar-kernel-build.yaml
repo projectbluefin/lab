@@ -389,20 +389,11 @@ spec:
           'sudo mkdir -p /build/amd64-usr/etc/portage/repos.conf' \
           'echo "[flatcar-kernel]" | sudo tee /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
           'echo "location = /overlay" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
-          'echo "masters = portage-stable coreos" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
+          'echo "masters = portage-stable coreos-overlay" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
           'echo "auto-sync = no" | sudo tee -a /build/amd64-usr/etc/portage/repos.conf/flatcar-kernel.conf >/dev/null' \
           '' \
-          '# Normalize Portage configurations to resolve coreos vs coreos-overlay naming conflict on board' \
-          'if [ -f /usr/local/portage/crossdev/metadata/layout.conf ]; then' \
-          '  sudo sed -i "s/coreos/coreos-overlay/g" /usr/local/portage/crossdev/metadata/layout.conf' \
-          'fi' \
           '# Register overlay in portage repos.conf (both host and board)' \
           'sudo mkdir -p /etc/portage/repos.conf /build/amd64-usr/etc/portage/repos.conf' \
-          'echo "[coreos]" | sudo tee /etc/portage/repos.conf/coreos.conf /build/amd64-usr/etc/portage/repos.conf/coreos.conf >/dev/null' \
-          'echo "location = /mnt/host/source/src/third_party/coreos-overlay" | sudo tee -a /etc/portage/repos.conf/coreos.conf /build/amd64-usr/etc/portage/repos.conf/coreos.conf >/dev/null' \
-          'echo "masters = portage-stable" | sudo tee -a /etc/portage/repos.conf/coreos.conf /build/amd64-usr/etc/portage/repos.conf/coreos.conf >/dev/null' \
-          'echo "auto-sync = no" | sudo tee -a /etc/portage/repos.conf/coreos.conf /build/amd64-usr/etc/portage/repos.conf/coreos.conf >/dev/null' \
-          '' \
           'echo "[coreos-overlay]" | sudo tee /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
           'echo "location = /mnt/host/source/src/third_party/coreos-overlay" | sudo tee -a /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
           'echo "masters = portage-stable" | sudo tee -a /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
@@ -416,6 +407,11 @@ spec:
           '# Set up board (no --skip-chroot-upgrade: not a valid flag in this SDK version)' \
           '/mnt/host/source/src/scripts/setup_board \' \
           '  --board=amd64-usr --default --force --skip_chroot_upgrade --skip_toolchain_update' \
+          '' \
+          '# Force HTTPS for github sources and pin resolver to avoid DNS failures in git-r3 fetches' \
+          'git config --global url."https://github.com/".insteadOf git://github.com/' \
+          'echo -e "nameserver 192.168.1.1\\nnameserver 1.1.1.1" | sudo tee /etc/resolv.conf >/dev/null' \
+          'getent hosts github.com >/dev/null' \
           '' \
           '# Create Portage build directory on the ext4 PVC mount and symlink it to bypass overlayfs bugs' \
           'sudo mkdir -p /mnt/host/source/portage-temp' \

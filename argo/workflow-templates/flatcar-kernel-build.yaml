@@ -419,6 +419,8 @@ spec:
           '[ -e /build/amd64-usr/lib ]   || sudo ln -sf usr/lib   /build/amd64-usr/lib' \
           '[ -e /build/amd64-usr/lib64 ] || sudo ln -sf usr/lib64 /build/amd64-usr/lib64' \
           '[ -e /build/amd64-usr/sbin ]  || sudo ln -sf usr/sbin  /build/amd64-usr/sbin' \
+          '# build_image symlink check expects these lib targets to exist in minimal sysroot' \
+          'sudo mkdir -p /build/amd64-usr/usr/lib/kernel /build/amd64-usr/usr/lib/udev /build/amd64-usr/usr/lib/pam /build/amd64-usr/usr/lib/pam.d' \
           '' \
           '# Unmerge coreos-sources before build_image to remove /usr/src/linux-*.' \
           '# The kernel source tree contains shell scripts with #!/bin/sh shebangs' \

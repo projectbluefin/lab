@@ -404,7 +404,8 @@ spec:
           '' \
           '# Break util-linux <-> cryptsetup cycle in this SDK snapshot for kernel package build' \
           'sudo mkdir -p /build/amd64-usr/etc/portage/package.use' \
-          'echo "sys-apps/util-linux +build -cryptsetup" | sudo tee /build/amd64-usr/etc/portage/package.use/zz-flatcar-kernel-build >/dev/null' \
+          'echo "sys-apps/util-linux build -cryptsetup" | sudo tee /build/amd64-usr/etc/portage/package.use/zz-flatcar-kernel-build >/dev/null' \
+          'echo "sys-libs/pam -systemd" | sudo tee -a /build/amd64-usr/etc/portage/package.use/zz-flatcar-kernel-build >/dev/null' \
           '' \
           '# Build kernel packages' \
           'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --quiet --jobs={{workflow.parameters.cores}} \' \

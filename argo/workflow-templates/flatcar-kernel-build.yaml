@@ -414,12 +414,11 @@ spec:
           '  =sys-kernel/coreos-modules-{{inputs.parameters.kernel-version}}' \
           '' \
           '# Create merged-usr symlinks required by build_image sanity checks.' \
-          '# setup_board + --nodeps installs kernel packages but skips baselayout,' \
-          '# so /bin, /lib, /sbin do not exist (they should be symlinks to /usr/*).' \
-          '# Without these, build_image /usr-conflict and symlink checks both fail.' \
-          'for d in bin lib lib64 sbin; do' \
-          '  [ -e /build/amd64-usr/${d} ] || sudo ln -sf usr/${d} /build/amd64-usr/${d}' \
-          'done' \
+          '# setup_board + --nodeps skips baselayout so /bin /lib /sbin are absent.' \
+          '[ -e /build/amd64-usr/bin ]   || sudo ln -sf usr/bin   /build/amd64-usr/bin' \
+          '[ -e /build/amd64-usr/lib ]   || sudo ln -sf usr/lib   /build/amd64-usr/lib' \
+          '[ -e /build/amd64-usr/lib64 ] || sudo ln -sf usr/lib64 /build/amd64-usr/lib64' \
+          '[ -e /build/amd64-usr/sbin ]  || sudo ln -sf usr/sbin  /build/amd64-usr/sbin' \
           '' \
           '# Build the full Flatcar OS image (generates update payload)' \
           '/mnt/host/source/src/scripts/build_image \' \

@@ -402,35 +402,13 @@ spec:
           'sudo mkdir -p /build/amd64-usr/etc/portage/profile' \
           'echo "dev-util/pahole-1.24_p20221024" | sudo tee -a /build/amd64-usr/etc/portage/profile/package.provided >/dev/null' \
           '' \
-          '# Build kernel packages one at a time with --nodeps to avoid cyclic dependency' \
-          '# resolution in portage-stable@4593. coreos-sources has no board deps (just' \
-          '# unpacks tarballs); coreos-kernel requires sources to be present; coreos-modules' \
-          '# requires the built kernel. --nodeps bypasses the full sysroot dep graph.' \
-          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --nodeps --jobs={{workflow.parameters.cores}} \' \
-          '  =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}}' \
-          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --nodeps --jobs={{workflow.parameters.cores}} \' \
-          '  =sys-kernel/coreos-kernel-{{inputs.parameters.kernel-version}}' \
-          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr --nodeps --jobs={{workflow.parameters.cores}} \' \
+          '# Build the kernel packages with full dependency resolution so the board root' \
+          '# stays valid for build_image checks and locale generation.' \
+          '/mnt/host/source/src/scripts/build_packages \' \
+          '  --board=amd64-usr --skip_chroot_upgrade --skip_toolchain_update --jobs={{workflow.parameters.cores}} \' \
+          '  =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}} \' \
+          '  =sys-kernel/coreos-kernel-{{inputs.parameters.kernel-version}} \' \
           '  =sys-kernel/coreos-modules-{{inputs.parameters.kernel-version}}' \
-          '' \
-          '# Create merged-usr symlinks required by build_image sanity checks.' \
-          '# setup_board + --nodeps skips baselayout so /bin /lib /sbin are absent.' \
-          '[ -e /build/amd64-usr/bin ]   || sudo ln -sf usr/bin   /build/amd64-usr/bin' \
-          '[ -e /build/amd64-usr/lib ]   || sudo ln -sf usr/lib   /build/amd64-usr/lib' \
-          '[ -e /build/amd64-usr/lib64 ] || sudo ln -sf usr/lib64 /build/amd64-usr/lib64' \
-          '[ -e /build/amd64-usr/sbin ]  || sudo ln -sf usr/sbin  /build/amd64-usr/sbin' \
-          '# build_image symlink check expects these lib targets to exist in minimal sysroot' \
-          'sudo mkdir -p /build/amd64-usr/usr/lib/kernel /build/amd64-usr/usr/lib/udev /build/amd64-usr/usr/lib/pam /build/amd64-usr/usr/lib/pam.d' \
-          '' \
-          '# Unmerge coreos-sources before build_image to remove /usr/src/linux-*.' \
-          '# The kernel source tree contains shell scripts with #!/bin/sh shebangs' \
-          '# that fail build_image symlink checks (no shell in minimal sysroot).' \
-          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr \' \
-          '  --unmerge =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}} || true' \
-          '' \
-          '# Diagnose check_root failures explicitly before build_image' \
-          'echo "=== check_root usr ===" ; ROOT=/build/amd64-usr /mnt/host/source/src/scripts/build_library/check_root usr 2>&1 || true' \
-          'echo "=== check_root symlink ===" ; sudo ROOT=/build/amd64-usr /mnt/host/source/src/scripts/build_library/check_root symlink 2>&1 || true' \
           '' \
           '# Build the full Flatcar OS image (generates update payload)' \
           'skip_test_build_root=1 /mnt/host/source/src/scripts/build_image \' \

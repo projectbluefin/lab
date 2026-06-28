@@ -332,16 +332,16 @@ spec:
         git clone --depth=1 --branch "\${SCRIPTS_REF}" \
           https://github.com/flatcar/scripts \${BUILD_DIR}/src/scripts
 
-        echo "=== Clone flatcar/coreos-overlay @ flatcar-master ==="
+        echo "=== Clone flatcar/coreos-overlay @ \${SCRIPTS_REF} ==="
         mkdir -p \${BUILD_DIR}/src/scripts/sdk_container/src/third_party
         rm -rf \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/coreos-overlay
-        git clone --depth=1 --branch flatcar-master \
+        git clone --depth=1 --branch "\${SCRIPTS_REF}" \
           https://github.com/flatcar/coreos-overlay \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/coreos-overlay
         echo "coreos-overlay" > \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/coreos-overlay/profiles/repo_name
 
-        echo "=== Clone flatcar/portage-stable @ flatcar-master ==="
+        echo "=== Clone flatcar/portage-stable @ \${SCRIPTS_REF} ==="
         rm -rf \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/portage-stable
-        git clone --depth=1 --branch flatcar-master \
+        git clone --depth=1 --branch "\${SCRIPTS_REF}" \
           https://github.com/flatcar/portage-stable \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/portage-stable
 
         echo "=== Patching kernel-2.eclass to support EAPI 7 and 8 ==="

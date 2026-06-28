@@ -389,11 +389,6 @@ spec:
           'echo "masters = portage-stable" | sudo tee -a /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
           'echo "auto-sync = no" | sudo tee -a /etc/portage/repos.conf/coreos-overlay.conf /build/amd64-usr/etc/portage/repos.conf/coreos-overlay.conf >/dev/null' \
           '' \
-          'sudo rm -f /etc/portage/repos.conf/portage-stable*.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable*.conf' \
-          'echo "[portage-stable]" | sudo tee /etc/portage/repos.conf/portage-stable.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable.conf >/dev/null' \
-          'echo "location = /mnt/host/source/src/third_party/portage-stable" | sudo tee -a /etc/portage/repos.conf/portage-stable.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable.conf >/dev/null' \
-          'echo "auto-sync = no" | sudo tee -a /etc/portage/repos.conf/portage-stable.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable.conf >/dev/null' \
-          '' \
           '# Force HTTPS for github sources and pin resolver to avoid DNS failures in git-r3 fetches' \
           'git config --global url."https://github.com/".insteadOf git://github.com/' \
           'echo -e "nameserver 1.1.1.1\\nnameserver 8.8.8.8" | sudo tee /etc/resolv.conf >/dev/null' \

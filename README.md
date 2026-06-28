@@ -7,6 +7,7 @@
 > built entirely on CNCF projects running on a single homelab node.
 > This instance is deployed as the CI infrastructure for [Project Bluefin](https://projectbluefin.io).
 > The productized form of this will ships as [Bluefin Server](https://projectbluefin.io/server) someday. Welcome.
+>
 
 ---
 
@@ -68,6 +69,9 @@ See [docs/bluefin-integration.md](docs/bluefin-integration.md) for full details.
 
 > All pipelines run on commodity x86_64 hardware (single Ryzen AI node, 64GB RAM).
 > The architecture scales horizontally — add worker nodes and the workflows follow.
+
+<img width="926" height="988" alt="image" src="https://github.com/user-attachments/assets/718ee70c-aa7d-470e-ab9f-e526ee7c39ea" />
+
 
 ---
 

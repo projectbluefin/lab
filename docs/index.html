@@ -392,6 +392,7 @@
 <script>
 const ARGO_UI   = 'http://192.168.1.102:32746';
 const GH_REPO   = 'https://github.com/projectbluefin/testing-lab';
+const LIVE_STATS_URL = 'https://raw.githubusercontent.com/projectbluefin/testing-lab/main/docs/data/factory-stats.json';
 const SUITES    = ['smoke', 'developer', 'software', 'system'];
 
 // Workflow template per image slug (for submit links in coverage gaps)
@@ -1644,7 +1645,7 @@ function filterStatusTable(failingOnly) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 (async () => {
-  const stats = await load('data/factory-stats.json') || {};
+  const stats = await load(LIVE_STATS_URL) || await load('data/factory-stats.json') || {};
   const IMAGES = (stats.images||[]).length ? stats.images : [
     { slug:'bluefin-testing',         label:'bluefin:testing' },
     { slug:'bluefin-lts-testing',     label:'bluefin-lts:testing' },

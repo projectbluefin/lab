@@ -404,14 +404,14 @@ spec:
           'echo "location = /mnt/host/source/src/third_party/portage-stable" | sudo tee -a /etc/portage/repos.conf/portage-stable.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable.conf >/dev/null' \
           'echo "auto-sync = no" | sudo tee -a /etc/portage/repos.conf/portage-stable.conf /build/amd64-usr/etc/portage/repos.conf/portage-stable.conf >/dev/null' \
           '' \
+          '# Force HTTPS for github sources and pin resolver to avoid DNS failures in git-r3 fetches' \
+          'git config --global url."https://github.com/".insteadOf git://github.com/' \
+          'echo -e "nameserver 1.1.1.1\\nnameserver 8.8.8.8" | sudo tee /etc/resolv.conf >/dev/null' \
+          'getent hosts github.com >/dev/null' \
+          '' \
           '# Set up board (no --skip-chroot-upgrade: not a valid flag in this SDK version)' \
           '/mnt/host/source/src/scripts/setup_board \' \
           '  --board=amd64-usr --default --force --skip_chroot_upgrade --skip_toolchain_update' \
-          '' \
-          '# Force HTTPS for github sources and pin resolver to avoid DNS failures in git-r3 fetches' \
-          'git config --global url."https://github.com/".insteadOf git://github.com/' \
-          'echo -e "nameserver 192.168.1.1\\nnameserver 1.1.1.1" | sudo tee /etc/resolv.conf >/dev/null' \
-          'getent hosts github.com >/dev/null' \
           '' \
           '# Create Portage build directory on the ext4 PVC mount and symlink it to bypass overlayfs bugs' \
           'sudo mkdir -p /mnt/host/source/portage-temp' \

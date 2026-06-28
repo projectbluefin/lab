@@ -33,7 +33,8 @@ src_configure() {
 	export KSRC
 	addwrite "${KSRC}"
 	cd "${KSRC}"
-	make ARCH=x86_64 flatcar_defconfig
+	cp -v "${FILESDIR}/../../coreos-modules/files/amd64_defconfig-7.1" .config
+	make ARCH=x86_64 olddefconfig
 	# Merge any Flatcar config fragments
 	for frag in "${FILESDIR}"/config.d/*.config; do
 		[[ -f "${frag}" ]] && scripts/kconfig/merge_config.sh -m .config "${frag}"

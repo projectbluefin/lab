@@ -26,4 +26,10 @@ src_install() {
 	emake -j$(nproc) ARCH=x86_64 \
 		INSTALL_MOD_PATH="${D}" \
 		modules_install
+
+	local kv
+	kv=$(make -s ARCH=x86_64 kernelrelease)
+	rm -f "${D}/usr/lib/modules/${kv}/build" "${D}/usr/lib/modules/${kv}/source"
+	dosym "/usr/src/${KV_FULL}" "/usr/lib/modules/${kv}/build"
+	dosym "/usr/src/${KV_FULL}" "/usr/lib/modules/${kv}/source"
 }

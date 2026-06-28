@@ -680,6 +680,7 @@ function buildStatsBar(stats) {
   const gh = stats.github?.testing_lab || {};
 
   const runs7d = cd.runs_7d || v.deployments_7d || '—';
+  const runsAllTime = cd.runs_all_time || '—';
   const suc = cd.success_rate_pct;
   const sucClass = suc >= 90 ? 'stat-good' : suc >= 70 ? 'stat-warn' : 'stat-bad';
   const avgMin = cd.avg_total_min || '—';
@@ -695,8 +696,8 @@ function buildStatsBar(stats) {
 
   document.getElementById('stats-bar').innerHTML = `
     <div class="stat-chip">
-      <span class="stat-value stat-neutral">${runs7d}</span>
-      <span class="stat-label">Runs · 7d</span>
+      <span class="stat-value stat-neutral">${runs7d} / ${runsAllTime}</span>
+      <span class="stat-label">Runs · 7d / all-time</span>
     </div>
     <div class="stat-chip">
       <span class="stat-value ${sucClass}">${suc != null ? suc+'%' : '—'}</span>

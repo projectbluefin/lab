@@ -134,6 +134,14 @@ jobs:
               except Exception:
                   return default
 
+          def parse_iso(ts):
+              if not ts:
+                  return None
+              try:
+                  return datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+              except Exception:
+                  return None
+
           def parse_mem_gib(mem):
               # Kubernetes node capacity is usually Ki/Mi/Gi strings.
               if not mem:
@@ -215,6 +223,9 @@ jobs:
           recent_runs = []
           newest_live_ts = None
           live_runs_ok = False
+          runs_all_time = 0
+          runs_7d = 0
+          seven_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
           if argo and isinstance(argo.get('items'), list):
               for wf in argo['items']:
                   md = wf.get('metadata', {})
@@ -246,12 +257,20 @@ jobs:
                       'trigger': infer_trigger(name),
                   }
                   recent_runs.append(run)
+                  runs_all_time += 1
+                  started_dt = parse_iso(started)
+                  if started_dt and started_dt >= seven_days_ago:
+                      runs_7d += 1
                   for ts in (started, finished):
                       if ts and (newest_live_ts is None or ts > newest_live_ts):
                           newest_live_ts = ts
 
               recent_runs.sort(key=lambda r: r.get('started_at') or '', reverse=True)
               stats['recent_runs'] = recent_runs[:25]
+              pipelines = stats.setdefault('pipelines', {})
+              containerdisk = pipelines.setdefault('containerdisk', {})
+              containerdisk['runs_7d'] = runs_7d
+              containerdisk['runs_all_time'] = runs_all_time
               live_runs_ok = True
           else:
               # Keep last known live snapshot when unavailable from this runner.

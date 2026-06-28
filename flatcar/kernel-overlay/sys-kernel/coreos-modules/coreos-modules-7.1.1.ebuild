@@ -23,13 +23,18 @@ src_install() {
 	KSRC="${SYSROOT}/usr/src/${KV_FULL}"
 	[[ -d "${KSRC}" ]] || die "coreos-sources-${PV} not found in ${SYSROOT}/usr/src"
 	cd "${KSRC}"
+	# Install to ${D}/usr so portage records paths as /usr/lib/modules/...
+	# (merged-usr layout). build_image test_image_content fails if any package
+	# owns paths outside /usr.
 	emake -j$(nproc) ARCH=x86_64 \
-		INSTALL_MOD_PATH="${D}" \
+		INSTALL_MOD_PATH="${D}/usr" \
 		modules_install
 
 	local kv
 	kv=$(make -s ARCH=x86_64 kernelrelease)
-	rm -f "${D}/usr/lib/modules/${kv}/build" "${D}/usr/lib/modules/${kv}/source"
-	dosym "/usr/src/${KV_FULL}" "/usr/lib/modules/${kv}/build"
-	dosym "/usr/src/${KV_FULL}" "/usr/lib/modules/${kv}/source"
+	# Remove build/source symlinks - they reference the kernel source tree
+	# which is not part of the production image and causes dangling-symlink
+	# failures in build_image test_image_content.
+	rm -f "${D}/usr/lib/modules/${kv}/build" \
+	      "${D}/usr/lib/modules/${kv}/source"
 }

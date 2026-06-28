@@ -420,6 +420,12 @@ spec:
           '[ -e /build/amd64-usr/lib64 ] || sudo ln -sf usr/lib64 /build/amd64-usr/lib64' \
           '[ -e /build/amd64-usr/sbin ]  || sudo ln -sf usr/sbin  /build/amd64-usr/sbin' \
           '' \
+          '# Unmerge coreos-sources before build_image to remove /usr/src/linux-*.' \
+          '# The kernel source tree contains shell scripts with #!/bin/sh shebangs' \
+          '# that fail build_image symlink checks (no shell in minimal sysroot).' \
+          'FEATURES="-sandbox -usersandbox -userpriv" emerge-amd64-usr \' \
+          '  --unmerge =sys-kernel/coreos-sources-{{inputs.parameters.kernel-version}} || true' \
+          '' \
           '# Build the full Flatcar OS image (generates update payload)' \
           '/mnt/host/source/src/scripts/build_image \' \
           '  --board=amd64-usr prod' \

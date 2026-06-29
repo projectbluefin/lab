@@ -82,6 +82,11 @@ function percent(value) {
   return `${Math.round(value)}%`;
 }
 
+function percent1(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '—';
+  return `${value.toFixed(1)}%`;
+}
+
 function median(values) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -715,6 +720,27 @@ function buildClusterNodesPanel(nodes, summary, freshness, telemetrySnapshot, op
   const totalRam = nodes.reduce((sum, n) => sum + (n.ram_gb || 0), 0);
   const totalCpu = nodes.reduce((sum, n) => sum + (n.cpu_threads || 0), 0);
   const snapTone = telemetrySnapshot.state === 'fresh' ? 'good' : telemetrySnapshot.state === 'degraded' ? 'bad' : 'warn';
+  const gaugeBar = (label, value) => {
+    const valid = typeof value === 'number' && Number.isFinite(value);
+    const width = valid ? Math.max(0, Math.min(100, value)) : 0;
+    return `
+      <div class="node-gauge-row">
+        <span class="mono">${escapeHtml(label)}</span>
+        <div class="node-gauge-bar"><span style="width:${width}%"></span></div>
+        <span class="mono">${escapeHtml(percent1(value))}</span>
+      </div>
+    `;
+  };
+  const loadSpark = (history) => {
+    if (!Array.isArray(history) || !history.length) return '<span class="node-load-empty">no trend</span>';
+    const points = history.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v >= 0);
+    if (!points.length) return '<span class="node-load-empty">no trend</span>';
+    const max = Math.max(...points, 1);
+    return points.map((v) => {
+      const h = Math.max(14, Math.round((v / max) * 100));
+      return `<span class="node-load-bar" style="height:${h}%"></span>`;
+    }).join('');
+  };
   return `
     <section class="section nodes-section">
       <div class="nodes-header">
@@ -741,6 +767,18 @@ function buildClusterNodesPanel(nodes, summary, freshness, telemetrySnapshot, op
               <span class="chip muted"><strong>${escapeHtml(node.cpu_threads)}</strong> threads</span>
               <span class="chip muted"><strong>${escapeHtml(node.ram_gb)}</strong> GB RAM</span>
             </div>
+            <div class="node-gauges">
+              ${gaugeBar('CPU', node.cpu_usage_pct)}
+              ${gaugeBar('Mem', node.mem_usage_pct)}
+            </div>
+            <div class="node-load-row">
+              <span class="mono">load</span>
+              <span class="node-load-spark" aria-hidden="true">${loadSpark(node.load_1m_history)}</span>
+            </div>
+            <div class="node-version-row mono">
+              ${escapeHtml(node.kernel_version || 'kernel unknown')} · ${escapeHtml(node.kubelet_version || 'kubelet unknown')}
+            </div>
+            <div class="node-version-row mono">${escapeHtml(node.os_image || 'os unknown')}</div>
           </article>
         `).join('') : '<div class="loading">No cluster snapshot.</div>'}
         <article class="node-card node-card-total">
@@ -867,6 +905,49 @@ function buildTestSurface(surface, runs) {
   `;
 }
 
+function buildImageStatusSection(stats) {
+  const images = stats?.factory?.images || {};
+  const rows = Object.entries(images);
+  if (!rows.length) return '';
+  return `
+    <section class="section">
+      <div class="section-head"><h2>Image status</h2></div>
+      <p class="section-sub">Days since stable/testing was last observed passing, plus open PR queue depth by source repo.</p>
+      <div class="image-status-grid">
+        ${rows.map(([name, data]) => {
+    const stable = data?.stable_age_days;
+    const testing = data?.testing_age_days;
+    const stableTone = stable == null ? 'warn' : stable > 14 ? 'bad' : stable > 7 ? 'warn' : 'good';
+    const testingTone = testing == null ? 'warn' : testing > 7 ? 'bad' : testing > 3 ? 'warn' : 'good';
+    const repoUrl = data?.repo ? `https://github.com/${data.repo}/pulls` : '';
+    return `
+          <article class="image-status-card">
+            <div class="image-status-head">
+              <h3 class="mono">${escapeHtml(name)}</h3>
+              ${repoUrl ? `<a class="section-link" href="${escapeHtml(repoUrl)}" target="_blank" rel="noreferrer">PR queue →</a>` : ''}
+            </div>
+            <div class="pulse-stats">
+              <div class="pulse-stat">
+                <div class="pulse-stat-value tone-${stableTone}">${escapeHtml(stable == null ? '—' : `${stable}d`)}</div>
+                <div class="pulse-stat-name">stable age</div>
+              </div>
+              <div class="pulse-stat">
+                <div class="pulse-stat-value tone-${testingTone}">${escapeHtml(testing == null ? '—' : `${testing}d`)}</div>
+                <div class="pulse-stat-name">testing age</div>
+              </div>
+              <div class="pulse-stat">
+                <div class="pulse-stat-value">${escapeHtml(data?.open_prs == null ? '—' : String(data.open_prs))}</div>
+                <div class="pulse-stat-name">open PRs</div>
+              </div>
+            </div>
+          </article>
+        `;
+  }).join('')}
+      </div>
+    </section>
+  `;
+}
+
 function render(copy, stats, history, telemetry) {
   const root = document.getElementById('factory-dashboard');
   const runs = Array.isArray(stats?.recent_runs) ? stats.recent_runs : [];
@@ -892,6 +973,8 @@ function render(copy, stats, history, telemetry) {
     ${buildClusterNodesPanel(clusterNodes, summary, freshness, telemetrySnapshot, openBugs.length)}
 
     ${buildFactoryPulse(stats)}
+
+    ${buildImageStatusSection(stats)}
 
     ${buildTrustWindowSection(DATA.derivedTrust)}
 

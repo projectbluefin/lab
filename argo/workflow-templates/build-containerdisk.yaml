@@ -279,12 +279,14 @@ spec:
           --via-loopback \
           "${DISK}"
 
-        # Some images (e.g. bluefin-lts/CentOS) disable sshd by default for desktop use.
-        # The test lab requires SSH access, so enable sshd.service in the ostree deployment.
-        echo "[POST-INSTALL] Enabling sshd.service for lab access..."
+        # Some images disable the runtime services the lab depends on.
+        # Bluefin needs qemu-guest-agent for KubeVirt accessCredentials, and
+        # the lab also needs sshd.service to be enabled in the ostree deployment.
+        echo "[POST-INSTALL] Enabling qemu-guest-agent.service and sshd.service for lab access..."
         LOOP_DEV=$(losetup -f --show -P "${DISK}")
         SYSROOT=$(mktemp -d)
         SSHD_ENABLED=false
+        QGA_ENABLED=false
         for PARTNUM in 4 3 2; do
           PART="${LOOP_DEV}p${PARTNUM}"
           [ -b "${PART}" ] || continue
@@ -294,6 +296,16 @@ spec:
             DEPLOY_DIR=$(find "${SYSROOT}/ostree/deploy" -maxdepth 5 -name "*.0" -type d \
               -not -path "*/backing/*" 2>/dev/null | head -1)
             if [ -n "${DEPLOY_DIR}" ]; then
+              QGA_WANTS="${DEPLOY_DIR}/etc/systemd/system/multi-user.target.wants/qemu-guest-agent.service"
+              if [ ! -e "${QGA_WANTS}" ]; then
+                mkdir -p "$(dirname "${QGA_WANTS}")"
+                ln -sf /usr/lib/systemd/system/qemu-guest-agent.service "${QGA_WANTS}"
+                echo "[POST-INSTALL] qemu-guest-agent.service enabled in ${DEPLOY_DIR}"
+              else
+                echo "[POST-INSTALL] qemu-guest-agent.service already enabled"
+              fi
+              QGA_ENABLED=true
+
               WANTS="${DEPLOY_DIR}/etc/systemd/system/multi-user.target.wants/sshd.service"
               if [ ! -e "${WANTS}" ]; then
                 mkdir -p "$(dirname "${WANTS}")"
@@ -311,6 +323,9 @@ spec:
         done
         rmdir "${SYSROOT}" 2>/dev/null || true
         losetup -d "${LOOP_DEV}" 2>/dev/null || true
+        if [ "${QGA_ENABLED}" = false ]; then
+          echo "[POST-INSTALL] WARNING: could not find ostree deploy dir to enable qemu-guest-agent"
+        fi
         if [ "${SSHD_ENABLED}" = false ]; then
           echo "[POST-INSTALL] WARNING: could not find ostree deploy dir to enable sshd"
         fi
@@ -408,7 +423,6 @@ spec:
         rm -f "${RAW}" "${QCOW}"
 
         echo "Done: ${DEST}"
-
 
 
 

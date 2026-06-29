@@ -370,6 +370,20 @@ spec:
             > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
           ${SSH} "
             export PATH=\$HOME/.local/bin:\$PATH
+            export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+            SESSION_BUS=\$(systemctl --user show-environment 2>/dev/null | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -1)
+            [ -z \"\$SESSION_BUS\" ] && [ -S \"\$XDG_RUNTIME_DIR/bus\" ] && SESSION_BUS=\"unix:path=\$XDG_RUNTIME_DIR/bus\"
+            WAYLAND_DISPLAY=\$(ls \"\$XDG_RUNTIME_DIR\"/wayland-* 2>/dev/null | head -1 | xargs -r basename 2>/dev/null || true)
+            AT_SPI_BUS_ADDRESS=\"\$SESSION_BUS\"
+            cat >/tmp/session.env <<EOF
+            export DBUS_SESSION_BUS_ADDRESS=\$SESSION_BUS
+            export WAYLAND_DISPLAY=\$WAYLAND_DISPLAY
+            export XDG_RUNTIME_DIR=\$XDG_RUNTIME_DIR
+            export AT_SPI_BUS_ADDRESS=\$AT_SPI_BUS_ADDRESS
+            export PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+            export XDG_SESSION_TYPE=wayland
+            export XDG_SESSION_DESKTOP=gnome
+            EOF
             # Stop any lingering qecore-headless process from a prior run.
             # IMPORTANT: pgrep -f matches CMDLINE strings, and because this
             # entire heredoc is passed as a bash -c argument, any pgrep pattern
@@ -392,6 +406,7 @@ spec:
             unset _pid
             sleep 2
             rm -f /tmp/headless* /tmp/qecore* /tmp/.headless* 2>/dev/null || true
+            source /tmp/session.env
             \$HOME/.local/bin/qecore-headless \
               --session-type wayland \
               --session-desktop gnome \

@@ -243,6 +243,7 @@ spec:
           echo '[INNER] fsetxattr wrapper compiled and loaded'
         fi
 
+        # Pull the source image through Zot so failed builds still seed reusable layers.
         case "${IMAGE%%/*}" in
           ghcr.io) CACHE_NS="ghcr" ;;
           quay.io) CACHE_NS="quay" ;;
@@ -407,7 +408,6 @@ spec:
         rm -f "${RAW}" "${QCOW}"
 
         echo "Done: ${DEST}"
-
 
 
 

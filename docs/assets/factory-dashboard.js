@@ -10,7 +10,7 @@ const DEFAULT_COPY = {
   station_labels: ['Source', 'Assembly', 'Verification', 'Trust'],
   trust_labels: ['Signing', 'SBOM', 'Attestation', 'CVE posture', 'Promotion timing'],
   links: [
-    { label: 'Argo UI', href: 'https://192.168.1.102:32746', tone: 'good' },
+    { label: 'Actions', href: 'https://github.com/projectbluefin/testing-lab/actions', tone: 'good' },
     { label: 'Refresh data', href: 'https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml', tone: 'muted' },
     { label: 'Runbook', href: 'https://github.com/projectbluefin/testing-lab/blob/main/RUNBOOK.md', tone: 'muted' },
   ],

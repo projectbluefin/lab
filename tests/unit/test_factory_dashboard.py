@@ -78,3 +78,8 @@ def test_dashboard_renderer_loads_public_telemetry():
     assert 'numerator' in js
     assert 'denominator' in js
     assert 'confidence' in js
+
+
+def test_dashboard_default_copy_has_no_private_links():
+    js = (ROOT / 'docs/assets/factory-dashboard.js').read_text()
+    assert '192.168.' not in js

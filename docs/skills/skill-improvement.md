@@ -64,6 +64,7 @@ Route by area changed:
 | ArgoCD Applications, `argocd/`, `manifests/` | `docs/skills/gitops-argocd.md` |
 | `tests/`, `behave`, `dogtail`, `qecore` | `docs/skills/test-authoring.md` |
 | `.github/workflows/` | `docs/skills/ci-tooling.md` |
+| Repo-wide agent behavior or session hygiene | `.github/copilot-instructions.md` |
 | Bootstrap cluster setup, `argo/bootstrap/` | `docs/bootstrap.md` |
 | Cluster topology, namespaces, RBAC | `AGENTS.md` |
 | Agent operations, MCP tools | `docs/agent-cheatsheet.md` |
@@ -129,6 +130,15 @@ gh issue create --repo castrojo/testing-lab \
 
 **Do not append gaps to skill files.** Skill files are not backlogs.
 
+### Step 6 — Factory closure (required before handoff)
+
+Before ending any non-trivial session:
+
+1. Write the durable pattern into the routed skill file.
+2. If the pattern changes how future agents should operate in this repo, update `.github/copilot-instructions.md` too.
+3. If the session touched Pages or generated dashboard data, verify the live build/render still matches the published files.
+4. Do not hand off with only code changes; the skill/docs write-back is part of the deliverable.
+
 ---
 
 ## Skill directory
@@ -160,6 +170,7 @@ docs/skills/
 
 - Session ending with no skill update after discovering a non-obvious pattern
 - A pattern being fixed a second time that wasn't written down after the first
+- Session ending after Pages/dashboard work without a skill or instructions write-back
 - Skill files with no `## Verification` section
 - Skill files covering Argo or ArgoCD with unverified code examples
 - Any `docs/skills/*.md` file missing the canonical sections
@@ -173,4 +184,5 @@ Before marking any session done:
 - [ ] Library ID noted in `metadata.context7-sources` frontmatter
 - [ ] No resolved items or dated entries left in skill files
 - [ ] Any unresolved gaps filed as GitHub issues in `castrojo/testing-lab`
+- [ ] `.github/copilot-instructions.md` updated if the session revealed a repo-wide behavior change
 - [ ] Skill file has: When to Use, When NOT to Use, Core Process, Common Rationalizations, Red Flags, Verification

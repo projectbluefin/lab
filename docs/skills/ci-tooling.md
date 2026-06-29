@@ -34,8 +34,10 @@ metadata:
    - `gh api repos/<owner>/<repo>/pages --jq '.source'`
    - `gh api repos/<owner>/<repo>/pages/builds/latest --jq '.status'`
    - Pages can legitimately stay in `building` for a while even after the commit is on `main`.
-6. For browser-side `fetch`, avoid custom request headers that force CORS preflight against GitHub APIs (for example `Cache-Control` request headers).
-7. After push, validate production Pages with a real browser render (not raw HTML fetch only): confirm no loading placeholders and key sections render.
+6. If Cloudflare fronts a Pages site, inspect the live HTML for Rocket Loader rewrites (`data-cf-settings`, `type="...-text/javascript"`). Opt the dashboard entry script out with `data-cfasync="false"` when RL rewrites break execution.
+7. For dashboard data jobs, confirm the producer workflow published every generated JSON artifact the UI depends on before declaring a section broken; missing data should render an explicit unavailable state rather than disappearing.
+8. For browser-side `fetch`, avoid custom request headers that force CORS preflight against GitHub APIs (for example `Cache-Control` request headers).
+9. After push, validate production Pages with a real browser render (not raw HTML fetch only): confirm no loading placeholders and key sections render.
 
 ## Common Rationalizations
 
@@ -49,6 +51,8 @@ metadata:
 
 - Workflow writes empty arrays for cluster/runs after transient network failure
 - Dashboard shows `Loading…` or stale placeholder rows for long periods
+- Live HTML shows Rocket Loader rewriting the dashboard entry script
+- Generated dashboard sections disappear because their JSON artifact was not published
 - Browser console logs CORS preflight failures to GitHub API endpoints
 - CI changes are declared fixed without checking production Pages render
 
@@ -57,6 +61,7 @@ metadata:
 - [ ] Workflow logic preserves last known live snapshot when private endpoint fetch fails
 - [ ] `_meta.live_snapshot_ok` and `_meta.refreshed_at` are present and updated
 - [ ] GitHub Pages source/build state was checked before declaring a site live
+- [ ] If Cloudflare fronts the site, the live HTML keeps the raw dashboard script tag
 - [ ] Browser fetch code avoids unnecessary custom headers that trigger preflight
 - [ ] Production `https://projectbluefin.github.io/testing-lab/` renders with real table/cluster content (no loading placeholders)
 - [ ] Render validation includes a real browser run (headless is fine) and captures evidence

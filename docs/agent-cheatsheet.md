@@ -28,6 +28,7 @@
 | Validate released (stable) image | `just run-tests-tag stable` or `just run-tests-tag lts-stable` |
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
 | Validate the Flatcar lane | `just run-flatcar-smoke` |
+| Run on-demand K8sGPT cluster triage | `just run-k8sgpt` |
 | Check exo-0 kernel canary status (7.1 target) | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` |
 | Submit Dakota BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
 | Tail the most recent workflow's logs | `just logs` |

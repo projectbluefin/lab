@@ -199,6 +199,16 @@ run-homelab-access:
     argo submit --from workflowtemplate/homelab-access-probe \
       -n {{ argo_ns }} --wait --log
 
+# Run on-demand K8sGPT cluster analysis
+# Usage: just run-k8sgpt
+# Usage: just run-k8sgpt argo "Pod,Deployment" true
+run-k8sgpt namespace="" filters="Pod,Deployment,Service,Ingress,Node" explain="true":
+    argo submit --from workflowtemplate/k8sgpt-on-demand \
+      -p namespace="{{ namespace }}" \
+      -p filters="{{ filters }}" \
+      -p explain="{{ explain }}" \
+      -n {{ argo_ns }} --watch
+
 # Run first PVC/local-path restore drill (#60 #74 #84)
 run-homelab-restore:
     argo submit --from workflowtemplate/homelab-restore-drill \

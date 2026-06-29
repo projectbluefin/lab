@@ -243,22 +243,11 @@ spec:
           echo '[INNER] fsetxattr wrapper compiled and loaded'
         fi
 
-        # Pull the source image through Zot so failed builds still seed reusable layers.
-        case "${IMAGE%%/*}" in
-          ghcr.io) CACHE_NS="ghcr" ;;
-          quay.io) CACHE_NS="quay" ;;
-          registry.fedoraproject.org) CACHE_NS="fedora" ;;
-          registry.k8s.io) CACHE_NS="k8s" ;;
-          cgr.dev) CACHE_NS="cgr" ;;
-          docker.io) CACHE_NS="docker" ;;
-          *) CACHE_NS="" ;;
-        esac
-        if [[ -n "${CACHE_NS}" ]]; then
-          LOCAL_IMAGE="192.168.1.102:30501/${CACHE_NS}/${IMAGE#*/}"
-          SOURCE_IMGREF="docker://${LOCAL_IMAGE}"
-        else
-          SOURCE_IMGREF="docker://${IMAGE}"
-        fi
+        # bootc install needs a source image ref, but the local Zot cache is HTTP-only
+        # and this pod does not carry a containers/image registry config for it.
+        # Use the upstream image ref here; the pod image itself still comes from the
+        # cluster's normal mirror path when the workflow is launched.
+        SOURCE_IMGREF="docker://${IMAGE}:${IMAGE_TAG}"
 
         # Use the image's native filesystem unless --filesystem override is specified.
         # bluefin:testing → Fedora → btrfs (native).
@@ -434,5 +423,4 @@ spec:
         rm -f "${RAW}" "${QCOW}"
 
         echo "Done: ${DEST}"
-
 

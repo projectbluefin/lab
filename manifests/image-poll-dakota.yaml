@@ -11,7 +11,7 @@ metadata:
 spec:
   suspend: true  # dakota composefs image ships no UKI; bootc install to-disk always fails. Do not un-suspend until upstream fixes this.
   schedules:
-    - "0 * * * *"
+    - "2 */3 * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
@@ -56,6 +56,6 @@ spec:
                   - name: namespace
                     value: "bluefin-test"
                   - name: suites
-                    value: "smoke,developer,system"
+                    value: "smoke,common,developer,software,system"
                   - name: variant
                     value: "dakota"

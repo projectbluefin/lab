@@ -12,7 +12,7 @@ metadata:
     bluefin.io/trigger: digest-poll
 spec:
   schedules:
-    - "5 * * * *"
+    - "5 */3 * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
@@ -38,7 +38,7 @@ spec:
         - name: namespace
           value: "bazzite-test"
         - name: suites
-          value: "system"
+          value: "smoke,common,developer,software,system"
         - name: vm-memory
           value: "8Gi"
         - name: variant

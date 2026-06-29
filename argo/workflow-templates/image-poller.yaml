@@ -17,7 +17,7 @@ spec:
       - name: namespace
         value: "bluefin-test"
       - name: suites
-        value: "smoke,developer,system"
+        value: "smoke,common,developer,software,system"
       - name: variant
         value: "bluefin"
       # Zot containerdisk tag; defaults to image-tag when not set (works for bluefin:testing → "testing")
@@ -26,7 +26,7 @@ spec:
       - name: branch
         value: "main"
       - name: vm-memory
-        value: "8Gi"
+        value: "{{workflow.parameters.vm-memory}}"
       - name: ssh-key-secret
         value: "bluefin-test-ssh-key"
 

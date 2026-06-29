@@ -1,17 +1,16 @@
-# CronWorkflow: polls ghcr.io/ublue-os/aurora:stable hourly.
-# Triggers bluefin-qa-pipeline (system suite only — aurora uses KDE)
-# only when OCI digest changes vs ConfigMap state.
+# CronWorkflow: polls quay.io/fedora/fedora-bootc:rawhide every 3 hours.
+# Triggers bluefin-qa-pipeline only when OCI digest changes vs ConfigMap state.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
-  name: image-poll-aurora-stable
+  name: image-poll-fedora-bootc-rawhide
   namespace: argo
   labels:
     app.kubernetes.io/part-of: testing-lab
     bluefin.io/trigger: digest-poll
 spec:
   schedules:
-    - "27 */3 * * *"
+    - "42 */3 * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
@@ -27,18 +26,18 @@ spec:
     arguments:
       parameters:
         - name: image
-          value: "ghcr.io/ublue-os/aurora"
+          value: "quay.io/fedora/fedora-bootc"
         - name: image-tag
-          value: "stable"
-        - name: containerdisk-tag
-          value: "aurora-stable"
+          value: "rawhide"
         - name: state-key
-          value: "digest-aurora-stable"
+          value: "digest-fedora-bootc-rawhide"
         - name: namespace
-          value: "aurora-test"
+          value: "bluefin-test"
         - name: suites
           value: "smoke,common,developer,software,system"
         - name: vm-memory
           value: "8Gi"
         - name: variant
-          value: "aurora"
+          value: "bluefin"
+        - name: containerdisk-tag
+          value: "fedora-bootc-rawhide"

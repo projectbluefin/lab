@@ -3,16 +3,28 @@ kind: WorkflowTemplate
 metadata:
   name: k8sgpt-on-demand
   namespace: argo
+  annotations:
+    description: |
+      Runs an on-demand K8sGPT analysis against the cluster and writes the full
+      JSON output to an artifact. By default it uses the K8sGPT CR's configured
+      active filters; optional template parameters can narrow the namespace or
+      override filters for focused triage.
   labels:
     app.kubernetes.io/part-of: testing-lab
 spec:
   entrypoint: analyze
+  serviceAccountName: argo
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+    secondsAfterFailure: 604800
   arguments:
     parameters:
       - name: namespace
         value: ""
       - name: filters
-        value: "Pod,Deployment,Service,Ingress,Node"
+        value: ""
       - name: explain
         value: "true"
   templates:
@@ -27,14 +39,18 @@ spec:
             mkdir -p /tmp/results
             ns_arg=""
             explain_arg=""
+            filters_arg=""
             if [ -n "{{workflow.parameters.namespace}}" ]; then
               ns_arg="--namespace={{workflow.parameters.namespace}}"
             fi
             if [ "{{workflow.parameters.explain}}" = "true" ]; then
               explain_arg="--explain"
             fi
-            k8sgpt analyze ${explain_arg} --output=json --filter="{{workflow.parameters.filters}}" ${ns_arg} > /tmp/results/k8sgpt-results.json
-            findings_count=$(grep -o '"kind"' /tmp/results/k8sgpt-results.json | wc -l | tr -d ' ')
+            if [ -n "{{workflow.parameters.filters}}" ]; then
+              filters_arg="--filter={{workflow.parameters.filters}}"
+            fi
+            k8sgpt analyze ${explain_arg} --output=json ${filters_arg} ${ns_arg} > /tmp/results/k8sgpt-results.json
+            findings_count=$(awk 'index($0, "\"kind\"") { c++ } END { print c+0 }' /tmp/results/k8sgpt-results.json)
             echo "k8sgpt findings: ${findings_count}"
         resources:
           requests:

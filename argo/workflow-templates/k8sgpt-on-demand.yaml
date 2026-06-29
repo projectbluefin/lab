@@ -40,8 +40,8 @@ spec:
             k8sgpt_version="v0.4.24"
             mkdir -p /tmp/results
             mkdir -p /tmp/bin
-            ns_arg=""
-            filters_arg=""
+            namespace="{{workflow.parameters.namespace}}"
+            filters="{{workflow.parameters.filters}}"
 
             arch="$(uname -m)"
             case "${arch}" in
@@ -60,14 +60,28 @@ spec:
             curl -fsSL "https://github.com/k8sgpt-ai/k8sgpt/releases/download/${k8sgpt_version}/${archive}" \
               | tar -xz -C /tmp/bin k8sgpt
 
-            if [ -n "{{workflow.parameters.namespace}}" ]; then
-              ns_arg="--namespace={{workflow.parameters.namespace}}"
+            if [ -n "${namespace}" ]; then
+              if ! [[ "${namespace}" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+                echo "invalid namespace parameter: ${namespace}" >&2
+                exit 1
+              fi
             fi
-            if [ -n "{{workflow.parameters.filters}}" ]; then
-              filters_arg="--filter={{workflow.parameters.filters}}"
+            if [ -n "${filters}" ]; then
+              if ! [[ "${filters}" =~ ^[A-Za-z,]+$ ]]; then
+                echo "invalid filters parameter: ${filters}" >&2
+                exit 1
+              fi
             fi
 
-            /tmp/bin/k8sgpt analyze --output=json ${filters_arg} ${ns_arg} > /tmp/results/k8sgpt-results.json
+            cmd=(/tmp/bin/k8sgpt analyze --output=json)
+            if [ -n "${filters}" ]; then
+              cmd+=(--filter "${filters}")
+            fi
+            if [ -n "${namespace}" ]; then
+              cmd+=(--namespace "${namespace}")
+            fi
+
+            "${cmd[@]}" > /tmp/results/k8sgpt-results.json
             findings_count=$(jq '[.. | objects | select(has("kind"))] | length' /tmp/results/k8sgpt-results.json)
             echo "k8sgpt findings: ${findings_count}"
             SCRIPT_EOF

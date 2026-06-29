@@ -197,6 +197,7 @@ spec:
       source: |
         set -euo pipefail
         TAG="{{inputs.parameters.containerdisk-tag}}"
+        IMAGE_TAG="{{inputs.parameters.image-tag}}"
         IMAGE="{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
         STAGING="/mnt/staging/${TAG}"
         DISK="${STAGING}/disk.raw"
@@ -423,4 +424,3 @@ spec:
         rm -f "${RAW}" "${QCOW}"
 
         echo "Done: ${DEST}"
-

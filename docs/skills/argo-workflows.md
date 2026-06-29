@@ -120,6 +120,24 @@ For steps that produce a value consumed by downstream steps, write the result to
 
 Then consume via `{{steps.wait-for-vm.outputs.result}}`.
 
+#### No artifact repository configured? use output parameters, not artifacts
+
+If a template emits file output but the cluster has no Argo artifact repository configured, `outputs.artifacts` fails at wait time with:
+
+`You need to configure artifact storage`
+
+Use `outputs.parameters.valueFrom.path` instead for small/medium JSON payloads:
+
+```yaml
+outputs:
+  parameters:
+    - name: result-json
+      valueFrom:
+        path: /tmp/results/result.json
+```
+
+This keeps workflows self-contained while still exposing machine-readable output in workflow status (`argo get` / `kubectl get wf -o json`).
+
 **`cgr.dev/chainguard/kubectl:latest-dev`** is the correct image for any step that needs both `kubectl` and `bash`. `registry.k8s.io/kubectl` is distroless (no shell — `nc`, `bash /dev/tcp` all fail). Add `cgr.dev` to the registry lint allowlist when using it.
 
 If a step needs shell features (`mkdir`, redirection, `jq`/`awk` parsing, heredocs), do **not** assume a vendor CLI image has `/bin/sh`. Third-party tool images are often distroless. Either:

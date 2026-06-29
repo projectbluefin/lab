@@ -1,0 +1,96 @@
+---
+import testsChartsScript from '../scripts/tests-charts.js?url';
+
+interface ChartHistoryPoint {
+  run_date: string;
+  workflow_name: string | null;
+  status: string;
+  scenarios: number;
+  failed: number;
+}
+
+interface ChartRowDetails {
+  history: ChartHistoryPoint[];
+  failed_scenarios?: string[];
+}
+
+interface ChartRow {
+  id: string;
+  variant: string;
+  suite: string;
+  pass_rate: number | null;
+  scenarios_total: number;
+  scenarios_failed: number;
+  state: string;
+  state_reason: string | null;
+  details: ChartRowDetails | null;
+}
+
+interface ChartPayload {
+  generatedAt: string;
+  status: string;
+  suites: string[];
+  variants: string[];
+  rows: ChartRow[];
+}
+
+interface Props {
+  payload: ChartPayload;
+}
+
+const { payload } = Astro.props;
+const payloadJson = JSON.stringify(payload).replace(/</g, '\\u003c');
+---
+
+<section class="status-card chart-card">
+  <div class="section-heading">
+    <div>
+      <p class="status-card__eyebrow">Charts</p>
+      <h2>Reliability trends, failure concentration, and suite/variant views</h2>
+      <p>
+        Apache ECharts renders from published matrix rows plus linked result JSON. Unavailable cells stay gray and visible instead of dropping out.
+      </p>
+    </div>
+  </div>
+
+  <div class="chart-grid" data-tests-charts>
+    <article class="chart-panel">
+      <div class="chart-panel__header">
+        <p class="status-card__eyebrow">Trend</p>
+        <h3>Reliability trends</h3>
+        <p>Published history for rows that already have completed runs.</p>
+      </div>
+      <div class="chart-panel__plot" id="tests-chart-trends" role="img" aria-label="Reliability trend chart"></div>
+    </article>
+
+    <article class="chart-panel">
+      <div class="chart-panel__header">
+        <p class="status-card__eyebrow">Failure shape</p>
+        <h3>Failure concentration</h3>
+        <p>Treemap of the latest failed scenarios by suite/variant row when scenario names are published.</p>
+      </div>
+      <div class="chart-panel__plot" id="tests-chart-failures" role="img" aria-label="Failure concentration chart"></div>
+    </article>
+
+    <article class="chart-panel">
+      <div class="chart-panel__header">
+        <p class="status-card__eyebrow">Coverage</p>
+        <h3>Suite/variant view</h3>
+        <p>Heatmap of latest pass rate by published suite and variant, with explicit unavailable cells.</p>
+      </div>
+      <div class="chart-panel__plot" id="tests-chart-heatmap" role="img" aria-label="Suite variant heatmap"></div>
+    </article>
+
+    <article class="chart-panel">
+      <div class="chart-panel__header">
+        <p class="status-card__eyebrow">Load</p>
+        <h3>Scenario volume and failures</h3>
+        <p>Latest published scenario counts, failed scenarios, and pass rate for rows with completed runs.</p>
+      </div>
+      <div class="chart-panel__plot" id="tests-chart-volume" role="img" aria-label="Scenario volume and failures chart"></div>
+    </article>
+  </div>
+
+  <script type="application/json" id="tests-chart-data" set:html={payloadJson}></script>
+  <script type="module" src={testsChartsScript} data-cfasync="false"></script>
+</section>

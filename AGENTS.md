@@ -23,6 +23,7 @@ Before changing anything, load the relevant skill file from `docs/skills/`:
 | ArgoCD sync, GitOps rules, bootstrap vs managed | [`docs/skills/gitops-argocd.md`](docs/skills/gitops-argocd.md) |
 | Flatcar node onboarding, k3s join, Nebraska, update_engine | [`docs/skills/flatcar-node-onboarding.md`](docs/skills/flatcar-node-onboarding.md) |
 | behave / qecore / dogtail / GNOME AT-SPI tests | [`docs/skills/test-authoring.md`](docs/skills/test-authoring.md) |
+| Astro dashboard detail pages, repo-tracked JSON, Apache ECharts | [`docs/skills/astro-dashboard-pages.md`](docs/skills/astro-dashboard-pages.md) |
 | End of session — write-back loop | [`docs/skills/skill-improvement.md`](docs/skills/skill-improvement.md) |
 
 **At end of every non-trivial session:** run the write-back loop in `docs/skills/skill-improvement.md`. Every session produces two outputs: the work and the learning.

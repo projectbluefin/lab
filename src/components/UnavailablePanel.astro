@@ -1,0 +1,39 @@
+---
+interface Props {
+  eyebrow?: string;
+  title: string;
+  summary: string;
+  reason: string;
+  nextStep: string;
+  dataset: string;
+}
+
+const {
+  eyebrow = 'Unavailable',
+  title,
+  summary,
+  reason,
+  nextStep,
+  dataset,
+} = Astro.props;
+---
+
+<article class="status-card">
+  <p class="status-card__eyebrow">{eyebrow}</p>
+  <h2>{title}</h2>
+  <p>{summary}</p>
+  <dl class="status-card__meta">
+    <div>
+      <dt>Dataset</dt>
+      <dd>{dataset}</dd>
+    </div>
+    <div>
+      <dt>Why unavailable</dt>
+      <dd>{reason}</dd>
+    </div>
+    <div>
+      <dt>Next step</dt>
+      <dd>{nextStep}</dd>
+    </div>
+  </dl>
+</article>

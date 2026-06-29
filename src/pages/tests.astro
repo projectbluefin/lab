@@ -1,0 +1,359 @@
+---
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+
+import TestsCharts from '../components/TestsCharts.astro';
+import SiteLayout from '../layouts/SiteLayout.astro';
+import testsMatrix from '../../docs/data/tests-matrix.json';
+
+const baseUrl = import.meta.env.BASE_URL;
+
+interface SummaryMetric {
+  id: string;
+  label: string;
+  value: number;
+  unit: string;
+  state: string;
+  state_reason: string | null;
+}
+
+interface MatrixHistoryPoint {
+  run_date: string;
+  workflow_name: string | null;
+  status: string;
+  scenarios: number;
+  failed: number;
+}
+
+interface MatrixRowDetails {
+  variant: string;
+  suite: string;
+  last_run: string | null;
+  workflow_name: string | null;
+  status: string;
+  scenarios: number;
+  failed: number;
+  failed_scenarios?: string[];
+  screenshot_url?: string | null;
+  history: MatrixHistoryPoint[];
+}
+
+interface MatrixRow {
+  id: string;
+  variant: string;
+  branch: string;
+  suite: string;
+  result_status: string;
+  last_run: string | null;
+  workflow_name: string | null;
+  scenarios_total: number;
+  scenarios_failed: number;
+  pass_rate: number | null;
+  history_points: number;
+  results_path: string;
+  screenshot_path: string | null;
+  screenshot_url: string | null;
+  state: string;
+  state_reason: string | null;
+  source_url: string;
+  collected_at: string;
+  derivation: string;
+  details: MatrixRowDetails | null;
+}
+
+type MatrixSourceRow = Omit<MatrixRow, 'details'>;
+
+interface MatrixContract {
+  _meta: {
+    status: string;
+    generated_at: string;
+  };
+  summary_metrics: SummaryMetric[];
+  dimensions: {
+    variants: string[];
+    suites: string[];
+  };
+  rows: MatrixSourceRow[];
+}
+
+const contract = testsMatrix as unknown as MatrixContract;
+const loadRowDetails = (resultsPath: string) => {
+  const resultFile = path.join(process.cwd(), 'docs', resultsPath);
+  if (!existsSync(resultFile)) {
+    return null;
+  }
+
+  return JSON.parse(readFileSync(resultFile, 'utf8')) as MatrixRowDetails;
+};
+
+const rows = contract.rows
+  .map((row) => ({
+    ...row,
+    details: loadRowDetails(row.results_path),
+  }) satisfies MatrixRow)
+  .sort((left, right) => left.variant.localeCompare(right.variant) || left.suite.localeCompare(right.suite));
+
+const summaryMetrics = contract.summary_metrics;
+const availableRows = rows.filter((row) => row.state === 'available');
+const unavailableRows = rows.filter((row) => row.state !== 'available');
+const suiteOrder = contract.dimensions.suites;
+const variantOrder = contract.dimensions.variants;
+const rowLookup = new Map(rows.map((row) => [`${row.variant}:${row.suite}`, row]));
+const matrix = variantOrder.map((variant) => ({
+  variant,
+  cells: suiteOrder.map((suite) => rowLookup.get(`${variant}:${suite}`) ?? null),
+}));
+
+const workflowHref = (workflowName: string | null) =>
+  workflowName ? `http://192.168.1.102:32746/workflows/argo/${encodeURIComponent(workflowName)}` : null;
+
+const detailPassRate = (scenarios: number, failed: number) =>
+  scenarios > 0 ? Number((((scenarios - failed) / scenarios) * 100).toFixed(2)) : null;
+
+const chartPayload = {
+  generatedAt: contract._meta.generated_at,
+  status: contract._meta.status,
+  suites: suiteOrder,
+  variants: variantOrder,
+  rows: rows.map((row) => ({
+    id: row.id,
+    variant: row.variant,
+    suite: row.suite,
+    pass_rate: row.pass_rate,
+    scenarios_total: row.scenarios_total,
+    scenarios_failed: row.scenarios_failed,
+    state: row.state,
+    state_reason: row.state_reason,
+    details: row.details
+      ? {
+          history: row.details.history,
+          failed_scenarios: row.details.failed_scenarios ?? [],
+        }
+      : null,
+  })),
+};
+---
+
+<SiteLayout
+  title="Tests"
+  description="Deep tests matrix page for image and application-related suites, with evidence links and ECharts views."
+  current="tests"
+>
+  <section class="page-intro">
+    <div>
+      <p class="page-intro__eyebrow">Tests</p>
+      <h1>Image and application test depth</h1>
+      <p>
+        Published matrix rows cover smoke, system, developer, common, software, and flatcar suites across current image variants.
+        This page keeps unavailable cells visible, links directly to result evidence, and only charts fields present in the contract plus linked result JSON.
+      </p>
+    </div>
+    <div class="page-intro__actions">
+      <a href={`${baseUrl}data/tests-matrix.json`}>tests-matrix.json</a>
+      <a href={`${baseUrl}results/`}>Result JSON</a>
+    </div>
+  </section>
+
+  <section class="metric-grid">
+    {summaryMetrics.map((metric) => (
+      <article class="metric-card">
+        <p class="metric-card__label">{metric.label}</p>
+        <p class="metric-card__value">{metric.value}</p>
+        <p class="metric-card__meta">
+          {metric.unit} · {metric.state}
+        </p>
+      </article>
+    ))}
+    <article class="metric-card">
+      <p class="metric-card__label">Rows with history detail</p>
+      <p class="metric-card__value">{availableRows.filter((row) => (row.details?.history?.length ?? 0) > 0).length}</p>
+      <p class="metric-card__meta">count · {contract._meta.status}</p>
+    </article>
+  </section>
+
+  <TestsCharts payload={chartPayload} />
+
+  <section class="status-card">
+    <div class="section-heading">
+      <div>
+        <p class="status-card__eyebrow">Matrix</p>
+        <h2>Suite by variant matrix</h2>
+        <p>
+          Every published matrix cell stays visible. Available rows link to detail cards; unpublished or incomplete rows stay marked as unavailable with the collector reason.
+        </p>
+      </div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th scope="col">Variant</th>
+            {suiteOrder.map((suite) => (
+              <th scope="col">{suite}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {matrix.map(({ variant, cells }) => (
+            <tr>
+              <th scope="row">{variant}</th>
+              {cells.map((cell) => (
+                <td class:list={['matrix-table__cell', cell?.state === 'available' && 'is-available', cell && cell.state !== 'available' && 'is-unavailable', !cell && 'is-missing']}>
+                  {cell ? (
+                    <a href={`#${cell.id}`} class="matrix-table__link">
+                      <span class={`pill pill--${cell.state === 'available' ? cell.result_status : 'unavailable'}`}>
+                        {cell.state === 'available' ? cell.result_status : 'unavailable'}
+                      </span>
+                      <strong>{cell.state === 'available' && cell.pass_rate !== null ? `${cell.pass_rate}%` : '—'}</strong>
+                      <span>{cell.scenarios_failed}/{cell.scenarios_total} failed</span>
+                    </a>
+                  ) : (
+                    <span class="matrix-table__empty">No published row</span>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="status-card">
+    <div class="section-heading">
+      <div>
+        <p class="status-card__eyebrow">Details</p>
+        <h2>Per-row evidence and history</h2>
+        <p>
+          Detail cards join the matrix with linked result JSON so the page can show failed scenarios, run history, screenshots, and workflow identifiers when they exist.
+        </p>
+      </div>
+      <div class="section-heading__meta">
+        <span>{availableRows.length} available</span>
+        <span>{unavailableRows.length} unavailable</span>
+        <span>{contract._meta.generated_at}</span>
+      </div>
+    </div>
+
+    <div class="detail-stack">
+      {rows.map((row) => (
+        <details id={row.id} class="detail-card" open={row.state === 'available'}>
+          <summary>
+            <div>
+              <p class="detail-card__eyebrow">{row.variant} · {row.suite}</p>
+              <h3>{row.id}</h3>
+            </div>
+            <div class="detail-card__summary">
+              <span class={`pill pill--${row.state === 'available' ? row.result_status : 'unavailable'}`}>
+                {row.state === 'available' ? row.result_status : 'unavailable'}
+              </span>
+              <strong>{row.pass_rate !== null ? `${row.pass_rate}%` : 'No pass rate'}</strong>
+            </div>
+          </summary>
+
+          <div class="detail-card__body">
+            <div class="detail-grid">
+              <article>
+                <h4>Latest run</h4>
+                <dl>
+                  <div>
+                    <dt>Branch</dt>
+                    <dd>{row.branch}</dd>
+                  </div>
+                  <div>
+                    <dt>Last run</dt>
+                    <dd>{row.last_run ? new Date(row.last_run).toLocaleString() : 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Scenarios</dt>
+                    <dd>{row.scenarios_total}</dd>
+                  </div>
+                  <div>
+                    <dt>Failed scenarios</dt>
+                    <dd>{row.scenarios_failed}</dd>
+                  </div>
+                  <div>
+                    <dt>History points</dt>
+                    <dd>{row.history_points}</dd>
+                  </div>
+                </dl>
+              </article>
+
+              <article>
+                <h4>Evidence links</h4>
+                <ul class="evidence-list">
+                  <li><a href={`../${row.results_path}`}>{row.results_path}</a></li>
+                  <li><a href={row.source_url} rel="noreferrer">Source JSON on GitHub</a></li>
+                  {row.screenshot_url && <li><a href={row.screenshot_url} rel="noreferrer">Latest screenshot</a></li>}
+                  {row.workflow_name && workflowHref(row.workflow_name) && (
+                    <li><a href={workflowHref(row.workflow_name)!} rel="noreferrer">Workflow: {row.workflow_name}</a></li>
+                  )}
+                </ul>
+              </article>
+            </div>
+
+            {row.state !== 'available' ? (
+              <div class="detail-note detail-note--unavailable">
+                <h4>Unavailable state</h4>
+                <p>{row.state_reason ?? 'No completed run has been published for this matrix cell yet.'}</p>
+              </div>
+            ) : (
+              <>
+                <div class="detail-grid detail-grid--split">
+                  <article>
+                    <h4>Latest failure list</h4>
+                    {row.details?.failed_scenarios?.length ? (
+                      <ol class="failure-list">
+                        {row.details.failed_scenarios.map((scenario) => (
+                          <li>{scenario}</li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <p class="detail-note">No failed scenario names published for the latest run.</p>
+                    )}
+                  </article>
+
+                  <article>
+                    <h4>History</h4>
+                    {row.details?.history?.length ? (
+                      <div class="table-scroll">
+                        <table class="history-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Run date</th>
+                              <th scope="col">Workflow</th>
+                              <th scope="col">Status</th>
+                              <th scope="col">Failed</th>
+                              <th scope="col">Pass rate</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {row.details.history.map((entry) => {
+                              const rate = detailPassRate(entry.scenarios, entry.failed);
+                              return (
+                                <tr>
+                                  <td>{new Date(entry.run_date).toLocaleString()}</td>
+                                  <td>{entry.workflow_name ?? 'Unavailable'}</td>
+                                  <td>{entry.status}</td>
+                                  <td>{entry.failed}/{entry.scenarios}</td>
+                                  <td>{rate === null ? '—' : `${rate}%`}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p class="detail-note">No published history rows in the linked result JSON yet.</p>
+                    )}
+                  </article>
+                </div>
+              </>
+            )}
+          </div>
+        </details>
+      ))}
+    </div>
+  </section>
+</SiteLayout>

@@ -1,0 +1,93 @@
+---
+name: astro-dashboard-pages
+description: >
+  Building or revising Astro dashboard detail pages backed by repo-tracked JSON and
+  browser-side charts. Use when adding docs routes like /tests, /upstream, or
+  /applications that must render real evidence, explicit unavailable states, and
+  GitHub Pages-safe static output.
+metadata:
+  context7-sources:
+    - /withastro/docs
+    - /apache/echarts-doc
+    - /addyosmani/agent-skills
+---
+
+# Astro Dashboard Pages
+
+## Overview
+
+Astro detail pages in this repo are static evidence pages, not app shells that invent state client-side.
+Read the published JSON contract at prerender time, join any linked result JSON explicitly, and pass only real fields into browser-side ECharts.
+
+## When to Use
+
+- Adding or revising `src/pages/*.astro` routes for dashboard detail pages
+- Rendering repo-tracked JSON from `docs/data/*.json` plus linked `docs/results/*.json`
+- Adding Apache ECharts visualizations to GitHub Pages-safe static output
+- Wiring evidence links like `results_path`, `source_url`, screenshots, or workflow URLs into detail cards
+
+## When NOT to Use
+
+- Overview shell work that only mounts the existing legacy dashboard JS
+- Workflow/collector changes in `.github/workflows/` (use `ci-tooling.md`)
+- Argo/cluster data production bugs (use the matching infra skill)
+
+## Core Process
+
+1. Load the page contract in the Astro frontmatter and type the fields you actually consume.
+2. If rows link to per-result JSON files, join them during prerender with repo-root paths (`path.join(process.cwd(), 'docs', ...)`) so build-time resolution does not depend on `import.meta.url`.
+3. Compute derived values only from published fields. Valid examples: pass rate from `scenarios` and `failed`; counts from row arrays. Invalid: guessed trendlines, synthetic timestamps, placeholder screenshots.
+4. Render the static page first:
+   - summary metrics
+   - matrix/table view
+   - detail cards with evidence links
+   - explicit unavailable blocks when state is missing or pending
+5. Pass chart payloads to browser code with a static `<script type="application/json">` blob or `data-*` attributes. Astro docs support both; prefer a JSON script blob for larger datasets.
+6. Initialize ECharts in a colocated Astro component script:
+   - `import * as echarts from 'echarts'`
+   - `const chart = echarts.init(element)`
+   - `chart.setOption(option)`
+   - `window.addEventListener('resize', () => chart.resize())`
+7. For unavailable chart inputs, do not hide the chart section. Render an explicit empty-state panel in the chart container.
+8. Every detail row must link to raw evidence when present: local result JSON, GitHub source URL, screenshot URL, workflow run URL.
+9. Because this repo builds Astro directly into `docs/`, scrub transient build outputs before each build (`docs/.prerender`, `docs/_astro`, generated page directories) so repeated builds do not reuse stale hashed chunks.
+10. GitHub Pages here is a project site, not a user-root site. Keep Astro `base` aligned to `/testing-lab/` and use `import.meta.env.BASE_URL` for any page-owned asset or internal-link URL that must survive nested routes.
+11. Mark every browser-runtime script that must escape Cloudflare Rocket Loader with `data-cfasync="false"`, including bundled Astro page scripts, not just the legacy dashboard shell.
+12. Validate with the narrowest commands that prove the page works:
+   - targeted Node test covering rendered HTML
+   - `npm run build`
+   - run `astro check` only if it completes in this repo scope; if it OOMs, record the blocker instead of claiming it passed
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "The chart can omit unavailable rows to stay clean." | Omission hides data gaps; gray/unavailable cells are part of the truth. |
+| "I can pull result JSON in the browser after load." | The page contract already lives in git; prerender it so Pages output is deterministic and linkable. |
+| "One inline object literal is easier than a JSON blob." | Large payloads become brittle and hard to escape safely; use `application/json` for chart payloads. |
+| "No need to link the raw result file if the summary card exists." | Summary cards are derived views; operators need the raw evidence path. |
+
+## Red Flags
+
+- Astro page reads `docs/results/*` through fragile `import.meta.url` math
+- Repeated `npm run build` fails because `docs/.prerender` still points at old hashed chunks
+- Generated HTML references `/_astro/*` instead of `/testing-lab/_astro/*` for project Pages hosting
+- Chart section disappears entirely when data is missing
+- Detail cards show pass/fail text without raw result, source, screenshot, or workflow links
+- Browser script invents fallback metrics not present in the contract
+- Runtime script tags lose `data-cfasync="false"` and Cloudflare rewrites the page boot path
+- Validation mentions `astro check` as passing when it actually OOMed
+
+## Verification
+
+- [ ] Page prerender loads repo-tracked JSON at build time with repo-root paths
+- [ ] Derived numbers come only from published fields in `docs/data/*` or linked `docs/results/*`
+- [ ] Matrix/table view keeps unavailable states visible with the collector reason
+- [ ] ECharts mounts at least one real chart from published fields and shows explicit empty states otherwise
+- [ ] Detail cards link to `results_path`, `source_url`, and screenshot/workflow evidence when present
+- [ ] Repeated `npm run build` runs succeed from the same worktree without stale chunk imports
+- [ ] Built HTML prefixes Astro `_astro` assets with the project Pages base (`/testing-lab/` here)
+- [ ] Runtime script tags that must execute unmodified keep `data-cfasync="false"` in built HTML
+- [ ] Targeted HTML test covers chart section labels, evidence links, and unavailable copy
+- [ ] `npm run build` succeeds for the Astro worktree
+- [ ] Any failed/blocked validation step (for example `astro check` OOM) is reported explicitly, not silently dropped

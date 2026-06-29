@@ -1,0 +1,509 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { loadApplicationsPageModel } from '../lib/applications-page';
+
+const baseUrl = import.meta.env.BASE_URL;
+const pageModel = loadApplicationsPageModel(
+  `${process.cwd()}/docs/data/applications-matrix.json`,
+  process.cwd(),
+);
+
+const {
+  application,
+  chartData,
+  dataset,
+  fallbackSignals,
+  historyEvents,
+  rows,
+  summaryMetricMap,
+  summaryMetrics,
+} = pageModel;
+
+const latestFallbackSignal = [...fallbackSignals]
+  .filter((signal) => signal.last_run)
+  .sort((left, right) => (right.last_run ?? '').localeCompare(left.last_run ?? ''))[0];
+
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC'
+    : 'No published run';
+
+const serializedPageData = JSON.stringify(chartData);
+const noPrimaryEvidence = rows.filter((row) => row.primary_result_status !== 'completed').length;
+const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0).length;
+---
+
+<SiteLayout
+  title="Applications"
+  description="Bazaar-first application reliability view from the published applications matrix."
+  current="applications"
+>
+  <section class="page-intro">
+    <div>
+      <p class="page-intro__eyebrow">Applications</p>
+      <h1>{application.display_name} reliability, evidence, and fallback transparency</h1>
+      <p>
+        Applications v1 stays narrow on purpose: one app, one published contract, explicit missing data,
+        and evidence links on every row. Primary app coverage is still unavailable across every tracked
+        variant/branch, so fallback signals stay visible instead of being flattened into a synthetic score.
+      </p>
+    </div>
+    <div class="page-intro__actions">
+      <a href={`${baseUrl}data/applications-matrix.json`}>Open dataset</a>
+      <a href={application.source_url}>Contract</a>
+    </div>
+  </section>
+
+  <section class="summary-grid" aria-label="Applications summary metrics">
+    {summaryMetrics.map((metric) => (
+      <article class="metric-card">
+        <p class="metric-card__label">{metric.label}</p>
+        <p class="metric-card__value">{metric.value}</p>
+        <p class="metric-card__meta">
+          <span>{metric.unit}</span>
+          <a href={metric.source_url}>Evidence</a>
+        </p>
+      </article>
+    ))}
+  </section>
+
+  <section class="detail-grid detail-grid--hero">
+    <article class="status-card status-card--hero">
+      <p class="status-card__eyebrow">{application.display_name}</p>
+      <h2>No completed Bazaar-specific software result is published</h2>
+      <p>
+        {rows[0]?.state_reason} All {summaryMetricMap.application_rows?.value ?? rows.length} tracked rows are
+        still missing primary app-specific runs, and only{' '}
+        {summaryMetricMap.rows_with_fallback_signals?.value ?? fallbackSignals.length} row currently exposes a
+        coarse fallback signal.
+      </p>
+      <dl class="status-card__meta">
+        <div>
+          <dt>Primary suite</dt>
+          <dd>{application.primary_suite}</dd>
+        </div>
+        <div>
+          <dt>Fallback suites</dt>
+          <dd>{application.fallback_suites.join(', ')}</dd>
+        </div>
+        <div>
+          <dt>Latest fallback evidence</dt>
+          <dd>
+            {latestFallbackSignal
+              ? `${latestFallbackSignal.variant}/${latestFallbackSignal.branch} · ${formatUtc(latestFallbackSignal.last_run)}`
+              : 'No fallback signal published'}
+          </dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="status-card">
+      <p class="status-card__eyebrow">Availability posture</p>
+      <h2>Unavailable states stay visible</h2>
+      <ul class="status-list">
+        <li>{noPrimaryEvidence} of {rows.length} rows lack primary Bazaar evidence.</li>
+        <li>{rowsWithoutFallback} of {rows.length} rows have no fallback signal at all.</li>
+        <li>{historyEvents.length} historical runs can be traced through linked evidence files.</li>
+      </ul>
+      <p class="callout-note">
+        Fallback evidence stays labeled as coarse signal only. This page does not convert substring-matched
+        failures into a fake application pass rate.
+      </p>
+    </article>
+  </section>
+
+  <section class="chart-grid" aria-label="Application charts">
+    <article class="status-card chart-card">
+      <p class="status-card__eyebrow">Outcomes across variants and branches</p>
+      <h2>Outcome matrix</h2>
+      <p>
+        Heatmap shows where Bazaar has primary coverage, fallback-only signal, or no application evidence at
+        all.
+      </p>
+      <div id="applications-outcomes-chart" class="chart-surface" role="img" aria-label="Bazaar outcome matrix chart"></div>
+    </article>
+
+    <article class="status-card chart-card">
+      <p class="status-card__eyebrow">Fallback signal distribution</p>
+      <h2>Fallback coverage by variant</h2>
+      <p>
+        Bars compare coarse fallback signal count against matched Bazaar scenario count per variant/branch.
+      </p>
+      <div id="applications-fallback-chart" class="chart-surface" role="img" aria-label="Fallback signal distribution chart"></div>
+    </article>
+
+    <article class="status-card chart-card">
+      <p class="status-card__eyebrow">Fallback signal history</p>
+      <h2>Historical evidence runs</h2>
+      <p>
+        Only linked evidence files with published history contribute here. Empty series remain empty instead of
+        being interpolated.
+      </p>
+      <div id="applications-history-chart" class="chart-surface" role="img" aria-label="Fallback evidence history chart"></div>
+    </article>
+  </section>
+
+  <section class="detail-grid">
+    <article class="status-card">
+      <p class="status-card__eyebrow">Tracked rows</p>
+      <h2>Variant-by-variant detail</h2>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Variant</th>
+              <th scope="col">Branch</th>
+              <th scope="col">Primary status</th>
+              <th scope="col">Fallback signals</th>
+              <th scope="col">Latest evidence</th>
+              <th scope="col">Evidence links</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr>
+                <th scope="row">{row.variant}</th>
+                <td>{row.branch}</td>
+                <td>
+                  <span class:list={['pill', `pill--${row.primary_result_status}`]}>
+                    {row.primary_result_status}
+                  </span>
+                  <p class="table-note">{row.state_reason}</p>
+                </td>
+                <td>
+                  <strong>{row.fallback_signal_count}</strong>
+                  <p class="table-note">
+                    {row.fallback_signal_count > 0
+                      ? `${row.matchedScenarioCount} matched Bazaar scenarios`
+                      : 'No coarse fallback signals published'}
+                  </p>
+                </td>
+                <td>{formatUtc(row.latestEvidenceAt)}</td>
+                <td>
+                  <div class="evidence-links">
+                    <a href={row.primaryEvidenceLink}>Primary</a>
+                    {row.fallbackEvidenceLinks.map((link) => (
+                      <a href={link}>Fallback</a>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="status-card">
+      <p class="status-card__eyebrow">Fallback signal ledger</p>
+      <h2>Why the fallback is still marked unavailable</h2>
+      {fallbackSignals.length > 0 ? (
+        <div class="signal-stack">
+          {fallbackSignals.map((signal) => (
+            <article class="signal-card">
+              <div class="signal-card__header">
+                <div>
+                  <h3>{signal.variant}/{signal.branch} · {signal.suite}</h3>
+                  <p>{signal.state_reason}</p>
+                </div>
+                <span class:list={['pill', `pill--${signal.status}`]}>{signal.status}</span>
+              </div>
+              <ul class="status-list">
+                {signal.matched_scenarios.map((scenario) => (
+                  <li>{scenario}</li>
+                ))}
+              </ul>
+              <dl class="signal-meta">
+                <div>
+                  <dt>Last run</dt>
+                  <dd>{formatUtc(signal.last_run)}</dd>
+                </div>
+                <div>
+                  <dt>Workflow</dt>
+                  <dd>{signal.workflow_name ?? 'Unavailable'}</dd>
+                </div>
+                <div>
+                  <dt>Evidence</dt>
+                  <dd><a href={signal.source_url}>Source JSON</a></dd>
+                </div>
+              </dl>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p>No fallback signals are published in this dataset yet.</p>
+      )}
+    </article>
+  </section>
+
+  <section class="detail-grid">
+    <article class="status-card">
+      <p class="status-card__eyebrow">Evidence history where possible</p>
+      <h2>Published historical runs</h2>
+      {historyEvents.length > 0 ? (
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Run date</th>
+                <th scope="col">Series</th>
+                <th scope="col">Status</th>
+                <th scope="col">Failed scenarios</th>
+                <th scope="col">Workflow</th>
+                <th scope="col">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyEvents.map((event) => (
+                <tr>
+                  <td>{formatUtc(event.runDate)}</td>
+                  <td>{event.label}</td>
+                  <td><span class:list={['pill', `pill--${event.status}`]}>{event.status}</span></td>
+                  <td>{event.failed}/{event.scenarios}</td>
+                  <td>{event.workflowName ?? 'Unavailable'}</td>
+                  <td><a href={event.sourceUrl}>Source JSON</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p>
+          No linked evidence file publishes historical runs yet. The page keeps that gap explicit instead of
+          drawing a synthetic trend.
+        </p>
+      )}
+    </article>
+
+    <article class="status-card">
+      <p class="status-card__eyebrow">Dataset provenance</p>
+      <h2>Collector-derived contract</h2>
+      <dl class="status-card__meta">
+        <div>
+          <dt>Schema version</dt>
+          <dd>{dataset.schema_version}</dd>
+        </div>
+        <div>
+          <dt>Generated at</dt>
+          <dd>{formatUtc(dataset._meta.generated_at)}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{dataset._meta.status}</dd>
+        </div>
+      </dl>
+      <p class="table-note">{dataset._meta.description}</p>
+      <a href={`${baseUrl}data/applications-matrix.json`}>Open raw dataset</a>
+    </article>
+  </section>
+
+  <script id="applications-page-data" type="application/json" set:html={serializedPageData}></script>
+  <script
+    is:inline
+    src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"
+    defer
+    data-cfasync="false"
+  ></script>
+  <script is:inline data-cfasync="false">
+    const dataNode = document.getElementById('applications-page-data');
+    const pageData = dataNode ? JSON.parse(dataNode.textContent || '{}') : null;
+
+    function renderUnavailable(containerId, message) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = `<div class="chart-empty">${message}</div>`;
+    }
+
+    function waitForCharts(attempt = 0) {
+      if (window.echarts) {
+        bootCharts(window.echarts);
+        return;
+      }
+
+      if (attempt > 40) {
+        renderUnavailable('applications-outcomes-chart', 'ECharts failed to load. Table below remains the source of truth.');
+        renderUnavailable('applications-fallback-chart', 'Fallback chart unavailable because the chart runtime did not load.');
+        renderUnavailable('applications-history-chart', 'History chart unavailable because the chart runtime did not load.');
+        return;
+      }
+
+      window.setTimeout(() => waitForCharts(attempt + 1), 125);
+    }
+
+    function bootCharts(echarts) {
+      if (!pageData) return;
+
+      const outcomeContainer = document.getElementById('applications-outcomes-chart');
+      const fallbackContainer = document.getElementById('applications-fallback-chart');
+      const historyContainer = document.getElementById('applications-history-chart');
+
+      if (!outcomeContainer || !fallbackContainer || !historyContainer) return;
+
+      const outcomes = Array.isArray(pageData.outcomes) ? pageData.outcomes : [];
+      const fallbackDistribution = Array.isArray(pageData.fallbackDistribution) ? pageData.fallbackDistribution : [];
+      const historySeries = Array.isArray(pageData.historySeries) ? pageData.historySeries : [];
+
+      if (outcomes.length === 0) {
+        renderUnavailable('applications-outcomes-chart', 'No outcome rows published in applications-matrix.json.');
+      } else {
+        const branches = [...new Set(outcomes.map((row) => row.branch))];
+        const variants = outcomes.map((row) => row.variant);
+        const outcomeChart = echarts.init(outcomeContainer);
+        outcomeChart.setOption({
+          aria: { enabled: true },
+          tooltip: {
+            formatter(params) {
+              const row = outcomes[params.dataIndex];
+              return [
+                `<strong>${row.variant}/${row.branch}</strong>`,
+                row.stateLabel,
+                `Primary status: ${row.primaryStatus}`,
+                `Fallback signals: ${row.fallbackSignalCount}`,
+                `Matched Bazaar scenarios: ${row.matchedScenarioCount}`,
+                `Latest evidence: ${row.latestEvidenceAt ?? 'none published'}`,
+              ].join('<br>');
+            },
+          },
+          grid: { left: 100, right: 20, top: 40, bottom: 40 },
+          xAxis: {
+            type: 'category',
+            data: branches,
+            axisLabel: { color: '#cbd5f5' },
+          },
+          yAxis: {
+            type: 'category',
+            data: variants,
+            axisLabel: { color: '#cbd5f5' },
+          },
+          visualMap: {
+            min: 0,
+            max: 2,
+            orient: 'horizontal',
+            left: 'center',
+            bottom: 0,
+            text: ['Primary', 'None'],
+            inRange: { color: ['#334155', '#f59e0b', '#22c55e'] },
+          },
+          series: [
+            {
+              type: 'heatmap',
+              data: outcomes.map((row, index) => [branches.indexOf(row.branch), index, row.stateScore]),
+              label: {
+                show: true,
+                color: '#e2e8f0',
+                formatter(params) {
+                  return outcomes[params.data[1]].fallbackSignalCount > 0 ? 'fallback' : 'none';
+                },
+              },
+            },
+          ],
+        });
+      }
+
+      if (fallbackDistribution.length === 0) {
+        renderUnavailable('applications-fallback-chart', 'No fallback distribution published in applications-matrix.json.');
+      } else {
+        const categories = fallbackDistribution.map((row) => `${row.variant}/${row.branch}`);
+        const fallbackChart = echarts.init(fallbackContainer);
+        fallbackChart.setOption({
+          aria: { enabled: true },
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: {
+            textStyle: { color: '#cbd5f5' },
+            data: ['Fallback signals', 'Matched scenarios'],
+          },
+          grid: { left: 60, right: 20, top: 40, bottom: 50 },
+          xAxis: {
+            type: 'category',
+            data: categories,
+            axisLabel: { color: '#cbd5f5', rotate: 20 },
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#cbd5f5' },
+          },
+          series: [
+            {
+              name: 'Fallback signals',
+              type: 'bar',
+              data: fallbackDistribution.map((row) => row.signalCount),
+              itemStyle: { color: '#f59e0b' },
+            },
+            {
+              name: 'Matched scenarios',
+              type: 'bar',
+              data: fallbackDistribution.map((row) => row.matchedScenarioCount),
+              itemStyle: { color: '#38bdf8' },
+            },
+          ],
+        });
+      }
+
+      if (historySeries.length === 0) {
+        renderUnavailable('applications-history-chart', 'No linked evidence file publishes historical runs yet.');
+      } else {
+        const grouped = historySeries.reduce((map, event) => {
+          if (!map.has(event.label)) map.set(event.label, []);
+          map.get(event.label).push(event);
+          return map;
+        }, new Map());
+        const historyChart = echarts.init(historyContainer);
+        historyChart.setOption({
+          aria: { enabled: true },
+          tooltip: {
+            trigger: 'axis',
+            formatter(params) {
+              return params
+                .map((entry) => {
+                  const data = entry.data.event;
+                  return [
+                    `<strong>${data.label}</strong>`,
+                    `${data.runDate}`,
+                    `Status: ${data.status}`,
+                    `Failed scenarios: ${data.failed}/${data.scenarios}`,
+                    `Workflow: ${data.workflowName ?? 'Unavailable'}`,
+                  ].join('<br>');
+                })
+                .join('<br><br>');
+            },
+          },
+          legend: {
+            textStyle: { color: '#cbd5f5' },
+            top: 0,
+          },
+          grid: { left: 60, right: 20, top: 50, bottom: 50 },
+          xAxis: {
+            type: 'time',
+            axisLabel: { color: '#cbd5f5' },
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#cbd5f5' },
+          },
+          series: Array.from(grouped.entries()).map(([label, events]) => ({
+            name: label,
+            type: 'line',
+            showSymbol: true,
+            data: events.map((event) => ({
+              value: [event.runDate, event.failed],
+              event,
+            })),
+          })),
+        });
+      }
+
+      window.addEventListener('resize', () => {
+        document.querySelectorAll('.chart-surface').forEach((element) => {
+          const instance = echarts.getInstanceByDom(element);
+          instance?.resize();
+        });
+      });
+    }
+
+    waitForCharts();
+  </script>
+</SiteLayout>

@@ -6,7 +6,20 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/update-test-results.yml'
+      - 'astro.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/generate_page_datasets.py'
+      - 'docs/data/page-contracts.md'
+      - 'docs/data/test-surface.json'
+      - 'docs/data/variant-publishers.json'
+      - 'src/**'
+      - 'tests/astro-foundation.test.mjs'
+      - 'tests/applications-page.test.mjs'
       - 'docs/results/**'
+      - 'argo/workflow-templates/provision-gnomeos-vm.yaml'
+      - 'manifests/image-poll-fedora-bootc-*.yaml'
   workflow_dispatch:
 
 jobs:
@@ -673,11 +686,22 @@ jobs:
           print(f"Updated {stats_path}: {len(bugs)} open bugs, {total_scenarios} scenarios, {len(images_with_results)} images with results")
           PYEOF
 
+      - name: Refresh page-owned datasets
+        run: python3 scripts/generate_page_datasets.py --root .
+
+      - name: Build multipage dashboard
+        run: |
+          npm ci
+          npm run build
+
+      - name: Verify multipage dashboard
+        run: npm test
+
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots/ docs/data/factory-stats.json docs/data/factory-history.json docs/data/factory-telemetry.json docs/index.html docs/assets/factory-dashboard.*
+          git add docs/screenshots/ docs/data/factory-stats.json docs/data/factory-history.json docs/data/factory-telemetry.json docs/data/upstream-status.json docs/data/tests-matrix.json docs/data/applications-matrix.json docs/index.html docs/assets/factory-dashboard.* docs/_astro/ docs/upstream/ docs/tests/ docs/applications/
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else

@@ -41,6 +41,7 @@ metadata:
 9. After push, validate production Pages with a real browser render (not raw HTML fetch only): confirm no loading placeholders and key sections render.
 10. Any image freshness/status numbers shown in the dashboard must come from GitHub Releases API (`/repos/{owner}/{repo}/releases`) metadata only (`published_at`, `tag_name`, `html_url`). Do not infer release age from Argo run labels or workflow names.
 11. For every dashboard number that is not self-evident from local files, publish explicit source lineage (source URL + derivation input) or hide the number as unavailable.
+12. For page-owned dashboard JSON (`docs/data/*-status.json`, `*-matrix.json`), keep row-oriented contracts stable: every summary metric and every row gets `source_url`, `collected_at`, `derivation`, plus explicit `state`/`state_reason` fields so later collectors can fill values without redesigning the shape.
 
 ## Common Rationalizations
 
@@ -60,6 +61,7 @@ metadata:
 - CI changes are declared fixed without checking production Pages render
 - Image-status ages are derived from workflow/run activity instead of release metadata.
 - A dashboard card shows a numeric value without a traceable source URL/evidence path.
+- A page-level JSON contract omits row-level provenance or hides missing values by dropping rows.
 
 ## Verification
 
@@ -72,3 +74,4 @@ metadata:
 - [ ] Render validation includes a real browser run (headless is fine) and captures evidence
 - [ ] Image-status cards derive age from GitHub Releases `published_at` and link to the exact release page (`html_url`).
 - [ ] Unsupported metrics (no source-of-truth feed) are hidden or explicitly unavailable, never synthesized.
+- [ ] Page-level dashboard JSON keeps stable row keys plus row-level provenance/state fields so collector-only follow-up work can populate data without changing the contract.

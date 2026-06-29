@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: k8sgpt-on-demand
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  entrypoint: analyze
+  arguments:
+    parameters:
+      - name: namespace
+        value: ""
+      - name: filters
+        value: "Pod,Deployment,Service,Ingress,Node"
+      - name: explain
+        value: "true"
+  templates:
+    - name: analyze
+      activeDeadlineSeconds: 600
+      container:
+        image: ghcr.io/k8sgpt-ai/k8sgpt:v0.4.24
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -euo pipefail
+            mkdir -p /tmp/results
+            ns_arg=""
+            explain_arg=""
+            if [ -n "{{workflow.parameters.namespace}}" ]; then
+              ns_arg="--namespace={{workflow.parameters.namespace}}"
+            fi
+            if [ "{{workflow.parameters.explain}}" = "true" ]; then
+              explain_arg="--explain"
+            fi
+            k8sgpt analyze ${explain_arg} --output=json --filter="{{workflow.parameters.filters}}" ${ns_arg} > /tmp/results/k8sgpt-results.json
+            findings_count=$(grep -o '"kind"' /tmp/results/k8sgpt-results.json | wc -l | tr -d ' ')
+            echo "k8sgpt findings: ${findings_count}"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      outputs:
+        artifacts:
+          - name: k8sgpt-results
+            path: /tmp/results/k8sgpt-results.json

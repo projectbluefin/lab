@@ -198,7 +198,7 @@ spec:
             name: bluefin-test-ssh-key
             key: id_ed25519.pub
       source: |-
-        apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
+        dnf install -y -q bash curl jq kubectl git >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         exec 3>&1

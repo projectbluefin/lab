@@ -1,0 +1,17 @@
+apiVersion: core.k8sgpt.ai/v1alpha1
+kind: K8sGPT
+metadata:
+  name: k8sgpt
+  namespace: k8sgpt
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  ai:
+    enabled: false
+  noCache: false
+  filters:
+    - Pod
+    - Deployment
+    - Service
+    - Ingress
+    - Node

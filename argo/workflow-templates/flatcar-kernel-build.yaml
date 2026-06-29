@@ -422,7 +422,7 @@ spec:
           '# build_image uses --usepkgonly; provide an explicit binhost for coreos-base/coreos.' \
           '. /etc/lsb-release >/dev/null 2>&1 || true' \
           'BINHOST_VER="${COREOS_RELEASE_VERSION:-4593.2.3}"' \
-          'export PORTAGE_BINHOST="https://mirror.release.flatcar-linux.net/boards/amd64-usr/${BINHOST_VER}/pkgs"' \
+          'export PORTAGE_BINHOST="https://mirror.release.flatcar-linux.net/boards/amd64-usr/\${BINHOST_VER}/pkgs"' \
           '' \
           '# Build the full Flatcar OS image (generates update payload)' \
           'skip_test_build_root=1 /mnt/host/source/src/scripts/build_image \' \

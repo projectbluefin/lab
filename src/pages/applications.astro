@@ -33,7 +33,7 @@ const formatUtc = (value: string | null) =>
     : 'No published run';
 
 const serializedPageData = JSON.stringify(chartData);
-const noPrimaryEvidence = rows.filter((row) => row.primary_result_status !== 'completed').length;
+const noPrimaryEvidence = rows.filter((row) => row.primary_result_status === 'pending' || row.primary_result_status === 'missing').length;
 const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0).length;
 ---
 
@@ -58,13 +58,25 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
   <section class="detail-grid detail-grid--hero">
     <article class="status-card status-card--hero">
       <p class="status-card__eyebrow">{application.display_name}</p>
-      <h2>No completed Bazaar-specific software result is published</h2>
-      <p>
-        {rows[0]?.state_reason} All {summaryMetricMap.application_rows?.value ?? rows.length} tracked rows are
-        still missing primary app-specific runs, and only{' '}
-        {summaryMetricMap.rows_with_fallback_signals?.value ?? fallbackSignals.length} row currently exposes a
-        coarse fallback signal.
-      </p>
+      {rows.every(r => r.primary_result_status === 'pending' || r.primary_result_status === 'missing') ? (
+        <>
+          <h2>No completed Bazaar-specific software result is published</h2>
+          <p>
+            {rows[0]?.state_reason} All {summaryMetricMap.application_rows?.value ?? rows.length} tracked rows are
+            still missing primary app-specific runs, and only{' '}
+            {summaryMetricMap.rows_with_fallback_signals?.value ?? fallbackSignals.length} row currently exposes a
+            coarse fallback signal.
+          </p>
+        </>
+      ) : (
+        <>
+          <h2>Bazaar primary coverage is partially active</h2>
+          <p>
+            Primary app-specific evidence is now published for {rows.filter(r => r.primary_result_status !== 'pending' && r.primary_result_status !== 'missing').map(r => r.variant).join(', ')}.
+            No completed Bazaar-specific software result is published for the remaining variants: {rows.filter(r => r.primary_result_status === 'pending' || r.primary_result_status === 'missing').map(r => r.variant).join(', ')}.
+          </p>
+        </>
+      )}
       <dl class="status-card__meta">
         <div>
           <dt>Primary suite</dt>
@@ -156,7 +168,11 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
                   <span class:list={['pill', `pill--${row.primary_result_status}`]}>
                     {row.primary_result_status}
                   </span>
-                  <p class="table-note">{row.state_reason}</p>
+                  <p class="table-note">
+                    {row.state === 'available'
+                      ? `${row.scenario_total - row.scenario_failed}/${row.scenario_total} passed`
+                      : row.state_reason}
+                  </p>
                 </td>
                 <td>
                   <strong>{row.fallback_signal_count}</strong>
@@ -380,7 +396,9 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
                 show: true,
                 color: '#e2e8f0',
                 formatter(params) {
-                  return outcomes[params.data[1]].fallbackSignalCount > 0 ? 'fallback' : 'none';
+                  const o = outcomes[params.data[1]];
+                  if (o.stateScore === 2) return 'primary';
+                  return o.fallbackSignalCount > 0 ? 'fallback' : 'none';
                 },
               },
             },

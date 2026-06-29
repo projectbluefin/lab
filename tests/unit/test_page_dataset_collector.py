@@ -13,8 +13,27 @@ def load_module():
     return module
 
 
-def test_upstream_dataset_derives_required_families():
+def test_upstream_dataset_derives_required_families(monkeypatch):
     module = load_module()
+
+    # Monkeypatch load_json to intercept factory-stats.json and make bluefin-testing available
+    orig_load_json = module.load_json
+    def mock_load_json(path):
+        if Path(path).name == 'factory-stats.json':
+            data = orig_load_json(path)
+            # Restore the 8 lanes to their expected available timestamps for test determinism
+            if 'factory' in data and 'images' in data['factory']:
+                images = data['factory']['images']
+                for variant in ['bluefin', 'bluefin-lts', 'aurora', 'bazzite']:
+                    if variant in images:
+                        images[variant]['stable_seen_at'] = '2026-06-28T16:10:04Z'
+                        images[variant]['testing_seen_at'] = '2026-06-28T16:10:04Z'
+                        images[variant]['stable_age_days'] = 1
+                        images[variant]['testing_age_days'] = 1
+            return data
+        return orig_load_json(path)
+
+    monkeypatch.setattr(module, 'load_json', mock_load_json)
 
     dataset = module.build_upstream_status(ROOT, '2026-06-29T19:22:22Z')
 
@@ -56,8 +75,8 @@ def test_tests_matrix_derives_rows_from_surface_and_results():
 
     metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
     assert metrics['published_matrix_rows']['value'] == 22
-    assert metrics['rows_with_completed_runs']['value'] == 4
-    assert metrics['rows_waiting_for_results']['value'] == 18
+    assert metrics['rows_with_completed_runs']['value'] == 7
+    assert metrics['rows_waiting_for_results']['value'] == 15
 
     rows = {row['id']: row for row in dataset['rows']}
     assert rows['bluefin-testing-developer']['state'] == 'available'
@@ -85,12 +104,12 @@ def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
     metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
     assert metrics['tracked_applications']['value'] == 1
     assert metrics['application_rows']['value'] == 5
-    assert metrics['rows_with_primary_app_results']['value'] == 0
+    assert metrics['rows_with_primary_app_results']['value'] == 3
     assert metrics['rows_with_fallback_signals']['value'] == 1
 
     rows = {row['id']: row for row in dataset['rows']}
     bluefin = rows['bazaar-bluefin-testing']
-    assert bluefin['state'] == 'unavailable'
+    assert bluefin['state'] == 'available'
     assert bluefin['fallback_signal_count'] == 1
     assert len(bluefin['fallback_signals']) == 1
     assert bluefin['fallback_signals'][0]['state'] == 'unavailable'
@@ -99,3 +118,4 @@ def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
         'bazaar user service is available',
     ]
     assert rows['bazaar-dakota-testing']['fallback_signal_count'] == 0
+    assert rows['bazaar-aurora-testing']['state'] == 'unavailable'

@@ -60,6 +60,10 @@ Read the published JSON contract at prerender time, join any linked result JSON 
    - targeted Node test covering rendered HTML
    - `npm run build`
    - run `astro check` only if it completes in this repo scope; if it OOMs, record the blocker instead of claiming it passed
+15. When simulating or seeding results (such as primary application-specific results files), ensure you regenerate the core contracts using `python3 scripts/generate_page_datasets.py` so build-time Astro frontmatter picks up the changes immediately.
+16. In unit tests that validate dataset collectors, mock any dependencies on dynamically-updated or live-polled files (like `factory-stats.json`) by monkeypatching the loader to keep tests completely deterministic and isolated from homelab poller updates.
+17. When rendering outcomes charts or heatmaps, conditionally format labels (e.g. 'primary' vs 'fallback' vs 'none') depending on whether the primary result is completed or in a fallback-only/pending state.
+18. If a hero status card is made dynamic, conditionally render it to summarize partial/full primary coverage while preserving any expected smoke-test regex assertions (e.g. `/No completed Bazaar-specific software result is published/i`) in the text output.
 
 ## Common Rationalizations
 

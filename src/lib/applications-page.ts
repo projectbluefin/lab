@@ -260,13 +260,13 @@ export function loadApplicationsPageModel(datasetPath: string, repoRoot: string)
         variant: row.variant,
         branch: row.branch,
         stateScore:
-          row.primary_result_status === 'completed'
+          row.state === 'available'
             ? 2
             : row.fallback_signal_count > 0
               ? 1
               : 0,
         stateLabel:
-          row.primary_result_status === 'completed'
+          row.state === 'available'
             ? 'Primary evidence published'
             : row.fallback_signal_count > 0
               ? 'Fallback signal only'

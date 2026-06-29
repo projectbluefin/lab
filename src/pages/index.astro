@@ -1,31 +1,13 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
-
-const baseUrl = import.meta.env.BASE_URL;
 ---
 
 <SiteLayout
-  title="Overview"
-  description="Factory overview shell with navigation to upstream, tests, and applications detail pages."
+  title="Factory dashboard"
+  description="Factory dashboard shell with top-level navigation to upstream, tests, and applications pages."
   current="overview"
   includeDashboardAssets={true}
 >
-  <section class="page-intro">
-    <div>
-      <p class="page-intro__eyebrow">Overview</p>
-      <h1>Factory overview</h1>
-      <p>
-        Current dashboard stays primary landing page. Deep pages split upstream freshness, test depth,
-        and application health without inventing new data.
-      </p>
-    </div>
-    <div class="page-intro__actions">
-      <a href={`${baseUrl}upstream/`}>Upstream status</a>
-      <a href={`${baseUrl}tests/`}>Test depth</a>
-      <a href={`${baseUrl}applications/`}>Application focus</a>
-    </div>
-  </section>
-
   <section id="factory-dashboard" class="shell dashboard-shell" aria-live="polite">
     <noscript>This dashboard needs JavaScript enabled to load the current factory snapshot.</noscript>
     <div class="loading">Loading factory snapshot…</div>

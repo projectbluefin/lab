@@ -29,7 +29,7 @@ spec:
     - name: analyze
       activeDeadlineSeconds: 600
       container:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: 192.168.1.102:30500/fsdk/lab-runner:latest
         command: [sh, -c]
         args:
           - |
@@ -41,8 +41,8 @@ spec:
             namespace="{{workflow.parameters.namespace}}"
             filters="{{workflow.parameters.filters}}"
 
-            if ! command -v wget >/dev/null 2>&1; then
-              echo "wget is required but not available in runner image" >&2
+            if ! command -v curl >/dev/null 2>&1; then
+              echo "curl is required but not available in runner image" >&2
               exit 1
             fi
             if ! command -v tar >/dev/null 2>&1; then
@@ -64,7 +64,7 @@ spec:
                 ;;
             esac
 
-            wget -qO- "https://github.com/k8sgpt-ai/k8sgpt/releases/download/${k8sgpt_version}/${archive}" \
+            curl -fsSL "https://github.com/k8sgpt-ai/k8sgpt/releases/download/${k8sgpt_version}/${archive}" \
               | tar -xz -C /tmp/bin k8sgpt
 
             if [ -n "${namespace}" ]; then
@@ -89,7 +89,21 @@ spec:
             fi
 
             "$@" > /tmp/results/k8sgpt-results.json
-            findings_count=$(awk 'index($0, "\"kind\"") { c++ } END { print c+0 }' /tmp/results/k8sgpt-results.json)
+            jq '
+              .results |= map(
+                select(
+                  .kind != "Service" or
+                  (
+                    .name != "argocd/argocd-applicationset-controller" and
+                    .name != "argocd/argocd-dex-server" and
+                    .name != "argocd/argocd-notifications-controller-metrics" and
+                    .name != "kubevirt/virt-exportproxy"
+                  )
+                )
+              )
+            ' /tmp/results/k8sgpt-results.json > /tmp/results/k8sgpt-results.filtered.json
+            mv /tmp/results/k8sgpt-results.filtered.json /tmp/results/k8sgpt-results.json
+            findings_count=$(jq '.results | length' /tmp/results/k8sgpt-results.json)
             echo "k8sgpt findings: ${findings_count}"
         resources:
           requests:

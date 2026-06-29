@@ -3,7 +3,7 @@ import { defineConfig } from 'astro/config';
 export default defineConfig({
   output: 'static',
   outDir: './docs',
-  site: 'https://qa.projectbluefin.io',
+  site: 'https://factory.projectbluefin.io',
   trailingSlash: 'always',
   vite: {
     build: {

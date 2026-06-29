@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement an end-to-end Flatcar kernel lifecycle where exo-0 validates 7.1.x first for 24h and successful candidates are then promoted cluster-wide via the existing Nebraska service.
+**Goal:** Implement an end-to-end Flatcar kernel lifecycle where exo-0 validates the rebuilt 7.1.x kernel (with USB4/Thunderbolt support for the 40Gbps mesh) first for 24h and successful candidates are then promoted cluster-wide via the existing Nebraska service.
 
 **Architecture:** Keep a single `GROUP=stable` for all Flatcar nodes and enforce canary behavior as workflow policy. The poller detects upstream versions, build workflow registers candidate packages, and a new gate workflow evaluates exo-0 health for 24h before promotion. Promotion and rollback are explicit state transitions recorded in a ConfigMap.
 

@@ -29,6 +29,10 @@ All pipelines use ephemeral VMs — every run provisions a fresh VM and tears it
 | Loki | log aggregation | http://192.168.1.102:30100 | Captures workflow pod logs |
 | ArgoCD | GitOps controller | https://192.168.1.102 | Reconciles this repo into the cluster |
 
+ArgoCD intentionally scales `argocd-applicationset-controller`, `argocd-dex-server`, and
+`argocd-notifications-controller` to zero in this homelab. K8sGPT may flag those Services as
+no-endpoint findings; that is expected, not drift.
+
 HostDisk VMs (Flatcar, Knuckle, GnomeOS) must pin to ghost — their disk files live on ghost's local storage.
 ContainerDisk VMs (Bluefin test VMs) float freely and can schedule on ghost or bazzite.
 
@@ -91,6 +95,7 @@ Golden disks can be rotated via the `build-containerdisk` template.
 | dakota builds accumulate, hold `ghost-heavy-compute` mutex, starve other rebuilds | `image-poll-dakota` CronWorkflow not suspended; dakota pipeline permanently blocked (composefs, no UKI) | `image-poll-dakota` has `spec.suspend: true` in git; if builds appear, stop them immediately |
 | Cross-node SSH from workflow pods to VM fails (bazzite VM, ghost pod) | firewalld on node blocks flannel/pod-to-pod traffic | `k3s-firewalld-config` DaemonSet disables firewalld on all nodes; if re-enabled, rollout restart the DaemonSet |
 | Workflow hangs before GUI steps start | VM boot or SSH readiness never completed | Inspect VMI readiness and runner logs, then re-run the appropriate recovery path |
+| K8sGPT reports no-endpoint Services for `argocd-applicationset-controller`, `argocd-dex-server`, `argocd-notifications-controller-metrics`, or `virt-exportproxy` | These are documented control-plane exceptions in this cluster shape | Ignore those specific findings; they are intentional |
 | `TypeError` involving `requireResult` | Stale dogtail step pattern | Replace with `findChildren(...)` or `findChild(..., retry=False)` |
 | Clock / quick-settings scenarios miss their targets | GNOME Shell AT-SPI geometry gap | Drive the interaction via `Shell.Eval` |
 | `outputs.result` contains debug text | Script template wrote extra stdout | Send debug output to stderr and reserve stdout for the actual result |

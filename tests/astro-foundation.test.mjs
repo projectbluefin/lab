@@ -20,6 +20,7 @@ test('Astro build emits multipage factory routes into docs', () => {
   const expectedFiles = [
     'docs/index.html',
     'docs/upstream/index.html',
+    'docs/bluefin/index.html',
     'docs/tests/index.html',
     'docs/applications/index.html',
   ];
@@ -29,11 +30,15 @@ test('Astro build emits multipage factory routes into docs', () => {
   }
 
   assert.match(html('docs/index.html'), /factory-dashboard/, 'overview keeps the dashboard shell');
+  assert.doesNotMatch(html('docs/index.html'), /Factory overview/i, 'overview hero box is removed');
   assert.match(html('docs/index.html'), /href="\/upstream\/"/, 'overview links to upstream at domain root');
   assert.match(html('docs/index.html'), /src="\/assets\/factory-dashboard\.js" defer data-cfasync="false"/, 'overview keeps Cloudflare-safe dashboard script');
+  assert.doesNotMatch(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav no longer shows Overview tab');
   assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+" data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
   assert.match(html('docs/upstream/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'upstream page keeps Cloudflare-safe chart script');
+  assert.match(html('docs/bluefin/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'bluefin page keeps Cloudflare-safe chart script');
   assert.match(html('docs/upstream/index.html'), /Upstream/, 'upstream page renders');
+  assert.match(html('docs/bluefin/index.html'), /Bluefin upstream/i, 'bluefin page renders');
   assert.match(html('docs/tests/index.html'), /Tests/, 'tests page renders');
   assert.match(html('docs/applications/index.html'), /Applications/, 'applications page renders');
   assert.match(html('docs/applications/index.html'), /Bazaar/, 'applications page calls out Bazaar scope');
@@ -66,11 +71,28 @@ test('upstream page renders grouped views, chart mounts, evidence links, and una
 
   const upstreamPage = html('docs/upstream/index.html');
 
-  assert.match(upstreamPage, /Lane availability by family/i, 'upstream page shows grouped availability chart section');
-  assert.match(upstreamPage, /Release freshness by lane/i, 'upstream page shows freshness chart section');
+  assert.match(upstreamPage, /Stream availability by family/i, 'upstream page shows grouped availability chart section');
+  assert.match(upstreamPage, /Release freshness by stream/i, 'upstream page shows freshness chart section');
   assert.match(upstreamPage, /Release timeline/i, 'upstream page shows release timeline chart section');
-  assert.match(upstreamPage, /Dakota testing/i, 'upstream page keeps unavailable lanes visible');
-  assert.match(upstreamPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this lane\./i, 'upstream page keeps unavailable reason explicit');
-  assert.match(upstreamPage, /https:\/\/github\.com\/projectbluefin\/dakota\/releases/i, 'upstream page links lane evidence');
+  assert.doesNotMatch(upstreamPage, /Dakota testing/i, 'upstream page excludes projectbluefin streams');
+  assert.match(upstreamPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this stream\./i, 'upstream page keeps unavailable reason explicit');
+  assert.match(upstreamPage, /https:\/\/github\.com\/ublue-os\/aurora\/releases/i, 'upstream page links non-bluefin evidence');
   assert.match(upstreamPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart/, 'upstream page renders chart containers');
+});
+
+test('bluefin page renders bluefin-family streams with explicit unavailable states and evidence links', () => {
+  execFileSync('npm', ['run', 'build'], {
+    cwd: repo,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+
+  const bluefinPage = html('docs/bluefin/index.html');
+
+  assert.match(bluefinPage, /Bluefin upstream/i, 'bluefin page title renders');
+  assert.match(bluefinPage, /Dakota testing/i, 'bluefin page includes dakota stream');
+  assert.match(bluefinPage, /bluefin-lts testing/i, 'bluefin page includes bluefin-lts stream');
+  assert.match(bluefinPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this stream\./i, 'bluefin page keeps unavailable reason explicit');
+  assert.match(bluefinPage, /https:\/\/github\.com\/projectbluefin\/dakota\/releases/i, 'bluefin page links projectbluefin evidence');
+  assert.doesNotMatch(bluefinPage, /ublue-os\/aurora/i, 'bluefin page excludes non-projectbluefin streams');
 });

@@ -2,7 +2,7 @@
 name: astro-dashboard-pages
 description: >
   Building or revising Astro dashboard detail pages backed by repo-tracked JSON and
-  browser-side charts. Use when adding docs routes like /tests, /upstream, or
+  browser-side charts. Use when adding docs routes like /tests, /upstream, /bluefin, or
   /applications that must render real evidence, explicit unavailable states, and
   GitHub Pages-safe static output.
 metadata:
@@ -25,6 +25,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - Rendering repo-tracked JSON from `docs/data/*.json` plus linked `docs/results/*.json`
 - Adding Apache ECharts visualizations to GitHub Pages-safe static output
 - Wiring evidence links like `results_path`, `source_url`, screenshots, or workflow URLs into detail cards
+- Splitting one dataset across multiple page routes using deterministic build-time filters
 
 ## When NOT to Use
 
@@ -51,9 +52,11 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 7. For unavailable chart inputs, do not hide the chart section. Render an explicit empty-state panel in the chart container.
 8. Every detail row must link to raw evidence when present: local result JSON, GitHub source URL, screenshot URL, workflow run URL.
 9. Because this repo builds Astro directly into `docs/`, scrub transient build outputs before each build (`docs/.prerender`, `docs/_astro`, generated page directories) so repeated builds do not reuse stale hashed chunks.
-10. This site is served on the custom domain root (`qa.projectbluefin.io`). Keep Astro paths root-relative (`/`) and still use `import.meta.env.BASE_URL` so links/scripts stay correct if hosting topology changes.
-11. Mark every browser-runtime script that must escape Cloudflare Rocket Loader with `data-cfasync="false"`, including bundled Astro page scripts, not just the legacy dashboard shell.
-12. Validate with the narrowest commands that prove the page works:
+10. When splitting one contract across multiple pages (for example `/upstream` vs `/bluefin`), keep one source dataset and apply page-level filters in shared model code. Do not fork collector schemas just to support route splits.
+11. Preserve explicit unavailable states and evidence links after filtering. Filtered pages must hide out-of-scope families, not hide missing data within in-scope families.
+12. This site is served on the custom domain root (`factory.projectbluefin.io`). Keep Astro paths root-relative (`/`) and still use `import.meta.env.BASE_URL` so links/scripts stay correct if hosting topology changes.
+13. Mark every browser-runtime script that must escape Cloudflare Rocket Loader with `data-cfasync="false"`, including bundled Astro page scripts, not just the legacy dashboard shell.
+14. Validate with the narrowest commands that prove the page works:
    - targeted Node test covering rendered HTML
    - `npm run build`
    - run `astro check` only if it completes in this repo scope; if it OOMs, record the blocker instead of claiming it passed
@@ -66,6 +69,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 | "I can pull result JSON in the browser after load." | The page contract already lives in git; prerender it so Pages output is deterministic and linkable. |
 | "One inline object literal is easier than a JSON blob." | Large payloads become brittle and hard to escape safely; use `application/json` for chart payloads. |
 | "No need to link the raw result file if the summary card exists." | Summary cards are derived views; operators need the raw evidence path. |
+| "I should mint a second dataset file for every new route." | Split views should reuse one contract with deterministic page-level filtering unless semantics actually diverge. |
 
 ## Red Flags
 
@@ -76,6 +80,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - Detail cards show pass/fail text without raw result, source, screenshot, or workflow links
 - Browser script invents fallback metrics not present in the contract
 - Runtime script tags lose `data-cfasync="false"` and Cloudflare rewrites the page boot path
+- Route split duplicates collector logic instead of reusing one shared model with page-level filters
 - Validation mentions `astro check` as passing when it actually OOMed
 
 ## Verification
@@ -86,7 +91,8 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - [ ] ECharts mounts at least one real chart from published fields and shows explicit empty states otherwise
 - [ ] Detail cards link to `results_path`, `source_url`, and screenshot/workflow evidence when present
 - [ ] Repeated `npm run build` runs succeed from the same worktree without stale chunk imports
-- [ ] Built HTML prefixes Astro `_astro` assets with the active domain root path contract (currently `/_astro/*` on `qa.projectbluefin.io`)
+- [ ] Build cleanup includes every generated route directory (for example `docs/upstream`, `docs/bluefin`, `docs/tests`, `docs/applications`)
+- [ ] Built HTML prefixes Astro `_astro` assets with the active domain root path contract (currently `/_astro/*` on `factory.projectbluefin.io`)
 - [ ] Runtime script tags that must execute unmodified keep `data-cfasync="false"` in built HTML
 - [ ] Targeted HTML test covers chart section labels, evidence links, and unavailable copy
 - [ ] `npm run build` succeeds for the Astro worktree

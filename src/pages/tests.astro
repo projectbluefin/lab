@@ -6,8 +6,6 @@ import TestsCharts from '../components/TestsCharts.astro';
 import SiteLayout from '../layouts/SiteLayout.astro';
 import testsMatrix from '../../docs/data/tests-matrix.json';
 
-const baseUrl = import.meta.env.BASE_URL;
-
 interface SummaryMetric {
   id: string;
   label: string;
@@ -139,21 +137,6 @@ const chartPayload = {
   description="Deep tests matrix page for image and application-related suites, with evidence links and ECharts views."
   current="tests"
 >
-  <section class="page-intro">
-    <div>
-      <p class="page-intro__eyebrow">Tests</p>
-      <h1>Image and application test depth</h1>
-      <p>
-        Published matrix rows cover smoke, system, developer, common, software, and flatcar suites across current image variants.
-        This page keeps unavailable cells visible, links directly to result evidence, and only charts fields present in the contract plus linked result JSON.
-      </p>
-    </div>
-    <div class="page-intro__actions">
-      <a href={`${baseUrl}data/tests-matrix.json`}>tests-matrix.json</a>
-      <a href={`${baseUrl}results/`}>Result JSON</a>
-    </div>
-  </section>
-
   <section class="metric-grid">
     {summaryMetrics.map((metric) => (
       <article class="metric-card">

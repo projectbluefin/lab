@@ -34,18 +34,36 @@ function stateTone(state) {
   return 'bad';
 }
 
-export function buildUpstreamPageModel(dataset) {
+function normalizeTerminology(value) {
+  if (!value) return value;
+  return value.replace(/\blanes\b/gi, 'streams').replace(/\blane\b/gi, 'stream');
+}
+
+export function buildUpstreamPageModel(dataset, options = {}) {
+  const includeGroups = new Set(options.includeGroups || []);
+  const excludeGroups = new Set(options.excludeGroups || []);
+  const hasIncludeFilter = includeGroups.size > 0;
+  const groupOrder = options.groupOrder || [];
+  const groupRank = new Map(groupOrder.map((id, index) => [id, index]));
+
+  const shouldIncludeGroup = (groupId) => {
+    if (excludeGroups.has(groupId)) return false;
+    if (hasIncludeFilter && !includeGroups.has(groupId)) return false;
+    return true;
+  };
+
   const groupsById = new Map(
     (dataset.groups || []).map((group) => [
       group.id,
       {
         ...group,
+        description: normalizeTerminology(group.description),
         lanes: [],
       },
     ]),
   );
 
-  const lanes = (dataset.rows || []).map((row) => {
+  const lanes = (dataset.rows || []).filter((row) => shouldIncludeGroup(row.group)).map((row) => {
     const lane = {
       ...row,
       label: titleizeLane(row.display_name),
@@ -56,12 +74,13 @@ export function buildUpstreamPageModel(dataset) {
       stateTone: stateTone(row.state),
       evidenceUrl: row.source_url,
       hasEvidence: Boolean(row.source_url),
+      state_reason: normalizeTerminology(row.state_reason),
     };
     groupsById.get(row.group)?.lanes.push(lane);
     return lane;
   });
 
-  const groups = [...groupsById.values()].map((group) => {
+  const groups = [...groupsById.values()].filter((group) => shouldIncludeGroup(group.id)).map((group) => {
     const availableCount = group.lanes.filter((lane) => lane.state === 'available').length;
     const unavailableCount = group.lanes.length - availableCount;
     const freshestLane = [...group.lanes]
@@ -77,6 +96,11 @@ export function buildUpstreamPageModel(dataset) {
       freshestLaneLabel: freshestLane ? `${freshestLane.label} · ${freshestLane.freshnessLabel}` : 'No published release yet',
       stateTone: unavailableCount ? (availableCount ? 'warn' : 'bad') : 'good',
     };
+  }).sort((left, right) => {
+    const leftRank = groupRank.has(left.id) ? groupRank.get(left.id) : Number.MAX_SAFE_INTEGER;
+    const rightRank = groupRank.has(right.id) ? groupRank.get(right.id) : Number.MAX_SAFE_INTEGER;
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    return left.label.localeCompare(right.label);
   });
 
   const missingLanes = lanes.filter((lane) => lane.state !== 'available');
@@ -90,6 +114,9 @@ export function buildUpstreamPageModel(dataset) {
     },
     summaryMetrics: (dataset.summary_metrics || []).map((metric) => ({
       ...metric,
+      label: normalizeTerminology(metric.label),
+      derivation: normalizeTerminology(metric.derivation),
+      state_reason: normalizeTerminology(metric.state_reason),
       displayValue: formatMetricValue(metric),
       collectedLabel: formatDate(metric.collected_at),
       stateTone: stateTone(metric.state),

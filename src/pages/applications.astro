@@ -42,22 +42,6 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
   description="Bazaar-first application reliability view from the published applications matrix."
   current="applications"
 >
-  <section class="page-intro">
-    <div>
-      <p class="page-intro__eyebrow">Applications</p>
-      <h1>{application.display_name} reliability, evidence, and fallback transparency</h1>
-      <p>
-        Applications v1 stays narrow on purpose: one app, one published contract, explicit missing data,
-        and evidence links on every row. Primary app coverage is still unavailable across every tracked
-        variant/branch, so fallback signals stay visible instead of being flattened into a synthetic score.
-      </p>
-    </div>
-    <div class="page-intro__actions">
-      <a href={`${baseUrl}data/applications-matrix.json`}>Open dataset</a>
-      <a href={application.source_url}>Contract</a>
-    </div>
-  </section>
-
   <section class="summary-grid" aria-label="Applications summary metrics">
     {summaryMetrics.map((metric) => (
       <article class="metric-card">

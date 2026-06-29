@@ -1,5 +1,7 @@
 # Builds a full Flatcar OS image with a custom kernel version and registers
 # it in Nebraska so update_engine can perform an A/B partition update.
+# The 7.1 rebuild carries the USB4/Thunderbolt config that underpins the
+# 40Gbps mesh plan.
 #
 # Pipeline:
 #   provision-build-vm  - Boot a Flatcar KubeVirt VM (Docker 28 ships in Flatcar)
@@ -174,9 +176,7 @@ spec:
 
   - name: wait-for-ssh
     script:
-      image: cgr.dev/chainguard/kubectl:latest-dev
-      securityContext:
-        runAsUser: 0
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [bash]
       resources:
         requests:
@@ -274,7 +274,7 @@ spec:
           path: /tmp/filename.txt
     activeDeadlineSeconds: 10800
     script:
-      image: cgr.dev/chainguard/kubectl:latest-dev
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       securityContext:
         runAsUser: 0
       command: [bash]
@@ -294,8 +294,6 @@ spec:
       source: |
         set -euo pipefail
         git config --global --add safe.directory "*"
-        apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
-        apk add --no-cache openssh-client 2>&1 | tail -5
         VM_IP="{{inputs.parameters.vm-ip}}"
         KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
         SCRIPTS_REF="{{inputs.parameters.flatcar-scripts-ref}}"
@@ -353,6 +351,8 @@ spec:
         echo '{"data-root": "/var/tmp/build/docker", "insecure-registries": ["192.168.1.102:30501", "192.168.1.102:30500"]}' | sudo tee /etc/docker/daemon.json
         sudo systemctl start docker
         sudo systemctl is-active docker
+        echo "=== Preflight SDK cache pull ==="
+        timeout 10m docker pull 192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
 
         echo "=== Regenerate Manifest checksums via SDK ==="
         # Run ephemeral SDK container just for manifest generation
@@ -492,9 +492,7 @@ spec:
       - name: size
       - name: filename
     script:
-      image: cgr.dev/chainguard/kubectl:latest-dev
-      securityContext:
-        runAsUser: 0
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [bash]
       resources:
         requests:
@@ -505,7 +503,6 @@ spec:
           memory: 512Mi
       source: |
         set -euo pipefail
-        apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
         KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
         NEBRASKA_URL="http://192.168.1.102:30802"
         FLATCAR_APP_ID="e96281a6-d1af-4bde-9a0a-97b76e56dc57"
@@ -559,9 +556,7 @@ spec:
       - name: kernel-version
       - name: filename
     script:
-      image: cgr.dev/chainguard/kubectl:latest-dev
-      securityContext:
-        runAsUser: 0
+      image: 192.168.1.102:30500/fsdk/lab-runner:latest
       command: [bash]
       resources:
         requests:
@@ -572,7 +567,6 @@ spec:
           memory: 512Mi
       source: |
         set -euo pipefail
-        apk add --no-cache bash kubectl >/dev/null 2>&1
         TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         kubectl patch configmap flatcar-kernel-lifecycle-state -n argo --type=merge -p "{
           \"data\": {

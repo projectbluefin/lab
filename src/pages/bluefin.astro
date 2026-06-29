@@ -3,16 +3,17 @@ import SiteLayout from '../layouts/SiteLayout.astro';
 import upstreamPageScript from '../scripts/upstream-page.js?url';
 import upstreamStatus from '../../docs/data/upstream-status.json';
 import { buildUpstreamPageModel } from '../lib/upstream-page.js';
+
 const model: any = buildUpstreamPageModel(upstreamStatus, {
-  excludeGroups: ['projectbluefin'],
-  groupOrder: ['gnome-os', 'fedora-bootc', 'ublue'],
+  includeGroups: ['projectbluefin'],
+  groupOrder: ['projectbluefin'],
 });
 const serializedModel = JSON.stringify(model).replaceAll('<', '\\u003c');
 ---
 
 <SiteLayout
-  title="Upstream"
-  description="Factory upstream status for GNOME OS, Fedora bootc, and other tracked image families outside Bluefin-specific variants."
+  title="Bluefin upstream"
+  description="Factory upstream status focused on Bluefin, Bluefin-LTS, and Dakota image streams."
   current="upstream"
 >
   <section class="upstream-summary-grid" aria-label="Upstream summary metrics">

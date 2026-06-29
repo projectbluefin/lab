@@ -4,7 +4,7 @@ These contracts split the factory dashboard into page-owned JSON files so each d
 
 ## Shared rules
 
-All three files follow the same starter pattern:
+All files follow the same starter pattern:
 
 - `schema_version`: contract version for the file.
 - `_meta`: artifact-level metadata (`page`, `description`, `generated_at`, `starter_artifact`, `status`).
@@ -19,26 +19,26 @@ All three files follow the same starter pattern:
 
 ## `docs/data/upstream-status.json`
 
-Purpose: one row per tracked upstream lane for the `/upstream` page.
+Purpose: one row per tracked upstream stream for both `/upstream` (non-Bluefin families) and `/bluefin` (Bluefin, Bluefin-LTS, Dakota) pages.
 
 ### Top-level shape
 
 - `_meta`
 - `summary_metrics[]`
 - `groups[]`: logical families shown in the page nav/filtering.
-- `rows[]`: concrete upstream lanes.
+- `rows[]`: concrete upstream streams.
 
 ### Row shape
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Stable lane id (`bluefin-testing`, `fedora-bootc-stable`) |
+| `id` | Stable stream id (`bluefin-testing`, `fedora-bootc-stable`) |
 | `group` | `gnome-os`, `fedora-bootc`, `projectbluefin`, `ublue` |
 | `variant` | Product/stream name |
 | `display_name` | Human label for the page |
 | `publisher_repo` | Source repo when known |
 | `org` | Owning org when known |
-| `branch` | Lane/tag tracked by the collector |
+| `branch` | Stream/tag tracked by the collector |
 | `published_at` | Upstream release publish time |
 | `freshness_age_days` | Days since `published_at` |
 | `open_prs` | Optional repo pressure signal |

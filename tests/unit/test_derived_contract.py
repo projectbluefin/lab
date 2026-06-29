@@ -194,11 +194,11 @@ def test_inputs_sha256_format(path: Path):
     DERIVED_FILES or [pytest.param(None, marks=pytest.mark.skip(reason="no derived files"))],
     ids=lambda p: str(p) if p else "none",
 )
-def test_notebook_url_under_qa_domain(path: Path):
+def test_notebook_url_under_factory_domain(path: Path):
     doc = _load(path)
     url = doc["generator"]["notebook_url"]
-    assert url.startswith("https://qa.projectbluefin.io/methods/"), (
-        f"{path} generator.notebook_url must be under https://qa.projectbluefin.io/methods/, got {url}"
+    assert url.startswith("https://factory.projectbluefin.io/methods/"), (
+        f"{path} generator.notebook_url must be under https://factory.projectbluefin.io/methods/, got {url}"
     )
 
 

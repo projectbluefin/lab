@@ -70,7 +70,7 @@ metadata:
 - [ ] GitHub Pages source/build state was checked before declaring a site live
 - [ ] If Cloudflare fronts the site, the live HTML keeps the raw dashboard script tag
 - [ ] Browser fetch code avoids unnecessary custom headers that trigger preflight
-- [ ] Production `https://qa.projectbluefin.io/` renders with real table/cluster content (no loading placeholders)
+- [ ] Production `https://factory.projectbluefin.io/` renders with real table/cluster content (no loading placeholders)
 - [ ] Render validation includes a real browser run (headless is fine) and captures evidence
 - [ ] Image-status cards derive age from GitHub Releases `published_at` and link to the exact release page (`html_url`).
 - [ ] Unsupported metrics (no source-of-truth feed) are hidden or explicitly unavailable, never synthesized.

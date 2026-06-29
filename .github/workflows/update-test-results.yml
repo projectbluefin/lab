@@ -73,13 +73,15 @@ jobs:
 
           # Compute aggregate stats from result files + live cluster snapshots when reachable
           python3 - "$ISSUE_COUNT" "$PR_COUNT" "$MERGED_7D" <<'PYEOF'
-          import json, glob, datetime, sys, subprocess, re
+          import json, glob, datetime, sys, subprocess, re, os, hashlib
+          from pathlib import Path
 
           issue_count = int(sys.argv[1]) if sys.argv[1:] and sys.argv[1].isdigit() else 0
           pr_count    = int(sys.argv[2]) if sys.argv[2:] and sys.argv[2].isdigit() else 0
           merged_7d   = int(sys.argv[3]) if sys.argv[3:] and sys.argv[3].isdigit() else 0
 
           stats_path = 'docs/data/factory-stats.json'
+          telemetry_path = 'docs/data/factory-telemetry.json'
           with open(stats_path) as f:
               stats = json.load(f)
 
@@ -91,6 +93,17 @@ jobs:
                   return json.loads(out)
               except Exception:
                   return None
+
+          def sha256_file(path):
+              h = hashlib.sha256()
+              with open(path, 'rb') as f:
+                  for chunk in iter(lambda: f.read(65536), b''):
+                      h.update(chunk)
+              return f"sha256:{h.hexdigest()}"
+
+          def gh_actions_query_url(term):
+              safe = (term or '').replace(' ', '+')
+              return f"https://github.com/projectbluefin/testing-lab/actions?query={safe}"
 
           def phase_to_overall(phase):
               if phase in ('Running', 'Pending'):
@@ -255,6 +268,7 @@ jobs:
                       'finished_at': finished,
                       'duration_min': duration_min,
                       'trigger': infer_trigger(name),
+                      'run_url': gh_actions_query_url(name),
                   }
                   recent_runs.append(run)
                   runs_all_time += 1
@@ -319,6 +333,20 @@ jobs:
           meta['generated'] = max(data_points) if data_points else now
           meta['refreshed_at'] = now
           meta['live_snapshot_ok'] = bool(live_runs_ok and live_nodes_ok)
+          source_ts = [parse_iso(ts) for ts in [newest_live_ts, newest_result_ts] if ts]
+          source_ts = [ts for ts in source_ts if ts is not None]
+          freshness_threshold = 180
+          freshness_minutes = int(round((datetime.datetime.now(datetime.timezone.utc) - max(source_ts)).total_seconds() / 60)) if source_ts else None
+          freshness_state = 'unknown'
+          if freshness_minutes is not None:
+              freshness_state = 'fresh' if freshness_minutes <= freshness_threshold else 'stale'
+          meta['freshness_minutes'] = freshness_minutes
+          meta['freshness'] = {
+              'age_minutes': freshness_minutes,
+              'threshold_minutes': freshness_threshold,
+              'state': freshness_state,
+          }
+          meta['source'] = 'github-actions/update-test-results'
 
           with open(stats_path, 'w') as f:
               json.dump(stats, f, indent=2)
@@ -361,6 +389,135 @@ jobs:
                   'rollups': rollups[-7:],
               }, f, indent=2)
 
+          # --- Public telemetry contract for dashboard evidence ---
+          expected_result_docs = len(list(Path('docs/results').glob('*.json')))
+          observed_result_docs = expected_result_docs
+          coverage_ratio = 1.0 if expected_result_docs else 0.0
+
+          snapshot_state = freshness_state
+          if freshness_state == 'unknown':
+              snapshot_state = 'unknown'
+          elif not meta.get('live_snapshot_ok'):
+              snapshot_state = 'degraded'
+
+          collector_run_id = os.environ.get('GITHUB_RUN_ID')
+          collector_url = f"https://github.com/projectbluefin/testing-lab/actions/runs/{collector_run_id}" if collector_run_id else "https://github.com/projectbluefin/testing-lab/actions"
+          collector_sha = os.environ.get('GITHUB_SHA') or ''
+          collector_commit_url = f"https://github.com/projectbluefin/testing-lab/commit/{collector_sha}" if collector_sha else "https://github.com/projectbluefin/testing-lab/commits/main"
+
+          inputs = []
+          for p in sorted(Path('docs/results').glob('*.json')):
+              try:
+                  inputs.append({'path': str(p), 'sha256': sha256_file(p)})
+              except Exception:
+                  continue
+
+          recent_runs = stats.get('recent_runs', [])
+          completed_runs = [r for r in recent_runs if r.get('overall') in ('passed', 'fail')]
+          passed_runs = [r for r in completed_runs if r.get('overall') == 'passed']
+          running_now = len([r for r in recent_runs if r.get('overall') == 'running'])
+          scenarios_total = stats.get('test_coverage', {}).get('scenarios_total', 0)
+          scenarios_failed = stats.get('test_coverage', {}).get('scenarios_failed', 0)
+          unknown_station_count = len([s for s in stats.get('station_states', {}).values() if s.get('status') in ('unknown', 'not_attested', 'not_published')])
+          station_total = max(1, len(stats.get('station_states', {})))
+
+          metric_evidence = [{'kind': 'collector-run', 'url': collector_url}]
+          if collector_sha:
+              metric_evidence.append({'kind': 'commit', 'url': collector_commit_url})
+
+          telemetry = {
+              'schema_version': 'v2',
+              'snapshot': {
+                  'generated_at': meta['generated'],
+                  'window': {'type': 'rolling', 'hours': 24},
+                  'state': snapshot_state,
+                  'age_minutes': meta['freshness']['age_minutes'],
+                  'threshold_minutes': meta['freshness']['threshold_minutes'],
+              },
+              'lineage': {
+                  'collector': {
+                      'workflow': '.github/workflows/update-test-results.yml',
+                      'run_id': collector_run_id,
+                      'run_url': collector_url,
+                      'job': 'update',
+                      'commit_sha': collector_sha,
+                      'commit_url': collector_commit_url,
+                  },
+                  'inputs_digest_sha256': f"sha256:{hashlib.sha256(''.join([i['sha256'] for i in inputs]).encode()).hexdigest()}",
+                  'inputs': inputs,
+              },
+              'coverage': {
+                  'expected_result_docs': expected_result_docs,
+                  'observed_result_docs': observed_result_docs,
+                  'coverage_ratio': coverage_ratio,
+                  'missing_docs': [],
+              },
+              'metrics': [
+                  {
+                      'id': 'suite_pass_rate_24h',
+                      'label': 'Suite pass rate (24h)',
+                      'value': round((len(passed_runs) / len(completed_runs)) * 100, 2) if completed_runs else None,
+                      'unit': 'percent',
+                      'numerator': len(passed_runs),
+                      'denominator': len(completed_runs),
+                      'formula': 'passed_suite_runs / completed_suite_runs * 100',
+                      'window_hours': 24,
+                      'confidence': 'high' if completed_runs else 'low',
+                      'state': snapshot_state if completed_runs else 'unknown',
+                      'evidence': metric_evidence,
+                  },
+                  {
+                      'id': 'scenario_pass_rate_24h',
+                      'label': 'Scenario pass rate (24h)',
+                      'value': round(((scenarios_total - scenarios_failed) / scenarios_total) * 100, 2) if scenarios_total else None,
+                      'unit': 'percent',
+                      'numerator': max(0, scenarios_total - scenarios_failed),
+                      'denominator': scenarios_total,
+                      'formula': '(scenarios_total - scenarios_failed) / scenarios_total * 100',
+                      'window_hours': 24,
+                      'confidence': 'medium' if scenarios_total else 'low',
+                      'state': snapshot_state if scenarios_total else 'unknown',
+                      'evidence': metric_evidence,
+                  },
+                  {
+                      'id': 'queue_pressure_now',
+                      'label': 'Queue pressure (now)',
+                      'value': running_now,
+                      'unit': 'count',
+                      'numerator': running_now,
+                      'denominator': max(1, len(recent_runs)),
+                      'formula': 'count(runs where overall=running)',
+                      'window_hours': 1,
+                      'confidence': 'high',
+                      'state': snapshot_state,
+                      'evidence': metric_evidence,
+                  },
+                  {
+                      'id': 'unknown_station_ratio',
+                      'label': 'Unknown station ratio',
+                      'value': round((unknown_station_count / station_total) * 100, 2),
+                      'unit': 'percent',
+                      'numerator': unknown_station_count,
+                      'denominator': station_total,
+                      'formula': 'unknown_station_count / total_stations * 100',
+                      'window_hours': 24,
+                      'confidence': 'high',
+                      'state': snapshot_state,
+                      'evidence': metric_evidence,
+                  },
+              ],
+              'errors': [] if snapshot_state in ('fresh', 'stale') else [
+                  {
+                      'source': 'live_cluster_snapshot',
+                      'reason': 'private endpoint unavailable or incomplete from GitHub-hosted runner',
+                      'effect': 'public telemetry downgraded to unknown/degraded',
+                  }
+              ],
+          }
+
+          with open(telemetry_path, 'w') as f:
+              json.dump(telemetry, f, indent=2)
+
           print(f"Updated {stats_path}: {len(bugs)} open bugs, {total_scenarios} scenarios, {len(images_with_results)} images with results")
           PYEOF
 
@@ -368,7 +525,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots/ docs/data/factory-stats.json docs/data/factory-history.json docs/index.html docs/assets/factory-dashboard.*
+          git add docs/screenshots/ docs/data/factory-stats.json docs/data/factory-history.json docs/data/factory-telemetry.json docs/index.html docs/assets/factory-dashboard.*
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else

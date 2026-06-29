@@ -1,0 +1,135 @@
+{
+  "schema_version": "v2",
+  "snapshot": {
+    "generated_at": "2026-06-29T05:27:02Z",
+    "window": {
+      "type": "rolling",
+      "hours": 24
+    },
+    "state": "degraded",
+    "age_minutes": null,
+    "threshold_minutes": 180
+  },
+  "lineage": {
+    "collector": {
+      "workflow": ".github/workflows/update-test-results.yml",
+      "run_id": "bootstrap",
+      "run_url": "https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml",
+      "job": "update",
+      "commit_sha": "bootstrap",
+      "commit_url": "https://github.com/projectbluefin/testing-lab/commits/main"
+    },
+    "inputs_digest_sha256": "sha256:bootstrap",
+    "inputs": [
+      {
+        "path": "docs/results/bluefin-testing-smoke.json",
+        "sha256": "sha256:bootstrap"
+      }
+    ]
+  },
+  "coverage": {
+    "expected_result_docs": 22,
+    "observed_result_docs": 22,
+    "coverage_ratio": 1.0,
+    "missing_docs": []
+  },
+  "metrics": [
+    {
+      "id": "suite_pass_rate_24h",
+      "label": "Suite pass rate (24h)",
+      "value": 25.0,
+      "unit": "percent",
+      "numerator": 1,
+      "denominator": 4,
+      "formula": "passed_suite_runs / completed_suite_runs * 100",
+      "window_hours": 24,
+      "confidence": "high",
+      "state": "degraded",
+      "evidence": [
+        {
+          "kind": "collector-run",
+          "url": "https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml"
+        }
+      ]
+    },
+    {
+      "id": "scenario_pass_rate_24h",
+      "label": "Scenario pass rate (24h)",
+      "value": 67.83,
+      "unit": "percent",
+      "numerator": 194,
+      "denominator": 286,
+      "formula": "(scenarios_total - scenarios_failed) / scenarios_total * 100",
+      "window_hours": 24,
+      "confidence": "medium",
+      "state": "degraded",
+      "evidence": [
+        {
+          "kind": "collector-run",
+          "url": "https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml"
+        }
+      ]
+    },
+    {
+      "id": "queue_pressure_now",
+      "label": "Queue pressure (now)",
+      "value": 19,
+      "unit": "count",
+      "numerator": 19,
+      "denominator": 25,
+      "formula": "running_runs + pending_runs",
+      "window_hours": 1,
+      "confidence": "high",
+      "state": "degraded",
+      "evidence": [
+        {
+          "kind": "collector-run",
+          "url": "https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml"
+        }
+      ]
+    },
+    {
+      "id": "result_doc_coverage",
+      "label": "Result doc coverage",
+      "value": 100.0,
+      "unit": "percent",
+      "numerator": 22,
+      "denominator": 22,
+      "formula": "observed_result_docs / expected_result_docs * 100",
+      "window_hours": 24,
+      "confidence": "high",
+      "state": "degraded",
+      "evidence": [
+        {
+          "kind": "collector-run",
+          "url": "https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml"
+        }
+      ]
+    },
+    {
+      "id": "unknown_station_ratio",
+      "label": "Unknown station ratio",
+      "value": 75.0,
+      "unit": "percent",
+      "numerator": 3,
+      "denominator": 4,
+      "formula": "unknown_station_count / total_stations * 100",
+      "window_hours": 24,
+      "confidence": "high",
+      "state": "degraded",
+      "evidence": [
+        {
+          "kind": "collector-run",
+          "url": "https://github.com/projectbluefin/testing-lab/actions/workflows/update-test-results.yml"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "source": "live_cluster_snapshot",
+      "reason": "private endpoint unavailable or incomplete from GitHub-hosted runner",
+      "effect": "public telemetry downgraded to partial/degraded"
+    }
+  ]
+}

@@ -27,3 +27,34 @@ def test_factory_copy_and_history_have_expected_shape():
 def test_dashboard_data_files_still_exist():
     assert (ROOT / 'docs/data/factory-stats.json').exists()
     assert (ROOT / 'docs/screenshots/bluefin-testing-smoke-latest.png').exists()
+
+
+def test_factory_public_telemetry_contract_shape():
+    telemetry = json.loads((ROOT / 'docs/data/factory-telemetry.json').read_text())
+    snapshot = telemetry['snapshot']
+    coverage = telemetry['coverage']
+    lineage = telemetry['lineage']['collector']
+
+    assert telemetry['schema_version'] == 'v2'
+    assert snapshot['generated_at']
+    assert snapshot['state'] in {'fresh', 'stale', 'unknown', 'partial', 'degraded'}
+    if snapshot['age_minutes'] is not None:
+        assert snapshot['age_minutes'] >= 0
+
+    assert coverage['expected_result_docs'] >= coverage['observed_result_docs']
+    assert 0 <= coverage['coverage_ratio'] <= 1
+    if snapshot['state'] == 'partial':
+        assert coverage['coverage_ratio'] < 0.9
+
+    assert lineage['run_url'].startswith('https://github.com/')
+    assert lineage['commit_url'].startswith('https://github.com/')
+
+    for metric in telemetry['metrics']:
+        assert metric['id']
+        assert metric['formula']
+        assert metric['window_hours'] > 0
+        assert metric['confidence'] in {'high', 'medium', 'low'}
+        assert metric['state'] in {'fresh', 'stale', 'unknown', 'partial', 'degraded'}
+        assert 'numerator' in metric and 'denominator' in metric
+        assert metric['evidence']
+        assert all(ref.get('url', '').startswith('https://') for ref in metric['evidence'])

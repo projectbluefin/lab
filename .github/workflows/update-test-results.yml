@@ -167,6 +167,92 @@ jobs:
                   return int(mem[:-2])
               return None
 
+          def parse_mem_bytes(mem):
+              if not mem:
+                  return None
+              try:
+                  if mem.endswith('Ki'):
+                      return int(mem[:-2]) * 1024
+                  if mem.endswith('Mi'):
+                      return int(mem[:-2]) * 1024 * 1024
+                  if mem.endswith('Gi'):
+                      return int(mem[:-2]) * 1024 * 1024 * 1024
+                  if mem.endswith('Ti'):
+                      return int(mem[:-2]) * 1024 * 1024 * 1024 * 1024
+                  return int(mem)
+              except Exception:
+                  return None
+
+          def parse_cpu_millicores(cpu):
+              if cpu is None:
+                  return None
+              s = str(cpu)
+              try:
+                  if s.endswith('n'):
+                      return float(s[:-1]) / 1_000_000.0
+                  if s.endswith('u'):
+                      return float(s[:-1]) / 1000.0
+                  if s.endswith('m'):
+                      return float(s[:-1])
+                  return float(s) * 1000.0
+              except Exception:
+                  return None
+
+          def summarize_image_status(recent_runs):
+              # Use observed workflow labels (image:tag) and enrich with source repo PR counts.
+              image_map = {
+                  'bluefin': 'projectbluefin/bluefin',
+                  'bluefin-lts': 'projectbluefin/bluefin-lts',
+                  'dakota': 'projectbluefin/dakota',
+                  'aurora': 'projectbluefin/aurora',
+                  'bazzite': 'ublue-os/bazzite',
+              }
+              now_dt = datetime.datetime.now(datetime.timezone.utc)
+              summary = {}
+              for image in image_map.keys():
+                  summary[image] = {
+                      'stable_seen_at': None,
+                      'testing_seen_at': None,
+                      'stable_age_days': None,
+                      'testing_age_days': None,
+                      'open_prs': None,
+                      'repo': image_map[image],
+                  }
+
+              for run in (recent_runs or []):
+                  if run.get('overall') != 'passed':
+                      continue
+                  label = run.get('label') or ''
+                  started = parse_iso(run.get('started_at'))
+                  if not started or ':' not in label:
+                      continue
+                  image, tag = label.split(':', 1)
+                  if image not in summary:
+                      continue
+                  if tag == 'stable':
+                      prev = parse_iso(summary[image]['stable_seen_at'])
+                      if prev is None or started > prev:
+                          summary[image]['stable_seen_at'] = run.get('started_at')
+                  if tag == 'testing':
+                      prev = parse_iso(summary[image]['testing_seen_at'])
+                      if prev is None or started > prev:
+                          summary[image]['testing_seen_at'] = run.get('started_at')
+
+              for image, row in summary.items():
+                  stable_dt = parse_iso(row.get('stable_seen_at'))
+                  testing_dt = parse_iso(row.get('testing_seen_at'))
+                  if stable_dt:
+                      row['stable_age_days'] = max(0, int((now_dt - stable_dt).total_seconds() // 86400))
+                  if testing_dt:
+                      row['testing_age_days'] = max(0, int((now_dt - testing_dt).total_seconds() // 86400))
+                  repo = row.get('repo')
+                  if repo:
+                      prs = run_json(f"gh pr list --repo {repo} --state open --limit 200 --json number")
+                      if isinstance(prs, list):
+                          row['open_prs'] = len(prs)
+
+              return summary
+
           # --- Open bugs ---
           with open('/tmp/bugs-raw.json') as f:
               raw = json.load(f)
@@ -292,12 +378,28 @@ jobs:
 
           # --- Optional live cluster node snapshot ---
           node_doc = run_json("kubectl get nodes -o json --request-timeout=8s")
+          metrics_doc = run_json("kubectl get --raw '/apis/metrics.k8s.io/v1beta1/nodes'")
           live_nodes_ok = False
           if node_doc and isinstance(node_doc.get('items'), list):
+              existing_nodes = {}
+              try:
+                  existing_nodes = {n.get('name'): n for n in (((stats.get('factory') or {}).get('cluster') or {}).get('nodes') or []) if n.get('name')}
+              except Exception:
+                  existing_nodes = {}
+              usage_by_node = {}
+              if metrics_doc and isinstance(metrics_doc.get('items'), list):
+                  for item in metrics_doc.get('items', []):
+                      md = item.get('metadata') or {}
+                      usage = item.get('usage') or {}
+                      usage_by_node[md.get('name')] = {
+                          'cpu_m': parse_cpu_millicores(usage.get('cpu')),
+                          'mem_b': parse_mem_bytes(usage.get('memory')),
+                      }
               nodes = []
               total_ram = 0
               for n in node_doc['items']:
                   md = n.get('metadata', {})
+                  st = n.get('status') or {}
                   cap = (n.get('status') or {}).get('capacity') or {}
                   conds = (n.get('status') or {}).get('conditions') or []
                   ready = next((c.get('status') == 'True' for c in conds if c.get('type') == 'Ready'), False)
@@ -308,12 +410,33 @@ jobs:
                   ram_gb = parse_mem_gib(cap.get('memory'))
                   if ram_gb:
                       total_ram += ram_gb
+                  node_name = md.get('name')
+                  usage = usage_by_node.get(node_name, {})
+                  cap_cpu_m = parse_cpu_millicores(cap.get('cpu'))
+                  cap_mem_b = parse_mem_bytes(cap.get('memory'))
+                  cpu_pct = None
+                  mem_pct = None
+                  if usage.get('cpu_m') is not None and cap_cpu_m and cap_cpu_m > 0:
+                      cpu_pct = round((usage.get('cpu_m') / cap_cpu_m) * 100, 1)
+                  if usage.get('mem_b') is not None and cap_mem_b and cap_mem_b > 0:
+                      mem_pct = round((usage.get('mem_b') / cap_mem_b) * 100, 1)
+                  prev = existing_nodes.get(node_name, {})
+                  load_hist = list(prev.get('load_1m_history') or [])
+                  if cpu_pct is not None:
+                      load_hist.append(cpu_pct)
+                  load_hist = [round(float(v), 1) for v in load_hist if isinstance(v, (int, float, str)) and str(v).strip() != ''][-12:]
                   nodes.append({
-                      'name': md.get('name'),
+                      'name': node_name,
                       'status': 'ready' if ready else 'not-ready',
                       'role': role,
                       'ram_gb': ram_gb,
                       'cpu_threads': safe_int(cap.get('cpu')),
+                      'os_image': ((st.get('nodeInfo') or {}).get('osImage')),
+                      'kernel_version': ((st.get('nodeInfo') or {}).get('kernelVersion')),
+                      'kubelet_version': ((st.get('nodeInfo') or {}).get('kubeletVersion')),
+                      'cpu_usage_pct': cpu_pct,
+                      'mem_usage_pct': mem_pct,
+                      'load_1m_history': load_hist,
                   })
               factory = stats.setdefault('factory', {})
               cluster = factory.setdefault('cluster', {})
@@ -325,6 +448,10 @@ jobs:
               cluster = factory.setdefault('cluster', {})
               # Keep last known live snapshot when unavailable from this runner.
               cluster.setdefault('nodes', [])
+
+          # --- Update metadata timestamps ---
+          factory = stats.setdefault('factory', {})
+          factory['images'] = summarize_image_status(stats.get('recent_runs', []))
 
           # --- Update metadata timestamps ---
           meta = stats.setdefault('_meta', {})

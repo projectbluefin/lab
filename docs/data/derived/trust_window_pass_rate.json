@@ -1,0 +1,731 @@
+{
+  "schema_version": "v2",
+  "generated_at": "2026-06-29T16:42:51Z",
+  "generator": {
+    "notebook": "notebooks/01_pass_rate_wilson.ipynb",
+    "notebook_url": "https://qa.projectbluefin.io/methods/01_pass_rate_wilson.html",
+    "workflow_run_url": null,
+    "commit_sha": null,
+    "inputs_sha256": "8eb7fcf726a3bbe1148ae6940bad1136984bf46971a59cf92525611ecc88c422",
+    "library_versions": {
+      "statsmodels": "0.14.4",
+      "scipy": "1.14.1",
+      "pandas": "2.2.3",
+      "jsonschema": "4.23.0",
+      "nbformat": "5.10.4",
+      "nbconvert": "7.16.4",
+      "papermill": "2.6.0",
+      "jupyter": "1.0.0"
+    }
+  },
+  "metrics": [
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.common.contributor",
+      "label": "T pass-rate (contributor window) - bluefin/testing/common",
+      "value": 0.39473684210526316,
+      "ci_lower": 0.3335382939489161,
+      "ci_upper": 0.4594236713347688,
+      "ci_level": 0.95,
+      "n": 228,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 24,
+        "audience": "contributor"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "common",
+        "audience": "contributor"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 90,
+      "denominator": 228,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-common.json",
+          "path": "docs/results/bluefin-testing-common.json",
+          "sha256": "aeedca639f0238a555b5a6d6069c27fe7a96b89dc6332060d644e6742680ae70"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.common.user",
+      "label": "T pass-rate (user window) - bluefin/testing/common",
+      "value": 0.39473684210526316,
+      "ci_lower": 0.3335382939489161,
+      "ci_upper": 0.4594236713347688,
+      "ci_level": 0.95,
+      "n": 228,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 168,
+        "audience": "user"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "common",
+        "audience": "user"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 90,
+      "denominator": 228,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-common.json",
+          "path": "docs/results/bluefin-testing-common.json",
+          "sha256": "aeedca639f0238a555b5a6d6069c27fe7a96b89dc6332060d644e6742680ae70"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.common.downstream",
+      "label": "T pass-rate (downstream window) - bluefin/testing/common",
+      "value": 0.39473684210526316,
+      "ci_lower": 0.3335382939489161,
+      "ci_upper": 0.4594236713347688,
+      "ci_level": 0.95,
+      "n": 228,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 720,
+        "audience": "downstream"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "common",
+        "audience": "downstream"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 90,
+      "denominator": 228,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-common.json",
+          "path": "docs/results/bluefin-testing-common.json",
+          "sha256": "aeedca639f0238a555b5a6d6069c27fe7a96b89dc6332060d644e6742680ae70"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.developer.contributor",
+      "label": "T pass-rate (contributor window) - bluefin/testing/developer",
+      "value": 0.848,
+      "ci_lower": 0.7747693201833344,
+      "ci_upper": 0.9004791657956704,
+      "ci_level": 0.95,
+      "n": 125,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 24,
+        "audience": "contributor"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "developer",
+        "audience": "contributor"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 106,
+      "denominator": 125,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-developer.json",
+          "path": "docs/results/bluefin-testing-developer.json",
+          "sha256": "3fae89aaa2eed29345ca97ab02b04f1f458d319bc652b9829f7a7f476e7d226f"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.developer.user",
+      "label": "T pass-rate (user window) - bluefin/testing/developer",
+      "value": 0.848,
+      "ci_lower": 0.7747693201833344,
+      "ci_upper": 0.9004791657956704,
+      "ci_level": 0.95,
+      "n": 125,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 168,
+        "audience": "user"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "developer",
+        "audience": "user"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 106,
+      "denominator": 125,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-developer.json",
+          "path": "docs/results/bluefin-testing-developer.json",
+          "sha256": "3fae89aaa2eed29345ca97ab02b04f1f458d319bc652b9829f7a7f476e7d226f"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.developer.downstream",
+      "label": "T pass-rate (downstream window) - bluefin/testing/developer",
+      "value": 0.848,
+      "ci_lower": 0.7747693201833344,
+      "ci_upper": 0.9004791657956704,
+      "ci_level": 0.95,
+      "n": 125,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 720,
+        "audience": "downstream"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "developer",
+        "audience": "downstream"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 106,
+      "denominator": 125,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-developer.json",
+          "path": "docs/results/bluefin-testing-developer.json",
+          "sha256": "3fae89aaa2eed29345ca97ab02b04f1f458d319bc652b9829f7a7f476e7d226f"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.smoke.contributor",
+      "label": "T pass-rate (contributor window) - bluefin/testing/smoke",
+      "value": 0.872992700729927,
+      "ci_lower": 0.8543113281493908,
+      "ci_upper": 0.8895881905602026,
+      "ci_level": 0.95,
+      "n": 1370,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 24,
+        "audience": "contributor"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "smoke",
+        "audience": "contributor"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 1196,
+      "denominator": 1370,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-smoke.json",
+          "path": "docs/results/bluefin-testing-smoke.json",
+          "sha256": "871a7f7b664e4b6c1ddfe8d377d47265ea5b0a407d0e6c08c53d0c35632a3e98"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.smoke.user",
+      "label": "T pass-rate (user window) - bluefin/testing/smoke",
+      "value": 0.872992700729927,
+      "ci_lower": 0.8543113281493908,
+      "ci_upper": 0.8895881905602026,
+      "ci_level": 0.95,
+      "n": 1370,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 168,
+        "audience": "user"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "smoke",
+        "audience": "user"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 1196,
+      "denominator": 1370,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-smoke.json",
+          "path": "docs/results/bluefin-testing-smoke.json",
+          "sha256": "871a7f7b664e4b6c1ddfe8d377d47265ea5b0a407d0e6c08c53d0c35632a3e98"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.smoke.downstream",
+      "label": "T pass-rate (downstream window) - bluefin/testing/smoke",
+      "value": 0.872992700729927,
+      "ci_lower": 0.8543113281493908,
+      "ci_upper": 0.8895881905602026,
+      "ci_level": 0.95,
+      "n": 1370,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 720,
+        "audience": "downstream"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "smoke",
+        "audience": "downstream"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 1196,
+      "denominator": 1370,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-smoke.json",
+          "path": "docs/results/bluefin-testing-smoke.json",
+          "sha256": "871a7f7b664e4b6c1ddfe8d377d47265ea5b0a407d0e6c08c53d0c35632a3e98"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.system.contributor",
+      "label": "T pass-rate (contributor window) - bluefin/testing/system",
+      "value": 0.5714285714285714,
+      "ci_lower": 0.3259064457965074,
+      "ci_upper": 0.7861920109552588,
+      "ci_level": 0.95,
+      "n": 14,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 24,
+        "audience": "contributor"
+      },
+      "confidence": "medium",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "system",
+        "audience": "contributor"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 8,
+      "denominator": 14,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": true,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-system.json",
+          "path": "docs/results/bluefin-testing-system.json",
+          "sha256": "78fefd5edfec98072c7f630e01f910a8683697028de9226efcece8f068d54571"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.system.user",
+      "label": "T pass-rate (user window) - bluefin/testing/system",
+      "value": 0.5714285714285714,
+      "ci_lower": 0.3259064457965074,
+      "ci_upper": 0.7861920109552588,
+      "ci_level": 0.95,
+      "n": 14,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 168,
+        "audience": "user"
+      },
+      "confidence": "medium",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "system",
+        "audience": "user"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 8,
+      "denominator": 14,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": true,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-system.json",
+          "path": "docs/results/bluefin-testing-system.json",
+          "sha256": "78fefd5edfec98072c7f630e01f910a8683697028de9226efcece8f068d54571"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin.testing.system.downstream",
+      "label": "T pass-rate (downstream window) - bluefin/testing/system",
+      "value": 0.5714285714285714,
+      "ci_lower": 0.3259064457965074,
+      "ci_upper": 0.7861920109552588,
+      "ci_level": 0.95,
+      "n": 14,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 720,
+        "audience": "downstream"
+      },
+      "confidence": "medium",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin",
+        "branch": "testing",
+        "suite": "system",
+        "audience": "downstream"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 8,
+      "denominator": 14,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": true,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-testing-system.json",
+          "path": "docs/results/bluefin-testing-system.json",
+          "sha256": "78fefd5edfec98072c7f630e01f910a8683697028de9226efcece8f068d54571"
+        }
+      ]
+    }
+  ]
+}

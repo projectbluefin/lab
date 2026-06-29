@@ -26,6 +26,7 @@ const DATA = {
   stats: null,
   history: null,
   telemetry: null,
+  derivedTrust: null,
 };
 
 const fmt = new Intl.DateTimeFormat(undefined, {
@@ -449,6 +450,78 @@ function buildTourMap(stations) {
   `;
 }
 
+function buildTrustWindowSection(derived) {
+  if (!derived || !Array.isArray(derived.metrics) || derived.metrics.length === 0) {
+    return `
+    <section class="section twpr-section" id="trust-window-pass-rate">
+      <div class="twpr-heading">
+        <h2>Trust-Window Pass Rate <span class="twpr-tag">research-grade</span></h2>
+        <p class="twpr-intro">No derived data yet. The hourly derive workflow has not committed output. See <a href="./about/methodology.html">methodology</a>.</p>
+      </div>
+    </section>`;
+  }
+  const audiences = [
+    { value: 'contributor', label: '24h (contributor)' },
+    { value: 'user', label: '7d (user)' },
+    { value: 'downstream', label: '30d (downstream)' },
+  ];
+  const byAudience = {};
+  for (const m of derived.metrics) {
+    const aud = m?.context?.audience || 'user';
+    (byAudience[aud] = byAudience[aud] || []).push(m);
+  }
+  for (const k of Object.keys(byAudience)) {
+    byAudience[k].sort((a, b) => (a.id || '').localeCompare(b.id || ''));
+  }
+  const gen = derived.generator || {};
+  const tabs = audiences.map((a, i) => `
+    <button type="button" class="twpr-tab ${a.value === 'user' ? 'active' : ''}" data-audience="${a.value}">${escapeHtml(a.label)} <span class="twpr-count">${(byAudience[a.value] || []).length}</span></button>
+  `).join('');
+  const panels = audiences.map((a) => `
+    <div class="twpr-panel ${a.value === 'user' ? 'active' : ''}" data-audience-panel="${a.value}">
+      ${(byAudience[a.value] || []).length === 0
+        ? `<p class="twpr-empty">No records in this window.</p>`
+        : `<div class="twpr-grid">${(byAudience[a.value] || []).map(buildTwprTile).join('')}</div>`}
+    </div>
+  `).join('');
+  return `
+  <section class="section twpr-section" id="trust-window-pass-rate">
+    <div class="twpr-heading">
+      <h2>Trust-Window Pass Rate <span class="twpr-tag">research-grade</span></h2>
+      <p class="twpr-intro">
+        Wilson 95% confidence interval per (variant, branch, suite) over an audience window.
+        Method: <a href="./about/methodology.html#trust_window_pass_rate">methodology</a> · Notebook: <a href="./methods/01_pass_rate_wilson.html">01_pass_rate_wilson.html</a>${gen.commit_sha ? ` · Generated from <span class="mono">${escapeHtml(String(gen.commit_sha).slice(0, 7))}</span>` : ''}
+      </p>
+    </div>
+    <div class="twpr-tabs" role="tablist">${tabs}</div>
+    <div class="twpr-panels">${panels}</div>
+  </section>`;
+}
+
+function buildTwprTile(m) {
+  const ctx = m.context || {};
+  const pct = m.value == null ? '—' : (m.value * 100).toFixed(1) + '%';
+  const lo = m.ci_lower == null ? '—' : (m.ci_lower * 100).toFixed(1);
+  const hi = m.ci_upper == null ? '—' : (m.ci_upper * 100).toFixed(1);
+  const n = (m.n == null ? '—' : m.n);
+  const activeFMs = (m.failure_modes || []).filter((f) => f.active);
+  const stateTone = m.state === 'fresh' ? 'good' : (m.state === 'degraded' ? 'bad' : 'warn');
+  const fmChip = activeFMs.length > 0
+    ? `<details class="twpr-fmea"><summary class="twpr-fmea-chip twpr-fmea-active" title="${activeFMs.length} active failure mode${activeFMs.length === 1 ? '' : 's'}">⚠ ${activeFMs.length} active</summary><ul>${activeFMs.map((f) => `<li><strong>${escapeHtml(f.id)}</strong>: ${escapeHtml(f.description)}</li>`).join('')}</ul></details>`
+    : `<span class="twpr-fmea-chip twpr-fmea-clean" title="No active failure modes">FMEA clean</span>`;
+  return `
+    <article class="twpr-tile">
+      <header class="twpr-tile-header">
+        <span class="twpr-key mono">${escapeHtml(ctx.variant || '?')}/${escapeHtml(ctx.branch || '?')}/${escapeHtml(ctx.suite || '?')}</span>
+        <span class="chip ${stateTone}">${escapeHtml(m.state || 'unknown')}</span>
+      </header>
+      <div class="twpr-value">${pct}</div>
+      <div class="twpr-ci">95% CI [${lo}, ${hi}]% · <span class="mono">n=${escapeHtml(String(n))}</span></div>
+      <div class="twpr-method">Wilson 95% · confidence ${escapeHtml(m.confidence || 'unknown')}</div>
+      <div class="twpr-fmea-row">${fmChip}</div>
+    </article>`;
+}
+
 function render(copy, stats, history, telemetry) {
   const root = document.getElementById('factory-dashboard');
   const runs = Array.isArray(stats?.recent_runs) ? stats.recent_runs : [];
@@ -642,6 +715,8 @@ function render(copy, stats, history, telemetry) {
       </div>
     </section>
 
+    ${buildTrustWindowSection(DATA.derivedTrust)}
+
     <section class="section">
       <h2>Screenshots</h2>
       <div class="shot-grid">
@@ -653,19 +728,34 @@ function render(copy, stats, history, telemetry) {
       Snapshot generated ${escapeHtml(formatTime(stats?._meta?.generated))} · refreshed ${escapeHtml(formatTime(stats?._meta?.refreshed_at))} · ${escapeHtml(copy.station_labels.join(' / '))}
     </div>
   `;
+  attachTwprTabs(root);
+}
+
+function attachTwprTabs(root) {
+  const tabs = root.querySelectorAll('.twpr-tab');
+  if (!tabs.length) return;
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = tab.getAttribute('data-audience');
+      root.querySelectorAll('.twpr-tab').forEach((t) => t.classList.toggle('active', t === tab));
+      root.querySelectorAll('.twpr-panel').forEach((p) => p.classList.toggle('active', p.getAttribute('data-audience-panel') === target));
+    });
+  });
 }
 
 async function main() {
-  const [copy, stats, history, telemetry] = await Promise.all([
+  const [copy, stats, history, telemetry, derivedTrust] = await Promise.all([
     loadJson('./data/factory-copy.json', DEFAULT_COPY),
     loadJson('./data/factory-stats.json', { recent_runs: [], open_bugs: [], _meta: {}, test_coverage: {}, factory: { cluster: { nodes: [], total_ram_gb: 0 } } }),
     loadJson('./data/factory-history.json', { rollups: [] }),
     loadJson('./data/factory-telemetry.json', { snapshot: {}, metrics: [], coverage: {}, lineage: {}, errors: [] }),
+    loadJson('./data/derived/trust_window_pass_rate.json', null),
   ]);
   DATA.copy = copy;
   DATA.stats = stats;
   DATA.history = history;
   DATA.telemetry = telemetry;
+  DATA.derivedTrust = derivedTrust;
   render(copy, stats, history, telemetry);
 }
 

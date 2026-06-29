@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bluefin QA — Methodology</title>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --surface2:#21262d;
+      --border:  #30363d;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --link:    #58a6ff;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg:      #ffffff;
+        --surface: #f6f8fa;
+        --surface2:#eaeef2;
+        --border:  #d0d7de;
+        --text:    #1f2328;
+        --muted:   #59636e;
+        --link:    #0969da;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+      padding: 20px 24px;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 16px; gap: 16px; flex-wrap: wrap;
+      padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    }
+    h1 { font-size: 18px; font-weight: 600; }
+    .header-meta { font-size: 12px; color: var(--muted); }
+    h2 {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted);
+      margin: 24px 0 8px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    p { margin: 8px 0; }
+    .intro { color: var(--text); max-width: 78ch; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      font-size: 13px;
+      margin: 8px 0 16px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 11px;
+    }
+    tr:last-child td { border-bottom: 0; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      background: var(--surface2);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .enum {
+      display: inline-block;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      margin: 2px 4px 2px 0;
+    }
+    .planned { color: var(--muted); font-style: italic; }
+    footer {
+      margin-top: 32px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--muted);
+      display: flex; flex-wrap: wrap; gap: 16px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Bluefin QA — Methodology</h1>
+    <div class="header-meta"><a href="/">&larr; back to dashboard</a></div>
+  </header>
+
+  <p class="intro">
+    This page documents the statistical methods used to compute every derived metric on
+    qa.projectbluefin.io. Every panel on the site that displays a number with a confidence
+    interval references a row in the table below. Click the notebook link to audit the
+    methodology and re-execute it against the raw inputs.
+  </p>
+
+  <h2>Derived metrics</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric ID prefix</th>
+        <th>What it measures</th>
+        <th>Estimator</th>
+        <th>Window</th>
+        <th>Notebook</th>
+        <th>Citation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>trust_window_pass_rate</code></td>
+        <td>Per (variant, branch, suite) pass rate over an audience window.</td>
+        <td>Wilson score interval, 95%</td>
+        <td>24h / 7d / 30d</td>
+        <td><a href="/methods/01_pass_rate_wilson.html">01_pass_rate_wilson.html</a></td>
+        <td>Wilson, E. B. (1927). JASA 22(158):209&ndash;212.</td>
+      </tr>
+      <tr>
+        <td><code>reproducibility_rate</code></td>
+        <td>P(image_digest(rebuild) == image_digest(prior) given identical inputs).</td>
+        <td>Wilson score interval, 95%</td>
+        <td>rolling 30 nights</td>
+        <td class="planned">planned: 03_reproducibility</td>
+        <td>Reproducible Builds Project methodology</td>
+      </tr>
+      <tr>
+        <td><code>provenance_completeness</code></td>
+        <td>Fraction of SLSA edges that verify under <code>cosign verify-attestation</code>.</td>
+        <td>Wilson score interval, 95% on edge counts</td>
+        <td>per-image</td>
+        <td class="planned">planned: 04_provenance_walk</td>
+        <td>SLSA v1.0; in-toto Attestation Framework</td>
+      </tr>
+      <tr>
+        <td><code>regression_localization_latency</code></td>
+        <td>Median wall-time from regression onset (BOCPD change-point) to identified commit.</td>
+        <td>BOCPD posterior + git-blame attribution</td>
+        <td>per-detection</td>
+        <td class="planned">planned: 02_changepoint</td>
+        <td>Adams &amp; MacKay (2007). Bayesian Online Changepoint Detection. arXiv:0710.3742</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Failure Mode and Effects Analysis (FMEA)</h2>
+  <p>
+    Every derived metric record on this site carries a <code>failure_modes</code> array — a
+    structured list of declared ways the metric's value could be wrong. Each failure mode has
+    an <code>id</code>, a <code>description</code>, an <code>active</code> boolean (computed
+    by the notebook from data heuristics), and where applicable a <code>threshold</code> and
+    <code>evidence_url</code>.
+  </p>
+  <p>
+    Panels in the dashboard surface a warning chip whose count equals the number of currently
+    active failure modes. Click the chip to expand the list. FMEA is reliability
+    engineering's standard tool (IEC 60812); applying it to dashboard metrics makes the
+    dashboard's own failure modes a first-class signal.
+  </p>
+
+  <h2>State vocabulary</h2>
+  <p>The two state enums used on the site are locked:</p>
+  <p>
+    <strong>Station status:</strong>
+    <span class="enum">partial</span>
+    <span class="enum">degraded</span>
+    <span class="enum">unknown</span>
+    <span class="enum">not_attested</span>
+    <span class="enum">not_published</span>
+    <span class="enum">blocked</span>
+    <span class="enum">published</span>
+  </p>
+  <p>
+    <strong>Snapshot / metric state:</strong>
+    <span class="enum">fresh</span>
+    <span class="enum">stale</span>
+    <span class="enum">unknown</span>
+    <span class="enum">partial</span>
+    <span class="enum">degraded</span>
+  </p>
+  <p>
+    New state values cannot be introduced without amending both
+    <code>tests/unit/test_factory_dashboard_contract.py</code> and
+    <code>schemas/v2/derived-metric.schema.json</code> in the same change.
+  </p>
+
+  <footer>
+    <a href="https://github.com/castrojo/testing-lab">repository</a>
+    <a href="https://github.com/castrojo/testing-lab/blob/main/plan.md">plan.md</a>
+    <a href="https://github.com/castrojo/testing-lab/tree/main/schemas/v2">schemas/v2/</a>
+  </footer>
+</body>
+</html>

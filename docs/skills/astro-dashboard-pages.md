@@ -51,7 +51,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 7. For unavailable chart inputs, do not hide the chart section. Render an explicit empty-state panel in the chart container.
 8. Every detail row must link to raw evidence when present: local result JSON, GitHub source URL, screenshot URL, workflow run URL.
 9. Because this repo builds Astro directly into `docs/`, scrub transient build outputs before each build (`docs/.prerender`, `docs/_astro`, generated page directories) so repeated builds do not reuse stale hashed chunks.
-10. GitHub Pages here is a project site, not a user-root site. Keep Astro `base` aligned to `/testing-lab/` and use `import.meta.env.BASE_URL` for any page-owned asset or internal-link URL that must survive nested routes.
+10. This site is served on the custom domain root (`qa.projectbluefin.io`). Keep Astro paths root-relative (`/`) and still use `import.meta.env.BASE_URL` so links/scripts stay correct if hosting topology changes.
 11. Mark every browser-runtime script that must escape Cloudflare Rocket Loader with `data-cfasync="false"`, including bundled Astro page scripts, not just the legacy dashboard shell.
 12. Validate with the narrowest commands that prove the page works:
    - targeted Node test covering rendered HTML
@@ -71,7 +71,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 
 - Astro page reads `docs/results/*` through fragile `import.meta.url` math
 - Repeated `npm run build` fails because `docs/.prerender` still points at old hashed chunks
-- Generated HTML references `/_astro/*` instead of `/testing-lab/_astro/*` for project Pages hosting
+- Generated HTML references a stale path prefix (for example `/testing-lab/_astro/*`) that does not match the active custom-domain root hosting
 - Chart section disappears entirely when data is missing
 - Detail cards show pass/fail text without raw result, source, screenshot, or workflow links
 - Browser script invents fallback metrics not present in the contract
@@ -86,7 +86,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - [ ] ECharts mounts at least one real chart from published fields and shows explicit empty states otherwise
 - [ ] Detail cards link to `results_path`, `source_url`, and screenshot/workflow evidence when present
 - [ ] Repeated `npm run build` runs succeed from the same worktree without stale chunk imports
-- [ ] Built HTML prefixes Astro `_astro` assets with the project Pages base (`/testing-lab/` here)
+- [ ] Built HTML prefixes Astro `_astro` assets with the active domain root path contract (currently `/_astro/*` on `qa.projectbluefin.io`)
 - [ ] Runtime script tags that must execute unmodified keep `data-cfasync="false"` in built HTML
 - [ ] Targeted HTML test covers chart section labels, evidence links, and unavailable copy
 - [ ] `npm run build` succeeds for the Astro worktree

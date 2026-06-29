@@ -29,10 +29,10 @@ test('Astro build emits multipage factory routes into docs', () => {
   }
 
   assert.match(html('docs/index.html'), /factory-dashboard/, 'overview keeps the dashboard shell');
-  assert.match(html('docs/index.html'), /href="\/testing-lab\/upstream\/"/, 'overview links to upstream with Pages base');
-  assert.match(html('docs/index.html'), /src="\/testing-lab\/assets\/factory-dashboard\.js" defer data-cfasync="false"/, 'overview keeps Cloudflare-safe dashboard script');
-  assert.match(html('docs/tests/index.html'), /src="\/testing-lab\/_astro\/tests-charts\.[^"]+" data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
-  assert.match(html('docs/upstream/index.html'), /src="\/testing-lab\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'upstream page keeps Cloudflare-safe chart script');
+  assert.match(html('docs/index.html'), /href="\/upstream\/"/, 'overview links to upstream at domain root');
+  assert.match(html('docs/index.html'), /src="\/assets\/factory-dashboard\.js" defer data-cfasync="false"/, 'overview keeps Cloudflare-safe dashboard script');
+  assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+" data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
+  assert.match(html('docs/upstream/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'upstream page keeps Cloudflare-safe chart script');
   assert.match(html('docs/upstream/index.html'), /Upstream/, 'upstream page renders');
   assert.match(html('docs/tests/index.html'), /Tests/, 'tests page renders');
   assert.match(html('docs/applications/index.html'), /Applications/, 'applications page renders');

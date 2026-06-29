@@ -263,10 +263,21 @@ spec:
         # Use the image's native filesystem unless --filesystem override is specified.
         # bluefin:testing → Fedora → btrfs (native).
         # bluefin-lts:testing → CentOS/RHEL → xfs (native).
-        # Forcing btrfs on LTS broke GRUB EFI: CentOS grubx64.efi lacks btrfs.mod.
+        # Aurora/Bazzite are Fedora-family images and bootc install to-disk expects btrfs there too.
+        # Dakota stays blocked by composefs/UKI, but still uses btrfs when the build path is exercised.
         FS_ARG=""
         if [[ -n "{{inputs.parameters.filesystem}}" ]]; then
           FS_ARG="--filesystem {{inputs.parameters.filesystem}}"
+        else
+          case "${IMAGE}" in
+            ghcr.io/projectbluefin/bluefin-lts:*) FS_ARG="--filesystem xfs" ;;
+            ghcr.io/projectbluefin/bluefin:*|ghcr.io/ublue-os/aurora:*|ghcr.io/ublue-os/bazzite:*|ghcr.io/projectbluefin/dakota:*) FS_ARG="--filesystem btrfs" ;;
+          esac
+        fi
+        if [[ -n "${FS_ARG}" ]]; then
+          echo "[BUILD] filesystem args: ${FS_ARG}"
+        else
+          echo "[BUILD] filesystem args: <none>"
         fi
 
         bootc install to-disk \
@@ -423,7 +434,5 @@ spec:
         rm -f "${RAW}" "${QCOW}"
 
         echo "Done: ${DEST}"
-
-
 
 

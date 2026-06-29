@@ -25,8 +25,6 @@ spec:
         value: ""
       - name: filters
         value: "Pod,Deployment,Service,Ingress,Node"
-      - name: explain
-        value: "false"
   templates:
     - name: analyze
       activeDeadlineSeconds: 600
@@ -43,7 +41,6 @@ spec:
             mkdir -p /tmp/results
             mkdir -p /tmp/bin
             ns_arg=""
-            explain_arg=""
             filters_arg=""
 
             arch="$(uname -m)"
@@ -66,14 +63,11 @@ spec:
             if [ -n "{{workflow.parameters.namespace}}" ]; then
               ns_arg="--namespace={{workflow.parameters.namespace}}"
             fi
-            if [ "{{workflow.parameters.explain}}" = "true" ]; then
-              explain_arg="--explain"
-            fi
             if [ -n "{{workflow.parameters.filters}}" ]; then
               filters_arg="--filter={{workflow.parameters.filters}}"
             fi
 
-            /tmp/bin/k8sgpt analyze ${explain_arg} --output=json ${filters_arg} ${ns_arg} > /tmp/results/k8sgpt-results.json
+            /tmp/bin/k8sgpt analyze --output=json ${filters_arg} ${ns_arg} > /tmp/results/k8sgpt-results.json
             findings_count=$(jq '[.. | objects | select(has("kind"))] | length' /tmp/results/k8sgpt-results.json)
             echo "k8sgpt findings: ${findings_count}"
             SCRIPT_EOF

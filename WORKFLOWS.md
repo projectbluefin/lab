@@ -77,7 +77,6 @@ workflow artifact while printing a concise findings summary to logs/stdout.
 |---|---|---|
 | `namespace` | `""` | Empty means cluster-wide scan |
 | `filters` | `Pod,Deployment,Service,Ingress,Node` | Repo-managed core filters; override for focused triage |
-| `explain` | `false` | Optional `--explain`; requires K8sGPT auth/backend config |
 
 Artifact: analyze node emits `k8sgpt-results` from `/tmp/results/k8sgpt-results.json`.
 

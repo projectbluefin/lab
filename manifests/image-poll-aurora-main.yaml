@@ -1,4 +1,4 @@
-# CronWorkflow: polls ghcr.io/ublue-os/aurora:main every 3 hours.
+# CronWorkflow: polls ghcr.io/ublue-os/aurora:latest every 3 hours.
 # Triggers bluefin-qa-pipeline only when OCI digest changes vs ConfigMap state.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -28,7 +28,7 @@ spec:
         - name: image
           value: "ghcr.io/ublue-os/aurora"
         - name: image-tag
-          value: "main"
+          value: "latest"
         - name: state-key
           value: "digest-aurora-main"
         - name: namespace

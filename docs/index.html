@@ -339,6 +339,7 @@
       <tr>
         <th>Image</th>
         <th id="th-smoke"     title="GNOME Shell boot, display, accessibility AT-SPI">Smoke</th>
+        <th id="th-common"    title="Shared/common suite checks">Common</th>
         <th id="th-developer" title="Ptyxis terminal, Podman, Flatpak, Homebrew — needs uinput">Developer</th>
         <th id="th-software"  title="Bazaar, Flatpak, GNOME extensions">Software</th>
         <th id="th-system"    title="bootc integrity, composefs, fs-verity, uupd staged deployments — PLATFORM CONTRACTS">System ⚑</th>
@@ -349,7 +350,7 @@
         <th>Workflow</th>
       </tr>
     </thead>
-    <tbody id="status-tbody"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
+    <tbody id="status-tbody"><tr><td colspan="11" class="empty">Loading…</td></tr></tbody>
   </table>
 </div>
 
@@ -369,6 +370,7 @@
         <th>Workflow</th>
         <th>Image</th>
         <th title="GNOME Shell boot, display, AT-SPI">Smoke</th>
+        <th title="Shared/common checks">Common</th>
         <th title="Ptyxis, Podman, Flatpak">Developer</th>
         <th title="Bazaar, Flatpak extensions">Software</th>
         <th title="bootc / composefs / fs-verity — PLATFORM">System ⚑</th>
@@ -377,7 +379,7 @@
         <th>Result</th>
       </tr>
     </thead>
-    <tbody id="runs-tbody"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+    <tbody id="runs-tbody"><tr><td colspan="10" class="empty">Loading…</td></tr></tbody>
   </table>
 </div>
 
@@ -394,27 +396,39 @@ const ARGO_UI   = 'http://192.168.1.102:32746';
 const GH_REPO   = 'https://github.com/projectbluefin/testing-lab';
 const GH_STATS_API = 'https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/data/factory-stats.json?ref=main';
 const LIVE_STATS_URL = 'https://raw.githubusercontent.com/projectbluefin/testing-lab/main/docs/data/factory-stats.json';
-const SUITES    = ['smoke', 'developer', 'software', 'system'];
+const SUITES    = ['smoke', 'common', 'developer', 'software', 'system'];
 
 // Workflow template per image slug (for submit links in coverage gaps)
 const WORKFLOW_TEMPLATES = {
   'bluefin-testing':         'bluefin-qa-pipeline',
+  'bluefin-main':            'bluefin-qa-pipeline',
+  'bluefin-stable':          'bluefin-qa-pipeline',
   'bluefin-lts-testing':     'bluefin-qa-pipeline',
+  'bluefin-lts-stable':      'bluefin-qa-pipeline',
   'bluefin-bazzite-testing': 'bluefin-qa-pipeline',
+  'bazzite-main':            'bluefin-qa-pipeline',
   'bluefin-aurora-testing':  'bluefin-qa-pipeline',
+  'aurora-main':             'bluefin-qa-pipeline',
   'dakota-testing':          'dakota-qa-pipeline',
+  'fedora-bootc-latest':     'bluefin-qa-pipeline',
+  'fedora-bootc-rawhide':    'bluefin-qa-pipeline',
   'flatcar-testing':         'run-flatcar-tests',
 };
 const SUITE_FEATURES = {
   smoke:     GH_REPO + '/tree/main/tests/smoke/features',
+  common:    GH_REPO + '/tree/main/tests/shared',
   developer: GH_REPO + '/tree/main/tests/developer/features',
   software:  GH_REPO + '/tree/main/tests/software/features',
   system:    GH_REPO + '/tree/main/tests/system/features',
   flatcar:   GH_REPO + '/tree/main/tests/flatcar/features',
 };
+const SUITE_TEST_DIR = {
+  common: 'shared',
+};
 // Feature files per suite (direct links to each .feature file)
 const SUITE_FEATURE_FILES = {
   smoke:     ['gnome_shell', 'flatpak_health', 'browser'],
+  common:    ['shared_checks'],
   developer: ['ptyxis', 'podman', 'brew', 'distrobox', 'devmode'],
   software:  ['flatpak', 'bazaar'],
   system:    ['integrity', 'bootc', 'uupd', 'filesystem'],
@@ -426,6 +440,10 @@ const SUITE_DEBUG_HINTS = {
     'Check GNOME Shell started: <code>systemctl --user status gnome-session</code>',
     'AT-SPI accessibility must be enabled: <code>gsettings get org.gnome.desktop.interface toolkit-accessibility</code>',
     'Wayland display: ensure DISPLAY/WAYLAND_DISPLAY set in session',
+  ],
+  common: [
+    'Shared/common checks used across image variants',
+    'If common fails, compare with smoke/system outcomes for the same workflow',
   ],
   developer: [
     '<a href="https://github.com/projectbluefin/testing-lab/issues/237" style="color:var(--pending)">#237</a> — uinput device may be unavailable; check <code>/dev/uinput</code> permissions',
@@ -919,7 +937,7 @@ function runSuiteCell(d, critical) {
 
 // ── Alert banner ────────────────────────────────────────────────────────────
 function buildAlertBanner(allData, stats) {
-  const failures = allData.filter(d => d.data?.status === 'failed');
+  const failures = allData.filter(d => d.data?.status === 'failed' && !isStaleResult(d.data));
   const bugs = stats.open_bugs || [];
   const runs = stats.recent_runs || [];
   const infraFails = runs.filter(r => r.overall === 'fail' && !r.smoke && !r.developer && !r.system);
@@ -1212,7 +1230,7 @@ function buildTriage(stats, allData) {
 
 // ── Build failures section ──────────────────────────────────────────────────
 function buildFailures(allData, stats) {
-  const failures = allData.filter(d => d.data?.status === 'failed');
+  const failures = allData.filter(d => d.data?.status === 'failed' && !isStaleResult(d.data));
   if (!failures.length) {
     document.getElementById('failures-section').innerHTML = '';
     return;
@@ -1238,7 +1256,8 @@ function buildFailures(allData, stats) {
 
     // Direct feature file links (individual .feature files)
     const featureFiles = (SUITE_FEATURE_FILES[f.suite] || []).map(name => {
-      const path = `tests/${f.suite}/features/${name}.feature`;
+      const suiteDir = SUITE_TEST_DIR[f.suite] || f.suite;
+      const path = `tests/${suiteDir}/features/${name}.feature`;
       return `<a href="${GH_REPO}/blob/main/${path}" target="_blank" rel="noopener" style="color:var(--muted);margin-right:8px">${name}.feature</a>`;
     }).join('');
 
@@ -1306,7 +1325,8 @@ function buildFailures(allData, stats) {
       const fileHtml = Object.entries(catalogByFile).map(([fname, scenarios]) => {
         const rows = scenarios.map(sc => {
           const searchUrl = ghScenarioLink(f.suite, sc);
-          const featureFileUrl = `${GH_REPO}/blob/main/tests/${f.suite}/features/${fname}.feature`;
+          const suiteDir = SUITE_TEST_DIR[f.suite] || f.suite;
+          const featureFileUrl = `${GH_REPO}/blob/main/tests/${suiteDir}/features/${fname}.feature`;
           const safe = sc.replace(/</g,'&lt;').replace(/>/g,'&gt;');
           let status, color, icon;
           if (!hasFailedNames) {
@@ -1334,7 +1354,7 @@ function buildFailures(allData, stats) {
         const failCount = scenarios.filter(sc => failedSet.has(sc)).length;
         const fileLabel = hasFailedNames
           ? (failCount > 0 ? `<span style="color:var(--fail)">${fname}.feature (${failCount} failing)</span>` : `<span style="color:var(--pass)">${fname}.feature ✓</span>`)
-          : `<a href="${GH_REPO}/blob/main/tests/${f.suite}/features/${fname}.feature" target="_blank" rel="noopener" style="color:var(--muted)">${fname}.feature</a>`;
+          : `<a href="${GH_REPO}/blob/main/tests/${SUITE_TEST_DIR[f.suite] || f.suite}/features/${fname}.feature" target="_blank" rel="noopener" style="color:var(--muted)">${fname}.feature</a>`;
 
         return `<div style="margin-bottom:8px">
           <div style="font-size:11px;font-weight:600;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">${fileLabel}</div>
@@ -1404,7 +1424,7 @@ function buildStatusTable(images, allData) {
     bySlug[d.image.slug][d.suite] = d.data;
   }
 
-  const ALL_COLS = ['smoke', 'developer', 'software', 'system', 'flatcar'];
+  const ALL_COLS = ['smoke', 'common', 'developer', 'software', 'system', 'flatcar'];
 
   const rows = images.map(img => {
     const row = bySlug[img.slug] || {};
@@ -1507,8 +1527,8 @@ function buildQueue(stats) {
 // ── Annotate status table headers with scenario counts from test_coverage ───
 function annotateStatusTableHeaders(stats) {
   const cov = stats.test_coverage?.suites || stats.test_coverage?.coverage_by_suite || {};
-  const manual = { smoke: 29, developer: 31, software: 26, system: 14, flatcar: 14 };
-  ['smoke', 'developer', 'software', 'system', 'flatcar'].forEach(s => {
+  const manual = { smoke: 29, common: 12, developer: 31, software: 26, system: 14, flatcar: 14 };
+  ['smoke', 'common', 'developer', 'software', 'system', 'flatcar'].forEach(s => {
     const el = document.getElementById(`th-${s}`);
     if (!el) return;
     const n = cov[s]?.scenarios || manual[s];
@@ -1562,7 +1582,7 @@ function buildCluster(stats) {
 function buildRecentRuns(stats) {
   const runs = stats.recent_runs || [];
   if (!runs.length) {
-    document.getElementById('runs-tbody').innerHTML = '<tr><td colspan="9" class="empty">No recent run data</td></tr>';
+    document.getElementById('runs-tbody').innerHTML = '<tr><td colspan="10" class="empty">No recent run data</td></tr>';
     return;
   }
   const rows = runs.map(r => {
@@ -1589,6 +1609,7 @@ function buildRecentRuns(stats) {
       <td class="mono" style="font-size:11px">${wfLink}</td>
       <td style="color:var(--muted);white-space:nowrap">${r.label||r.variant}</td>
       ${runSuiteCell(suiteData('smoke')    ? {...suiteData('smoke'),    workflow_name: r.id} : null)}
+      ${runSuiteCell(suiteData('common')   ? {...suiteData('common'),   workflow_name: r.id} : null)}
       ${runSuiteCell(suiteData('developer')? {...suiteData('developer'),workflow_name: r.id} : null)}
       ${runSuiteCell(suiteData('software') ? {...suiteData('software'), workflow_name: r.id} : null)}
       ${runSuiteCell(suiteData('system')   ? {...suiteData('system'),   workflow_name: r.id} : null, true)}
@@ -1664,10 +1685,17 @@ function filterStatusTable(failingOnly) {
   const stats = await loadGithubStats() || await load(LIVE_STATS_URL) || await load('data/factory-stats.json') || {};
   const IMAGES = (stats.images||[]).length ? stats.images : [
     { slug:'bluefin-testing',         label:'bluefin:testing' },
+    { slug:'bluefin-main',            label:'bluefin:latest' },
+    { slug:'bluefin-stable',          label:'bluefin:stable' },
     { slug:'bluefin-lts-testing',     label:'bluefin-lts:testing' },
+    { slug:'bluefin-lts-stable',      label:'bluefin-lts:stable' },
     { slug:'bluefin-bazzite-testing', label:'bazzite:testing' },
+    { slug:'bazzite-main',            label:'bazzite:latest' },
     { slug:'bluefin-aurora-testing',  label:'aurora:testing' },
+    { slug:'aurora-main',             label:'aurora:latest' },
     { slug:'dakota-testing',          label:'dakota:testing' },
+    { slug:'fedora-bootc-latest',     label:'fedora-bootc:latest' },
+    { slug:'fedora-bootc-rawhide',    label:'fedora-bootc:rawhide' },
     { slug:'flatcar-testing',         label:'flatcar:testing', suites:['flatcar'] },
   ];
 

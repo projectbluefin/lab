@@ -366,9 +366,15 @@ spec:
         echo '{"data-root": "/var/tmp/build/docker", "insecure-registries": ["192.168.1.102:30501", "192.168.1.102:30500"]}' | sudo tee /etc/docker/daemon.json
         sudo systemctl start docker
         sudo systemctl is-active docker
-        SDK_IMAGE=192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
-        echo "=== Preflight SDK cache pull ==="
-        docker pull --quiet \${SDK_IMAGE}
+        SDK_IMAGE_CACHE=192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
+        SDK_IMAGE_UPSTREAM=ghcr.io/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
+        SDK_IMAGE="\${SDK_IMAGE_CACHE}"
+        echo "=== Preflight SDK pull (cache first, fallback upstream) ==="
+        if ! timeout 900 docker pull --quiet "\${SDK_IMAGE_CACHE}"; then
+          echo "Cache pull timed out/failed; falling back to upstream GHCR"
+          SDK_IMAGE="\${SDK_IMAGE_UPSTREAM}"
+          docker pull --quiet "\${SDK_IMAGE}"
+        fi
         SDK_IMAGE_ID=\$(docker image inspect --format '{{.Id}}' "\${SDK_IMAGE}")
 
         echo "=== Regenerate Manifest checksums via SDK ==="

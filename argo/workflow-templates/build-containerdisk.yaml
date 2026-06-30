@@ -253,12 +253,6 @@ spec:
           echo '[INNER] fsetxattr wrapper compiled and loaded'
         fi
 
-        # bootc install needs a source image ref, but the local Zot cache is HTTP-only
-        # and this pod does not carry a containers/image registry config for it.
-        # Use the upstream image ref here; the pod image itself still comes from the
-        # cluster's normal mirror path when the workflow is launched.
-        SOURCE_IMGREF="docker://${IMAGE}"
-
         # Use the image's native filesystem unless --filesystem override is specified.
         # bluefin:testing → Fedora → btrfs (native).
         # bluefin-lts:testing → CentOS/RHEL → xfs (native).
@@ -307,21 +301,17 @@ spec:
         done
         export PATH="/usr/local/sbin:/usr/local/bin:${PATH}"
 
-        # The FSDK server image has no /etc/containers/ directory. The containers/image
-        # library (used by bootc for imgstorage init) requires policy.json and
-        # registries.conf. Create a permissive config so bootc can initialize the image
-        # store in the target sysroot.
-        if [ ! -d /etc/containers ]; then
-          mkdir -p /etc/containers
-          printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' \
-            > /etc/containers/policy.json
-          printf '[[registry]]\nlocation = "192.168.1.102:30500"\ninsecure = true\n' \
-            > /etc/containers/registries.conf
-          echo "[BUILD] /etc/containers created with permissive policy"
-        fi
-        export CONTAINERS_REGISTRIES_CONF="${STAGING}/registries.conf"
-        cp /etc/containers/registries.conf "${CONTAINERS_REGISTRIES_CONF}"
-        echo "[BUILD] CONTAINERS_REGISTRIES_CONF=${CONTAINERS_REGISTRIES_CONF}"
+        # bootc requires a bootable source image. bluefin-server-bootc is a
+        # server payload image, so derive a temporary local copy with the
+        # standard bootc compatibility label and install from containers-storage.
+        BOOTABLE_IMAGE="localhost/${TAG}-bootable:latest"
+        BOOTABLE_CTX="${STAGING}/bootable-build"
+        mkdir -p "${BOOTABLE_CTX}"
+        printf 'FROM %s\nLABEL containers.bootc=1\n' "${IMAGE}" > "${BOOTABLE_CTX}/Containerfile"
+        echo "[BUILD] deriving bootable source image ${BOOTABLE_IMAGE}"
+        podman build --tls-verify=false -t "${BOOTABLE_IMAGE}" -f "${BOOTABLE_CTX}/Containerfile" "${BOOTABLE_CTX}"
+        SOURCE_IMGREF="containers-storage:${BOOTABLE_IMAGE}"
+        echo "[BUILD] SOURCE_IMGREF=${SOURCE_IMGREF}"
 
         bootc install to-disk \
           ${FS_ARG} \

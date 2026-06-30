@@ -82,6 +82,12 @@ spec:
           limits:
             cpu: "8"
             memory: 28Gi
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse
@@ -105,7 +111,7 @@ spec:
           REPO="{{inputs.parameters.repo}}"
 
           echo "=== Cloning bluefin-server @ ${REF} ==="
-          git clone --depth=1 --branch "${REF}" "${REPO}" /src
+          git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN}@github.com/castrojo/bluefin-server.git" /src
           cd /src
 
           echo "=== Building ${ELEMENT} ==="

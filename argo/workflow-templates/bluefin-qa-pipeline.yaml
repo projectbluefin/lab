@@ -16,9 +16,12 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  # VM concurrency is managed by k8s scheduler via virt-launcher pod memory
-  # requests (8Gi/VM). Pending workflows queue as Pending VMIs — no semaphore
-  # needed. FIFO ordering follows workflow creation timestamp.
+  synchronization:
+    mutexes:
+    - name: bluefin-qa-global
+  parallelism: 2
+  # Keep one QA workflow active at a time and cap in-workflow lane fan-out.
+  # This prevents digest poll bursts from exhausting KubeVirt memory.
   activeDeadlineSeconds: 3600
   # ── entrypoint ──────────────────────────────────────────────────────────────
   entrypoint: pipeline

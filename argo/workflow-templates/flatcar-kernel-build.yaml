@@ -289,10 +289,10 @@ spec:
         valueFrom:
           path: /tmp/filename.txt
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: cgr.dev/chainguard/python:latest-dev
       securityContext:
         runAsUser: 0
-      command: [bash]
+      command: [sh]
       resources:
         requests:
           cpu: 50m
@@ -307,7 +307,8 @@ spec:
             name: bluefin-test-ssh-key
             key: id_ed25519
       source: |
-        set -euo pipefail
+        set -eu
+        apk add --no-cache curl git openssh-client coreutils >/dev/null
         if ! command -v kubectl >/dev/null 2>&1; then
           KVER="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
           mkdir -p /tmp/bin

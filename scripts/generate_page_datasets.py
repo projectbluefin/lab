@@ -533,6 +533,36 @@ def load_optional_json(path: Path):
     return load_json(path)
 
 
+def build_homebrew_tap_stats(tap: dict) -> dict:
+    packages = tap.get('packages', [])
+    install_count = sum(pkg.get('installs_90d', 0) for pkg in packages)
+    download_count = sum(pkg.get('downloads', 0) for pkg in packages)
+    type_counts = {}
+    for pkg in packages:
+        pkg_type = pkg.get('type', 'unknown')
+        type_counts[pkg_type] = type_counts.get(pkg_type, 0) + 1
+    top_packages = sorted(
+        packages,
+        key=lambda pkg: (pkg.get('installs_90d', 0), pkg.get('downloads', 0)),
+        reverse=True,
+    )[:10]
+    return {
+        'package_count': len(packages),
+        'install_count': install_count,
+        'download_count': download_count,
+        'package_type_counts': type_counts,
+        'top_packages': [
+            {
+                'name': pkg.get('name'),
+                'type': pkg.get('type'),
+                'installs_90d': pkg.get('installs_90d', 0),
+                'downloads': pkg.get('downloads', 0),
+            }
+            for pkg in top_packages
+        ],
+    }
+
+
 def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
     publishers = load_json(root / 'docs/data/variant-publishers.json')
     migrated = load_optional_json(root / 'docs/data/homebrew-package-stats-migrated.json') or {'taps': []}
@@ -541,15 +571,26 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
         for tap in migrated.get('taps', [])
         for variant in tap.get('variant_scope', [])
     }
+    tap_stats_by_name = {
+        tap.get('name'): build_homebrew_tap_stats(tap)
+        for tap in migrated.get('taps', [])
+    }
 
     taps = []
     for tap in migrated.get('taps', []):
+        tap_stats = tap_stats_by_name.get(tap.get('name'), {})
         taps.append(
             {
                 'id': tap['name'].replace('/', '-'),
                 'name': tap['name'],
                 'url': tap['url'],
                 'description': tap.get('description'),
+                'variant_scope': tap.get('variant_scope', []),
+                'package_count': tap_stats.get('package_count', 0),
+                'install_count': tap_stats.get('install_count', 0),
+                'download_count': tap_stats.get('download_count', 0),
+                'package_type_counts': tap_stats.get('package_type_counts', {}),
+                'top_packages': tap_stats.get('top_packages', []),
                 'state': 'available',
                 'state_reason': None,
                 'source_url': repo_blob_url('docs/data/homebrew-package-stats-migrated.json'),
@@ -562,8 +603,8 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
     for variant, branch, details in iter_tracked_lanes(publishers):
         tap = tap_by_variant.get(variant)
         if tap:
-            install_count = sum(pkg['installs_90d'] for pkg in tap['packages'])
-            download_count = sum(pkg['downloads'] for pkg in tap['packages'])
+            tap_stats = tap_stats_by_name.get(tap.get('name'), {})
+            package_count = tap_stats.get('package_count', 0)
             rows.append(
                 {
                     'id': f'{variant}-{branch}',
@@ -571,17 +612,18 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
                     'branch': branch,
                     'tap_name': tap['name'],
                     'tap_url': tap['url'],
-                    'install_count': install_count,
-                    'download_count': download_count,
+                    'package_count': package_count,
+                    'install_count': tap_stats.get('install_count', 0),
+                    'download_count': tap_stats.get('download_count', 0),
                     'state': 'available',
                     'state_reason': None,
                     'source_url': repo_blob_url('docs/data/homebrew-package-stats-migrated.json'),
                     'collected_at': collected_at,
                     'derivation': (
-                        f'Global formula analytics from formulae.brew.sh transplanted as a {len(tap["packages"])}-package subset '
+                        f'Global formula analytics from formulae.brew.sh transplanted for a {package_count}-package tap '
                         f'from repo-owned docs/data/homebrew-package-stats-migrated.json. '
-                        f'Numbers are not Bluefin-attributable lane installs — the same values appear on every '
-                        f'Bluefin-family branch row because the source has no branch dimension.'
+                        f'Numbers are not lane-attributable installs — the same values appear on every branch row '
+                        f'for this variant because the source has no branch dimension.'
                     ),
                 }
             )
@@ -600,6 +642,7 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
                 'branch': branch,
                 'tap_name': None,
                 'tap_url': None,
+                'package_count': None,
                 'install_count': None,
                 'download_count': None,
                 'state': 'unavailable',
@@ -619,6 +662,21 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
 
     lanes_with_brew = [row for row in rows if row['state'] == 'available']
     lanes_without_brew = [row for row in rows if row['state'] == 'unavailable']
+    package_leaderboard = sorted(
+        [
+            {
+                'tap_name': tap.get('name'),
+                'package_count': stats.get('package_count', 0),
+                'install_count': stats.get('install_count', 0),
+                'download_count': stats.get('download_count', 0),
+            }
+            for tap_name, stats in tap_stats_by_name.items()
+            for tap in migrated.get('taps', [])
+            if tap.get('name') == tap_name
+        ],
+        key=lambda entry: (entry['package_count'], entry['install_count']),
+        reverse=True,
+    )
 
     return {
         'schema_version': 'v1',
@@ -671,6 +729,7 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
             },
         ],
         'taps': taps,
+        'package_leaderboard': package_leaderboard,
         'rows': rows,
     }
 

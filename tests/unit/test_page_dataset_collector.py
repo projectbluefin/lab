@@ -156,15 +156,21 @@ def test_homebrew_ecosystem_non_bluefin_rows_are_unavailable_without_brew_data()
 
     dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
 
-    bluefin_family = {'bluefin', 'bluefin-lts'}
+    tapped_variants = {
+        row['variant']
+        for row in dataset['rows']
+        if row['tap_name']
+    }
     for row in dataset['rows']:
-        if row['variant'] in bluefin_family:
+        if row['variant'] in tapped_variants:
             assert row['state'] == 'available', f"Expected available for {row['id']}"
+            assert row['package_count'] is not None
             assert row['install_count'] is not None
             assert row['download_count'] is not None
         else:
             assert row['state'] == 'unavailable', f"Expected unavailable for {row['id']}"
             assert row['state_reason'], f"Missing state_reason for {row['id']}"
+            assert row['package_count'] is None
             assert row['install_count'] is None
             assert row['download_count'] is None
         assert row['source_url'], f"Missing source_url for {row['id']}"
@@ -221,8 +227,78 @@ def test_homebrew_ecosystem_exposes_transplanted_tap_catalog():
 
     assert 'bluefin/brewfile' in taps
     assert taps['bluefin/brewfile']['url'] == 'https://github.com/projectbluefin/common'
+    assert taps['bluefin/brewfile']['package_count'] == 3
+    assert taps['bluefin/brewfile']['variant_scope'] == ['bluefin', 'bluefin-lts']
+    assert taps['bluefin/brewfile']['top_packages'][0]['name'] == 'gh'
     assert metrics['lanes_with_brew_data']['value'] == 4
     assert metrics['lanes_awaiting_brew_data']['value'] == 6
+
+
+def test_homebrew_ecosystem_includes_package_density_structures():
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+
+    assert 'package_leaderboard' in dataset
+    assert dataset['package_leaderboard'], 'Expected package leaderboard entries'
+    first = dataset['package_leaderboard'][0]
+    assert first['tap_name'] == 'bluefin/brewfile'
+    assert first['package_count'] == 3
+    assert first['install_count'] == 1676399
+    assert first['download_count'] == 623884
+
+
+def test_homebrew_ecosystem_maps_multiple_taps_by_variant_scope(monkeypatch):
+    module = load_module()
+
+    orig_load_optional_json = module.load_optional_json
+    fixture = {
+        'taps': [
+            {
+                'name': 'bluefin/brewfile',
+                'url': 'https://github.com/projectbluefin/common',
+                'description': 'bluefin tap',
+                'variant_scope': ['bluefin', 'bluefin-lts'],
+                'packages': [
+                    {'name': 'gh', 'type': 'formula', 'installs_90d': 10, 'downloads': 5},
+                ],
+            },
+            {
+                'name': 'bazzite/brewfile',
+                'url': 'https://github.com/ublue-os/bazzite',
+                'description': 'bazzite tap',
+                'variant_scope': ['bazzite'],
+                'packages': [
+                    {'name': 'steam', 'type': 'cask', 'installs_90d': 8, 'downloads': 3},
+                    {'name': 'mangohud', 'type': 'formula', 'installs_90d': 2, 'downloads': 1},
+                ],
+            },
+        ],
+    }
+
+    def mock_load_optional_json(path):
+        if Path(path).name == 'homebrew-package-stats-migrated.json':
+            return fixture
+        return orig_load_optional_json(path)
+
+    monkeypatch.setattr(module, 'load_optional_json', mock_load_optional_json)
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+    rows = {row['id']: row for row in dataset['rows']}
+    metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
+    taps = {tap['name']: tap for tap in dataset['taps']}
+
+    assert rows['bluefin-testing']['tap_name'] == 'bluefin/brewfile'
+    assert rows['bluefin-testing']['package_count'] == 1
+    assert rows['bazzite-testing']['tap_name'] == 'bazzite/brewfile'
+    assert rows['bazzite-testing']['state'] == 'available'
+    assert rows['bazzite-testing']['package_count'] == 2
+    assert rows['bazzite-stable']['state'] == 'available'
+    assert rows['bazzite-testing']['install_count'] == 10
+    assert rows['bazzite-testing']['download_count'] == 4
+    assert metrics['lanes_with_brew_data']['value'] == 6
+    assert metrics['lanes_awaiting_brew_data']['value'] == 4
+    assert taps['bazzite/brewfile']['package_type_counts'] == {'cask': 1, 'formula': 1}
 
 
 def test_adoption_metrics_derives_all_tracked_lanes():
@@ -461,8 +537,11 @@ def test_homebrew_available_rows_disclose_global_analytics_and_package_count():
         assert 'global' in derivation.lower(), (
             f"Row {row['id']} derivation must disclose 'global' formula analytics; got: {derivation}"
         )
-        assert '3' in derivation, (
-            f"Row {row['id']} derivation must name the transplanted package count (3); got: {derivation}"
+        assert str(row['package_count']) in derivation, (
+            f"Row {row['id']} derivation must name the transplanted package count ({row['package_count']}); got: {derivation}"
+        )
+        assert 'Bluefin-family' not in derivation, (
+            f"Row {row['id']} derivation must avoid Bluefin-family-only wording; got: {derivation}"
         )
 
 

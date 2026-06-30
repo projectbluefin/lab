@@ -96,12 +96,9 @@ spec:
         source: |
           set -euo pipefail
 
-          # Write in-cluster BST config — plain gRPC to in-cluster casd, no TLS
+          # Run completely with local cache for extreme stability and speed
           cat > /tmp/buildstream-cluster.conf << 'BSTCONF'
-          cache:
-            storage-service:
-              url: http://buildbox-casd.local-registry.svc.cluster.local:11002
-              push: true
+          # Local cache only
           BSTCONF
 
           BST_CONF=/tmp/buildstream-cluster.conf

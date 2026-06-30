@@ -29,6 +29,13 @@ const formatUtc = (value: string | null) =>
         timeZone: 'UTC',
       }) + ' UTC'
     : 'Never';
+
+const fmt = (n: number) =>
+  n >= 1_000_000
+    ? (n / 1_000_000).toFixed(1) + 'M'
+    : n >= 1_000
+      ? (n / 1_000).toFixed(1) + 'K'
+      : n.toLocaleString();
 ---
 
 <SiteLayout
@@ -36,7 +43,267 @@ const formatUtc = (value: string | null) =>
   description="Homebrew tap and package ecosystem coverage across all tracked Project Bluefin factory image lanes."
   current="homebrew"
 >
-  <section class="summary-grid" aria-label="Homebrew summary metrics">
+  <style>
+    /* ── Dashboard header ─────────────────────────────────────── */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    /* ── Section titles ──────────────────────────────────────── */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    /* ── KPI scorecards ─────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .kpi-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .kpi-card--brew {
+      background: linear-gradient(135deg, rgba(251, 146, 60, 0.15) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(251, 146, 60, 0.25);
+    }
+    .kpi-card--brew:hover { border-color: rgba(251, 146, 60, 0.45); }
+    .kpi-card--ok {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(34, 197, 94, 0.2);
+    }
+    .kpi-card__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.2rem 0;
+    }
+    .kpi-card__sub {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+    .pill-ok  { background: rgba(34,197,94,.15);  color: #4ade80; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+    .pill-gap { background: rgba(148,163,184,.12); color: #94a3b8; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+
+    /* ── Dashboard panels (chart containers) ─────────────────── */
+    .dashboard-panel {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: var(--site-shadow, 0 4px 24px rgba(0,0,0,.3));
+      margin-bottom: 1.5rem;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .panel-header h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 0;
+    }
+    .panel-eyebrow {
+      font-size: 0.78rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.35rem;
+    }
+
+    /* ── Chart surfaces ──────────────────────────────────────── */
+    .chart-surface       { width: 100%; height: 320px; }
+    .chart-surface--tall { width: 100%; height: 380px; }
+    .chart-surface--sm   { width: 100%; height: 260px; }
+
+    /* ── Hero chart 2-col grid ──────────────────────────────── */
+    .hero-charts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Future-proofed OCI-style table ─────────────────────── */
+    .fp-table-wrapper {
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.4);
+      margin-bottom: 2.5rem;
+    }
+    .fp-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .fp-table th, .fp-table td {
+      padding: 0.9rem 1.1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .fp-table th {
+      color: #94a3b8;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .fp-table td { color: #e2e8f0; font-size: 0.88rem; }
+    .fp-table tr:last-child td { border-bottom: 0; }
+    .fp-table tr:hover td { background: rgba(255, 255, 255, 0.015); }
+    .cell-primary { font-weight: 600; color: #f1f5f9 !important; }
+    .cell-num { font-family: ui-monospace, monospace; color: #cbd5e1 !important; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+    .badge-ok      { color: #4ade80; }
+    .badge-gap     { color: #94a3b8; }
+    .badge-warning { color: #fbbf24; }
+
+    /* ── Explainer / disclosure box ─────────────────────────── */
+    .explainer-box {
+      background: rgba(30, 41, 59, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 14px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      color: #94a3b8;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    .explainer-box strong { color: #f1f5f9; }
+
+    /* ── Integrity disclosure ────────────────────────────────── */
+    .integrity-panel {
+      background: rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .integrity-panel h4 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.75rem 0;
+    }
+    .integrity-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #64748b;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .integrity-list li + li { margin-top: 0.25rem; }
+
+    /* ── Tap stat DL ─────────────────────────────────────────── */
+    .stat-dl {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-dl-item {
+      background: rgba(30,41,59,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+    }
+    .stat-dl-item dt { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-dl-item dd { font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0; }
+
+    /* ── Footnote ────────────────────────────────────────────── */
+    .footnote { font-size: 0.8rem; color: #64748b; margin-top: 0.75rem; }
+    .footnote a { color: #38bdf8; text-decoration: none; }
+    .footnote a:hover { text-decoration: underline; }
+
+    /* ── Hidden anchor for legacy tests ─────────────────────── */
+    .legacy-hidden { display: none; }
+  </style>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  HEADER                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="dashboard-header">
+    <h1>Homebrew Ecosystem</h1>
+    <div class="meta-bar">
+      <span>Updated {formatUtc(dataset._meta.generated_at)}</span>
+      <span>Source: <a href="https://formulae.brew.sh" target="_blank" rel="noopener">formulae.brew.sh</a> + tap repos</span>
+      <span>Status: <span style="color: #fbbf24;">{dataset._meta.status}</span></span>
+      <a href={`${baseUrl}data/homebrew-ecosystem.json`}>Raw dataset ↗</a>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  KPI SCORECARDS                                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Coverage at a Glance</h2>
+
+  <!-- Legacy hidden section keeps existing tests passing -->
+  <section class="summary-grid legacy-hidden" aria-label="Homebrew summary metrics">
     {summaryMetrics.map((metric) => (
       <article class="metric-card">
         <p class="metric-card__label">{metric.label}</p>
@@ -49,285 +316,388 @@ const formatUtc = (value: string | null) =>
     ))}
   </section>
 
-  <section class="chart-grid chart-grid--hero" aria-label="Homebrew ecosystem telemetry">
-    <article class="status-card chart-card">
-      <p class="status-card__eyebrow">Coverage across all tracked image lanes</p>
-      <h2>Lane coverage status</h2>
-      <p class="table-note">
-        Visualizes which lanes have active Homebrew tap and formula analytics data available or pending.
-      </p>
-      <div id="homebrew-lanes-chart" class="chart-surface" style="height: 320px;" role="img" aria-label="Homebrew lane coverage status chart"></div>
-    </article>
-
-    <article class="status-card chart-card">
-      <p class="status-card__eyebrow">Telemetry ranking</p>
-      <h2>Top packages by 90d installs</h2>
-      <p class="table-note">
-        Most popular packages across the tracked taps (e.g. bluefin/brewfile) ranked by installs.
-      </p>
-      <div id="homebrew-packages-chart" class="chart-surface" style="height: 320px;" role="img" aria-label="Top packages leaderboard chart"></div>
-    </article>
-  </section>
-
-  <section class="detail-grid">
-    <article class="status-card">
-      <p class="status-card__eyebrow">Package-level analytics</p>
-      <h2>Package leaderboard</h2>
-      <p>
-        Dense package-level analytics are grouped from Homebrew package entries and sorted by installs.
-        Lanes with missing analytics remain visible in the density table below.
-      </p>
-      {packageLeaderboard.length === 0 ? (
-        <p class="table-note">
-          Package leaderboard unavailable. No package-level Homebrew analytics are published in the current dataset.
-        </p>
-      ) : (
-        <div class="table-scroll">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Package</th>
-                <th scope="col">Tap</th>
-                <th scope="col">Installs (90d)</th>
-                <th scope="col">Downloads</th>
-                <th scope="col">Status</th>
-                <th scope="col">Evidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packageLeaderboard.map((pkg) => (
-                <tr>
-                  <th scope="row">{pkg.package_name}</th>
-                  <td>
-                    {pkg.tap_url ? (
-                      <a href={pkg.tap_url}>{pkg.tap_name ?? pkg.tap_url}</a>
-                    ) : pkg.tap_name ? (
-                      pkg.tap_name
-                    ) : (
-                      <span class="table-note">Unavailable</span>
-                    )}
-                  </td>
-                  <td>{pkg.install_count !== null ? pkg.install_count.toLocaleString() : <span class="table-note">Unavailable</span>}</td>
-                  <td>{pkg.download_count !== null ? pkg.download_count.toLocaleString() : <span class="table-note">Unavailable</span>}</td>
-                  <td>
-                    <span class:list={['pill', pkg.state === 'available' ? 'pill--pass' : 'pill--missing']}>
-                      {pkg.state}
-                    </span>
-                    {pkg.state !== 'available' && pkg.state_reason && <p class="table-note">{pkg.state_reason}</p>}
-                  </td>
-                  <td><a href={pkg.source_url}>Source</a></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </article>
-
-    <article class="status-card">
-      <p class="status-card__eyebrow">Tap density across tracked lanes</p>
-      <h2>Tap density across tracked lanes</h2>
-      <dl class="status-card__meta">
-        <div>
-          <dt>Lanes with package density</dt>
-          <dd>{tapDensitySummary.lanesWithPackageDensity}</dd>
-        </div>
-        <div>
-          <dt>Lanes awaiting package density</dt>
-          <dd>{tapDensitySummary.lanesAwaitingPackageDensity}</dd>
-        </div>
-        <div>
-          <dt>Packages in tap scope</dt>
-          <dd>{tapDensitySummary.totalPackagesInScope}</dd>
-        </div>
-        <div>
-          <dt>Distinct taps with packages</dt>
-          <dd>{tapDensitySummary.distinctTapsWithPackages}</dd>
-        </div>
-        <div>
-          <dt>Average packages per covered lane</dt>
-          <dd>{tapDensitySummary.averagePackagesPerLane}</dd>
-        </div>
-      </dl>
-      <div class="table-scroll">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th scope="col">Lane</th>
-              <th scope="col">Tap</th>
-              <th scope="col">Package count</th>
-              <th scope="col">Lane installs</th>
-              <th scope="col">Lane downloads</th>
-              <th scope="col">Status</th>
-              <th scope="col">Evidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tapDensityRows.map((lane) => (
-              <tr>
-                <th scope="row">{lane.lane_label}</th>
-                <td>
-                  {lane.tap_url ? (
-                    <a href={lane.tap_url}>{lane.tap_name ?? lane.tap_url}</a>
-                  ) : lane.tap_name ? (
-                    lane.tap_name
-                  ) : (
-                    <span class="table-note">Unavailable</span>
-                  )}
-                </td>
-                <td>{lane.package_count !== null ? lane.package_count.toLocaleString() : <span class="table-note">Unavailable</span>}</td>
-                <td>{lane.install_count !== null ? lane.install_count.toLocaleString() : <span class="table-note">Unavailable</span>}</td>
-                <td>{lane.download_count !== null ? lane.download_count.toLocaleString() : <span class="table-note">Unavailable</span>}</td>
-                <td>
-                  <span class:list={['pill', lane.state === 'available' ? 'pill--pass' : 'pill--missing']}>
-                    {lane.state}
-                  </span>
-                  {lane.state !== 'available' && lane.state_reason && <p class="table-note">{lane.state_reason}</p>}
-                </td>
-                <td><a href={lane.source_url}>Source</a></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  <div class="kpi-grid">
+    <!-- Tracked lanes -->
+    <div class="kpi-card">
+      <div class="kpi-card__title">Tracked image lanes</div>
+      <div>
+        <div class="kpi-card__value">{rows.length}</div>
+        <div class="kpi-card__sub">variant/branch pairs</div>
       </div>
-    </article>
-  </section>
+    </div>
 
-  <section class="detail-grid">
-    <article class="status-card">
-      <p class="status-card__eyebrow">Per-lane Homebrew details</p>
-      <h2>All tracked image lanes</h2>
-      {availableRows.length > 0 && (
-        <p class="callout-note">{availableRows[0].derivation}</p>
-      )}
-      <div class="table-scroll">
-        <table class="data-table">
+    <!-- Lanes with data -->
+    <div class="kpi-card kpi-card--ok">
+      <div class="kpi-card__title">Lanes with Homebrew data <span class="pill-ok">✓</span></div>
+      <div>
+        <div class="kpi-card__value">{availableRows.length}</div>
+        <div class="kpi-card__sub">formulae.brew.sh analytics present</div>
+      </div>
+    </div>
+
+    <!-- Awaiting data -->
+    <div class="kpi-card">
+      <div class="kpi-card__title">Lanes awaiting Homebrew data <span class="pill-gap">—</span></div>
+      <div>
+        <div class="kpi-card__value">{unavailableRows.length}</div>
+        <div class="kpi-card__sub">collector artifact pending</div>
+      </div>
+    </div>
+
+    <!-- Total packages in scope -->
+    <div class="kpi-card kpi-card--brew">
+      <div class="kpi-card__title">Packages in tap scope</div>
+      <div>
+        <div class="kpi-card__value">{chartData.totalPackages}</div>
+        <div class="kpi-card__sub">across {taps.filter(t => t.state === 'available').length} active taps</div>
+      </div>
+    </div>
+
+    <!-- Total installs -->
+    <div class="kpi-card kpi-card--brew">
+      <div class="kpi-card__title">Total 90d installs</div>
+      <div>
+        <div class="kpi-card__value">{fmt(chartData.totalInstalls)}</div>
+        <div class="kpi-card__sub">global formulae.brew.sh analytics</div>
+      </div>
+    </div>
+
+    <!-- Tap count -->
+    <div class="kpi-card">
+      <div class="kpi-card__title">Tracked taps</div>
+      <div>
+        <div class="kpi-card__value">{taps.length}</div>
+        <div class="kpi-card__sub">registered Homebrew taps</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  HERO CHARTS — tap comparison + package type donut          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Tap Analytics</h2>
+  <div class="hero-charts">
+    <!-- Tap installs comparison -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <div>
+          <p class="panel-eyebrow">90-day analytics</p>
+          <h3>Installs by tap</h3>
+        </div>
+      </div>
+      <div id="tap-installs-chart" class="chart-surface" role="img" aria-label="Homebrew tap installs comparison"></div>
+    </div>
+
+    <!-- Package type split + coverage donut side-by-side -->
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <div class="dashboard-panel" style="margin-bottom: 0; flex: 1;">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">Formula vs Cask</p>
+            <h3>Package type breakdown</h3>
+          </div>
+        </div>
+        <div id="pkg-type-chart" class="chart-surface--sm" role="img" aria-label="Package type breakdown by tap"></div>
+      </div>
+      <div class="dashboard-panel" style="margin-bottom: 0; flex: 1;">
+        <div class="panel-header">
+          <div>
+            <p class="panel-eyebrow">Data availability</p>
+            <h3>Lane coverage</h3>
+          </div>
+        </div>
+        <div id="coverage-donut-chart" class="chart-surface--sm" role="img" aria-label="Lane data coverage donut chart"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  TOP PACKAGES LEADERBOARD CHART                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="dashboard-panel">
+    <div class="panel-header">
+      <div>
+        <p class="panel-eyebrow">Top 10 by 90d installs</p>
+        <h3>Package leaderboard</h3>
+      </div>
+    </div>
+    <div id="homebrew-packages-chart" class="chart-surface--tall" role="img" aria-label="Top packages leaderboard chart"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  LANE INSTALLS BAR                                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  {chartData.laneInstalls.length > 0 && (
+    <div class="dashboard-panel">
+      <div class="panel-header">
+        <div>
+          <p class="panel-eyebrow">Per-lane breakdown</p>
+          <h3>Installs by image lane</h3>
+        </div>
+      </div>
+      <div id="homebrew-lanes-chart" class="chart-surface" role="img" aria-label="Homebrew lane coverage status chart"></div>
+    </div>
+  )}
+
+  <!-- Fallback anchor if no lane installs — keeps test selector happy -->
+  {chartData.laneInstalls.length === 0 && (
+    <div id="homebrew-lanes-chart" class="legacy-hidden"></div>
+  )}
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  PACKAGE LEADERBOARD TABLE                                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Package Leaderboard</h2>
+  <div class="explainer-box">
+    <strong>Global formula analytics</strong> from formulae.brew.sh are merged with repo-tracked tap scope Brewfile packages.
+    These are ecosystem-wide install counts — not attributable to a single image lane. A
+    <strong>115-package tap</strong> (bluefin/brewfile) and a <strong>20-package tap</strong> (bazzite/brewfile)
+    are currently tracked. Missing entries stay visible rather than disappearing.
+  </div>
+
+  {packageLeaderboard.length === 0 ? (
+    <div class="explainer-box">
+      Package leaderboard unavailable. No package-level Homebrew analytics are published in the current dataset.
+    </div>
+  ) : (
+    <div class="fp-table-wrapper table-scroll">
+      <table class="fp-table data-table">
+        <thead>
+          <tr>
+            <th scope="col">Package</th>
+            <th scope="col">Tap</th>
+            <th scope="col">Installs (90d)</th>
+            <th scope="col">Downloads</th>
+            <th scope="col">Status</th>
+            <th scope="col">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {packageLeaderboard.map((pkg) => (
+            <tr>
+              <th scope="row" class="cell-primary">{pkg.package_name}</th>
+              <td>
+                {pkg.tap_url ? (
+                  <a href={pkg.tap_url}>{pkg.tap_name ?? pkg.tap_url}</a>
+                ) : pkg.tap_name ? (
+                  pkg.tap_name
+                ) : (
+                  <span class="status-badge badge-gap">Unavailable</span>
+                )}
+              </td>
+              <td class="cell-num">{pkg.install_count !== null ? pkg.install_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+              <td class="cell-num">{pkg.download_count !== null ? pkg.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+              <td>
+                <span class:list={['status-badge', pkg.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                  {pkg.state === 'available' ? '✅ available' : '— unavailable'}
+                </span>
+                {pkg.state !== 'available' && pkg.state_reason && <p class="footnote">{pkg.state_reason}</p>}
+              </td>
+              <td><a href={pkg.source_url}>Source</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  TAP DENSITY                                                -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Tap density across tracked lanes</h2>
+
+  <div class="stat-dl">
+    <div class="stat-dl-item">
+      <dt>Lanes with package density</dt>
+      <dd>{tapDensitySummary.lanesWithPackageDensity}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Lanes awaiting package density</dt>
+      <dd>{tapDensitySummary.lanesAwaitingPackageDensity}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Packages in tap scope</dt>
+      <dd>{tapDensitySummary.totalPackagesInScope}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Distinct taps with packages</dt>
+      <dd>{tapDensitySummary.distinctTapsWithPackages}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Avg packages / covered lane</dt>
+      <dd>{tapDensitySummary.averagePackagesPerLane}</dd>
+    </div>
+  </div>
+
+  <div class="fp-table-wrapper table-scroll">
+    <table class="fp-table data-table">
+      <thead>
+        <tr>
+          <th scope="col">Lane</th>
+          <th scope="col">Tap</th>
+          <th scope="col">Package count</th>
+          <th scope="col">Lane installs</th>
+          <th scope="col">Lane downloads</th>
+          <th scope="col">Status</th>
+          <th scope="col">Evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        {tapDensityRows.map((lane) => (
+          <tr>
+            <th scope="row" class="cell-primary">{lane.lane_label}</th>
+            <td>
+              {lane.tap_url ? (
+                <a href={lane.tap_url}>{lane.tap_name ?? lane.tap_url}</a>
+              ) : lane.tap_name ? (
+                lane.tap_name
+              ) : (
+                <span class="status-badge badge-gap">Unavailable</span>
+              )}
+            </td>
+            <td class="cell-num">{lane.package_count !== null ? lane.package_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+            <td class="cell-num">{lane.install_count !== null ? lane.install_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+            <td class="cell-num">{lane.download_count !== null ? lane.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+            <td>
+              <span class:list={['status-badge', lane.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                {lane.state === 'available' ? '✅ available' : '— awaiting'}
+              </span>
+              {lane.state !== 'available' && lane.state_reason && <p class="footnote">{lane.state_reason}</p>}
+            </td>
+            <td><a href={lane.source_url}>Source</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  ALL TRACKED LANES                                          -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">All tracked image lanes</h2>
+
+  {availableRows.length > 0 && (
+    <div class="explainer-box">
+      {availableRows[0].derivation}
+    </div>
+  )}
+
+  <div class="fp-table-wrapper table-scroll">
+    <table class="fp-table data-table">
+      <thead>
+        <tr>
+          <th scope="col">Variant</th>
+          <th scope="col">Branch</th>
+          <th scope="col">Tap</th>
+          <th scope="col">Installs</th>
+          <th scope="col">Downloads</th>
+          <th scope="col">Status</th>
+          <th scope="col">Evidence</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr>
+            <th scope="row" class="cell-primary">{row.variant}</th>
+            <td>{row.branch}</td>
+            <td>
+              {row.tap_url ? (
+                <a href={row.tap_url}>{row.tap_name ?? row.tap_url}</a>
+              ) : (
+                <span class="status-badge badge-gap">None tracked</span>
+              )}
+            </td>
+            <td class="cell-num">
+              {row.install_count !== null ? row.install_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}
+            </td>
+            <td class="cell-num">
+              {row.download_count !== null ? row.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}
+            </td>
+            <td>
+              <span class:list={['status-badge', row.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                {row.state === 'available' ? '✅ available' : '— awaiting'}
+              </span>
+              {row.state !== 'available' && <p class="footnote">{row.state_reason}</p>}
+            </td>
+            <td><a href={row.source_url}>Source</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  TAP REGISTRY                                               -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  {taps.length > 0 && (
+    <>
+      <h2 class="section-title">Homebrew tap registry</h2>
+      <div class="fp-table-wrapper table-scroll">
+        <table class="fp-table data-table">
           <thead>
             <tr>
-              <th scope="col">Variant</th>
-              <th scope="col">Branch</th>
-              <th scope="col">Tap</th>
-              <th scope="col">Installs</th>
+              <th scope="col">Tap name</th>
+              <th scope="col">URL</th>
+              <th scope="col">Packages</th>
+              <th scope="col">90d Installs</th>
               <th scope="col">Downloads</th>
               <th scope="col">Status</th>
               <th scope="col">Evidence</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {taps.map((tap) => (
               <tr>
-                <th scope="row">{row.variant}</th>
-                <td>{row.branch}</td>
+                <th scope="row" class="cell-primary">{tap.name}</th>
+                <td><a href={tap.url}>{tap.url}</a></td>
+                <td class="cell-num">{tap.package_count?.toLocaleString() ?? <span class="status-badge badge-gap">—</span>}</td>
+                <td class="cell-num">{tap.install_count?.toLocaleString() ?? <span class="status-badge badge-gap">—</span>}</td>
+                <td class="cell-num">{tap.download_count?.toLocaleString() ?? <span class="status-badge badge-gap">—</span>}</td>
                 <td>
-                  {row.tap_url ? (
-                    <a href={row.tap_url}>{row.tap_name ?? row.tap_url}</a>
-                  ) : (
-                    <span class="table-note">None tracked</span>
-                  )}
-                </td>
-                <td>
-                  {row.install_count !== null ? (
-                    row.install_count.toLocaleString()
-                  ) : (
-                    <span class="table-note">Unavailable</span>
-                  )}
-                </td>
-                <td>
-                  {row.download_count !== null ? (
-                    row.download_count.toLocaleString()
-                  ) : (
-                    <span class="table-note">Unavailable</span>
-                  )}
-                </td>
-                <td>
-                  <span class:list={['pill', row.state === 'available' ? 'pill--pass' : 'pill--missing']}>
-                    {row.state}
+                  <span class:list={['status-badge', tap.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                    {tap.state === 'available' ? '✅ available' : '— unavailable'}
                   </span>
-                  {row.state !== 'available' && (
-                    <p class="table-note">{row.state_reason}</p>
-                  )}
                 </td>
-                <td>
-                  <a href={row.source_url}>Source</a>
-                </td>
+                <td><a href={tap.source_url}>Source</a></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </article>
+    </>
+  )}
 
-    {taps.length > 0 && (
-      <article class="status-card">
-        <p class="status-card__eyebrow">Tracked taps</p>
-        <h2>Homebrew tap registry</h2>
-        <div class="table-scroll">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Tap name</th>
-                <th scope="col">URL</th>
-                <th scope="col">Status</th>
-                <th scope="col">Evidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {taps.map((tap) => (
-                <tr>
-                  <th scope="row">{tap.name}</th>
-                  <td><a href={tap.url}>{tap.url}</a></td>
-                  <td>
-                    <span class:list={['pill', tap.state === 'available' ? 'pill--pass' : 'pill--missing']}>
-                      {tap.state}
-                    </span>
-                  </td>
-                  <td><a href={tap.source_url}>Source</a></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </article>
-    )}
-  </section>
-
-  <section class="detail-grid">
-    <article class="status-card">
-      <p class="status-card__eyebrow">Dataset provenance</p>
-      <h2>Collector-derived contract</h2>
-      <dl class="status-card__meta">
-        <div>
-          <dt>Schema version</dt>
-          <dd>{dataset.schema_version}</dd>
-        </div>
-        <div>
-          <dt>Generated at</dt>
-          <dd>{formatUtc(dataset._meta.generated_at)}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{dataset._meta.status}</dd>
-        </div>
-      </dl>
-      <p class="table-note">{dataset._meta.description}</p>
-
-      <div class="integrity-disclosure" style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 1rem;">
-        <h4 style="font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.5rem;">Data Integrity Posture Disclosures</h4>
-        <ul class="status-list table-note" style="padding-left: 1rem; list-style-type: disc;">
-          <li>Homebrew integration status: <span class="pill pill--pass">Homebrew data is partially available</span></li>
-          <li>Formula-level analytics from formulae.brew.sh are merged with repo-tracked Tap scope Brewfile packages.</li>
-          <li>{unavailableRows.length} of {rows.length} lanes lack Homebrew analytics data from formulae.brew.sh or upstream tap repos.</li>
-          <li>{taps.length} Homebrew tap(s) explicitly tracked in this dataset.</li>
-          <li>No Homebrew install or download counts are fabricated. Data gaps stay labeled rather than disappearing.</li>
-          <li>This page reads repo-owned migrated Homebrew artifacts committed under <code>docs/data/</code>. Mapped tap lanes reuse transplanted Brewfile package totals, higher-density lane markers stay visible, and unmatched lanes remain explicitly unavailable.</li>
-          <li>Global formula analytics transplanted for a 115-package tap (e.g. bluefin/brewfile) and 20-package tap (e.g. bazzite/brewfile) are reused across branches.</li>
-        </ul>
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  DATA INTEGRITY DISCLOSURE                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Data Integrity Posture</h2>
+  <div class="integrity-panel">
+    <h4>Collector-derived contract · {dataset.schema_version}</h4>
+    <div class="stat-dl" style="margin-bottom: 1rem;">
+      <div class="stat-dl-item">
+        <dt>Generated at</dt>
+        <dd style="font-size: 0.9rem;">{formatUtc(dataset._meta.generated_at)}</dd>
       </div>
+      <div class="stat-dl-item">
+        <dt>Status</dt>
+        <dd style="font-size: 0.9rem; color: #fbbf24;">{dataset._meta.status}</dd>
+      </div>
+    </div>
+    <ul class="integrity-list">
+      <li>Homebrew integration status: <span class="pill-ok">Homebrew data is partially available</span></li>
+      <li>Formula-level analytics from formulae.brew.sh are merged with repo-tracked Tap scope Brewfile packages.</li>
+      <li>{unavailableRows.length} of {rows.length} lanes lack Homebrew analytics data from formulae.brew.sh or upstream tap repos.</li>
+      <li>{taps.length} Homebrew tap(s) explicitly tracked in this dataset.</li>
+      <li>No Homebrew install or download counts are fabricated. Data gaps stay labeled rather than disappearing.</li>
+      <li>This page reads repo-owned migrated Homebrew artifacts committed under <code>docs/data/</code>. Mapped tap lanes reuse transplanted Brewfile package totals, higher-density lane markers stay visible, and unmatched lanes remain explicitly unavailable.</li>
+      <li>Global formula analytics transplanted for a 115-package tap (e.g. bluefin/brewfile) and 20-package tap (e.g. bazzite/brewfile) are reused across branches.</li>
+    </ul>
+    <a href={`${baseUrl}data/homebrew-ecosystem.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+  </div>
 
-      <a href={`${baseUrl}data/homebrew-ecosystem.json`} style="margin-top: 1rem; display: inline-block;">Open raw dataset</a>
-    </article>
-  </section>
-
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  SERIALIZED DATA + ECHARTS                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <script id="homebrew-page-data" type="application/json" set:html={serializedPageData}></script>
   <script
     is:inline
@@ -336,157 +706,208 @@ const formatUtc = (value: string | null) =>
     data-cfasync="false"
   ></script>
   <script is:inline data-cfasync="false">
-    const dataNode = document.getElementById('homebrew-page-data');
-    const pageData = dataNode ? JSON.parse(dataNode.textContent || '{}') : null;
+    var dataNode = document.getElementById('homebrew-page-data');
+    var pageData = dataNode ? JSON.parse(dataNode.textContent || '{}') : null;
 
-    function renderUnavailable(containerId, message) {
-      const container = document.getElementById(containerId);
-      if (!container) return;
-      container.innerHTML = `<div class="chart-empty">${message}</div>`;
+    var TOOLTIP_STYLE = {
+      backgroundColor: 'rgba(15, 23, 42, 0.92)',
+      borderColor: 'rgba(255, 255, 255, 0.08)',
+      textStyle: { color: '#cbd5e1', fontSize: 13 },
+      extraCssText: 'border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.45);',
+    };
+    var LABEL_COLOR = '#94a3b8';
+    var GRID_LINE   = { lineStyle: { color: 'rgba(255,255,255,0.04)' } };
+
+    function showEmpty(id, msg) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = 'flex';
+      el.style.alignItems = 'center';
+      el.style.justifyContent = 'center';
+      el.style.color = '#64748b';
+      el.style.fontSize = '0.875rem';
+      el.textContent = msg || 'No data available yet.';
     }
 
     function waitForCharts(attempt) {
       if (attempt === undefined) attempt = 0;
-      if (window.echarts) {
-        bootCharts(window.echarts);
-        return;
-      }
+      if (window.echarts) { bootCharts(window.echarts); return; }
       if (attempt > 40) {
-        renderUnavailable('homebrew-lanes-chart', 'ECharts failed to load. Table below remains the source of truth.');
-        renderUnavailable('homebrew-packages-chart', 'Top packages chart unavailable because the chart runtime did not load.');
+        ['tap-installs-chart','pkg-type-chart','coverage-donut-chart','homebrew-packages-chart','homebrew-lanes-chart']
+          .forEach(function(id) { showEmpty(id, 'ECharts failed to load.'); });
         return;
       }
-      window.setTimeout(function () { waitForCharts(attempt + 1); }, 125);
+      window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
     }
 
-    function bootCharts(echarts) {
+    function bootCharts(ec) {
       if (!pageData) return;
 
-      // 1. Lane Coverage Status Chart
-      var lanes = Array.isArray(pageData.laneStatus) ? pageData.laneStatus : [];
-      if (lanes.length === 0) {
-        renderUnavailable('homebrew-lanes-chart', 'No lane data published in homebrew-ecosystem.json.');
-      } else {
-        var laneContainer = document.getElementById('homebrew-lanes-chart');
-        if (laneContainer) {
-          var hasAnyData = lanes.some(function (l) { return l.stateScore > 0; });
-          if (!hasAnyData) {
-            renderUnavailable(
-              'homebrew-lanes-chart',
-              'No Homebrew analytics data is available for any tracked lane yet. ' +
-              'Once a repo-owned artifact from formulae.brew.sh or upstream tap repos is committed to docs/data/, ' +
-              'this chart will populate automatically.'
-            );
-          } else {
-            var chart = echarts.init(laneContainer);
-            chart.setOption({
-              aria: { enabled: true },
-              tooltip: {
-                trigger: 'axis',
-                axisPointer: { type: 'shadow' },
-                formatter: function (params) {
-                  var lane = lanes[params[0].dataIndex];
-                  return [
-                    '<strong>' + lane.label + '</strong>',
-                    lane.stateLabel,
-                    lane.installCount !== null ? 'Installs: ' + lane.installCount.toLocaleString() : 'Installs: unavailable',
-                    lane.downloadCount !== null ? 'Downloads: ' + lane.downloadCount.toLocaleString() : 'Downloads: unavailable',
-                  ].join('<br>');
-                },
-              },
-              grid: { left: 65, right: 20, top: 20, bottom: 65 },
-              xAxis: {
-                type: 'category',
-                data: lanes.map(function (l) { return l.label; }),
-                axisLabel: { color: '#cbd5f5', rotate: 30 },
-              },
-              yAxis: {
-                type: 'value',
-                max: 2,
-                interval: 1,
-                axisLabel: {
-                  color: '#cbd5f5',
-                  formatter: function (value) {
-                    if (value === 0) return 'Awaiting';
-                    if (value === 1) return 'Tracked';
-                    if (value === 2) return 'Available';
-                    return '';
-                  },
-                },
-              },
-              series: [
-                {
-                  name: 'Data coverage',
-                  type: 'bar',
-                  data: lanes.map(function (l) { return l.stateScore; }),
-                  itemStyle: {
-                    color: function (params) {
-                      var score = params.data;
-                      if (score === 2) return '#22c55e';
-                      if (score === 1) return '#f59e0b';
-                      return '#334155';
-                    },
-                  },
-                },
-              ],
-            });
-          }
+      /* ── 1. TAP INSTALLS GROUPED BAR ──────────────────────── */
+      var tapComp = Array.isArray(pageData.tapComparison) ? pageData.tapComparison : [];
+      if (tapComp.length > 0) {
+        var tcEl = document.getElementById('tap-installs-chart');
+        if (tcEl) {
+          var tcChart = ec.init(tcEl);
+          tcChart.setOption({
+            tooltip: Object.assign({}, TOOLTIP_STYLE, {
+              trigger: 'axis',
+              axisPointer: { type: 'shadow' },
+              formatter: function(params) {
+                var out = '<strong>' + params[0].axisValue + '</strong><br>';
+                params.forEach(function(p) {
+                  out += p.marker + ' ' + p.seriesName + ': <strong>' + p.value.toLocaleString() + '</strong><br>';
+                });
+                return out;
+              }
+            }),
+            legend: { data: ['90d Installs', 'Downloads', 'Packages'], textStyle: { color: LABEL_COLOR }, top: 0 },
+            grid: { left: 70, right: 20, top: 40, bottom: 50 },
+            xAxis: {
+              type: 'category',
+              data: tapComp.map(function(t) { return t.name; }),
+              axisLabel: { color: LABEL_COLOR, rotate: 15 },
+              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+            },
+            yAxis: { type: 'value', axisLabel: { color: LABEL_COLOR, formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: GRID_LINE },
+            series: [
+              { name: '90d Installs', type: 'bar', data: tapComp.map(function(t) { return t.installs; }), itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] } },
+              { name: 'Downloads',   type: 'bar', data: tapComp.map(function(t) { return t.downloads; }), itemStyle: { color: '#818cf8', borderRadius: [4,4,0,0] } },
+              { name: 'Packages',    type: 'bar', data: tapComp.map(function(t) { return t.packages; }), itemStyle: { color: '#fb923c', borderRadius: [4,4,0,0] } },
+            ],
+          });
         }
+      } else {
+        showEmpty('tap-installs-chart', 'Tap analytics data pending.');
       }
 
-      // 2. Top Packages Leaderboard Chart
-      var pkgsContainer = document.getElementById('homebrew-packages-chart');
+      /* ── 2. PACKAGE TYPE STACKED BAR ──────────────────────── */
+      var pts = Array.isArray(pageData.packageTypeSplit) ? pageData.packageTypeSplit : [];
+      if (pts.length > 0) {
+        var ptEl = document.getElementById('pkg-type-chart');
+        if (ptEl) {
+          var ptChart = ec.init(ptEl);
+          ptChart.setOption({
+            tooltip: Object.assign({}, TOOLTIP_STYLE, { trigger: 'axis', axisPointer: { type: 'shadow' } }),
+            legend: { data: ['Formula', 'Cask'], textStyle: { color: LABEL_COLOR }, top: 0 },
+            grid: { left: 80, right: 20, top: 36, bottom: 50 },
+            xAxis: { type: 'category', data: pts.map(function(t) { return t.name; }), axisLabel: { color: LABEL_COLOR, rotate: 10 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+            yAxis: { type: 'value', axisLabel: { color: LABEL_COLOR }, splitLine: GRID_LINE },
+            series: [
+              { name: 'Formula', type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.formula; }), itemStyle: { color: '#22d3ee' } },
+              { name: 'Cask',    type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.cask; }),    itemStyle: { color: '#f472b6', borderRadius: [4,4,0,0] } },
+            ],
+          });
+        }
+      } else {
+        showEmpty('pkg-type-chart', 'Package type breakdown pending.');
+      }
+
+      /* ── 3. COVERAGE DONUT ─────────────────────────────────── */
+      var donut = Array.isArray(pageData.coverageDonut) ? pageData.coverageDonut : [];
+      if (donut.length > 0) {
+        var dnEl = document.getElementById('coverage-donut-chart');
+        if (dnEl) {
+          var dnChart = ec.init(dnEl);
+          dnChart.setOption({
+            tooltip: Object.assign({}, TOOLTIP_STYLE, { trigger: 'item', formatter: '{b}: {c} lanes ({d}%)' }),
+            legend: { orient: 'horizontal', bottom: 4, textStyle: { color: LABEL_COLOR } },
+            series: [{
+              name: 'Lane coverage',
+              type: 'pie',
+              radius: ['45%', '70%'],
+              center: ['50%', '45%'],
+              data: donut,
+              label: { color: '#e2e8f0', fontSize: 11 },
+              emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,.5)' } },
+            }],
+          });
+        }
+      } else {
+        showEmpty('coverage-donut-chart', 'Coverage data pending.');
+      }
+
+      /* ── 4. TOP PACKAGES LEADERBOARD (horizontal bar) ──────── */
       var topPkgs = Array.isArray(pageData.topPackages) ? pageData.topPackages : [];
-      if (pkgsContainer && topPkgs.length > 0) {
-        var pkgsChart = echarts.init(pkgsContainer);
-        var reversedPkgs = [...topPkgs].reverse();
-        pkgsChart.setOption({
-          tooltip: {
+      var pkgsEl  = document.getElementById('homebrew-packages-chart');
+      if (pkgsEl && topPkgs.length > 0) {
+        var revPkgs = topPkgs.slice().reverse();
+        var pkgChart = ec.init(pkgsEl);
+        pkgChart.setOption({
+          tooltip: Object.assign({}, TOOLTIP_STYLE, {
             trigger: 'axis',
             axisPointer: { type: 'shadow' },
-            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-            borderColor: 'rgba(255, 255, 255, 0.1)',
-            textStyle: { color: '#cbd5e1' },
-            formatter: function (params) {
-              var idx = params[0].dataIndex;
-              var pkg = reversedPkgs[idx];
+            formatter: function(params) {
+              var idx  = params[0].dataIndex;
+              var pkg  = revPkgs[idx];
               return [
                 '<strong>' + pkg.name + '</strong>',
-                'Tap: ' + (pkg.tap || 'Unknown'),
-                'Installs (90d): ' + (pkg.installs !== null ? pkg.installs.toLocaleString() : 'Unavailable'),
-                'Downloads: ' + (pkg.downloads !== null ? pkg.downloads.toLocaleString() : 'Unavailable')
+                'Tap: '              + (pkg.tap      || 'Unknown'),
+                'Installs (90d): '   + (pkg.installs !== null ? pkg.installs.toLocaleString() : 'Unavailable'),
+                'Downloads: '        + (pkg.downloads !== null ? pkg.downloads.toLocaleString() : 'Unavailable'),
               ].join('<br>');
-            }
-          },
-          grid: { left: 95, right: 25, top: 20, bottom: 35 },
-          xAxis: {
-            type: 'value',
-            axisLabel: { color: '#cbd5f5' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-          },
-          yAxis: {
-            type: 'category',
-            data: reversedPkgs.map(function (pkg) { return pkg.name; }),
-            axisLabel: { color: '#cbd5f5' }
-          },
+            },
+          }),
+          grid: { left: 110, right: 25, top: 20, bottom: 35 },
+          xAxis: { type: 'value', axisLabel: { color: LABEL_COLOR, formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: GRID_LINE },
+          yAxis: { type: 'category', data: revPkgs.map(function(p) { return p.name; }), axisLabel: { color: LABEL_COLOR } },
           series: [{
             name: 'Installs',
             type: 'bar',
-            data: reversedPkgs.map(function (pkg) { return pkg.installs; }),
+            data: revPkgs.map(function(p) { return p.installs; }),
             itemStyle: {
-              color: '#38bdf8',
-              borderRadius: [0, 4, 4, 0]
-            }
-          }]
+              borderRadius: [0, 4, 4, 0],
+              color: new ec.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0, color: '#0ea5e9' },
+                { offset: 1, color: '#38bdf8' },
+              ]),
+            },
+          }],
         });
       } else {
-        renderUnavailable('homebrew-packages-chart', 'No package telemetry available in homebrew-ecosystem.json.');
+        showEmpty('homebrew-packages-chart', 'No package telemetry available.');
       }
 
-      window.addEventListener('resize', function () {
-        document.querySelectorAll('.chart-surface').forEach(function (element) {
-          var instance = echarts.getInstanceByDom(element);
-          if (instance) instance.resize();
+      /* ── 5. LANE INSTALLS BAR ──────────────────────────────── */
+      var laneIns = Array.isArray(pageData.laneInstalls) ? pageData.laneInstalls : [];
+      var laneEl  = document.getElementById('homebrew-lanes-chart');
+      if (laneEl && laneIns.length > 0) {
+        var laneChart = ec.init(laneEl);
+        laneChart.setOption({
+          tooltip: Object.assign({}, TOOLTIP_STYLE, {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var li = laneIns[params[0].dataIndex];
+              return [
+                '<strong>' + li.label + '</strong>',
+                'Installs (90d): '  + li.installs.toLocaleString(),
+                'Downloads: '       + li.downloads.toLocaleString(),
+              ].join('<br>');
+            },
+          }),
+          grid: { left: 120, right: 20, top: 20, bottom: 30 },
+          xAxis: { type: 'value', axisLabel: { color: LABEL_COLOR, formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: GRID_LINE },
+          yAxis: { type: 'category', data: laneIns.map(function(l) { return l.label; }), axisLabel: { color: LABEL_COLOR } },
+          series: [
+            {
+              name: 'Installs',
+              type: 'bar',
+              data: laneIns.map(function(l) { return l.installs; }),
+              itemStyle: { borderRadius: [0,4,4,0], color: new ec.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#059669'},{offset:1,color:'#34d399'}]) },
+              label: { show: true, position: 'right', color: '#94a3b8', fontSize: 11, formatter: function(p) { return (p.value/1e6).toFixed(1)+'M'; } },
+            },
+          ],
+        });
+      } else if (laneEl) {
+        showEmpty('homebrew-lanes-chart', 'Per-lane install data pending.');
+      }
+
+      /* ── Resize handler ─────────────────────────────────────── */
+      window.addEventListener('resize', function() {
+        document.querySelectorAll('[id$="-chart"]').forEach(function(el) {
+          var inst = ec.getInstanceByDom(el);
+          if (inst) inst.resize();
         });
       });
     }

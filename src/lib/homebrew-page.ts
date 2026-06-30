@@ -23,6 +23,10 @@ interface TapEntry {
   source_url: string;
   collected_at: string;
   derivation: string;
+  install_count?: number | null;
+  download_count?: number | null;
+  package_count?: number | null;
+  package_type_counts?: { formula?: number; cask?: number };
 }
 
 interface HomebrewRow {
@@ -136,6 +140,13 @@ export interface HomebrewPageModel {
       downloadCount: number | null;
       sourceUrl: string;
     }>;
+    topPackages: Array<{ name: string; tap: string | null; installs: number | null; downloads: number | null }>;
+    tapComparison: Array<{ name: string; installs: number; downloads: number; packages: number }>;
+    packageTypeSplit: Array<{ name: string; formula: number; cask: number }>;
+    coverageDonut: Array<{ value: number; name: string; itemStyle: { color: string } }>;
+    laneInstalls: Array<{ label: string; installs: number; downloads: number }>;
+    totalInstalls: number;
+    totalPackages: number;
   };
 }
 
@@ -382,6 +393,48 @@ export function loadHomebrewPageModel(datasetPath: string): HomebrewPageModel {
     packageLeaderboard.filter((pkg) => pkg.state === 'available' && pkg.tap_name).map((pkg) => pkg.tap_name),
   ).size;
 
+  // -- Extra chart datasets --
+
+  // 1. Tap comparison: installs + package count per tap
+  const tapComparison = dataset.taps
+    .filter((tap) => tap.state === 'available')
+    .map((tap) => ({
+      name: tap.name,
+      installs: tap.install_count ?? 0,
+      downloads: tap.download_count ?? 0,
+      packages: tap.package_count ?? 0,
+    }));
+
+  // 2. Package type split (formula vs cask) per tap
+  const packageTypeSplit = dataset.taps
+    .filter((tap) => tap.state === 'available' && tap.package_type_counts)
+    .map((tap) => ({
+      name: tap.name,
+      formula: tap.package_type_counts?.formula ?? 0,
+      cask: tap.package_type_counts?.cask ?? 0,
+    }));
+
+  // 3. Coverage donut: available vs awaiting lanes
+  const availableLaneCount = rows.filter((r) => r.state === 'available').length;
+  const awaitingLaneCount = rows.filter((r) => r.state !== 'available').length;
+  const coverageDonut = [
+    { value: availableLaneCount, name: 'Data available', itemStyle: { color: '#22c55e' } },
+    { value: awaitingLaneCount, name: 'Awaiting data', itemStyle: { color: '#334155' } },
+  ];
+
+  // 4. Per-lane installs bar (only available lanes with install data)
+  const laneInstalls = rows
+    .filter((r) => r.state === 'available' && r.install_count !== null)
+    .map((r) => ({
+      label: `${r.variant}/${r.branch}`,
+      installs: r.install_count!,
+      downloads: r.download_count ?? 0,
+    }));
+
+  // Aggregate totals for KPI cards
+  const totalInstalls = dataset.taps.reduce((sum, t) => sum + (t.install_count ?? 0), 0);
+  const totalPackages = dataset.taps.reduce((sum, t) => sum + (t.package_count ?? 0), 0);
+
   const chartData = {
     laneStatus: rows.map((row) => ({
       id: row.id,
@@ -403,6 +456,12 @@ export function loadHomebrewPageModel(datasetPath: string): HomebrewPageModel {
       installs: pkg.install_count,
       downloads: pkg.download_count,
     })),
+    tapComparison,
+    packageTypeSplit,
+    coverageDonut,
+    laneInstalls,
+    totalInstalls,
+    totalPackages,
   };
 
   return {

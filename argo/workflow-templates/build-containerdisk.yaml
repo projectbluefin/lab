@@ -279,7 +279,21 @@ spec:
           echo "[BUILD] filesystem args: <none>"
         fi
 
-        RUST_LOG=debug bootc install to-disk \
+        # The FSDK server image lacks dosfstools (mkfs.fat/mkdosfs). bootc needs mkfs.fat
+        # to format the EFI System partition. Inject wrappers via bootc's own sanctioned
+        # mechanism for accessing host tools: exec-in-host-mount-namespace.
+        for TOOL in mkfs.fat mkdosfs; do
+          if ! command -v "${TOOL}" >/dev/null 2>&1; then
+            mkdir -p /usr/local/sbin
+            printf '#!/bin/sh\nexec bootc exec-in-host-mount-namespace %s "$@"\n' "${TOOL}" \
+              > "/usr/local/sbin/${TOOL}"
+            chmod +x "/usr/local/sbin/${TOOL}"
+            echo "[BUILD] ${TOOL} wrapper injected via bootc exec-in-host-mount-namespace"
+          fi
+        done
+        export PATH="/usr/local/sbin:${PATH}"
+
+        bootc install to-disk \
           ${FS_ARG} \
           --source-imgref "${SOURCE_IMGREF}" \
           --generic-image \

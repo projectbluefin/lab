@@ -25,6 +25,7 @@ test('Astro build emits multipage factory routes into docs', () => {
     'docs/applications/index.html',
     'docs/homebrew/index.html',
     'docs/adoption/index.html',
+    'docs/userspace/index.html',
   ];
 
   for (const file of expectedFiles) {
@@ -50,6 +51,7 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/applications/index.html'), /Bazaar/, 'applications page calls out Bazaar scope');
   assert.match(html('docs/index.html'), /href="\/homebrew\/"/, 'overview links to homebrew at domain root');
   assert.match(html('docs/index.html'), /href="\/adoption\/"/, 'overview links to adoption at domain root');
+  assert.match(html('docs/index.html'), /href="\/userspace\/"/, 'overview links to userspace at domain root');
   assert.match(html('docs/upstream/index.html'), /Unavailable|pending|coming soon/i, 'subpages show explicit unavailable state');
 });
 
@@ -110,4 +112,22 @@ test('bluefin page renders bluefin-family streams with explicit unavailable stat
   assert.match(bluefinPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this stream\./i, 'bluefin page keeps unavailable reason explicit');
   assert.match(bluefinPage, /https:\/\/github\.com\/projectbluefin\/dakota\/releases/i, 'bluefin page links projectbluefin evidence');
   assert.doesNotMatch(bluefinPage, /ublue-os\/aurora/i, 'bluefin page excludes non-projectbluefin streams');
+});
+
+test('userspace page renders FSDK containers, registry metadata, and charts', () => {
+  execFileSync('npm', ['run', 'build'], {
+    cwd: repo,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+
+  const userspacePage = html('docs/userspace/index.html');
+
+  assert.match(userspacePage, /Userspace OCI Layers/i, 'userspace page renders main title');
+  assert.match(userspacePage, /FSDK images built/i, 'userspace page renders build KPI card');
+  assert.match(userspacePage, /Freedesktop SDK custom containers/i, 'userspace page renders tracked custom containers section');
+  assert.match(userspacePage, /fsdk\/lab-runner/i, 'userspace page includes lab-runner OCI image');
+  assert.match(userspacePage, /elements\/oci\/lab-runner\.bst/i, 'userspace page includes buildstream element path');
+  assert.match(userspacePage, /userspace-registry-dist-chart|userspace-fsdk-status-chart/, 'userspace page renders chart containers');
+  assert.match(userspacePage, /Data Integrity Posture/i, 'userspace page renders Data Integrity Posture section');
 });

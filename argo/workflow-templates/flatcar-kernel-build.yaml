@@ -134,6 +134,8 @@ spec:
               labels:
                 kubevirt.io/vm: "{{workflow.parameters.vm-name}}"
             spec:
+              nodeSelector:
+                kubernetes.io/hostname: ghost
               domain:
                 cpu:
                   cores: {{workflow.parameters.cores}}

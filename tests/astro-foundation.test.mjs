@@ -131,6 +131,8 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
   assert.match(userspacePage, /Freedesktop SDK custom containers/i, 'userspace page renders tracked custom containers section');
   assert.match(userspacePage, /fsdk\/lab-runner/i, 'userspace page includes lab-runner OCI image');
   assert.match(userspacePage, /elements\/oci\/lab-runner\.bst/i, 'userspace page includes buildstream element path');
+  assert.match(userspacePage, /Curated Resource Optimization/i, 'userspace page explains why some elements are unbuilt');
+  assert.match(userspacePage, /podman pull 192\.168\.1\.102:30500\/fsdk\/lab-runner:latest/i, 'userspace page renders copyable podman pull commands');
   assert.match(userspacePage, /GitHub Source/i, 'userspace page links FSDK containers directly to GitHub');
   assert.match(userspacePage, /userspace-registry-dist-chart|userspace-fsdk-status-chart/, 'userspace page renders chart containers');
   assert.match(userspacePage, /FSDK version/i, 'userspace page renders Freedesktop SDK version label');

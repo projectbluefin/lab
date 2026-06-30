@@ -538,6 +538,25 @@ const generatedAt = new Date().toISOString();
       flex-direction: column;
       justify-content: center;
     }
+    .terminal-block {
+      background: #090d16 !important;
+      border: 1px solid rgba(255, 255, 255, 0.05) !important;
+      border-radius: 8px !important;
+      padding: 0.5rem 0.75rem !important;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+      font-size: 0.78rem !important;
+      color: #38bdf8 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.5rem !important;
+      margin: 0.75rem 0 !important;
+      max-width: 480px;
+    }
+    .terminal-prompt {
+      color: #10b981 !important;
+      font-weight: 700 !important;
+      user-select: none !important;
+    }
 
     /* ── Integrity panel / Explainer ────────────────────────── */
     .integrity-panel {
@@ -675,6 +694,13 @@ const generatedAt = new Date().toISOString();
   <!--  FSDK HORIZONTAL REGISTRY LIST                              -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <h2 class="section-title">Freedesktop SDK custom containers</h2>
+  <div class="explainer-box" style="background: rgba(30, 41, 59, 0.25); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; color: #94a3b8; font-size: 0.9rem; line-height: 1.6;">
+    <strong>Curated Resource Optimization:</strong> Freedesktop SDK images are compiled on-demand in the homelab.
+    Only OCI layers actively scheduled by the active testing-lab pipeline (specifically <strong>fsdk/lab-runner</strong> and <strong>fsdk/qemu-img</strong>)
+    are built and pushed to the writable Zot registry to minimize cluster CPU footprint and NVMe storage consumption.
+    The remaining unbuilt containers stay fully tracked as elements and can be compiled locally.
+  </div>
+
   <div class="registry-list-container">
     {fsdkContainers.map((container) => {
       const isAvailable = container.status === 'available';
@@ -690,6 +716,10 @@ const generatedAt = new Date().toISOString();
             <h3>{container.name}</h3>
             <p>{container.description}</p>
             <div class="registry-element-badge">Element: {container.element}</div>
+
+            <div class="terminal-block">
+              <span class="terminal-prompt">$</span> <code>podman pull 192.168.1.102:30500/{container.name}:latest</code>
+            </div>
           </div>
 
           <!-- Metadata -->

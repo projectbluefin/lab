@@ -155,6 +155,10 @@ spec:
         value: "25G"
       - name: filesystem
         value: ""
+    # bootc install to-disk --via-loopback requires hostPID and hostIPC for
+    # correct loopback device visibility and udev settle across namespaces.
+    # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
+    podSpecPatch: '{"spec":{"hostPID":true,"hostIPC":true}}'
     nodeSelector:
       kubernetes.io/hostname: ghost
     volumes:
@@ -187,6 +191,11 @@ spec:
           secretKeyRef:
             name: bluefin-test-ssh-key
             key: id_ed25519.pub
+      # Enable direct-io for the loopback device; reduces page-cache pressure
+      # and avoids double-buffering for large raw disk images.
+      # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
+      - name: BOOTC_DIRECT_IO
+        value: "on"
       volumeMounts:
       - name: dev
         mountPath: /dev
@@ -210,7 +219,7 @@ spec:
 
         if [[ -f "${DISK}" ]]; then
           echo "Removing stale disk: ${DISK}"
-          losetup -j "${DISK}" | awk -F: '{print $1}' | xargs -r losetup -d 2>/dev/null || true
+          losetup -j "${DISK}" | cut -d: -f1 | xargs -r losetup -d 2>/dev/null || true
           rm -f "${DISK}"
         fi
 

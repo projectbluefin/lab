@@ -397,6 +397,12 @@ export function loadHomebrewPageModel(datasetPath: string): HomebrewPageModel {
       downloadCount: row.download_count,
       sourceUrl: row.source_url,
     })),
+    topPackages: packageLeaderboard.slice(0, 10).map((pkg) => ({
+      name: pkg.package_name,
+      tap: pkg.tap_name,
+      installs: pkg.install_count,
+      downloads: pkg.download_count,
+    })),
   };
 
   return {

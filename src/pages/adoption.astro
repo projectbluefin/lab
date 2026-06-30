@@ -388,13 +388,26 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     </div>
   </div>
 
-  <div class="explainer-box">
-    <p>
-      These counts come from <strong>countme</strong>, a privacy-respecting feature built into
-      <a href="https://fedoraproject.org/wiki/Changes/DNF_Better_Counting" target="_blank" rel="noopener">Fedora's package manager</a>.
-      Once a week, each device sends a single anonymous check-in — no personal data, no IP addresses stored,
-      just a count of how many devices are actively using each image. Mapped tap lanes reuse transplanted Brewfile package totals, and unmatched lanes remain explicitly unavailable.
-    </p>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem; margin-top: 1rem;">
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Active Devices Trend</h3>
+        <div class="btn-group" id="countme-range-btns">
+          <button class="toggle-btn" data-range="30">30d</button>
+          <button class="toggle-btn" data-range="90">90d</button>
+          <button class="toggle-btn active" data-range="365">365d</button>
+          <button class="toggle-btn" data-range="all">All</button>
+        </div>
+      </div>
+      <div class="chart-box" id="countme-trend-chart" style="height: 320px;"></div>
+    </div>
+    
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Ecosystem Share</h3>
+      </div>
+      <div class="chart-box" id="ecosystem-pie-chart" style="height: 320px;"></div>
+    </div>
   </div>
 
   <!-- Summary Grid for legacy test selector match -->
@@ -726,34 +739,11 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
 
   <!-- Trends and Distribution Charts -->
   <h2 class="kpi-section-title">Trends & Distribution</h2>
-  
-  <div class="dashboard-panel">
+  <div class="dashboard-panel" style="margin-bottom: 2.5rem;">
     <div class="panel-header">
-      <h3>Active Devices per Month</h3>
-      <div class="btn-group" id="countme-range-btns">
-        <button class="toggle-btn" data-range="30">30d</button>
-        <button class="toggle-btn" data-range="90">90d</button>
-        <button class="toggle-btn active" data-range="365">365d</button>
-        <button class="toggle-btn" data-range="all">All</button>
-      </div>
+      <h3>Fedora Version Distribution</h3>
     </div>
-    <div class="chart-box-large" id="countme-trend-chart"></div>
-  </div>
-
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
-    <div class="dashboard-panel" style="margin-bottom: 0;">
-      <div class="panel-header">
-        <h3>Ecosystem Share (Current Week)</h3>
-      </div>
-      <div class="chart-box" id="ecosystem-pie-chart"></div>
-    </div>
-    
-    <div class="dashboard-panel" style="margin-bottom: 0;">
-      <div class="panel-header">
-        <h3>Fedora Version Distribution</h3>
-      </div>
-      <div class="chart-box" id="os-version"></div>
-    </div>
+    <div class="chart-box" id="os-version" style="height: 320px;"></div>
   </div>
 
   <!-- Distros Specific Collapsible/Grid Trends -->
@@ -812,63 +802,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
   <!-- Factory Specific Metrics & Integration Gaps details (Original widgets, required by tests) -->
   <div class="factory-status-section">
     <h2 class="kpi-section-title">Factory Adoption & Telemetry Details</h2>
-    <section class="detail-grid detail-grid--hero">
-      <article class="status-card status-card--hero">
-        <p class="status-card__eyebrow">Factory adoption</p>
-        {laneStats.unavailable === laneStats.total ? (
-          <>
-            <h2>Adoption signals are pending collection</h2>
-            <p>
-              No registry pull-count data (GHCR API) or Fedora countme active-device data is tracked in
-              <code>docs/data/</code> yet. All {laneStats.total} image lanes are in an explicit unavailable state.
-              Once repo-owned artifacts fetched from the GHCR package statistics API or the Fedora countme
-              infrastructure are committed, this page will surface adoption trends and device counts.
-            </p>
-          </>
-        ) : (
-          <>
-            <h2>Adoption data available for {laneStats.available} of {laneStats.total} lanes</h2>
-            <p>
-              Pull-count data is tracked for {laneStats.withPullData} lane{laneStats.withPullData !== 1 ? 's' : ''}.
-              Active-device estimates from Fedora countme are tracked for {laneStats.withCountmeData} lane{laneStats.withCountmeData !== 1 ? 's' : ''}.
-              The remaining {laneStats.unavailable} lane{laneStats.unavailable !== 1 ? 's' : ''} remain explicitly unavailable.
-            </p>
-          </>
-        )}
-        <dl class="status-card__meta">
-          <div>
-            <dt>Tracked image lanes</dt>
-            <dd>{laneStats.total}</dd>
-          </div>
-          <div>
-            <dt>Lanes with pull-count data</dt>
-            <dd>{laneStats.withPullData}</dd>
-          </div>
-          <div>
-            <dt>Lanes with countme data</dt>
-            <dd>{laneStats.withCountmeData}</dd>
-          </div>
-          <div>
-            <dt>Dataset generated</dt>
-            <dd>{formatUtc(dataset._meta.generated_at)}</dd>
-          </div>
-        </dl>
-      </article>
 
-      <article class="status-card">
-        <p class="status-card__eyebrow">Data gap posture</p>
-        <h2>Unavailable states stay visible</h2>
-        <ul class="status-list">
-          <li>{laneStats.withoutPullData} of {laneStats.total} lanes lack pull-count data from the container registry API.</li>
-          <li>{laneStats.withoutCountmeData} of {laneStats.total} lanes lack active-device estimates from Fedora countme infrastructure.</li>
-          <li>{unavailableTrustCards.length} of {trustCards.length} trust cards are incomplete due to missing publisher metadata.</li>
-        </ul>
-        <p class="callout-note">
-          Countme snapshot disclosure: active-device coverage is partially available from repo-owned migrated artifacts in <code>docs/data/</code>.
-          Pull-count data is still unavailable until an in-scope registry source is committed, and those gaps stay visible per lane.
-        </p>
-      </article>
-    </section>
 
     <!-- Factory Charts -->
     <section class="chart-grid" aria-label="Adoption charts">
@@ -1005,7 +939,21 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
           </div>
         </dl>
         <p class="table-note">{dataset._meta.description}</p>
-        <a href={`${baseUrl}data/adoption-metrics.json`}>Open raw dataset</a>
+
+        <div class="integrity-disclosure" style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 1rem;">
+          <h4 style="font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.5rem;">Data Integrity Posture Disclosures</h4>
+          <ul class="status-list table-note" style="padding-left: 1rem; list-style-type: disc;">
+            <li>Adoption data available for {laneStats.available} of {laneStats.total} lanes.</li>
+            <li>{laneStats.withoutPullData} of {laneStats.total} lanes lack registry pull-count data from the container registry API.</li>
+            <li>No registry pull-count data or distro-wide countme client reports are simulated. Lanes show "No registry pull-count data" or zero active devices rather than disappearing.</li>
+            <li>If registry pull.count data is unavailable/pending, it remains explicitly marked.</li>
+            <li>Countme snapshot disclosure: active-device coverage is partially available from repo-owned migrated artifacts in <code>docs/data/</code>. Pull-count data is still unavailable until an in-scope registry source is committed, and those gaps stay visible per lane.</li>
+            <li>{laneStats.withoutCountmeData} of {laneStats.total} lanes lack active-device estimates from Fedora countme infrastructure.</li>
+            <li>{unavailableTrustCards.length} of {trustCards.length} trust cards are incomplete due to missing publisher metadata.</li>
+          </ul>
+        </div>
+
+        <a href={`${baseUrl}data/adoption-metrics.json`} style="margin-top: 1rem; display: inline-block;">Open raw dataset</a>
       </article>
     </section>
   </div>

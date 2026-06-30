@@ -68,6 +68,13 @@ test('tests page renders matrix views, chart mounts, evidence links, and unavail
   assert.match(testsPage, /bluefin-testing-smoke/i, 'tests page renders available matrix row details');
   assert.match(testsPage, /results\/bluefin-testing-smoke\.json/i, 'tests page links results evidence');
   assert.match(testsPage, /Result file exists, but no completed run is published for this matrix cell yet\./i, 'tests page keeps unavailable states explicit');
+  
+  // Premium features assertions
+  assert.match(testsPage, /Tests at a Glance/i, 'tests page renders beautiful title for KPI scorecard');
+  assert.match(testsPage, /Verified scenarios/i, 'tests page renders Verified scenarios KPI card');
+  assert.match(testsPage, /progress-bar/i, 'tests page renders inline progress bars for pass rates');
+  assert.match(testsPage, /Data Integrity Posture/i, 'tests page renders Data Integrity Posture section');
+  assert.match(testsPage, /Evidence-backed authenticity/i, 'tests page renders evidence-backed authenticity disclosure');
 });
 
 test('upstream page renders grouped views, chart mounts, evidence links, and unavailable states', () => {

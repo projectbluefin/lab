@@ -44,6 +44,69 @@ const payloadJson = serializeJsonScript(payload);
 ---
 
 <section class="status-card chart-card">
+  <style>
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    @media (max-width: 640px) {
+      .chart-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .chart-panel {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .chart-panel:hover {
+      border-color: rgba(56, 189, 248, 0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+    }
+    .chart-panel__header {
+      margin-bottom: 1.25rem;
+    }
+    .chart-panel__header h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 0.25rem 0 0.15rem 0;
+    }
+    .chart-panel__header p {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .chart-panel__plot {
+      width: 100%;
+      height: 340px;
+      min-height: 340px;
+    }
+    :global(.chart-panel__empty) {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      height: 340px;
+      min-height: 340px;
+      border: 1px dashed rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      color: #64748b;
+      font-size: 0.875rem;
+      text-align: center;
+      background: rgba(30, 41, 59, 0.15);
+      padding: 1.5rem;
+    }
+  </style>
+
   <div class="section-heading">
     <div>
       <p class="status-card__eyebrow">Charts</p>

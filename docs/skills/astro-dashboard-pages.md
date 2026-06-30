@@ -72,6 +72,8 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 72. When deprecating or removing older charts or widgets that are still required by legacy test assertions, wrap them in a hidden container (e.g., `display: none`) instead of deleting their DOM containers. This preserves test compatibility while hiding confusing or redundant visualizations from the user interface.
 73. Redesign trust or security cards to explain the purpose of indicators (e.g., SBOM, CVE scans, Cosign signatures) educationally. When telemetry or charts are missing for factory images, display explicit 16:9 aspect ratio placeholder blocks with placeholder text rather than completely hiding the card.
 74. Use inline visual progress/gauge bars inside table cells to represent relative size or coverage metrics compared to a maximum benchmark (e.g., maximum registry pulls or active devices) for improved visual scanning.
+75. When implementing tests or matrix dashboard pages, represent cell or row pass rates using inline visual progress bars with dynamic gradients (e.g., green/emerald for ≥90%, orange/amber for 60%-90%, and red for <60% performance) alongside the text value to enhance scanability and visual hierarchy.
+76. Introduce comprehensive, science-grade KPI metrics such as average pass rate across all active cells and total scenarios verified, accompanied by a "Data Integrity Posture" disclosure block at the bottom of the page to build user trust, clarify evidence-backed authenticity, and explicitly details available vs unavailable counts.
 
 ## Common Rationalizations
 

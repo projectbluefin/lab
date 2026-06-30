@@ -129,5 +129,8 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
   assert.match(userspacePage, /fsdk\/lab-runner/i, 'userspace page includes lab-runner OCI image');
   assert.match(userspacePage, /elements\/oci\/lab-runner\.bst/i, 'userspace page includes buildstream element path');
   assert.match(userspacePage, /userspace-registry-dist-chart|userspace-fsdk-status-chart/, 'userspace page renders chart containers');
+  assert.match(userspacePage, /FSDK version/i, 'userspace page renders Freedesktop SDK version label');
+  assert.match(userspacePage, /Digest/i, 'userspace page renders OCI Digest label');
+  assert.match(userspacePage, /Git Commit Ref/i, 'userspace page renders Git Commit Reference label');
   assert.match(userspacePage, /Data Integrity Posture/i, 'userspace page renders Data Integrity Posture section');
 });

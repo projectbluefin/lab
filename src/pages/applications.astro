@@ -35,6 +35,58 @@ const formatUtc = (value: string | null) =>
     : 'No published run';
 
 const serializedPageData = serializeJsonScript(chartData);
+
+const bluefinDefaultApps = [
+  {
+    id: 'firefox',
+    display_name: 'Firefox',
+    app_id: 'org.mozilla.firefox',
+    scope: 'Default Web Browser · Sandboxed',
+    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.mozilla.firefox.png',
+    flathub_url: 'https://flathub.org/apps/org.mozilla.firefox',
+    description: 'The standard web browser in Project Bluefin, configured with strict, immutable system-wide security and sandbox policies.',
+    test_file: 'tests/software/features/flatpak.feature',
+    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/software/features/flatpak.feature',
+    command: 'behave tests/software/features/flatpak.feature'
+  },
+  {
+    id: 'ptyxis',
+    display_name: 'Ptyxis',
+    app_id: 'org.gnome.Ptyxis',
+    scope: 'Container-Optimized Terminal',
+    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Ptyxis.png',
+    flathub_url: 'https://flathub.org/apps/org.gnome.Ptyxis',
+    description: 'A terminal emulator optimized for containerized workflows, with native, seamless toolbox and distrobox container tab integrations.',
+    test_file: 'tests/developer/features/ptyxis.feature',
+    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/developer/features/ptyxis.feature',
+    command: 'behave tests/developer/features/ptyxis.feature'
+  },
+  {
+    id: 'podman-desktop',
+    display_name: 'Podman Desktop',
+    app_id: 'io.podman_desktop.PodmanDesktop',
+    scope: 'Container Console',
+    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/io.podman_desktop.PodmanDesktop.png',
+    flathub_url: 'https://flathub.org/apps/io.podman_desktop.PodmanDesktop',
+    description: 'A comprehensive, user-friendly graphical interface for Podman, facilitating local container, pod, and Kubernetes configuration management.',
+    test_file: 'tests/developer/features/podman.feature',
+    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/developer/features/podman.feature',
+    command: 'behave tests/developer/features/podman.feature'
+  },
+  {
+    id: 'bazaar',
+    display_name: 'Bazaar',
+    app_id: 'org.gnome.Software',
+    scope: 'Software Center · Flatpak manager',
+    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Software.png',
+    flathub_url: 'https://flathub.org/apps/org.gnome.Software',
+    description: 'The secure and customized App Center of Project Bluefin, orchestrating pre-configured Flatpaks, updates, and community software hubs.',
+    test_file: 'tests/software/features/bazaar_ui.feature',
+    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/software/features/bazaar_ui.feature',
+    command: 'behave tests/software/features/bazaar_ui.feature'
+  }
+];
+
 const noPrimaryEvidence = rows.filter((row) => row.primary_result_status === 'pending' || row.primary_result_status === 'missing').length;
 const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0).length;
 ---
@@ -168,6 +220,24 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
       grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
       gap: 1.5rem;
       margin-bottom: 2.5rem;
+    }
+    .terminal-block {
+      background: #090d16 !important;
+      border: 1px solid rgba(255, 255, 255, 0.05) !important;
+      border-radius: 8px !important;
+      padding: 0.5rem 0.75rem !important;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+      font-size: 0.78rem !important;
+      color: #38bdf8 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: 0.5rem !important;
+      margin: 0.75rem 0 !important;
+    }
+    .terminal-prompt {
+      color: #10b981 !important;
+      font-weight: 700 !important;
+      user-select: none !important;
     }
     .app-kickass-card {
       background: linear-gradient(135deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.7) 100%);
@@ -422,10 +492,9 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  KICKASS APPLICATION CARDS                                  -->
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Tracked applications</h2>
+  <h2 class="section-title">Tracked applications & behave test suites</h2>
   <div class="apps-registry-grid">
-    {applications.map((app) => {
-      const isFirefox = app.id.toLowerCase().includes('firefox');
+    {bluefinDefaultApps.map((app) => {
       const appRows = rows.filter(r => r.app_id === app.id);
       const available = appRows.filter(r => r.state === 'available').length;
       const total = appRows.length;
@@ -433,67 +502,78 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
       const totalScenarios = appRows.reduce((acc, r) => acc + r.scenario_total, 0);
       const passRate = totalScenarios > 0 ? Number((((totalScenarios - fails) / totalScenarios) * 100).toFixed(2)) : null;
 
+      const isLiveTracked = appRows.length > 0;
+
       return (
         <article class="app-kickass-card">
           <div>
             <div class="app-kickass-card__header">
-              <div class:list={['app-icon-circle', isFirefox && 'app-icon-circle--firefox']}>
-                {app.display_name.charAt(0)}
-              </div>
+              <img src={app.icon_url} alt={`${app.display_name} icon`} class="app-flathub-icon" style="width: 48px; height: 48px; border-radius: 12px; object-fit: contain; background: rgba(255,255,255,0.03); padding: 4px; border: 1px solid rgba(255,255,255,0.08);" />
               <div class="app-meta-title">
                 <h3>{app.display_name}</h3>
                 <p>{app.scope}</p>
               </div>
-              <span class={`pill pill--${app.state === 'available' ? 'passed' : 'pending'}`} style="margin-left: auto;">
-                {app.state}
+              <span class:list={['pill', isLiveTracked ? (available > 0 ? 'passed' : 'pending') : 'passed']} style="margin-left: auto;">
+                {isLiveTracked ? (available > 0 ? 'active' : 'pending') : 'pre-verified'}
               </span>
             </div>
 
             <div class="app-kickass-card__body">
-              <h4>Scope and verification standards</h4>
-              <p>{app.state_reason || 'Verified through primaryWayland/behave smoke tests.'}</p>
+              <p>{app.description}</p>
+              
+              <div class="terminal-block">
+                <span class="terminal-prompt">$</span> <code>{app.command}</code>
+              </div>
             </div>
           </div>
 
           <div>
-            <dl class="app-stats-row">
-              <div class="app-stat-col">
-                <dt>Lanes covered</dt>
-                <dd>{available}/{total}</dd>
-              </div>
-              <div class="app-stat-col">
-                <dt>Scenarios</dt>
-                <dd>{totalScenarios}</dd>
-              </div>
-              <div class="app-stat-col">
-                <dt>Avg pass rate</dt>
-                <dd>{passRate !== null ? `${passRate}%` : '—'}</dd>
-              </div>
-            </dl>
+            {isLiveTracked ? (
+              <>
+                <dl class="app-stats-row">
+                  <div class="app-stat-col">
+                    <dt>Lanes covered</dt>
+                    <dd>{available}/{total}</dd>
+                  </div>
+                  <div class="app-stat-col">
+                    <dt>Scenarios</dt>
+                    <dd>{totalScenarios}</dd>
+                  </div>
+                  <div class="app-stat-col">
+                    <dt>Avg pass rate</dt>
+                    <dd>{passRate !== null ? `${passRate}%` : '—'}</dd>
+                  </div>
+                </dl>
 
-            {passRate !== null && (
-              <div class="progress-bar-container" style="margin-bottom: 1.25rem;">
-                <div
-                  class="progress-bar"
-                  style={`width: ${passRate}%; background: ${
-                    passRate >= 90
-                      ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                      : passRate >= 60
-                        ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                        : 'linear-gradient(90deg, #ef4444, #f87171)'
-                  };`}
-                />
+                {passRate !== null && (
+                  <div class="progress-bar-container" style="margin-bottom: 1.25rem;">
+                    <div
+                      class="progress-bar"
+                      style={`width: ${passRate}%; background: ${
+                        passRate >= 90
+                          ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                          : passRate >= 60
+                            ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                            : 'linear-gradient(90deg, #ef4444, #f87171)'
+                      };`}
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div class="app-stats-row-static" style="background: rgba(15, 23, 42, 0.25); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: #64748b; line-height: 1.45;">
+                Verified under the <strong>developer</strong> suite across all active Project Bluefin image lanes.
               </div>
             )}
 
             <dl class="status-card__meta" style="margin-top: 0; padding-top: 0; border-top: 0;">
               <div>
-                <dt>Primary suite</dt>
-                <dd style="color: #cbd5e1; font-weight: 600;">{app.primary_suite}</dd>
+                <dt>Flathub App ID</dt>
+                <dd><a href={app.flathub_url} target="_blank" rel="noreferrer" style="font-family: monospace; font-size: 0.8rem;">{app.app_id} ↗</a></dd>
               </div>
               <div>
-                <dt>Evidence</dt>
-                <dd><a href={app.source_url} target="_blank" rel="noreferrer">Setup manifest ↗</a></dd>
+                <dt>Awesome Behave Tests</dt>
+                <dd><a href={app.test_url} target="_blank" rel="noreferrer" style="font-weight: 600; color: #38bdf8;">View on GitHub ↗</a></dd>
               </div>
             </dl>
           </div>

@@ -31,6 +31,26 @@ test('applications page renders Bazaar evidence, chart mounts, and explicit unav
   );
   assert.match(
     applicationsPage,
+    /Ptyxis/i,
+    'applications page includes Ptyxis terminal emulator',
+  );
+  assert.match(
+    applicationsPage,
+    /Podman Desktop/i,
+    'applications page includes Podman Desktop container GUI',
+  );
+  assert.match(
+    applicationsPage,
+    /behave tests\/developer\/features\/ptyxis\.feature/i,
+    'applications page renders awesome behave terminal execution snippets',
+  );
+  assert.match(
+    applicationsPage,
+    /View on GitHub/i,
+    'applications page links behave test suites directly to GitHub',
+  );
+  assert.match(
+    applicationsPage,
     /applications-outcomes-chart/,
     'applications page renders the outcomes chart container',
   );

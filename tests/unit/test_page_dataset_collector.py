@@ -147,24 +147,29 @@ def test_homebrew_ecosystem_derives_all_tracked_lanes():
 
     metrics = {m['id']: m for m in dataset['summary_metrics']}
     assert metrics['tracked_image_lanes']['value'] == 10
-    assert metrics['lanes_with_brew_data']['value'] == 0
-    assert metrics['lanes_awaiting_brew_data']['value'] == 10
+    assert metrics['lanes_with_brew_data']['value'] == 4
+    assert metrics['lanes_awaiting_brew_data']['value'] == 6
 
 
-def test_homebrew_ecosystem_all_rows_unavailable_without_brew_data():
+def test_homebrew_ecosystem_non_bluefin_rows_are_unavailable_without_brew_data():
     module = load_module()
 
     dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
 
+    bluefin_family = {'bluefin', 'bluefin-lts'}
     for row in dataset['rows']:
-        assert row['state'] == 'unavailable', f"Expected unavailable for {row['id']}"
-        assert row['state_reason'], f"Missing state_reason for {row['id']}"
+        if row['variant'] in bluefin_family:
+            assert row['state'] == 'available', f"Expected available for {row['id']}"
+            assert row['install_count'] is not None
+            assert row['download_count'] is not None
+        else:
+            assert row['state'] == 'unavailable', f"Expected unavailable for {row['id']}"
+            assert row['state_reason'], f"Missing state_reason for {row['id']}"
+            assert row['install_count'] is None
+            assert row['download_count'] is None
         assert row['source_url'], f"Missing source_url for {row['id']}"
         assert row['collected_at'] == '2026-06-29T19:22:22Z'
         assert row['derivation'], f"Missing derivation for {row['id']}"
-        # Unavailable signals must be null, not fabricated
-        assert row['install_count'] is None
-        assert row['download_count'] is None
 
 
 def test_homebrew_ecosystem_metrics_have_full_provenance():
@@ -189,6 +194,35 @@ def test_homebrew_ecosystem_awaiting_metric_source_url_is_variant_publishers():
     assert awaiting['source_url'].endswith('/docs/data/variant-publishers.json'), (
         f"Expected variant-publishers.json source_url, got: {awaiting['source_url']}"
     )
+
+
+def test_homebrew_ecosystem_populates_bluefin_family_from_migrated_source():
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+    rows = {row['id']: row for row in dataset['rows']}
+
+    assert rows['bluefin-testing']['state'] == 'available'
+    assert rows['bluefin-testing']['tap_name'] == 'bluefin/brewfile'
+    assert rows['bluefin-testing']['install_count'] > 0
+    assert rows['bluefin-testing']['download_count'] > 0
+
+    assert rows['bluefin-lts-stable']['state'] == 'available'
+    assert rows['aurora-testing']['state'] == 'unavailable'
+    assert rows['flatcar-testing']['state'] == 'unavailable'
+
+
+def test_homebrew_ecosystem_exposes_transplanted_tap_catalog():
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+    taps = {tap['name']: tap for tap in dataset['taps']}
+    metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
+
+    assert 'bluefin/brewfile' in taps
+    assert taps['bluefin/brewfile']['url'] == 'https://github.com/projectbluefin/common'
+    assert metrics['lanes_with_brew_data']['value'] == 4
+    assert metrics['lanes_awaiting_brew_data']['value'] == 6
 
 
 def test_adoption_metrics_derives_all_tracked_lanes():
@@ -277,18 +311,19 @@ def test_adoption_metrics_metrics_have_full_provenance():
 
 
 def test_homebrew_ecosystem_names_authoritative_upstream_sources():
-    """Derivation and state_reason must name formulae.brew.sh, not bootc-ecosystem site artifacts."""
+    """Derivation and state_reason must name formulae.brew.sh for unavailable rows."""
     module = load_module()
 
     dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
 
     for row in dataset['rows']:
-        assert 'formulae.brew.sh' in row['state_reason'], (
-            f"state_reason for {row['id']} must name formulae.brew.sh as the authoritative source"
-        )
-        assert 'formulae.brew.sh' in row['derivation'], (
-            f"derivation for {row['id']} must name formulae.brew.sh"
-        )
+        if row['state'] == 'unavailable':
+            assert 'formulae.brew.sh' in row['state_reason'], (
+                f"state_reason for {row['id']} must name formulae.brew.sh as the authoritative source"
+            )
+            assert 'formulae.brew.sh' in row['derivation'], (
+                f"derivation for {row['id']} must name formulae.brew.sh"
+            )
 
     metrics = {m['id']: m for m in dataset['summary_metrics']}
     assert 'formulae.brew.sh' in metrics['lanes_with_brew_data']['derivation']

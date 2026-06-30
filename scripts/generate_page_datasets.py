@@ -527,11 +527,61 @@ def iter_tracked_lanes(publishers: dict):
             yield variant, branch, details
 
 
+def load_optional_json(path: Path):
+    if not path.exists():
+        return None
+    return load_json(path)
+
+
 def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
     publishers = load_json(root / 'docs/data/variant-publishers.json')
+    migrated = load_optional_json(root / 'docs/data/homebrew-package-stats-migrated.json') or {'taps': []}
+    tap_by_variant = {
+        variant: tap
+        for tap in migrated.get('taps', [])
+        for variant in tap.get('variant_scope', [])
+    }
+
+    taps = []
+    for tap in migrated.get('taps', []):
+        taps.append(
+            {
+                'id': tap['name'].replace('/', '-'),
+                'name': tap['name'],
+                'url': tap['url'],
+                'description': tap.get('description'),
+                'state': 'available',
+                'state_reason': None,
+                'source_url': migrated['source_url'],
+                'collected_at': collected_at,
+                'derivation': 'Transplanted from repo-owned docs/data/homebrew-package-stats-migrated.json.',
+            }
+        )
 
     rows = []
     for variant, branch, details in iter_tracked_lanes(publishers):
+        tap = tap_by_variant.get(variant)
+        if tap:
+            install_count = sum(pkg['installs_90d'] for pkg in tap['packages'])
+            download_count = sum(pkg['downloads'] for pkg in tap['packages'])
+            rows.append(
+                {
+                    'id': f'{variant}-{branch}',
+                    'variant': variant,
+                    'branch': branch,
+                    'tap_name': tap['name'],
+                    'tap_url': tap['url'],
+                    'install_count': install_count,
+                    'download_count': download_count,
+                    'state': 'available',
+                    'state_reason': None,
+                    'source_url': migrated['source_url'],
+                    'collected_at': collected_at,
+                    'derivation': 'Variant inherits the transplanted Bluefin-family Brewfile package totals without branch-specific splitting.',
+                }
+            )
+            continue
+
         repo = details.get('publisher_repo')
         releases_url = (
             f'https://github.com/{repo}/releases'
@@ -615,7 +665,7 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
                 ),
             },
         ],
-        'taps': [],
+        'taps': taps,
         'rows': rows,
     }
 

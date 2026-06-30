@@ -256,91 +256,133 @@ const generatedAt = new Date().toISOString();
     }
 
     /* ── Kickass Container Cards ────────────────────────────── */
-    .apps-registry-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 1.5rem;
-      margin-bottom: 2.5rem;
-    }
-    .app-kickass-card {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.7) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      border-radius: 24px;
-      padding: 1.75rem;
+    .registry-list-container {
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      min-height: 250px;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-    .app-kickass-card:hover {
-      border-color: rgba(56, 189, 248, 0.3);
-      transform: translateY(-4px);
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-    }
-    .app-kickass-card__header {
-      display: flex;
-      align-items: center;
       gap: 1rem;
-      margin-bottom: 1.25rem;
+      margin-bottom: 2.5rem;
     }
-    .app-icon-circle {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(52, 211, 153, 0.2) 100%);
-      border: 1px solid rgba(16, 185, 129, 0.3);
+    .registry-horizontal-row {
+      background: linear-gradient(90deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr 1.2fr auto;
+      gap: 1.5rem;
+      align-items: center;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+    .registry-horizontal-row:hover {
+      border-color: rgba(56, 189, 248, 0.25);
+      transform: translateX(4px);
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    }
+    .registry-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(52, 211, 153, 0.15) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.25);
       display: grid;
       place-items: center;
       font-size: 1.5rem;
       font-weight: 800;
       color: #34d399;
     }
-    .app-icon-circle--missing {
-      background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(248, 113, 113, 0.15) 100%);
-      border-color: rgba(239, 68, 68, 0.3);
+    .registry-icon--missing {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(248, 113, 113, 0.1) 100%);
+      border-color: rgba(239, 68, 68, 0.2);
       color: #f87171;
     }
-    .app-meta-title h3 {
-      font-size: 1.2rem;
+    .registry-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .registry-info h3 {
+      font-size: 1.15rem;
       font-weight: 800;
       color: #f8fafc;
       margin: 0;
     }
-    .app-meta-title p {
-      font-size: 0.75rem;
+    .registry-info p {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.45;
+    }
+    .registry-element-badge {
+      font-family: ui-monospace, monospace;
+      font-size: 0.72rem;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      padding: 0.15rem 0.45rem;
+      border-radius: 6px;
+      align-self: flex-start;
+      margin-top: 0.25rem;
+    }
+    .registry-metadata-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem 1rem;
+      border-left: 1px solid rgba(255, 255, 255, 0.06);
+      padding-left: 1.25rem;
+    }
+    .registry-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+    .registry-meta-item span {
+      font-size: 0.65rem;
+      font-weight: 700;
       color: #64748b;
-      margin: 0.15rem 0 0 0;
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    .app-kickass-card__body h4 {
-      font-size: 0.95rem;
-      font-weight: 700;
+    .registry-meta-item p {
+      font-size: 0.82rem;
+      font-weight: 600;
       color: #cbd5e1;
-      margin: 0 0 0.5rem 0;
+      margin: 0;
     }
-    .app-kickass-card__body p {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      line-height: 1.5;
-      margin: 0 0 1rem 0;
+    .registry-status-block {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
     }
     .progress-bar-container {
-      width: 100%;
+      width: 120px;
       height: 6px;
       background: rgba(255, 255, 255, 0.08);
       border-radius: 999px;
       overflow: hidden;
-      margin-top: 0.65rem;
+      margin-top: 0.25rem;
     }
     .progress-bar {
       height: 100%;
       border-radius: 999px;
       transition: width 0.4s ease;
+    }
+    @media (max-width: 960px) {
+      .registry-horizontal-row {
+        grid-template-columns: auto 1fr;
+        gap: 1.25rem;
+      }
+      .registry-metadata-grid {
+        grid-column: 1 / -1;
+        border-left: 0;
+        padding-left: 0;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      }
+      .registry-status-block {
+        grid-column: 1 / -1;
+        align-items: flex-start;
+      }
     }
 
     /* ── Charts ──────────────────────────────────────────────── */
@@ -503,61 +545,62 @@ const generatedAt = new Date().toISOString();
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  FSDK KICKASS CONTAINER CARDS                               -->
+  <!--  FSDK HORIZONTAL REGISTRY LIST                              -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <h2 class="section-title">Freedesktop SDK custom containers</h2>
-  <div class="apps-registry-grid">
+  <div class="registry-list-container">
     {fsdkContainers.map((container) => {
       const isAvailable = container.status === 'available';
       return (
-        <article class="app-kickass-card">
-          <div>
-            <div class="app-kickass-card__header">
-              <div class:list={['app-icon-circle', !isAvailable && 'app-icon-circle--missing']}>
-                {isAvailable ? 'F' : '—'}
-              </div>
-              <div class="app-meta-title">
-                <h3>{container.name}</h3>
-                <p>{container.element}</p>
-              </div>
-              <span class:list={['pill', `pill--${container.status}`]} style="margin-left: auto;">
-                {container.status}
-              </span>
+        <article class="registry-horizontal-row">
+          <!-- Icon -->
+          <div class:list={['registry-icon', !isAvailable && 'registry-icon--missing']}>
+            {isAvailable ? 'F' : '—'}
+          </div>
+
+          <!-- Info & Name -->
+          <div class="registry-info">
+            <h3>{container.name}</h3>
+            <p>{container.description}</p>
+            <div class="registry-element-badge">Element: {container.element}</div>
+          </div>
+
+          <!-- Metadata -->
+          <div class="registry-metadata-grid">
+            <div class="registry-meta-item">
+              <span>FSDK Version</span>
+              <p>{container.metadata.fsdkVersion}</p>
             </div>
-
-            <div class="app-kickass-card__body">
-              <h4>Container use case & runtime</h4>
-              <p>{container.description}</p>
-
-              {isAvailable && (
-                <div class="container-metadata-dl" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; background: rgba(0,0,0,0.2); border-radius: 10px; padding: 0.6rem 0.85rem; font-size: 0.76rem; margin: 0.75rem 0;">
-                  <div>
-                    <span style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 0.65rem;">FSDK version</span>
-                    <p style="color: #cbd5e1; margin: 0.15rem 0 0 0; font-weight: 600;">{container.metadata.fsdkVersion}</p>
-                  </div>
-                  <div>
-                    <span style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 0.65rem;">Digest</span>
-                    <p style="color: #cbd5e1; margin: 0.15rem 0 0 0; font-family: monospace;">{container.metadata.digest}</p>
-                  </div>
-                  <div>
-                    <span style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 0.65rem;">Size</span>
-                    <p style="color: #cbd5e1; margin: 0.15rem 0 0 0; font-weight: 600;">{container.metadata.size}</p>
-                  </div>
-                  <div>
-                    <span style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 0.65rem;">Published</span>
-                    <p style="color: #cbd5e1; margin: 0.15rem 0 0 0; font-weight: 600;">{container.metadata.created}</p>
-                  </div>
-                  <div style="grid-column: 1 / -1;">
-                    <span style="color: #64748b; font-weight: 700; text-transform: uppercase; font-size: 0.65rem;">Git Commit Ref</span>
-                    <p style="color: #cbd5e1; margin: 0.15rem 0 0 0; font-family: monospace; font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{container.metadata.fsdkRef}</p>
-                  </div>
-                </div>
-              )}
+            <div class="registry-meta-item">
+              <span>Size</span>
+              <p>{container.metadata.size}</p>
+            </div>
+            <div class="registry-meta-item">
+              <span>OCI Digest</span>
+              <p style="font-family: monospace; font-size: 0.75rem;">{container.metadata.digest}</p>
+            </div>
+            <div class="registry-meta-item">
+              <span>Published</span>
+              <p>{container.metadata.created}</p>
+            </div>
+            <div class="registry-meta-item" style="grid-column: 1 / -1;">
+              <span>Git Commit Ref</span>
+              <p style="font-family: monospace; font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{container.metadata.fsdkRef}</p>
             </div>
           </div>
 
-          <div>
-            <div class="progress-bar-container" style="margin-bottom: 1.25rem;">
+          <!-- Status & Progress -->
+          <div class="registry-status-block">
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class:list={['pill', `pill--${container.status}`]}>
+                {container.status}
+              </span>
+              <span class="pill pill--passed">
+                {container.tags.length ? container.tags.join(', ') : 'none built'}
+              </span>
+            </div>
+            
+            <div class="progress-bar-container">
               <div
                 class="progress-bar"
                 style={`width: ${isAvailable ? 100 : 0}%; background: ${
@@ -567,17 +610,6 @@ const generatedAt = new Date().toISOString();
                 };`}
               />
             </div>
-
-            <dl class="status-card__meta" style="margin-top: 0; padding-top: 0; border-top: 0;">
-              <div>
-                <dt>Available tags</dt>
-                <dd>{container.tags.length ? container.tags.join(', ') : 'none built'}</dd>
-              </div>
-              <div>
-                <dt>BuildStream Source</dt>
-                <dd style="font-family: monospace; font-size: 0.8rem; color: #cbd5e1;">{container.element.split('/').pop()}</dd>
-              </div>
-            </dl>
           </div>
         </article>
       );

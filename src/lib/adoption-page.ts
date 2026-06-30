@@ -51,6 +51,53 @@ interface AdoptionDataset {
   summary_metrics: SummaryMetric[];
   trust_cards: TrustCard[];
   rows: AdoptionRow[];
+  countme_trend?: {
+    monthly: Array<{
+      week_start: string;
+      week_end: string;
+      distros: Record<string, number>;
+      total: number;
+    }>;
+    weekly: Array<{
+      week_start: string;
+      week_end: string;
+      distros: Record<string, number>;
+      total: number;
+    }>;
+    DISTROS: string[];
+    LABELS: string[];
+  };
+  quay_trend?: Array<{
+    date: string;
+    count: number;
+  }>;
+  dora_comparison?: {
+    labels: string[];
+    datasets: Array<{
+      label: string;
+      color: string;
+      values: number[];
+    }>;
+  };
+  os_version?: {
+    labels: string[];
+    values: number[];
+    total: number;
+  };
+  openssf_scorecard?: Array<{
+    repo: string;
+    score: string;
+    date: string | null;
+    indexed: boolean;
+  }>;
+  oci_best_practices?: Array<{
+    image: string;
+    cosign: string;
+    sbom: string;
+    zstd: string;
+    chunked: string;
+    slsa: string;
+  }>;
 }
 
 export interface AdoptionPageModel {

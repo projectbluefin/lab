@@ -738,6 +738,7 @@ def build_adoption_metrics(root: Path, collected_at: str) -> dict:
     publishers = load_json(root / 'docs/data/variant-publishers.json')
     migrated_countme = load_optional_json(root / 'docs/data/adoption-countme-migrated.json') or {'distros': {}}
     countme_by_variant = migrated_countme.get('distros', {})
+    historical = load_optional_json(root / 'docs/data/adoption-historical-raw.json') or {}
 
     trust_cards = []
     for variant, details in (publishers.get('variants') or {}).items():
@@ -862,6 +863,12 @@ def build_adoption_metrics(root: Path, collected_at: str) -> dict:
         ],
         'trust_cards': trust_cards,
         'rows': rows,
+        'countme_trend': historical.get('countme_trend'),
+        'quay_trend': historical.get('quay_trend'),
+        'dora_comparison': historical.get('dora_comparison'),
+        'os_version': historical.get('os_version'),
+        'openssf_scorecard': historical.get('openssf_scorecard'),
+        'oci_best_practices': historical.get('oci_best_practices'),
     }
 
 

@@ -51,6 +51,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
    - `window.addEventListener('resize', () => chart.resize())`
 7. For unavailable chart inputs, do not hide the chart section. Render an explicit empty-state panel in the chart container.
 8. Every detail row must link to raw evidence when present: local result JSON, GitHub source URL, screenshot URL, workflow run URL.
+8b. When rendering historical trends (such as active devices over time or Quay image pull count timelines), load them from a secondary repo-tracked JSON raw dataset at pre-render time, merge them into the page's generated metrics contract, and pass them via the client script payload. Slicing/filtering data ranges (e.g., 30d vs 90d vs 365d) must be performed client-side using JavaScript on the deserialized payload without additional network calls.
 9. Because this repo builds Astro directly into `docs/`, scrub transient build outputs before each build (`docs/.prerender`, `docs/_astro`, generated page directories) so repeated builds do not reuse stale hashed chunks.
 10. When splitting one contract across multiple pages (for example `/upstream` vs `/bluefin`), keep one source dataset and apply page-level filters in shared model code. Do not fork collector schemas just to support route splits.
 11. Preserve explicit unavailable states and evidence links after filtering. Filtered pages must hide out-of-scope families, not hide missing data within in-scope families.

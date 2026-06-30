@@ -228,8 +228,11 @@ spec:
         echo "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/root-ssh-keys"
 
         if [[ ! -f /usr/libexec/bootupd ]]; then
-          echo '[INNER] bootupd missing, installing...'
-          if which dnf >/dev/null 2>&1; then dnf install -y bootupd 2>&1 | tail -3; elif which yum >/dev/null 2>&1; then yum install -y bootupd 2>&1 | tail -3; else apk add --no-cache bootupd 2>&1 | tail -3 || echo '[INNER] WARNING: could not install bootupd'; fi
+          mkdir -p /usr/libexec
+          printf '#!/bin/sh\nexec bootc exec-in-host-mount-namespace bootupd "$@"\n' \
+            > /usr/libexec/bootupd
+          chmod +x /usr/libexec/bootupd
+          echo '[INNER] bootupd wrapper injected via bootc exec-in-host-mount-namespace'
         fi
 
         # fsetxattr EINVAL fix

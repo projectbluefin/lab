@@ -20,6 +20,7 @@ const formatUtc = (value: string | null) =>
 const serializedPageData = serializeJsonScript(chartData);
 
 const unavailableTrustCards = trustCards.filter((c) => c.state === 'unavailable');
+const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== null) ?? null;
 ---
 
 <SiteLayout
@@ -124,6 +125,9 @@ const unavailableTrustCards = trustCards.filter((c) => c.state === 'unavailable'
     <article class="status-card">
       <p class="status-card__eyebrow">Per-lane adoption detail</p>
       <h2>Image lane breakdown</h2>
+      {transplantedCountmeRow && (
+        <p class="callout-note">{transplantedCountmeRow.derivation}</p>
+      )}
       <div class="table-scroll">
         <table class="data-table">
           <thead>

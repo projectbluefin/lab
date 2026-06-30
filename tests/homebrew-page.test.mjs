@@ -72,6 +72,17 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
     /homebrew-ecosystem\.json/,
     'homebrew page references the raw homebrew-ecosystem dataset',
   );
+
+  assert.match(
+    homebrewPage,
+    /global formula analytics/i,
+    'homebrew page discloses that transplanted values are global formula analytics',
+  );
+  assert.match(
+    homebrewPage,
+    /3-package subset/i,
+    'homebrew page discloses that values come from a 3-package subset reused across branches',
+  );
 });
 
 test('homebrew page renders migrated tap coverage instead of the starter empty state', () => {

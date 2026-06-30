@@ -41,6 +41,11 @@ test('applications page renders Bazaar evidence, chart mounts, and explicit unav
   );
   assert.match(
     applicationsPage,
+    /VS Code \/ Codium/i,
+    'applications page includes VS Code / Codium as a DX app',
+  );
+  assert.match(
+    applicationsPage,
     /behave tests\/developer\/features\/ptyxis\.feature/i,
     'applications page renders awesome behave terminal execution snippets',
   );

@@ -3,12 +3,13 @@ import SiteLayout from '../layouts/SiteLayout.astro';
 import upstreamPageScript from '../scripts/upstream-page.js?url';
 import upstreamStatus from '../../docs/data/upstream-status.json';
 import { buildUpstreamPageModel } from '../lib/upstream-page.js';
+import { serializeJsonScript } from '../lib/json-script';
 
 const model: any = buildUpstreamPageModel(upstreamStatus, {
   includeGroups: ['projectbluefin'],
   groupOrder: ['projectbluefin'],
 });
-const serializedModel = JSON.stringify(model).replaceAll('<', '\\u003c');
+const serializedModel = serializeJsonScript(model);
 ---
 
 <SiteLayout

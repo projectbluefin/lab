@@ -121,3 +121,203 @@ def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
     assert rows['bazaar-aurora-testing']['state'] == 'unavailable'
     assert rows['firefox-bluefin-testing']['state'] == 'available'
     assert rows['firefox-bluefin-testing']['fallback_signal_count'] == 0
+
+
+def test_homebrew_ecosystem_derives_all_tracked_lanes():
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+
+    assert dataset['schema_version'] == 'v1'
+    assert dataset['_meta']['page'] == 'homebrew'
+    assert dataset['_meta']['starter_artifact'] is False
+
+    row_ids = {row['id'] for row in dataset['rows']}
+    # All 10 lanes from variant-publishers.json must appear
+    assert 'bluefin-testing' in row_ids
+    assert 'bluefin-stable' in row_ids
+    assert 'bluefin-lts-testing' in row_ids
+    assert 'bluefin-lts-stable' in row_ids
+    assert 'aurora-testing' in row_ids
+    assert 'aurora-stable' in row_ids
+    assert 'bazzite-testing' in row_ids
+    assert 'bazzite-stable' in row_ids
+    assert 'dakota-testing' in row_ids
+    assert 'flatcar-testing' in row_ids
+
+    metrics = {m['id']: m for m in dataset['summary_metrics']}
+    assert metrics['tracked_image_lanes']['value'] == 10
+    assert metrics['lanes_with_brew_data']['value'] == 0
+    assert metrics['lanes_awaiting_brew_data']['value'] == 10
+
+
+def test_homebrew_ecosystem_all_rows_unavailable_without_brew_data():
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+
+    for row in dataset['rows']:
+        assert row['state'] == 'unavailable', f"Expected unavailable for {row['id']}"
+        assert row['state_reason'], f"Missing state_reason for {row['id']}"
+        assert row['source_url'], f"Missing source_url for {row['id']}"
+        assert row['collected_at'] == '2026-06-29T19:22:22Z'
+        assert row['derivation'], f"Missing derivation for {row['id']}"
+        # Unavailable signals must be null, not fabricated
+        assert row['install_count'] is None
+        assert row['download_count'] is None
+
+
+def test_homebrew_ecosystem_metrics_have_full_provenance():
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+
+    for metric in dataset['summary_metrics']:
+        assert metric['source_url'], f"Missing source_url on metric {metric['id']}"
+        assert metric['collected_at'] == '2026-06-29T19:22:22Z'
+        assert metric['derivation'], f"Missing derivation on metric {metric['id']}"
+        assert metric['state'] in {'available', 'unavailable'}
+
+
+def test_homebrew_ecosystem_awaiting_metric_source_url_is_variant_publishers():
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+
+    metrics = {m['id']: m for m in dataset['summary_metrics']}
+    awaiting = metrics['lanes_awaiting_brew_data']
+    assert awaiting['source_url'].endswith('/docs/data/variant-publishers.json'), (
+        f"Expected variant-publishers.json source_url, got: {awaiting['source_url']}"
+    )
+
+
+def test_adoption_metrics_derives_all_tracked_lanes():
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+
+    assert dataset['schema_version'] == 'v1'
+    assert dataset['_meta']['page'] == 'adoption'
+    assert dataset['_meta']['starter_artifact'] is False
+
+    row_ids = {row['id'] for row in dataset['rows']}
+    assert 'bluefin-testing' in row_ids
+    assert 'bluefin-stable' in row_ids
+    assert 'bluefin-lts-testing' in row_ids
+    assert 'aurora-testing' in row_ids
+    assert 'bazzite-testing' in row_ids
+    assert 'dakota-testing' in row_ids
+    assert 'flatcar-testing' in row_ids
+
+    metrics = {m['id']: m for m in dataset['summary_metrics']}
+    assert metrics['tracked_image_lanes']['value'] == 10
+    assert metrics['lanes_with_pull_data']['value'] == 0
+    assert metrics['lanes_with_countme_data']['value'] == 0
+
+
+def test_adoption_metrics_has_trust_cards_from_publishers():
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+
+    trust_cards = {card['variant']: card for card in dataset['trust_cards']}
+    # All 6 tracked variants must have a trust card
+    assert set(trust_cards.keys()) == {'bluefin', 'bluefin-lts', 'aurora', 'bazzite', 'dakota', 'flatcar'}
+
+    bluefin_card = trust_cards['bluefin']
+    assert bluefin_card['emits_sbom'] is False
+    assert bluefin_card['emits_cosign_attestation'] is False
+    assert bluefin_card['emits_cve_scan'] is False
+    # Trust card available only when publisher_repo is known
+    assert bluefin_card['state'] == 'available'
+    assert bluefin_card['source_url']
+    assert bluefin_card['collected_at'] == '2026-06-29T19:22:22Z'
+    assert bluefin_card['derivation']
+
+
+def test_adoption_trust_card_unavailable_when_publisher_unknown():
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+
+    trust_cards = {card['variant']: card for card in dataset['trust_cards']}
+    # flatcar has null publisher_repo and null org in variant-publishers.json
+    flatcar_card = trust_cards['flatcar']
+    assert flatcar_card['state'] == 'unavailable', (
+        "Trust card for flatcar must be unavailable when publisher_repo is unknown"
+    )
+    assert flatcar_card['state_reason'], "flatcar trust card must have explicit state_reason"
+
+
+def test_adoption_metrics_rows_unavailable_without_pull_data():
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+
+    for row in dataset['rows']:
+        assert row['pull_count'] is None, f"Expected null pull_count for {row['id']}"
+        assert row['countme_active_devices'] is None, f"Expected null countme for {row['id']}"
+        assert row['state'] == 'unavailable', f"Expected unavailable for {row['id']}"
+        assert row['state_reason'], f"Missing state_reason for {row['id']}"
+        assert row['source_url'], f"Missing source_url for {row['id']}"
+        assert row['collected_at'] == '2026-06-29T19:22:22Z'
+        assert row['derivation'], f"Missing derivation for {row['id']}"
+
+
+def test_adoption_metrics_metrics_have_full_provenance():
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+
+    for metric in dataset['summary_metrics']:
+        assert metric['source_url'], f"Missing source_url on metric {metric['id']}"
+        assert metric['collected_at'] == '2026-06-29T19:22:22Z'
+        assert metric['derivation'], f"Missing derivation on metric {metric['id']}"
+        assert metric['state'] in {'available', 'unavailable'}
+
+
+def test_homebrew_ecosystem_names_authoritative_upstream_sources():
+    """Derivation and state_reason must name formulae.brew.sh, not bootc-ecosystem site artifacts."""
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+
+    for row in dataset['rows']:
+        assert 'formulae.brew.sh' in row['state_reason'], (
+            f"state_reason for {row['id']} must name formulae.brew.sh as the authoritative source"
+        )
+        assert 'formulae.brew.sh' in row['derivation'], (
+            f"derivation for {row['id']} must name formulae.brew.sh"
+        )
+
+    metrics = {m['id']: m for m in dataset['summary_metrics']}
+    assert 'formulae.brew.sh' in metrics['lanes_with_brew_data']['derivation']
+    assert 'formulae.brew.sh' in metrics['lanes_awaiting_brew_data']['derivation']
+
+
+def test_adoption_metrics_names_authoritative_upstream_sources():
+    """Derivation and state_reason must name GHCR/registry API and Fedora countme infrastructure."""
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+
+    for row in dataset['rows']:
+        reason = row['state_reason']
+        derivation = row['derivation']
+        assert 'GHCR' in reason or 'registry' in reason.lower(), (
+            f"state_reason for {row['id']} must name a registry API (GHCR) as pull_count source"
+        )
+        assert 'countme' in reason.lower(), (
+            f"state_reason for {row['id']} must name Fedora countme as countme_active_devices source"
+        )
+        assert 'GHCR' in derivation or 'registry' in derivation.lower(), (
+            f"derivation for {row['id']} must name a registry API"
+        )
+        assert 'countme' in derivation.lower(), (
+            f"derivation for {row['id']} must name countme data"
+        )
+
+    metrics = {m['id']: m for m in dataset['summary_metrics']}
+    assert 'GHCR' in metrics['lanes_with_pull_data']['derivation'] or \
+           'registry' in metrics['lanes_with_pull_data']['derivation'].lower()
+    assert 'countme' in metrics['lanes_with_countme_data']['derivation'].lower()

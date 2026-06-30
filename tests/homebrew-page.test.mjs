@@ -1,0 +1,132 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+
+const repo = process.cwd();
+
+function html(file) {
+  return readFileSync(path.join(repo, file), 'utf8');
+}
+
+test('homebrew page renders summary metrics, lane details, explicit unavailable states, and chart containers', () => {
+  execFileSync('npm', ['run', 'build'], {
+    cwd: repo,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+
+  const homebrewPage = html('docs/homebrew/index.html');
+
+  assert.match(
+    homebrewPage,
+    /Tracked image lanes/i,
+    'homebrew page shows tracked image lanes metric',
+  );
+  assert.match(
+    homebrewPage,
+    /Lanes with Homebrew data/i,
+    'homebrew page shows lanes with brew data metric',
+  );
+  assert.match(
+    homebrewPage,
+    /Lanes awaiting Homebrew data/i,
+    'homebrew page shows lanes awaiting brew data metric',
+  );
+
+  assert.match(
+    homebrewPage,
+    /bluefin|testing/i,
+    'homebrew page includes at least one tracked lane',
+  );
+  assert.match(
+    homebrewPage,
+    /aurora/i,
+    'homebrew page includes aurora lane',
+  );
+
+  assert.match(
+    homebrewPage,
+    /No Homebrew analytics data/i,
+    'homebrew page renders explicit unavailable state reason',
+  );
+
+  assert.match(
+    homebrewPage,
+    /homebrew-lanes-chart/,
+    'homebrew page renders lane status chart container',
+  );
+
+  assert.match(
+    homebrewPage,
+    /homebrew-page-data/,
+    'homebrew page serializes client chart data',
+  );
+
+  assert.match(
+    homebrewPage,
+    /https:\/\/github\.com\/projectbluefin\/testing-lab\/blob\/main\/docs\/data\/variant-publishers\.json/,
+    'homebrew page links source evidence from variant-publishers.json',
+  );
+
+  assert.match(
+    homebrewPage,
+    /homebrew-ecosystem\.json/,
+    'homebrew page references the raw homebrew-ecosystem dataset',
+  );
+});
+
+test('homebrew-ecosystem.json contract satisfies the page model contract', () => {
+  const datasetPath = path.join(repo, 'docs/data/homebrew-ecosystem.json');
+  const dataset = JSON.parse(readFileSync(datasetPath, 'utf8'));
+
+  assert.ok(Array.isArray(dataset.summary_metrics), 'summary_metrics is an array');
+  assert.ok(Array.isArray(dataset.taps), 'taps is an array');
+  assert.ok(Array.isArray(dataset.rows), 'rows is an array');
+
+  assert.equal(dataset.rows.length, 10, 'homebrew dataset has 10 lane rows (one per variant-branch)');
+
+  const trackedMetric = dataset.summary_metrics.find((m) => m.id === 'tracked_image_lanes');
+  const withDataMetric = dataset.summary_metrics.find((m) => m.id === 'lanes_with_brew_data');
+  const awaitingMetric = dataset.summary_metrics.find((m) => m.id === 'lanes_awaiting_brew_data');
+
+  assert.ok(trackedMetric, 'tracked_image_lanes summary metric exists');
+  assert.ok(withDataMetric, 'lanes_with_brew_data summary metric exists');
+  assert.ok(awaitingMetric, 'lanes_awaiting_brew_data summary metric exists');
+
+  assert.equal(
+    trackedMetric.value,
+    dataset.rows.length,
+    'tracked_image_lanes value agrees with actual row count',
+  );
+  assert.equal(
+    withDataMetric.value + awaitingMetric.value,
+    trackedMetric.value,
+    'lanes_with_brew_data + lanes_awaiting_brew_data === tracked_image_lanes',
+  );
+
+  const derivedAvailable = dataset.rows.filter((r) => r.state === 'available').length;
+  const derivedAwaiting = dataset.rows.filter((r) => r.state !== 'available').length;
+  assert.equal(
+    withDataMetric.value,
+    derivedAvailable,
+    'lanes_with_brew_data matches row-derived count of available-state rows',
+  );
+  assert.equal(
+    awaitingMetric.value,
+    derivedAwaiting,
+    'lanes_awaiting_brew_data matches row-derived count of non-available-state rows',
+  );
+
+  for (const row of dataset.rows) {
+    assert.ok(row.id, `row has id`);
+    assert.ok(row.source_url, `row ${row.id} has source_url`);
+    assert.ok(row.collected_at, `row ${row.id} has collected_at`);
+    assert.ok(row.derivation, `row ${row.id} has derivation`);
+    assert.ok(row.state, `row ${row.id} has state`);
+    if (row.state !== 'available') {
+      assert.ok(row.state_reason, `unavailable row ${row.id} has state_reason`);
+    }
+  }
+});

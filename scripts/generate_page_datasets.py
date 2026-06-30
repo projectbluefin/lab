@@ -520,12 +520,239 @@ def build_applications_matrix(root: Path, collected_at: str) -> dict:
     }
 
 
+def iter_tracked_lanes(publishers: dict):
+    """Yield (variant, branch, details) for every tracked lane."""
+    for variant, details in (publishers.get('variants') or {}).items():
+        for branch in details.get('branches') or []:
+            yield variant, branch, details
+
+
+def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
+    publishers = load_json(root / 'docs/data/variant-publishers.json')
+
+    rows = []
+    for variant, branch, details in iter_tracked_lanes(publishers):
+        repo = details.get('publisher_repo')
+        releases_url = (
+            f'https://github.com/{repo}/releases'
+            if repo
+            else repo_blob_url('docs/data/variant-publishers.json')
+        )
+        rows.append(
+            {
+                'id': f'{variant}-{branch}',
+                'variant': variant,
+                'branch': branch,
+                'tap_name': None,
+                'tap_url': None,
+                'install_count': None,
+                'download_count': None,
+                'state': 'unavailable',
+                'state_reason': (
+                    'No Homebrew analytics data from formulae.brew.sh or upstream tap repos is tracked in '
+                    'docs/data/ for this lane. Collector will populate install_count/download_count once a '
+                    'repo-owned artifact fetched from those sources is committed.'
+                ),
+                'source_url': releases_url,
+                'collected_at': collected_at,
+                'derivation': (
+                    f'Lane derived from docs/data/variant-publishers.json {variant}.branches; '
+                    'no Homebrew analytics data (formulae.brew.sh or upstream tap repos) found in docs/data/.'
+                ),
+            }
+        )
+
+    lanes_with_brew = [row for row in rows if row['state'] == 'available']
+    lanes_without_brew = [row for row in rows if row['state'] == 'unavailable']
+
+    return {
+        'schema_version': 'v1',
+        '_meta': {
+            'page': 'homebrew',
+            'description': 'Collector-derived contract for the Homebrew ecosystem tab.',
+            'generated_at': collected_at,
+            'starter_artifact': False,
+            'status': 'partial' if lanes_without_brew else 'ready',
+        },
+        'summary_metrics': [
+            {
+                'id': 'tracked_image_lanes',
+                'label': 'Tracked image lanes',
+                'value': len(rows),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/variant-publishers.json'),
+                'collected_at': collected_at,
+                'derivation': 'Count all variant-branch lanes from docs/data/variant-publishers.json.',
+            },
+            {
+                'id': 'lanes_with_brew_data',
+                'label': 'Lanes with Homebrew data',
+                'value': len(lanes_with_brew),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/variant-publishers.json'),
+                'collected_at': collected_at,
+                'derivation': (
+                    'Count lanes with Homebrew analytics data from formulae.brew.sh or upstream tap repos '
+                    'present in docs/data/.'
+                ),
+            },
+            {
+                'id': 'lanes_awaiting_brew_data',
+                'label': 'Lanes awaiting Homebrew data',
+                'value': len(lanes_without_brew),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/variant-publishers.json'),
+                'collected_at': collected_at,
+                'derivation': (
+                    'Count lanes with no Homebrew analytics data from formulae.brew.sh or upstream tap repos '
+                    'in docs/data/.'
+                ),
+            },
+        ],
+        'taps': [],
+        'rows': rows,
+    }
+
+
+def build_adoption_metrics(root: Path, collected_at: str) -> dict:
+    publishers = load_json(root / 'docs/data/variant-publishers.json')
+
+    trust_cards = []
+    for variant, details in (publishers.get('variants') or {}).items():
+        repo = details.get('publisher_repo')
+        org = details.get('org')
+        publisher_known = bool(repo and org)
+        trust_cards.append(
+            {
+                'variant': variant,
+                'publisher_repo': repo,
+                'org': org,
+                'emits_sbom': details.get('emits_sbom', False),
+                'emits_cve_scan': details.get('emits_cve_scan', False),
+                'emits_cosign_attestation': details.get('emits_cosign_attestation', False),
+                'state': 'available' if publisher_known else 'unavailable',
+                'state_reason': (
+                    None if publisher_known else
+                    'publisher_repo and org are unknown for this variant; '
+                    'trust-summary card requires repo-owned evidence to be meaningful.'
+                ),
+                'source_url': (
+                    f'https://github.com/{repo}'
+                    if repo
+                    else repo_blob_url('docs/data/variant-publishers.json')
+                ),
+                'collected_at': collected_at,
+                'derivation': (
+                    f'Trust metadata for {variant} read directly from '
+                    'docs/data/variant-publishers.json emits_sbom/emits_cve_scan/emits_cosign_attestation fields.'
+                ),
+            }
+        )
+
+    rows = []
+    for variant, branch, details in iter_tracked_lanes(publishers):
+        repo = details.get('publisher_repo')
+        releases_url = (
+            f'https://github.com/{repo}/releases'
+            if repo
+            else repo_blob_url('docs/data/variant-publishers.json')
+        )
+        rows.append(
+            {
+                'id': f'{variant}-{branch}',
+                'variant': variant,
+                'branch': branch,
+                'pull_count': None,
+                'countme_active_devices': None,
+                'state': 'unavailable',
+                'state_reason': (
+                    'No registry pull-count data (GHCR or container registry API) or active-device data '
+                    '(Fedora countme infrastructure) is tracked in docs/data/ for this lane. '
+                    'Collector will populate pull_count/countme_active_devices once repo-owned artifacts '
+                    'fetched from those sources are committed.'
+                ),
+                'source_url': releases_url,
+                'collected_at': collected_at,
+                'derivation': (
+                    f'Lane derived from docs/data/variant-publishers.json {variant}.branches; '
+                    'no registry pull-count data (GHCR API) or Fedora countme data found in docs/data/.'
+                ),
+            }
+        )
+
+    lanes_with_pull = [row for row in rows if row.get('pull_count') is not None]
+    lanes_with_countme = [row for row in rows if row.get('countme_active_devices') is not None]
+    unavailable_rows = [row for row in rows if row['state'] == 'unavailable']
+
+    return {
+        'schema_version': 'v1',
+        '_meta': {
+            'page': 'adoption',
+            'description': 'Collector-derived contract for the Adoption metrics tab.',
+            'generated_at': collected_at,
+            'starter_artifact': False,
+            'status': 'partial' if unavailable_rows else 'ready',
+        },
+        'summary_metrics': [
+            {
+                'id': 'tracked_image_lanes',
+                'label': 'Tracked image lanes',
+                'value': len(rows),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/variant-publishers.json'),
+                'collected_at': collected_at,
+                'derivation': 'Count all variant-branch lanes from docs/data/variant-publishers.json.',
+            },
+            {
+                'id': 'lanes_with_pull_data',
+                'label': 'Lanes with image pull data',
+                'value': len(lanes_with_pull),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/variant-publishers.json'),
+                'collected_at': collected_at,
+                'derivation': (
+                    'Count lanes whose pull_count is non-null after joining container registry API data '
+                    '(e.g., GHCR package statistics) from docs/data/.'
+                ),
+            },
+            {
+                'id': 'lanes_with_countme_data',
+                'label': 'Lanes with countme data',
+                'value': len(lanes_with_countme),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/variant-publishers.json'),
+                'collected_at': collected_at,
+                'derivation': (
+                    'Count lanes whose countme_active_devices is non-null after joining '
+                    'Fedora countme infrastructure data from docs/data/.'
+                ),
+            },
+        ],
+        'trust_cards': trust_cards,
+        'rows': rows,
+    }
+
+
 def write_page_datasets(root: Path, collected_at: str) -> dict[str, dict]:
     data_dir = root / 'docs/data'
     datasets = {
         'upstream-status.json': build_upstream_status(root, collected_at),
         'tests-matrix.json': build_tests_matrix(root, collected_at),
         'applications-matrix.json': build_applications_matrix(root, collected_at),
+        'homebrew-ecosystem.json': build_homebrew_ecosystem(root, collected_at),
+        'adoption-metrics.json': build_adoption_metrics(root, collected_at),
     }
     for name, payload in datasets.items():
         (data_dir / name).write_text(json.dumps(payload, indent=2) + '\n')

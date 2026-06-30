@@ -113,3 +113,80 @@ Purpose: app-first rows for the `/applications` page. V1 currently tracks Bazaar
 ## Starter-artifact intent
 
 These files are implementation-ready contracts plus honest seed data. Later collector work should replace starter `unavailable` rows with live evidence, not redesign the shape.
+
+## `docs/data/homebrew-ecosystem.json`
+
+Purpose: one row per tracked image lane for the `/homebrew` page. Covers Homebrew tap/package install and download statistics per `(variant, branch)`.
+
+### Top-level shape
+
+- `_meta`
+- `summary_metrics[]`
+- `taps[]`: Homebrew taps this repo explicitly tracks (empty until a repo-owned artifact fetched from formulae.brew.sh or upstream tap repos is added).
+- `rows[]`: one row per `(variant, branch)` from `docs/data/variant-publishers.json`.
+
+### Row shape
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable lane id (`bluefin-testing`, `aurora-stable`) |
+| `variant` | Image variant name |
+| `branch` | Stream/tag (`testing`, `stable`) |
+| `tap_name` | Homebrew tap name when known, else `null` |
+| `tap_url` | Canonical tap URL when known, else `null` |
+| `install_count` | Total installs from brew stats artifact, or `null` when unavailable |
+| `download_count` | Total downloads from brew stats artifact, or `null` when unavailable |
+| `state` / `state_reason` | Explicit availability contract |
+| `source_url` / `collected_at` / `derivation` | Provenance for the row |
+
+### Summary metrics
+
+| id | Meaning |
+| --- | --- |
+| `tracked_image_lanes` | Total lanes from `variant-publishers.json` |
+| `lanes_with_brew_data` | Lanes with Homebrew analytics data from formulae.brew.sh or upstream tap repos present in docs/data/ |
+| `lanes_awaiting_brew_data` | Lanes with no Homebrew analytics data from formulae.brew.sh or upstream tap repos in docs/data/ |
+
+## `docs/data/adoption-metrics.json`
+
+Purpose: executive-readable adoption view for the `/adoption` page. Covers image pull counts from container registry APIs (GHCR), active-device estimates from Fedora countme infrastructure, and trust/provenance coverage per tracked image lane.
+
+### Top-level shape
+
+- `_meta`
+- `summary_metrics[]`
+- `trust_cards[]`: one card per tracked variant with static trust/provenance metadata.
+- `rows[]`: one row per `(variant, branch)` with pull and countme signals from authoritative upstream sources.
+
+### Trust card shape
+
+| Field | Meaning |
+| --- | --- |
+| `variant` | Image variant name |
+| `publisher_repo` | Source repo when known |
+| `org` | Owning org |
+| `emits_sbom` | Whether the publisher emits an SBOM |
+| `emits_cve_scan` | Whether the publisher emits a CVE scan |
+| `emits_cosign_attestation` | Whether the publisher emits a cosign attestation |
+| `state` / `state_reason` | `available` when `publisher_repo` and `org` are known; `unavailable` with explicit `state_reason` when the publisher is unknown (e.g., flatcar) |
+| `source_url` / `collected_at` / `derivation` | Provenance for the card |
+
+### Row shape
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable lane id (`bluefin-testing`, `bazzite-stable`) |
+| `variant` | Image variant name |
+| `branch` | Stream/tag |
+| `pull_count` | Registry pull count from container registry API (e.g., GHCR package statistics), or `null` when unavailable |
+| `countme_active_devices` | Active device estimate from Fedora countme infrastructure, or `null` when unavailable |
+| `state` / `state_reason` | Explicit availability contract |
+| `source_url` / `collected_at` / `derivation` | Provenance for the row |
+
+### Summary metrics
+
+| id | Meaning |
+| --- | --- |
+| `tracked_image_lanes` | Total lanes from `variant-publishers.json` |
+| `lanes_with_pull_data` | Lanes with pull_count from container registry API (e.g., GHCR) present in docs/data/ |
+| `lanes_with_countme_data` | Lanes with countme_active_devices from Fedora countme infrastructure present in docs/data/ |

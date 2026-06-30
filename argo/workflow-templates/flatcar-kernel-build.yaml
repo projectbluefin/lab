@@ -365,7 +365,7 @@ spec:
         sudo systemctl start docker
         sudo systemctl is-active docker
         echo "=== Preflight SDK cache pull ==="
-        timeout 30m docker pull 192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
+        docker pull 192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
 
         echo "=== Regenerate Manifest checksums via SDK ==="
         # Run ephemeral SDK container just for manifest generation

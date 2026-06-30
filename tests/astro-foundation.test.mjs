@@ -125,6 +125,9 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
 
   assert.match(userspacePage, /Userspace OCI Layers/i, 'userspace page renders main title');
   assert.match(userspacePage, /FSDK images built/i, 'userspace page renders build KPI card');
+  assert.match(userspacePage, /OCI local storage/i, 'userspace page renders Zot OCI local storage card');
+  assert.match(userspacePage, /Registry Layers/i, 'userspace page renders Zot layers count card');
+  assert.match(userspacePage, /OCI Compliance/i, 'userspace page renders OCI Compliance specification card');
   assert.match(userspacePage, /Freedesktop SDK custom containers/i, 'userspace page renders tracked custom containers section');
   assert.match(userspacePage, /fsdk\/lab-runner/i, 'userspace page includes lab-runner OCI image');
   assert.match(userspacePage, /elements\/oci\/lab-runner\.bst/i, 'userspace page includes buildstream element path');

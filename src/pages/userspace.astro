@@ -88,6 +88,7 @@ const fsdkContainers = [
     id: 'fsdk-lab-runner',
     name: 'fsdk/lab-runner',
     element: 'elements/oci/lab-runner.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/lab-runner',
     description: 'The core testing-lab executor container. Contains behave, dogtail, qecore, and GNOME Shell AT-SPI verification runtimes.',
     status: writableRepos.includes('fsdk/lab-runner') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/lab-runner') ? ['latest'] : [],
@@ -97,6 +98,7 @@ const fsdkContainers = [
     id: 'fsdk-qemu-img',
     name: 'fsdk/qemu-img',
     element: 'elements/oci/qemu-img.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/qemu-img',
     description: 'High-performance QEMU disk utility container. Used in the knuckle pipeline for raw-to-qcow2 containerDisk format conversions.',
     status: writableRepos.includes('fsdk/qemu-img') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/qemu-img') ? ['latest'] : [],
@@ -106,6 +108,7 @@ const fsdkContainers = [
     id: 'fsdk-base',
     name: 'fsdk/base',
     element: 'elements/oci/base.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/base',
     description: 'The absolute minimal base OCI layer compiled via Freedesktop SDK. Provides clean glibc and core libraries.',
     status: writableRepos.includes('fsdk/base') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/base') ? ['latest'] : [],
@@ -115,6 +118,7 @@ const fsdkContainers = [
     id: 'fsdk-brew-nspawn',
     name: 'fsdk/brew-nspawn',
     element: 'elements/oci/brew-nspawn.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/brew',
     description: 'Homebrew-aware nspawn runtime container, isolating package environments for atomic image build processes.',
     status: writableRepos.includes('fsdk/brew-nspawn') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/brew-nspawn') ? ['latest'] : [],
@@ -124,6 +128,7 @@ const fsdkContainers = [
     id: 'fsdk-skopeo',
     name: 'fsdk/skopeo',
     element: 'elements/oci/skopeo.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/skopeo',
     description: 'Container registry inspector utility, used by image-poller and pr-poller for querying upstream digests.',
     status: writableRepos.includes('fsdk/skopeo') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/skopeo') ? ['latest'] : [],
@@ -133,6 +138,7 @@ const fsdkContainers = [
     id: 'fsdk-static',
     name: 'fsdk/static',
     element: 'elements/oci/static.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/static',
     description: 'Static web and assets server container used to serve the factory-dashboard and local HTML resources.',
     status: writableRepos.includes('fsdk/static') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/static') ? ['latest'] : [],
@@ -533,7 +539,7 @@ const generatedAt = new Date().toISOString();
   <!--  HEADER                                                     -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <div class="dashboard-header">
-    <h1>Userspace OCI Layers</h1>
+    <h1>Freedesktop SDK Container Images</h1>
     <div class="meta-bar">
       <span>Build: {formatUtc(generatedAt)} ({buildSource === 'live' ? 'live polled' : 'fallback cache'})</span>
       <span>Registry: ghost (:30500 / :30501)</span>
@@ -673,6 +679,9 @@ const generatedAt = new Date().toISOString();
               <span class="pill pill--passed">
                 {container.tags.length ? container.tags.join(', ') : 'none built'}
               </span>
+              <a href={container.github_url} target="_blank" rel="noreferrer" class="pill pill--passed" style="text-decoration: none; font-weight: 600; border-color: rgba(56,189,248,0.2); color: #38bdf8;">
+                GitHub Source ↗
+              </a>
             </div>
             
             <div class="progress-bar-container">

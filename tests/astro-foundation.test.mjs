@@ -123,7 +123,7 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
 
   const userspacePage = html('docs/userspace/index.html');
 
-  assert.match(userspacePage, /Userspace OCI Layers/i, 'userspace page renders main title');
+  assert.match(userspacePage, /Freedesktop SDK Container Images/i, 'userspace page renders main title');
   assert.match(userspacePage, /FSDK images built/i, 'userspace page renders build KPI card');
   assert.match(userspacePage, /OCI local storage/i, 'userspace page renders Zot OCI local storage card');
   assert.match(userspacePage, /Registry Layers/i, 'userspace page renders Zot layers count card');
@@ -131,6 +131,7 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
   assert.match(userspacePage, /Freedesktop SDK custom containers/i, 'userspace page renders tracked custom containers section');
   assert.match(userspacePage, /fsdk\/lab-runner/i, 'userspace page includes lab-runner OCI image');
   assert.match(userspacePage, /elements\/oci\/lab-runner\.bst/i, 'userspace page includes buildstream element path');
+  assert.match(userspacePage, /GitHub Source/i, 'userspace page links FSDK containers directly to GitHub');
   assert.match(userspacePage, /userspace-registry-dist-chart|userspace-fsdk-status-chart/, 'userspace page renders chart containers');
   assert.match(userspacePage, /FSDK version/i, 'userspace page renders Freedesktop SDK version label');
   assert.match(userspacePage, /Digest/i, 'userspace page renders OCI Digest label');

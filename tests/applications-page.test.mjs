@@ -46,6 +46,16 @@ test('applications page renders Bazaar evidence, chart mounts, and explicit unav
   );
   assert.match(
     applicationsPage,
+    /Bazzite Shell/i,
+    'applications page auto-discovers Bazzite Shell test suite',
+  );
+  assert.match(
+    applicationsPage,
+    /Flatcar/i,
+    'applications page auto-discovers Flatcar test suite',
+  );
+  assert.match(
+    applicationsPage,
     /behave tests\/developer\/features\/ptyxis\.feature/i,
     'applications page renders awesome behave terminal execution snippets',
   );

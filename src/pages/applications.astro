@@ -119,6 +119,97 @@ const bluefinDefaultApps = [
   }
 ];
 
+interface GithubTreeEntry {
+  path: string;
+  type: 'blob' | 'tree';
+}
+
+interface GithubTree {
+  tree: GithubTreeEntry[];
+}
+
+let discoveredFeatures: string[] = [];
+
+try {
+  // Query projectbluefin/testsuite repo tree recursive
+  const treeRes = execSync('curl -s -H "User-Agent: testing-lab-builder" --max-time 3 https://api.github.com/repos/projectbluefin/testsuite/git/trees/main?recursive=1', { encoding: 'utf8' });
+  const treeData = JSON.parse(treeRes) as GithubTree;
+  discoveredFeatures = (treeData.tree || [])
+    .filter((entry) => entry.type === 'blob' && entry.path.endsWith('.feature'))
+    .map((entry) => entry.path);
+} catch (e) {
+  // Fallback to static snapshot of feature files in case of build-time network limits
+  discoveredFeatures = [
+    'tests/flatcar/features/boot.feature',
+    'tests/developer/features/brew.feature',
+    'tests/developer/features/podman.feature',
+    'tests/developer/features/ptyxis.feature',
+    'tests/software/features/bazaar.feature',
+    'tests/software/features/bazaar_config.feature',
+    'tests/software/features/bazaar_ui.feature',
+    'tests/software/features/flatpak.feature',
+    'tests/software/features/flatpak_cli.feature',
+    'tests/dx/features/dx_tools.feature',
+    'tests/bazzite/features/bazzite_extensions.feature',
+    'tests/bazzite/features/bazzite_shell.feature'
+  ];
+}
+
+// Find all features currently mapped in bluefinDefaultApps
+const mappedFeatures = new Set(bluefinDefaultApps.map((app) => app.test_file));
+
+// Find all unmapped features
+const unmappedFeatures = discoveredFeatures.filter((path) => !mappedFeatures.has(path));
+
+// Dynamically generate cards for unmapped features
+const autoDiscoveredApps = unmappedFeatures.map((path) => {
+  const fileName = path.split('/').pop() || '';
+  const cleanName = fileName
+    .replace('.feature', '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase()); // kebab/snake to Title Case
+  
+  const folder = path.split('/')[1] || 'general';
+  
+  // Choose standard generic icons based on folder/tag
+  let iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Software.png'; // default
+  let scope = `Auto-Discovered Test Suite · ${folder.toUpperCase()}`;
+  
+  if (path.includes('bazzite')) {
+    iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Games.png';
+    scope = 'Bazzite Shell & Extensions · Game Mode';
+  } else if (path.includes('flatcar')) {
+    iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.SystemMonitor.png';
+    scope = 'Flatcar Linux Substrate · Systemd';
+  } else if (path.includes('hardware')) {
+    iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Settings.png';
+    scope = 'Hardware Compatibility · Kernel';
+  } else if (path.includes('security')) {
+    iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Settings.png';
+    scope = 'Security Policies · Sandboxing';
+  }
+
+  return {
+    id: fileName.replace('.feature', ''),
+    display_name: cleanName,
+    app_id: `com.projectbluefin.testsuite.${fileName.replace('.feature', '')}`,
+    scope: scope,
+    icon_url: iconUrl,
+    flathub_url: 'https://github.com/projectbluefin/testsuite',
+    description: `Automated behave test suite discoverable in the testsuite repository at path '${path}'.`,
+    test_file: path,
+    test_url: `https://github.com/projectbluefin/testsuite/blob/main/${path}`,
+    command: `behave ${path}`,
+    version: '1.0.0 (testsuite)',
+    architectures: 'x86_64, aarch64',
+    license: 'Apache-2.0',
+    runtime: 'behave / qecore'
+  };
+});
+
+// Combined list to render!
+const allRenderedApps = [...bluefinDefaultApps, ...autoDiscoveredApps];
+
 const noPrimaryEvidence = rows.filter((row) => row.primary_result_status === 'pending' || row.primary_result_status === 'missing').length;
 const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0).length;
 ---
@@ -521,7 +612,7 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
   <!-- ═══════════════════════════════════════════════════════════ -->
   <h2 class="section-title">Tracked applications & behave test suites</h2>
   <div class="apps-horizontal-list">
-    {bluefinDefaultApps.map((app) => {
+    {allRenderedApps.map((app) => {
       const appRows = rows.filter(r => r.app_id === app.id);
       const available = appRows.filter(r => r.state === 'available').length;
       const total = appRows.length;

@@ -1,6 +1,7 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
 import { loadApplicationsPageModel } from '../lib/applications-page';
+import { serializeJsonScript } from '../lib/json-script';
 
 const baseUrl = import.meta.env.BASE_URL;
 const pageModel = loadApplicationsPageModel(
@@ -33,7 +34,7 @@ const formatUtc = (value: string | null) =>
       }) + ' UTC'
     : 'No published run';
 
-const serializedPageData = JSON.stringify(chartData);
+const serializedPageData = serializeJsonScript(chartData);
 const noPrimaryEvidence = rows.filter((row) => row.primary_result_status === 'pending' || row.primary_result_status === 'missing').length;
 const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0).length;
 ---

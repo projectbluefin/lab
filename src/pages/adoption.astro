@@ -1,0 +1,407 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { loadAdoptionPageModel } from '../lib/adoption-page';
+import { serializeJsonScript } from '../lib/json-script';
+
+const baseUrl = import.meta.env.BASE_URL;
+const pageModel = loadAdoptionPageModel(`${process.cwd()}/docs/data/adoption-metrics.json`);
+
+const { dataset, summaryMetrics, summaryMetricMap, trustCards, rows, laneStats, chartData } = pageModel;
+
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC'
+    : '—';
+
+const serializedPageData = serializeJsonScript(chartData);
+
+const unavailableTrustCards = trustCards.filter((c) => c.state === 'unavailable');
+---
+
+<SiteLayout
+  title="Adoption"
+  description="Executive-readable adoption metrics for the Project Bluefin Operating System Factory."
+  current="adoption"
+>
+  <section class="summary-grid" aria-label="adoption-summary-metrics">
+    {summaryMetrics.map((metric) => (
+      <article class="metric-card">
+        <p class="metric-card__label">{metric.label}</p>
+        <p class="metric-card__value">{metric.value}</p>
+        <p class="metric-card__meta">
+          <span>{metric.unit}</span>
+          <a href={metric.source_url}>Evidence</a>
+        </p>
+      </article>
+    ))}
+  </section>
+
+  <section class="detail-grid detail-grid--hero">
+    <article class="status-card status-card--hero">
+      <p class="status-card__eyebrow">Factory adoption</p>
+      {laneStats.unavailable === laneStats.total ? (
+        <>
+          <h2>Adoption signals are pending collection</h2>
+          <p>
+            No registry pull-count data (GHCR API) or Fedora countme active-device data is tracked in
+            <code>docs/data/</code> yet. All {laneStats.total} image lanes are in an explicit unavailable state.
+            Once repo-owned artifacts fetched from the GHCR package statistics API or the Fedora countme
+            infrastructure are committed, this page will surface adoption trends and device counts.
+          </p>
+        </>
+      ) : (
+        <>
+          <h2>Adoption data available for {laneStats.available} of {laneStats.total} lanes</h2>
+          <p>
+            Pull-count data is tracked for {laneStats.withPullData} lane{laneStats.withPullData !== 1 ? 's' : ''}.
+            Active-device estimates from Fedora countme are tracked for {laneStats.withCountmeData} lane{laneStats.withCountmeData !== 1 ? 's' : ''}.
+            The remaining {laneStats.unavailable} lane{laneStats.unavailable !== 1 ? 's' : ''} remain explicitly unavailable.
+          </p>
+        </>
+      )}
+      <dl class="status-card__meta">
+        <div>
+          <dt>Tracked image lanes</dt>
+          <dd>{laneStats.total}</dd>
+        </div>
+        <div>
+          <dt>Lanes with pull-count data</dt>
+          <dd>{laneStats.withPullData}</dd>
+        </div>
+        <div>
+          <dt>Lanes with countme data</dt>
+          <dd>{laneStats.withCountmeData}</dd>
+        </div>
+        <div>
+          <dt>Dataset generated</dt>
+          <dd>{formatUtc(dataset._meta.generated_at)}</dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="status-card">
+      <p class="status-card__eyebrow">Data gap posture</p>
+      <h2>Unavailable states stay visible</h2>
+      <ul class="status-list">
+        <li>{laneStats.withoutPullData} of {laneStats.total} lanes lack pull-count data from the container registry API.</li>
+        <li>{laneStats.withoutCountmeData} of {laneStats.total} lanes lack active-device estimates from Fedora countme infrastructure.</li>
+        <li>{unavailableTrustCards.length} of {trustCards.length} trust cards are incomplete due to missing publisher metadata.</li>
+      </ul>
+      <p class="callout-note">
+        Pull-count data and countme active-device estimates are unavailable until repo-owned artifacts
+        fetched from GHCR package statistics or the Fedora countme infrastructure are committed to
+        <code>docs/data/</code>. This page does not fabricate adoption numbers from partial evidence.
+      </p>
+    </article>
+  </section>
+
+  <section class="chart-grid" aria-label="Adoption charts">
+    <article class="status-card chart-card">
+      <p class="status-card__eyebrow">Data availability per lane</p>
+      <h2>Adoption coverage by lane</h2>
+      <p>
+        Each lane shows whether pull-count data (registry API) and countme active-device data are tracked
+        in <code>docs/data/</code>. Empty bars reflect honest data gaps, not missing images.
+      </p>
+      <div id="adoption-coverage-chart" class="chart-surface" role="img" aria-label="Adoption coverage by lane chart"></div>
+    </article>
+
+    <article class="status-card chart-card">
+      <p class="status-card__eyebrow">Trust and provenance coverage</p>
+      <h2>Trust coverage by variant</h2>
+      <p>
+        Shows which tracked variants emit SBOMs, CVE scans, and cosign attestations based on
+        static publisher metadata from <code>docs/data/variant-publishers.json</code>.
+      </p>
+      <div id="adoption-trust-chart" class="chart-surface" role="img" aria-label="Trust coverage by variant chart"></div>
+    </article>
+  </section>
+
+  <section class="detail-grid">
+    <article class="status-card">
+      <p class="status-card__eyebrow">Per-lane adoption detail</p>
+      <h2>Image lane breakdown</h2>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Lane</th>
+              <th scope="col">Variant</th>
+              <th scope="col">Branch</th>
+              <th scope="col">Pull count</th>
+              <th scope="col">Active devices (countme)</th>
+              <th scope="col">State</th>
+              <th scope="col">Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr>
+                <th scope="row">{row.id}</th>
+                <td>{row.variant}</td>
+                <td>{row.branch}</td>
+                <td>
+                  {row.pull_count !== null
+                    ? row.pull_count.toLocaleString()
+                    : <span class="unavailable-note">No registry pull-count data</span>}
+                </td>
+                <td>
+                  {row.countme_active_devices !== null
+                    ? row.countme_active_devices.toLocaleString()
+                    : <span class="unavailable-note">No Fedora countme data</span>}
+                </td>
+                <td>
+                  <span class:list={['pill', `pill--${row.state}`]}>{row.state}</span>
+                  {row.state === 'unavailable' && (
+                    <p class="table-note">{row.state_reason}</p>
+                  )}
+                </td>
+                <td><a href={row.source_url}>Evidence</a></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </section>
+
+  <section class="detail-grid" aria-label="adoption-trust-cards">
+    <article class="status-card">
+      <p class="status-card__eyebrow">Publisher trust and provenance</p>
+      <h2 id="trust-summary-cards">Trust summary cards</h2>
+      <p class="callout-note">
+        Based on static publisher metadata. Trust signals here reflect declared publisher intent,
+        not runtime attestation verification. Evidence links point to the publisher repository.
+      </p>
+      <div class="signal-stack">
+        {trustCards.map((card) => (
+          <article class="signal-card">
+            <div class="signal-card__header">
+              <div>
+                <h3>{card.variant}</h3>
+                {card.org && <p>{card.org}{card.publisher_repo ? ` · ${card.publisher_repo}` : ''}</p>}
+                {card.state === 'unavailable' && <p class="unavailable-note">{card.state_reason}</p>}
+              </div>
+              <span class:list={['pill', `pill--${card.state}`]}>{card.state}</span>
+            </div>
+            {card.state === 'available' && (
+              <ul class="status-list">
+                <li>SBOM: {card.emits_sbom ? 'Published' : 'Not published'}</li>
+                <li>CVE scan: {card.emits_cve_scan ? 'Published' : 'Not published'}</li>
+                <li>Cosign attestation: {card.emits_cosign_attestation ? 'Published' : 'Not published'}</li>
+              </ul>
+            )}
+            <dl class="signal-meta">
+              <div>
+                <dt>Evidence</dt>
+                <dd><a href={card.source_url}>Publisher source</a></dd>
+              </div>
+              <div>
+                <dt>Collected</dt>
+                <dd>{formatUtc(card.collected_at)}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </div>
+    </article>
+
+    <article class="status-card">
+      <p class="status-card__eyebrow">Dataset provenance</p>
+      <h2>Collector-derived contract</h2>
+      <dl class="status-card__meta">
+        <div>
+          <dt>Schema version</dt>
+          <dd>{dataset.schema_version}</dd>
+        </div>
+        <div>
+          <dt>Generated at</dt>
+          <dd>{formatUtc(dataset._meta.generated_at)}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{dataset._meta.status}</dd>
+        </div>
+      </dl>
+      <p class="table-note">{dataset._meta.description}</p>
+      <a href={`${baseUrl}data/adoption-metrics.json`}>Open raw dataset</a>
+    </article>
+  </section>
+
+  <script id="adoption-page-data" type="application/json" set:html={serializedPageData}></script>
+  <script
+    is:inline
+    src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"
+    defer
+    data-cfasync="false"
+  ></script>
+  <script is:inline data-cfasync="false">
+    const dataNode = document.getElementById('adoption-page-data');
+    const pageData = dataNode ? JSON.parse(dataNode.textContent || '{}') : null;
+
+    function renderUnavailable(containerId, message) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = `<div class="chart-empty">${message}</div>`;
+    }
+
+    function waitForCharts(attempt) {
+      if (attempt === undefined) attempt = 0;
+      if (window.echarts) {
+        bootCharts(window.echarts);
+        return;
+      }
+      if (attempt > 40) {
+        renderUnavailable('adoption-coverage-chart', 'ECharts failed to load. Table below remains the source of truth.');
+        renderUnavailable('adoption-trust-chart', 'Trust chart unavailable because the chart runtime did not load.');
+        return;
+      }
+      window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
+    }
+
+    function bootCharts(echarts) {
+      if (!pageData) return;
+
+      var coverageContainer = document.getElementById('adoption-coverage-chart');
+      var trustContainer = document.getElementById('adoption-trust-chart');
+
+      var lanesCoverage = Array.isArray(pageData.lanesCoverage) ? pageData.lanesCoverage : [];
+      var trustCoverage = Array.isArray(pageData.trustCoverage) ? pageData.trustCoverage : [];
+
+      if (!coverageContainer || lanesCoverage.length === 0) {
+        renderUnavailable('adoption-coverage-chart', 'No lane coverage data published in adoption-metrics.json yet.');
+      } else {
+        var lanes = lanesCoverage.map(function(l) { return l.label; });
+        var pullData = lanesCoverage.map(function(l) { return l.hasPullData ? 1 : 0; });
+        var countmeData = lanesCoverage.map(function(l) { return l.hasCountmeData ? 1 : 0; });
+        var coverageChart = echarts.init(coverageContainer);
+        coverageChart.setOption({
+          aria: { enabled: true },
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var lane = lanesCoverage[params[0].dataIndex];
+              return [
+                '<strong>' + lane.label + '</strong>',
+                'Pull data: ' + (lane.hasPullData ? 'available' : 'pending'),
+                'Countme data: ' + (lane.hasCountmeData ? 'available' : 'pending'),
+                'State: ' + lane.state,
+              ].join('<br>');
+            },
+          },
+          legend: {
+            textStyle: { color: '#cbd5f5' },
+            data: ['Pull data', 'Countme data'],
+          },
+          grid: { left: 140, right: 20, top: 40, bottom: 20 },
+          xAxis: {
+            type: 'value',
+            max: 1,
+            axisLabel: {
+              color: '#cbd5f5',
+              formatter: function(v) { return v === 1 ? 'available' : 'pending'; },
+            },
+          },
+          yAxis: {
+            type: 'category',
+            data: lanes,
+            axisLabel: { color: '#cbd5f5' },
+          },
+          series: [
+            {
+              name: 'Pull data',
+              type: 'bar',
+              data: pullData,
+              itemStyle: { color: '#38bdf8' },
+            },
+            {
+              name: 'Countme data',
+              type: 'bar',
+              data: countmeData,
+              itemStyle: { color: '#22c55e' },
+            },
+          ],
+        });
+      }
+
+      if (!trustContainer || trustCoverage.length === 0) {
+        renderUnavailable('adoption-trust-chart', 'No trust coverage data published in adoption-metrics.json yet.');
+      } else {
+        var variants = trustCoverage.map(function(c) { return c.variant; });
+        var sbomData = trustCoverage.map(function(c) { return c.sbom; });
+        var cveData = trustCoverage.map(function(c) { return c.cveScan; });
+        var cosignData = trustCoverage.map(function(c) { return c.cosign; });
+        var trustChart = echarts.init(trustContainer);
+        trustChart.setOption({
+          aria: { enabled: true },
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var card = trustCoverage[params[0].dataIndex];
+              return [
+                '<strong>' + card.variant + '</strong>',
+                'Org: ' + (card.org || 'unknown'),
+                'SBOM: ' + (card.sbom ? 'published' : 'not published'),
+                'CVE scan: ' + (card.cveScan ? 'published' : 'not published'),
+                'Cosign: ' + (card.cosign ? 'published' : 'not published'),
+              ].join('<br>');
+            },
+          },
+          legend: {
+            textStyle: { color: '#cbd5f5' },
+            data: ['SBOM', 'CVE scan', 'Cosign'],
+          },
+          grid: { left: 80, right: 20, top: 40, bottom: 20 },
+          xAxis: {
+            type: 'category',
+            data: variants,
+            axisLabel: { color: '#cbd5f5', rotate: 15 },
+          },
+          yAxis: {
+            type: 'value',
+            max: 1,
+            axisLabel: {
+              color: '#cbd5f5',
+              formatter: function(v) { return v === 1 ? 'yes' : 'no'; },
+            },
+          },
+          series: [
+            {
+              name: 'SBOM',
+              type: 'bar',
+              data: sbomData,
+              itemStyle: { color: '#a78bfa' },
+            },
+            {
+              name: 'CVE scan',
+              type: 'bar',
+              data: cveData,
+              itemStyle: { color: '#f59e0b' },
+            },
+            {
+              name: 'Cosign',
+              type: 'bar',
+              data: cosignData,
+              itemStyle: { color: '#22c55e' },
+            },
+          ],
+        });
+      }
+
+      window.addEventListener('resize', function() {
+        document.querySelectorAll('.chart-surface').forEach(function(element) {
+          var instance = echarts.getInstanceByDom(element);
+          if (instance) instance.resize();
+        });
+      });
+    }
+
+    waitForCharts();
+  </script>
+</SiteLayout>

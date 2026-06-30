@@ -306,3 +306,7 @@ lint:
         argo lint "$f" || exit 1; \
     done
     @echo "✓ All manifests valid"
+
+# Run the interactive Flatcar clone systemd-sysext & bootc state machine prototype
+run-flatcar-clone-prototype:
+	@python3 flatcar-clone-prototype.py

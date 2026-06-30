@@ -466,7 +466,7 @@ spec:
           '  --board=amd64-usr prod' \
           '' \
           'mkdir -p /mnt/host/source/src/build/output' \
-          'cp /mnt/host/source/src/build/images/amd64-usr/latest/flatcar_production_update.gz \' \
+          'cp /mnt/host/source/src/build/images/amd64-usr/developer-latest/flatcar_production_update.gz \' \
           '   /mnt/host/source/src/build/output/flatcar_production_update.gz' \
           > \${BUILD_DIR}/src/scripts/build-inside-sdk.sh
         chmod +x \${BUILD_DIR}/src/scripts/build-inside-sdk.sh
@@ -532,8 +532,8 @@ spec:
       - name: size
       - name: filename
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
-      command: [bash]
+      image: cgr.dev/chainguard/python:latest-dev
+      command: [python3]
       resources:
         requests:
           cpu: 10m
@@ -542,53 +542,53 @@ spec:
           cpu: 50m
           memory: 512Mi
       source: |
-        set -euo pipefail
-        KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
-        NEBRASKA_URL="http://192.168.1.102:30802"
-        FLATCAR_APP_ID="e96281a6-d1af-4bde-9a0a-97b76e56dc57"
+        import base64
+        import json
+        import urllib.request
 
-        SHA1="{{inputs.parameters.sha1}}"
-        SHA256="{{inputs.parameters.sha256}}"
-        SIZE="{{inputs.parameters.size}}"
-        FILENAME="{{inputs.parameters.filename}}"
+        kernel_version = "{{inputs.parameters.kernel-version}}"
+        nebraska_url = "http://192.168.1.102:30802"
+        flatcar_app_id = "e96281a6-d1af-4bde-9a0a-97b76e56dc57"
 
-        # Version: 9999.MAJOR.MINOR gives real semver precedence > any stock Flatcar
-        KERNEL_MAJOR=$(echo "${KERNEL_VERSION}" | cut -d. -f1)
-        KERNEL_MINOR=$(echo "${KERNEL_VERSION}" | cut -d. -f2)
-        VERSION="9999.${KERNEL_MAJOR}.${KERNEL_MINOR}"
+        sha1 = "{{inputs.parameters.sha1}}"
+        sha256 = "{{inputs.parameters.sha256}}"
+        size = "{{inputs.parameters.size}}"
+        filename = "{{inputs.parameters.filename}}"
 
-        echo "Registering kernel ${KERNEL_VERSION} as Flatcar version ${VERSION}"
+        major, minor, *_ = kernel_version.split(".")
+        version = f"9999.{major}.{minor}"
+        pkg_base_url = f"{nebraska_url}/flatcar/"
+        sha1_b64 = base64.b64encode(bytes.fromhex(sha1)).decode()
 
-        # Nebraska serves files at {nebraska-url}/flatcar/{filename}
-        # The `url` field in the API must be the BASE PATH only —
-        # Nebraska appends filename when building Omaha responses.
-        PKG_BASE_URL="${NEBRASKA_URL}/flatcar/"
+        payload = {
+            "filename": filename,
+            "url": pkg_base_url,
+            "version": version,
+            "hash": sha1_b64,
+            "hash256": sha256,
+            "size": size,
+            "type": 1,
+            "arch": 1,
+            "flatcar_action": {
+                "sha256": sha256,
+            },
+        }
 
-        # SHA1 as base64-encoded raw bytes (what Nebraska/Omaha expects)
-        SHA1_B64=$(printf '%s' "${SHA1}" | xxd -r -p | base64)
+        print(f"Registering kernel {kernel_version} as Flatcar version {version}")
+        request = urllib.request.Request(
+            f"{nebraska_url}/api/v1/apps/{flatcar_app_id}/packages",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            response.read()
 
-        curl -sf -X POST \
-          "${NEBRASKA_URL}/api/v1/apps/${FLATCAR_APP_ID}/packages" \
-          -H "Content-Type: application/json" \
-          -d "{
-            \"filename\": \"${FILENAME}\",
-            \"url\": \"${PKG_BASE_URL}\",
-            \"version\": \"${VERSION}\",
-            \"hash\": \"${SHA1_B64}\",
-            \"hash256\": \"${SHA256}\",
-            \"size\": \"${SIZE}\",
-            \"type\": 1,
-            \"arch\": 1,
-            \"flatcar_action\": {
-              \"sha256\": \"${SHA256}\"
-            }
-          }"
-
-        echo ""
-        echo "=== Package registered ==="
-        echo "Version: ${VERSION}  (kernel ${KERNEL_VERSION})"
-        echo "URL:     ${PKG_BASE_URL}${FILENAME}"
-        echo "update_engine on Flatcar nodes will pick this up on next check-in"
+        print()
+        print("=== Package registered ===")
+        print(f"Version: {version}  (kernel {kernel_version})")
+        print(f"URL:     {pkg_base_url}{filename}")
+        print("update_engine on Flatcar nodes will pick this up on next check-in")
 
   - name: record-candidate-state
     inputs:

@@ -111,7 +111,7 @@ spec:
           REPO="{{inputs.parameters.repo}}"
 
           echo "=== Cloning bluefin-server @ ${REF} ==="
-          git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN}@github.com/castrojo/bluefin-server.git" /src
+          git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN" /src
           cd /src
 
           echo "=== Building ${ELEMENT} ==="
@@ -135,4 +135,4 @@ spec:
           podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
           podman rmi "${IMAGE_ID}" 2>/dev/null || true
 
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="
+          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="@github.com/projectbluefin/server.git}

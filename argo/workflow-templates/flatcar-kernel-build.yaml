@@ -27,7 +27,7 @@ spec:
   entrypoint: pipeline
   onExit: teardown-build-vm
   serviceAccountName: argo
-  activeDeadlineSeconds: 10800   # ponytail: 3h active deadline for kernel compile
+  activeDeadlineSeconds: 21600   # ponytail: 6h deadline; full Flatcar SDK image builds exceed 3h
   podGC:
     strategy: OnWorkflowSuccess
   ttlStrategy:
@@ -272,7 +272,6 @@ spec:
       - name: filename
         valueFrom:
           path: /tmp/filename.txt
-    activeDeadlineSeconds: 10800
     script:
       image: 192.168.1.102:30500/fsdk/lab-runner:latest
       securityContext:

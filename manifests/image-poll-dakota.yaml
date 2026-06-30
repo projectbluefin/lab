@@ -22,6 +22,22 @@ spec:
     ttlStrategy:
       secondsAfterSuccess: 3600
       secondsAfterFailure: 86400
+    arguments:
+      parameters:
+        - name: image
+          value: "ghcr.io/projectbluefin/dakota"
+        - name: image-tag
+          value: "latest"
+        - name: state-key
+          value: "digest-dakota-latest"
+        - name: namespace
+          value: "bluefin-test"
+        - name: suites
+          value: "smoke,common,developer,software,system"
+        - name: variant
+          value: "dakota"
+        - name: containerdisk-tag
+          value: "dakota-latest"
     entrypoint: check-and-trigger
     templates:
       - name: check-and-trigger
@@ -34,11 +50,11 @@ spec:
               arguments:
                 parameters:
                   - name: image
-                    value: "ghcr.io/projectbluefin/dakota"
+                    value: "{{workflow.parameters.image}}"
                   - name: image-tag
-                    value: "latest"
+                    value: "{{workflow.parameters.image-tag}}"
                   - name: state-key
-                    value: "digest-dakota-latest"
+                    value: "{{workflow.parameters.state-key}}"
             - name: run-pipeline
               depends: "check-digest.Succeeded"
               when: "{{tasks.check-digest.outputs.parameters.changed}} == true"
@@ -48,14 +64,14 @@ spec:
               arguments:
                 parameters:
                   - name: image
-                    value: "ghcr.io/projectbluefin/dakota"
+                    value: "{{workflow.parameters.image}}"
                   - name: image-tag
-                    value: "latest"
+                    value: "{{workflow.parameters.image-tag}}"
                   - name: containerdisk-tag
-                    value: "dakota-latest"
+                    value: "{{workflow.parameters.containerdisk-tag}}"
                   - name: namespace
-                    value: "bluefin-test"
+                    value: "{{workflow.parameters.namespace}}"
                   - name: suites
-                    value: "smoke,common,developer,software,system"
+                    value: "{{workflow.parameters.suites}}"
                   - name: variant
-                    value: "dakota"
+                    value: "{{workflow.parameters.variant}}"

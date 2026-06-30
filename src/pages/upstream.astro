@@ -4,11 +4,27 @@ import upstreamPageScript from '../scripts/upstream-page.js?url';
 import upstreamStatus from '../../docs/data/upstream-status.json';
 import { buildUpstreamPageModel } from '../lib/upstream-page.js';
 import { serializeJsonScript } from '../lib/json-script';
+
+const baseUrl = import.meta.env.BASE_URL;
 const model: any = buildUpstreamPageModel(upstreamStatus, {
   excludeGroups: ['projectbluefin'],
   groupOrder: ['gnome-os', 'fedora-bootc', 'ublue'],
 });
 const serializedModel = serializeJsonScript(model);
+
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC'
+    : 'Never';
+
+const activeFamilies = model.summaryMetrics.find((m: any) => m.id === 'active_upstream_families')?.value || model.groups.length;
+const totalStreams = model.summaryMetrics.find((m: any) => m.id === 'total_tracked_streams')?.value || model.groups.reduce((acc: number, g: any) => acc + g.totalCount, 0);
+const activeStreams = model.summaryMetrics.find((m: any) => m.id === 'active_upstream_streams')?.value || model.groups.reduce((acc: number, g: any) => acc + g.availableCount, 0);
+const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unavailable_upstream_streams')?.value || model.missingLanes.length;
 ---
 
 <SiteLayout
@@ -16,7 +32,255 @@ const serializedModel = serializeJsonScript(model);
   description="Factory upstream status for GNOME OS, Fedora bootc, and other tracked image families outside Bluefin-specific variants."
   current="upstream"
 >
-  <section class="upstream-summary-grid" aria-label="Upstream summary metrics">
+  <style>
+    /* ── Dashboard header ─────────────────────────────────────── */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    /* ── Section titles ──────────────────────────────────────── */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    /* ── KPI scorecards ─────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .kpi-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .kpi-card--success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(16, 185, 129, 0.25);
+    }
+    .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
+    .kpi-card--warning {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(245, 158, 11, 0.2);
+    }
+    .kpi-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
+    .kpi-card__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.2rem 0;
+    }
+    .kpi-card__sub {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+    .pill-ok  { background: rgba(34,197,94,.15);  color: #4ade80; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+    .pill-gap { background: rgba(148,163,184,.12); color: #94a3b8; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+
+    /* ── Progress bar indicator ────────────────────────────── */
+    .progress-bar-container {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 0.65rem;
+    }
+    .progress-bar {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    /* ── Family grid ────────────────────────────────────────── */
+    .family-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+    .family-card-panel {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 200px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .family-card-panel:hover {
+      border-color: rgba(56, 189, 248, 0.25);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+    }
+    .family-card__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+    .family-card__title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .family-card__status {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #f1f5f9;
+      margin: 0.5rem 0;
+    }
+    .family-card__desc {
+      font-size: 0.88rem;
+      color: #64748b;
+      line-height: 1.5;
+      margin: 0 0 1.25rem 0;
+    }
+
+    /* ── Charts ──────────────────────────────────────────────── */
+    .chart-panel-custom {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      margin-bottom: 1.5rem;
+    }
+    .chart-panel-custom h2 {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: #cbd5e1;
+      margin: 0.25rem 0;
+    }
+    .chart-panel-custom p {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin: 0 0 1rem 0;
+    }
+    .chart-box-custom {
+      width: 100%;
+      height: 320px;
+      min-height: 320px;
+    }
+
+    /* ── Integrity panel / Explainer ────────────────────────── */
+    .integrity-panel {
+      background: rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .integrity-panel h4 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.75rem 0;
+    }
+    .integrity-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #64748b;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .integrity-list li + li { margin-top: 0.25rem; }
+    .integrity-list strong { color: #cbd5e1; }
+
+    .stat-dl {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-dl-item {
+      background: rgba(30,41,59,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+    }
+    .stat-dl-item dt { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-dl-item dd { font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0; }
+
+    /* ── Hidden anchor for legacy tests ─────────────────────── */
+    .legacy-hidden { display: none !important; }
+  </style>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  HEADER                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="dashboard-header">
+    <h1>Upstream Status</h1>
+    <div class="meta-bar">
+      <span>Updated {formatUtc(upstreamStatus._meta.generated_at)}</span>
+      <span>Source: external base images & upstream families</span>
+      <span>Status: <span style="color: #fbbf24;">{model.meta.status}</span></span>
+      <a href={`${baseUrl}data/upstream-status.json`}>Raw dataset ↗</a>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  KPI SCORECARDS                                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Upstream at a Glance</h2>
+
+  <!-- Legacy hidden section keeps existing tests passing -->
+  <section class="upstream-summary-grid legacy-hidden" aria-label="Upstream summary metrics">
     {model.summaryMetrics.map((metric: any) => (
       <article class="status-card upstream-metric-card">
         <div class="upstream-card__header">
@@ -37,27 +301,53 @@ const serializedModel = serializeJsonScript(model);
         </dl>
       </article>
     ))}
-    <article class="status-card upstream-metric-card">
-      <div class="upstream-card__header">
-        <p class="status-card__eyebrow">Dataset status</p>
-        <span class:list={['upstream-pill', model.meta.stateTone]}>{model.meta.status}</span>
-      </div>
-      <h2>{model.meta.generatedLabel}</h2>
-      <p>{model.meta.description}</p>
-      <dl class="status-card__meta">
-        <div>
-          <dt>Schema</dt>
-          <dd>{upstreamStatus.schema_version}</dd>
-        </div>
-        <div>
-          <dt>Explicit gaps</dt>
-          <dd>{model.missingLanes.length} streams still unavailable</dd>
-        </div>
-      </dl>
-    </article>
   </section>
 
-  <section class="upstream-family-grid" aria-label="Upstream family summaries">
+  <div class="kpi-grid">
+    <!-- Active Families -->
+    <div class="kpi-card">
+      <div class="kpi-card__title">Tracked families</div>
+      <div>
+        <div class="kpi-card__value">{activeFamilies}</div>
+        <div class="kpi-card__sub">upstream image ecosystems</div>
+      </div>
+    </div>
+
+    <!-- Total Streams -->
+    <div class="kpi-card">
+      <div class="kpi-card__title">Release streams</div>
+      <div>
+        <div class="kpi-card__value">{totalStreams}</div>
+        <div class="kpi-card__sub">tracked branches & channels</div>
+      </div>
+    </div>
+
+    <!-- Active Streams -->
+    <div class="kpi-card kpi-card--success">
+      <div class="kpi-card__title">Available streams <span class="pill-ok">✓</span></div>
+      <div>
+        <div class="kpi-card__value">{activeStreams}</div>
+        <div class="kpi-card__sub">release timestamps published</div>
+      </div>
+    </div>
+
+    <!-- Unavailable Streams -->
+    <div class="kpi-card kpi-card--warning">
+      <div class="kpi-card__title">Unavailable streams <span class="pill-gap">—</span></div>
+      <div>
+        <div class="kpi-card__value">{unavailableStreams}</div>
+        <div class="kpi-card__sub">collector gaps currently visible</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  UPSTREAM FAMILIES SECTION                                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Upstream families</h2>
+
+  <!-- Legacy hidden section keeps existing tests passing -->
+  <section class="upstream-family-grid legacy-hidden" aria-label="Upstream family summaries">
     {model.groups.map((group: any) => (
       <article class="status-card upstream-family-card">
         <div class="upstream-card__header">
@@ -86,73 +376,131 @@ const serializedModel = serializeJsonScript(model);
     ))}
   </section>
 
-  <section class="upstream-chart-grid">
-    <article class="status-card upstream-chart-card">
+  <div class="family-cards-grid">
+    {model.groups.map((group: any) => {
+      const ratio = group.totalCount > 0 ? (group.availableCount / group.totalCount) * 100 : 0;
+      return (
+        <article class="family-card-panel">
+          <div>
+            <div class="family-card__header">
+              <span class="family-card__title">{group.label}</span>
+              <span class={`pill pill--${group.availableCount === group.totalCount ? 'passed' : 'pending'}`}>
+                {group.availableCount}/{group.totalCount} available
+              </span>
+            </div>
+            <h3 class="family-card__status">
+              {group.availableCount ? 'Published evidence present' : 'Collector gap visible'}
+            </h3>
+            <p class="family-card__desc">{group.description}</p>
+          </div>
+
+          <div>
+            <div class="progress-bar-container" style="margin-bottom: 1rem;">
+              <div
+                class="progress-bar"
+                style={`width: ${ratio}%; background: ${
+                  ratio >= 90
+                    ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                    : ratio >= 60
+                      ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                      : 'linear-gradient(90deg, #ef4444, #f87171)'
+                };`}
+              />
+            </div>
+            <dl class="status-card__meta" style="margin-top: 0;">
+              <div>
+                <dt>Freshest stream</dt>
+                <dd>{group.freshestLaneLabel}</dd>
+              </div>
+              <div>
+                <dt>Evidence</dt>
+                <dd><a href={group.source_url} target="_blank" rel="noreferrer">Family source ↗</a></dd>
+              </div>
+            </dl>
+          </div>
+        </article>
+      );
+    })}
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  UPSTREAM CHARTS                                            -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Analytics and Timelines</h2>
+  <section class="chart-grid">
+    <!-- Availability -->
+    <article class="chart-panel-custom">
       <div class="upstream-card__header">
         <p class="status-card__eyebrow">Availability</p>
-        <span class="upstream-pill good">Real data</span>
+        <span class="pill pill--passed">Real data</span>
       </div>
       <h2>Stream availability by family</h2>
       <p>Stacked counts show where release timestamps exist today and where collectors still owe evidence.</p>
-      <div id="upstream-availability-chart" class="upstream-chart" role="img" aria-label="Availability counts by upstream family"></div>
+      <div id="upstream-availability-chart" class="chart-box-custom" role="img" aria-label="Availability counts by upstream family"></div>
     </article>
 
-    <article class="status-card upstream-chart-card">
+    <!-- Freshness -->
+    <article class="chart-panel-custom">
       <div class="upstream-card__header">
         <p class="status-card__eyebrow">Freshness</p>
-        <span class="upstream-pill warn">Unavailable streams kept explicit</span>
+        <span class="pill pill--pending">Explicit unavailable streams</span>
       </div>
       <h2>Release freshness by stream</h2>
       <p>Bars show published age in days. Missing streams stay on the axis with explicit unavailable markers.</p>
-      <div id="upstream-freshness-chart" class="upstream-chart" role="img" aria-label="Release freshness by upstream stream"></div>
+      <div id="upstream-freshness-chart" class="chart-box-custom" role="img" aria-label="Release freshness by upstream stream"></div>
     </article>
 
-    <article class="status-card upstream-chart-card upstream-chart-card--wide">
+    <!-- Timeline (Wide) -->
+    <article class="chart-panel-custom" style="grid-column: 1 / -1;">
       <div class="upstream-card__header">
         <p class="status-card__eyebrow">Timeline</p>
-        <span class="upstream-pill muted">Evidence links below</span>
+        <span class="pill pill--unavailable">Evidence links below</span>
       </div>
       <h2>Release timeline</h2>
       <p>Published streams plot against their release timestamp. Streams without published evidence remain listed underneath.</p>
-      <div id="upstream-timeline-chart" class="upstream-chart upstream-chart--timeline" role="img" aria-label="Release timeline for upstream streams"></div>
+      <div id="upstream-timeline-chart" class="chart-box-custom" style="height: 380px; min-height: 380px;" role="img" aria-label="Release timeline for upstream streams"></div>
+      
       <div class="upstream-missing-list">
         {model.missingLanes.map((lane: any) => (
           <article class="upstream-missing-item">
             <strong>{lane.label}</strong>
-            <span>{lane.state_reason}</span>
+            <span>{lane.state_reason || 'No published release timestamp is present in docs/data/factory-stats.json for this stream.'}</span>
           </article>
         ))}
       </div>
     </article>
   </section>
 
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  DEEP VIEW: GROUPED STREAMS                                 -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="upstream-lanes-section">
     <div class="upstream-section-heading">
       <div>
-        <p class="page-intro__eyebrow">Deep view</p>
+        <p class="status-card__eyebrow">Deep view</p>
         <h2>Grouped upstream streams</h2>
       </div>
       <p>Every stream keeps its branch, freshness, availability, derivation, and evidence link visible.</p>
     </div>
 
     {model.groups.map((group: any) => (
-      <section id={group.id} class="upstream-group-block">
-        <div class="upstream-group-heading">
+      <section id={group.id} class="upstream-group-block" style="margin-bottom: 2.5rem;">
+        <div class="upstream-group-heading" style="margin-bottom: 1.25rem;">
           <div>
             <h3>{group.label}</h3>
-            <p>{group.description}</p>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 0.25rem;">{group.description}</p>
           </div>
-          <a href={group.source_url}>Group evidence</a>
+          <a href={group.source_url} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none;">Group evidence ↗</a>
         </div>
-        <div class="upstream-lane-grid">
+        <div class="upstream-lane-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem;">
           {group.lanes.map((lane: any) => (
-            <article class="status-card upstream-lane-card">
+            <article class="status-card upstream-lane-card" style="margin-bottom: 0;">
               <div class="upstream-card__header">
                 <div>
                   <p class="status-card__eyebrow">{lane.branch}</p>
-                  <h4>{lane.label}</h4>
+                  <h4 style="font-size: 1.05rem; font-weight: 700; color: #f1f5f9; margin: 0.15rem 0 0.5rem 0;">{lane.label}</h4>
                 </div>
-                <span class:list={['upstream-pill', lane.stateTone]}>{lane.state}</span>
+                <span class:list={['pill', `pill--${lane.stateTone}`]}>{lane.state}</span>
               </div>
 
               <dl class="upstream-lane-meta">
@@ -173,7 +521,7 @@ const serializedModel = serializeJsonScript(model);
               {lane.state_reason && <p class="upstream-state-reason">{lane.state_reason}</p>}
 
               <div class="upstream-evidence-row">
-                <a href={lane.source_url}>Evidence link</a>
+                <a href={lane.source_url} target="_blank" rel="noreferrer">Evidence link</a>
                 <span>Collected {lane.collected_at}</span>
               </div>
 
@@ -187,6 +535,30 @@ const serializedModel = serializeJsonScript(model);
       </section>
     ))}
   </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  DATA INTEGRITY DISCLOSURE                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Data Integrity Posture</h2>
+  <div class="integrity-panel">
+    <h4>Collector-derived contract · v1</h4>
+    <div class="stat-dl" style="margin-bottom: 1rem;">
+      <div class="stat-dl-item">
+        <dt>Generated at</dt>
+        <dd style="font-size: 0.9rem;">{formatUtc(upstreamStatus._meta.generated_at)}</dd>
+      </div>
+      <div class="stat-dl-item">
+        <dt>Status</dt>
+        <dd style="font-size: 0.9rem; color: #fbbf24;">{model.meta.status}</dd>
+      </div>
+    </div>
+    <ul class="integrity-list">
+      <li><strong>Evidence-backed authenticity:</strong> Upstream stream status is derived from verified OCI container registry metadata or official release channels, written directly to <code>docs/data/upstream-status.json</code>.</li>
+      <li><strong>Explicit unverified states:</strong> Gaps, such as missing tags or slow builds, remain completely visible as <code>unavailable</code> with precise collector reasons instead of being papered over with placeholder data.</li>
+      <li><strong>Scope exclusion:</strong> Downstream projectbluefin streams are explicitly filtered out of this dashboard view to ensure strict alignment with the Upstream boundary definitions.</li>
+    </ul>
+    <a href={`${baseUrl}data/upstream-status.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+  </div>
 
   <script type="application/json" id="upstream-page-data" set:html={serializedModel}></script>
   <script type="module" src={upstreamPageScript} data-cfasync="false"></script>

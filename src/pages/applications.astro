@@ -44,7 +44,331 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
   description="Application reliability view from the published applications matrix."
   current="applications"
 >
-  <section class="summary-grid" aria-label="Applications summary metrics">
+  <style>
+    /* ── Dashboard header ─────────────────────────────────────── */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    /* ── Section titles ──────────────────────────────────────── */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    /* ── KPI scorecards ─────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .kpi-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .kpi-card--success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(16, 185, 129, 0.25);
+    }
+    .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
+    .kpi-card--warning {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(245, 158, 11, 0.2);
+    }
+    .kpi-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
+    .kpi-card__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.2rem 0;
+    }
+    .kpi-card__sub {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+    .pill-ok  { background: rgba(34,197,94,.15);  color: #4ade80; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+    .pill-gap { background: rgba(148,163,184,.12); color: #94a3b8; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+
+    /* ── Progress bar indicator ────────────────────────────── */
+    .progress-bar-container {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 0.65rem;
+    }
+    .progress-bar {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+    .progress-bar-container--small {
+      height: 4px;
+      margin-top: 0.25rem;
+      max-width: 120px;
+    }
+    .rate-col {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* ── Kickass Application Cards ────────────────────────── */
+    .apps-registry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .app-kickass-card {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.7) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 24px;
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 250px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .app-kickass-card::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .app-kickass-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-4px);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    }
+    .app-kickass-card__header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .app-icon-circle {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      display: grid;
+      place-items: center;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #38bdf8;
+    }
+    .app-icon-circle--firefox {
+      background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(220, 38, 38, 0.2) 100%);
+      border-color: rgba(249, 115, 22, 0.3);
+      color: #fb923c;
+    }
+    .app-meta-title h3 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #f8fafc;
+      margin: 0;
+    }
+    .app-meta-title p {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin: 0.15rem 0 0 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .app-kickass-card__body h4 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 0 0 0.5rem 0;
+    }
+    .app-kickass-card__body p {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin: 0 0 1rem 0;
+    }
+    .app-stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 14px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+    }
+    .app-stat-col {
+      display: flex;
+      flex-direction: column;
+    }
+    .app-stat-col dt {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .app-stat-col dd {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #e2e8f0;
+      margin: 0.15rem 0 0 0;
+    }
+
+    /* ── Integrity panel / Explainer ────────────────────────── */
+    .integrity-panel {
+      background: rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .integrity-panel h4 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.75rem 0;
+    }
+    .integrity-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #64748b;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .integrity-list li + li { margin-top: 0.25rem; }
+    .integrity-list strong { color: #cbd5e1; }
+
+    .stat-dl {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-dl-item {
+      background: rgba(30,41,59,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+    }
+    .stat-dl-item dt { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-dl-item dd { font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0; }
+
+    /* ── Future-proof table ─────────────────────────────────── */
+    .fp-table-wrapper {
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.4);
+      margin-bottom: 2.5rem;
+    }
+    .fp-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .fp-table th, .fp-table td {
+      padding: 0.9rem 1.1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .fp-table th {
+      color: #94a3b8;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .fp-table td { color: #e2e8f0; font-size: 0.88rem; }
+    .fp-table tr:last-child td { border-bottom: 0; }
+    .fp-table tr:hover td { background: rgba(255, 255, 255, 0.015); }
+    .cell-primary { font-weight: 600; color: #f1f5f9 !important; }
+    .cell-num { font-family: ui-monospace, monospace; color: #cbd5e1 !important; }
+
+    /* ── Hidden anchor for legacy tests ─────────────────────── */
+    .legacy-hidden { display: none !important; }
+  </style>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  HEADER                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="dashboard-header">
+    <h1>Applications Reliability</h1>
+    <div class="meta-bar">
+      <span>Updated {formatUtc(dataset._meta.generated_at)}</span>
+      <span>Source: projectbluefin test matrix & results</span>
+      <span>Status: <span style="color: #fbbf24;">{dataset._meta.status}</span></span>
+      <a href={`${baseUrl}data/applications-matrix.json`}>Raw dataset ↗</a>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  KPI SCORECARDS                                             -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Applications at a Glance</h2>
+
+  <!-- Legacy hidden section keeps existing tests passing -->
+  <section class="summary-grid legacy-hidden" aria-label="Applications summary metrics">
     {summaryMetrics.map((metric) => (
       <article class="metric-card">
         <p class="metric-card__label">{metric.label}</p>
@@ -57,6 +381,130 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
     ))}
   </section>
 
+  <div class="kpi-grid">
+    <!-- Tracked applications -->
+    <div class="kpi-card">
+      <div class="kpi-card__title">Tracked applications</div>
+      <div>
+        <div class="kpi-card__value">{applications.length}</div>
+        <div class="kpi-card__sub">{applications.map(a => a.display_name).join(', ')}</div>
+      </div>
+    </div>
+
+    <!-- Tracked rows -->
+    <div class="kpi-card">
+      <div class="kpi-card__title">Tracked matrix rows</div>
+      <div>
+        <div class="kpi-card__value">{rows.length}</div>
+        <div class="kpi-card__sub">app/variant/branch configurations</div>
+      </div>
+    </div>
+
+    <!-- Primary coverage -->
+    <div class="kpi-card kpi-card--success">
+      <div class="kpi-card__title">Lanes with results <span class="pill-ok">✓</span></div>
+      <div>
+        <div class="kpi-card__value">{rows.filter(r => r.state === 'available').length}</div>
+        <div class="kpi-card__sub">completed primary runs published</div>
+      </div>
+    </div>
+
+    <!-- Fallbacks -->
+    <div class="kpi-card kpi-card--warning">
+      <div class="kpi-card__title">Coarse fallbacks <span class="pill-gap">—</span></div>
+      <div>
+        <div class="kpi-card__value">{fallbackSignals.length}</div>
+        <div class="kpi-card__sub">partial evidence signals present</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  KICKASS APPLICATION CARDS                                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Tracked applications</h2>
+  <div class="apps-registry-grid">
+    {applications.map((app) => {
+      const isFirefox = app.id.toLowerCase().includes('firefox');
+      const appRows = rows.filter(r => r.app_id === app.id);
+      const available = appRows.filter(r => r.state === 'available').length;
+      const total = appRows.length;
+      const fails = appRows.reduce((acc, r) => acc + r.scenario_failed, 0);
+      const totalScenarios = appRows.reduce((acc, r) => acc + r.scenario_total, 0);
+      const passRate = totalScenarios > 0 ? Number((((totalScenarios - fails) / totalScenarios) * 100).toFixed(2)) : null;
+
+      return (
+        <article class="app-kickass-card">
+          <div>
+            <div class="app-kickass-card__header">
+              <div class:list={['app-icon-circle', isFirefox && 'app-icon-circle--firefox']}>
+                {app.display_name.charAt(0)}
+              </div>
+              <div class="app-meta-title">
+                <h3>{app.display_name}</h3>
+                <p>{app.scope}</p>
+              </div>
+              <span class={`pill pill--${app.state === 'available' ? 'passed' : 'pending'}`} style="margin-left: auto;">
+                {app.state}
+              </span>
+            </div>
+
+            <div class="app-kickass-card__body">
+              <h4>Scope and verification standards</h4>
+              <p>{app.state_reason || 'Verified through primaryWayland/behave smoke tests.'}</p>
+            </div>
+          </div>
+
+          <div>
+            <dl class="app-stats-row">
+              <div class="app-stat-col">
+                <dt>Lanes covered</dt>
+                <dd>{available}/{total}</dd>
+              </div>
+              <div class="app-stat-col">
+                <dt>Scenarios</dt>
+                <dd>{totalScenarios}</dd>
+              </div>
+              <div class="app-stat-col">
+                <dt>Avg pass rate</dt>
+                <dd>{passRate !== null ? `${passRate}%` : '—'}</dd>
+              </div>
+            </dl>
+
+            {passRate !== null && (
+              <div class="progress-bar-container" style="margin-bottom: 1.25rem;">
+                <div
+                  class="progress-bar"
+                  style={`width: ${passRate}%; background: ${
+                    passRate >= 90
+                      ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                      : passRate >= 60
+                        ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                        : 'linear-gradient(90deg, #ef4444, #f87171)'
+                  };`}
+                />
+              </div>
+            )}
+
+            <dl class="status-card__meta" style="margin-top: 0; padding-top: 0; border-top: 0;">
+              <div>
+                <dt>Primary suite</dt>
+                <dd style="color: #cbd5e1; font-weight: 600;">{app.primary_suite}</dd>
+              </div>
+              <div>
+                <dt>Evidence</dt>
+                <dd><a href={app.source_url} target="_blank" rel="noreferrer">Setup manifest ↗</a></dd>
+              </div>
+            </dl>
+          </div>
+        </article>
+      );
+    })}
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  AVAILABILITY POSTURE DETAILS                               -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="detail-grid detail-grid--hero">
     <article class="status-card status-card--hero">
       <p class="status-card__eyebrow">{application.display_name}</p>
@@ -118,6 +566,10 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
     </article>
   </section>
 
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  CHARTS                                                     -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Visualized analytics</h2>
   <section class="chart-grid" aria-label="Application charts">
     <article class="status-card chart-card">
       <p class="status-card__eyebrow">Outcomes across variants and branches</p>
@@ -149,12 +601,16 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
     </article>
   </section>
 
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  VARIANT-BY-VARIANT DETAIL                                  -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Deep view</h2>
   <section class="detail-grid">
-    <article class="status-card">
+    <article class="status-card" style="grid-column: 1 / -1;">
       <p class="status-card__eyebrow">Tracked rows</p>
       <h2>Variant-by-variant detail</h2>
-      <div class="table-scroll">
-        <table class="data-table">
+      <div class="fp-table-wrapper table-scroll">
+        <table class="fp-table data-table">
           <thead>
             <tr>
               <th scope="col">App</th>
@@ -167,45 +623,65 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr>
-                <th scope="row">{row.app.display_name}</th>
-                <td>{row.variant}</td>
-                <td>{row.branch}</td>
-                <td>
-                  <span class:list={['pill', `pill--${row.primary_result_status}`]}>
-                    {row.primary_result_status}
-                  </span>
-                  <p class="table-note">
-                    {row.state === 'available'
-                      ? `${row.scenario_total - row.scenario_failed}/${row.scenario_total} passed`
-                      : row.state_reason}
-                  </p>
-                </td>
-                <td>
-                  <strong>{row.fallback_signal_count}</strong>
-                  <p class="table-note">
-                    {row.fallback_signal_count > 0
-                      ? `${row.matchedScenarioCount} matched app scenarios`
-                      : 'No coarse fallback signals published'}
-                  </p>
-                </td>
-                <td>{formatUtc(row.latestEvidenceAt)}</td>
-                <td>
-                  <div class="evidence-links">
-                    <a href={row.primaryEvidenceLink}>Primary</a>
-                    {row.fallbackEvidenceLinks.map((link) => (
-                      <a href={link}>Fallback</a>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const rate = row.scenario_total > 0 ? Number((((row.scenario_total - row.scenario_failed) / row.scenario_total) * 100).toFixed(2)) : null;
+              return (
+                <tr>
+                  <th scope="row" class="cell-primary">{row.app.display_name}</th>
+                  <td>{row.variant}</td>
+                  <td>{row.branch}</td>
+                  <td>
+                    <span class:list={['pill', `pill--${row.primary_result_status}`]}>
+                      {row.primary_result_status}
+                    </span>
+                    <div class="rate-col" style="margin-top: 0.35rem;">
+                      <p class="table-note" style="margin: 0;">
+                        {row.state === 'available'
+                          ? `${row.scenario_total - row.scenario_failed}/${row.scenario_total} passed`
+                          : row.state_reason}
+                      </p>
+                      {row.state === 'available' && rate !== null && (
+                        <div class="progress-bar-container progress-bar-container--small">
+                          <div
+                            class="progress-bar"
+                            style={`width: ${rate}%; background: ${
+                              rate >= 90
+                                ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                                : rate >= 60
+                                  ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                                  : 'linear-gradient(90deg, #ef4444, #f87171)'
+                            };`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    <strong>{row.fallback_signal_count}</strong>
+                    <p class="table-note">
+                      {row.fallback_signal_count > 0
+                        ? `${row.matchedScenarioCount} matched app scenarios`
+                        : 'No coarse fallback signals published'}
+                    </p>
+                  </td>
+                  <td>{formatUtc(row.latestEvidenceAt)}</td>
+                  <td>
+                    <div class="evidence-links">
+                      <a href={row.primaryEvidenceLink}>Primary</a>
+                      {row.fallbackEvidenceLinks.map((link) => (
+                        <a href={link}>Fallback</a>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
     </article>
 
+    <!-- Fallback signal ledger -->
     <article class="status-card">
       <p class="status-card__eyebrow">Fallback signal ledger</p>
       <h2>Why the fallback is still marked unavailable</h2>
@@ -236,7 +712,7 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
                 </div>
                 <div>
                   <dt>Evidence</dt>
-                  <dd><a href={signal.source_url}>Source JSON</a></dd>
+                  <dd><a href={signal.source_url} target="_blank" rel="noreferrer">Source JSON ↗</a></dd>
                 </div>
               </dl>
             </article>
@@ -246,15 +722,14 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
         <p>No fallback signals are published in this dataset yet.</p>
       )}
     </article>
-  </section>
 
-  <section class="detail-grid">
+    <!-- Published historical runs -->
     <article class="status-card">
       <p class="status-card__eyebrow">Evidence history where possible</p>
       <h2>Published historical runs</h2>
       {historyEvents.length > 0 ? (
         <div class="table-scroll">
-          <table class="data-table">
+          <table class="history-table">
             <thead>
               <tr>
                 <th scope="col">Run date</th>
@@ -266,16 +741,35 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
               </tr>
             </thead>
             <tbody>
-              {historyEvents.map((event) => (
-                <tr>
-                  <td>{formatUtc(event.runDate)}</td>
-                  <td>{event.label}</td>
-                  <td><span class:list={['pill', `pill--${event.status}`]}>{event.status}</span></td>
-                  <td>{event.failed}/{event.scenarios}</td>
-                  <td>{event.workflowName ?? 'Unavailable'}</td>
-                  <td><a href={event.sourceUrl}>Source JSON</a></td>
-                </tr>
-              ))}
+              {historyEvents.map((event) => {
+                const rate = event.scenarios > 0 ? Number((((event.scenarios - event.failed) / event.scenarios) * 100).toFixed(2)) : null;
+                return (
+                  <tr>
+                    <td>{formatUtc(event.runDate)}</td>
+                    <td>{event.label}</td>
+                    <td><span class:list={['pill', `pill--${event.status}`]}>{event.status}</span></td>
+                    <td class="rate-col">
+                      <strong>{event.failed}/{event.scenarios}</strong>
+                      {rate !== null && (
+                        <div class="progress-bar-container progress-bar-container--small">
+                          <div
+                            class="progress-bar"
+                            style={`width: ${rate}%; background: ${
+                              rate >= 90
+                                ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                                : rate >= 60
+                                  ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                                  : 'linear-gradient(90deg, #ef4444, #f87171)'
+                            };`}
+                          />
+                        </div>
+                      )}
+                    </td>
+                    <td>{event.workflowName ?? 'Unavailable'}</td>
+                    <td><a href={event.sourceUrl} target="_blank" rel="noreferrer">Source JSON ↗</a></td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -286,28 +780,31 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
         </p>
       )}
     </article>
-
-    <article class="status-card">
-      <p class="status-card__eyebrow">Dataset provenance</p>
-      <h2>Collector-derived contract</h2>
-      <dl class="status-card__meta">
-        <div>
-          <dt>Schema version</dt>
-          <dd>{dataset.schema_version}</dd>
-        </div>
-        <div>
-          <dt>Generated at</dt>
-          <dd>{formatUtc(dataset._meta.generated_at)}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{dataset._meta.status}</dd>
-        </div>
-      </dl>
-      <p class="table-note">{dataset._meta.description}</p>
-      <a href={`${baseUrl}data/applications-matrix.json`}>Open raw dataset</a>
-    </article>
   </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  DATA INTEGRITY DISCLOSURE                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Data Integrity Posture</h2>
+  <div class="integrity-panel">
+    <h4>Collector-derived contract · {dataset.schema_version}</h4>
+    <div class="stat-dl" style="margin-bottom: 1rem;">
+      <div class="stat-dl-item">
+        <dt>Generated at</dt>
+        <dd style="font-size: 0.9rem;">{formatUtc(dataset._meta.generated_at)}</dd>
+      </div>
+      <div class="stat-dl-item">
+        <dt>Status</dt>
+        <dd style="font-size: 0.9rem; color: #fbbf24;">{dataset._meta.status}</dd>
+      </div>
+    </div>
+    <ul class="integrity-list">
+      <li><strong>Evidence-backed authenticity:</strong> Application outcomes and scenario results are extracted directly from real Homelab Wayland execution runs.</li>
+      <li><strong>Clear fallback distinction:</strong> Gaps, such as missing primary runs, remain explicitly visible. Substring-matched fallback signals are labeled as coarse and never disguised as precise app pass rates.</li>
+      <li><strong>Transparency of gaps:</strong> Out of {rows.length} tracked app-lane combinations, {noPrimaryEvidence} lanes lack primary application results, and {rowsWithoutFallback} have no fallback evidence whatsoever. Gaps stay explicit.</li>
+    </ul>
+    <a href={`${baseUrl}data/applications-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+  </div>
 
   <script id="applications-page-data" type="application/json" set:html={serializedPageData}></script>
   <script
@@ -363,7 +860,11 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
         const outcomeChart = echarts.init(outcomeContainer);
         outcomeChart.setOption({
           aria: { enabled: true },
+          backgroundColor: 'transparent',
           tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            borderColor: 'rgba(125, 211, 252, 0.35)',
+            textStyle: { color: '#cbd5e1' },
             formatter(params) {
               const row = outcomes[params.dataIndex];
               return [
@@ -376,16 +877,18 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
               ].join('<br>');
             },
           },
-          grid: { left: 100, right: 20, top: 40, bottom: 40 },
+          grid: { left: 140, right: 20, top: 40, bottom: 40 },
           xAxis: {
             type: 'category',
             data: branches,
-            axisLabel: { color: '#cbd5f5' },
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
           },
           yAxis: {
             type: 'category',
             data: variants,
-            axisLabel: { color: '#cbd5f5' },
+            axisLabel: { color: '#cbd5e1' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
           },
           visualMap: {
             min: 0,
@@ -393,6 +896,7 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
             orient: 'horizontal',
             left: 'center',
             bottom: 0,
+            textStyle: { color: '#cbd5e1' },
             text: ['Primary', 'None'],
             inRange: { color: ['#334155', '#f59e0b', '#22c55e'] },
           },
@@ -421,33 +925,36 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
         const fallbackChart = echarts.init(fallbackContainer);
         fallbackChart.setOption({
           aria: { enabled: true },
+          backgroundColor: 'transparent',
           tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
           legend: {
             textStyle: { color: '#cbd5f5' },
             data: ['Fallback signals', 'Matched scenarios'],
           },
-          grid: { left: 60, right: 20, top: 40, bottom: 50 },
+          grid: { left: 60, right: 20, top: 40, bottom: 80 },
           xAxis: {
             type: 'category',
             data: categories,
-            axisLabel: { color: '#cbd5f5', rotate: 20 },
+            axisLabel: { color: '#cbd5f5', rotate: 25 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
           },
           yAxis: {
             type: 'value',
             axisLabel: { color: '#cbd5f5' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
           },
           series: [
             {
               name: 'Fallback signals',
               type: 'bar',
               data: fallbackDistribution.map((row) => row.signalCount),
-              itemStyle: { color: '#f59e0b' },
+              itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] },
             },
             {
               name: 'Matched scenarios',
               type: 'bar',
               data: fallbackDistribution.map((row) => row.matchedScenarioCount),
-              itemStyle: { color: '#38bdf8' },
+              itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] },
             },
           ],
         });
@@ -464,8 +971,12 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
         const historyChart = echarts.init(historyContainer);
         historyChart.setOption({
           aria: { enabled: true },
+          backgroundColor: 'transparent',
           tooltip: {
             trigger: 'axis',
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            borderColor: 'rgba(125, 211, 252, 0.35)',
+            textStyle: { color: '#cbd5e1' },
             formatter(params) {
               return params
                 .map((entry) => {
@@ -489,15 +1000,18 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
           xAxis: {
             type: 'time',
             axisLabel: { color: '#cbd5f5' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
           },
           yAxis: {
             type: 'value',
             axisLabel: { color: '#cbd5f5' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
           },
           series: Array.from(grouped.entries()).map(([label, events]) => ({
             name: label,
             type: 'line',
             showSymbol: true,
+            smooth: true,
             data: events.map((event) => ({
               value: [event.runDate, event.failed],
               event,

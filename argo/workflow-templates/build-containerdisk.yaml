@@ -293,6 +293,19 @@ spec:
         done
         export PATH="/usr/local/sbin:${PATH}"
 
+        # The FSDK server image has no /etc/containers/ directory. The containers/image
+        # library (used by bootc for imgstorage init) requires policy.json and
+        # registries.conf. Create a permissive config so bootc can initialize the image
+        # store in the target sysroot.
+        if [ ! -d /etc/containers ]; then
+          mkdir -p /etc/containers
+          printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' \
+            > /etc/containers/policy.json
+          printf '[[registry]]\nlocation = "192.168.1.102:30500"\ninsecure = true\n' \
+            > /etc/containers/registries.conf
+          echo "[BUILD] /etc/containers created with permissive policy"
+        fi
+
         bootc install to-disk \
           ${FS_ARG} \
           --source-imgref "${SOURCE_IMGREF}" \

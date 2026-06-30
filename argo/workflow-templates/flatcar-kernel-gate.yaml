@@ -84,7 +84,10 @@ spec:
             fail "candidate-created-at is in the future: ${candidate_created_at}"
           fi
           if [ "${elapsed_seconds}" -lt "${GATE_WINDOW_SECONDS}" ]; then
-            fail "candidate age ${elapsed_seconds}s is below 24h gate"
+            kubectl patch configmap "${STATE_CM}" -n argo --type=merge \
+              -p '{"data":{"gate-status":"pending"}}' >/dev/null
+            echo "gate_status=pending reason=candidate age ${elapsed_seconds}s is below 24h gate"
+            exit 0
           fi
 
           node_ready="$(kubectl get node exo-0 -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{@.status}{end}')"

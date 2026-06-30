@@ -48,6 +48,16 @@ test('adoption page renders summary metrics, lane details, trust cards, chart co
     /countme|active.device|Fedora countme/i,
     'adoption page references countme/active-device data concept',
   );
+  assert.match(
+    adoptionPage,
+    /Upstream Bedrock Note/i,
+    'adoption page renders Upstream Bedrock Note title',
+  );
+  assert.match(
+    adoptionPage,
+    /Fedora Silverblue|Fedora Kinoite/i,
+    'adoption page explains relation to upstream Silverblue and Kinoite parent OSes',
+  );
 
   // Lane detail rows — contract has 10 rows
   assert.match(adoptionPage, /bluefin-testing/i, 'adoption page shows bluefin testing lane');

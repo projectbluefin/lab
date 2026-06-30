@@ -488,9 +488,28 @@ const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unava
         <div class="upstream-group-heading" style="margin-bottom: 1.25rem;">
           <div>
             <h3>{group.label}</h3>
-            <p style="color: #64748b; font-size: 0.9rem; margin-top: 0.25rem;">{group.description}</p>
+            <p style="color: #64748b; font-size: 0.9rem; margin-top: 0.25rem;">
+              {group.description}
+              {group.id === 'fedora-bootc' && (
+                <span style="display: block; margin-top: 0.4rem; color: #94a3b8; font-size: 0.82rem; line-height: 1.4;">
+                  Note: Fedora bootc serves as the foundational OCI base for <strong>Fedora Silverblue</strong> and <strong>Fedora Kinoite</strong>.
+                </span>
+              )}
+            </p>
           </div>
-          <a href={group.source_url} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none;">Group evidence ↗</a>
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            {group.id === 'fedora-bootc' && (
+              <>
+                <a href="https://fedoraproject.org/silverblue/" target="_blank" rel="noreferrer" style="font-size: 0.8rem; color: #38bdf8; text-decoration: none; border: 1px solid rgba(56,189,248,0.25); border-radius: 6px; padding: 0.2rem 0.5rem; background: rgba(56,189,248,0.04);">
+                  Silverblue Homepage ↗
+                </a>
+                <a href="https://fedoraproject.org/kinoite/" target="_blank" rel="noreferrer" style="font-size: 0.8rem; color: #38bdf8; text-decoration: none; border: 1px solid rgba(56,189,248,0.25); border-radius: 6px; padding: 0.2rem 0.5rem; background: rgba(56,189,248,0.04);">
+                  Kinoite Homepage ↗
+                </a>
+              </>
+            )}
+            <a href={group.source_url} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none;">Group evidence ↗</a>
+          </div>
         </div>
         <div class="upstream-lane-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem;">
           {group.lanes.map((lane: any) => (

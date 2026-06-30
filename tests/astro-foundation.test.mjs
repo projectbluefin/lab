@@ -94,6 +94,8 @@ test('upstream page renders grouped views, chart mounts, evidence links, and una
   assert.doesNotMatch(upstreamPage, /Dakota testing/i, 'upstream page excludes projectbluefin streams');
   assert.match(upstreamPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this stream\./i, 'upstream page keeps unavailable reason explicit');
   assert.match(upstreamPage, /https:\/\/github\.com\/ublue-os\/aurora\/releases/i, 'upstream page links non-bluefin evidence');
+  assert.match(upstreamPage, /Fedora Silverblue|Fedora Kinoite/i, 'upstream page references Silverblue and Kinoite upstream parent OSes');
+  assert.match(upstreamPage, /https:\/\/fedoraproject\.org\/silverblue\/|https:\/\/fedoraproject\.org\/kinoite\//i, 'upstream page links upstream Silverblue and Kinoite homepages');
   assert.match(upstreamPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart/, 'upstream page renders chart containers');
 });
 

@@ -6,14 +6,15 @@ metadata:
   annotations:
     description: |
       In-cluster BuildStream build pipeline for Bluefin Server.
-      Builds oci/bluefin-server-bootc.bst and publishes to the local Zot registry (:30500).
+      Builds oci/bluefin-server-ddi.bst and oci/bluefin-server-installer.bst
+      and publishes them to the local Zot registry (:30500).
       Triggered on git changes or manual on-demand submission.
   labels:
     app.kubernetes.io/component: bluefin-server-build
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  activeDeadlineSeconds: 14400   # 4 hours (compiles custom LTS kernel server tree)
+  activeDeadlineSeconds: 14400   # 4 hours (compiles FSDK kernel and elements)
 
   arguments:
     parameters:
@@ -39,14 +40,28 @@ spec:
             value: "{{workflow.parameters.registry}}"
       dag:
         tasks:
-          - name: build-bluefin-server
+          - name: build-ddi
             template: bst-build
             arguments:
               parameters:
                 - name: element
-                  value: "oci/bluefin-server-bootc.bst"
+                  value: "oci/bluefin-server-ddi.bst"
                 - name: tag
-                  value: "bluefin-server-bootc"
+                  value: "bluefin-server-ddi"
+                - name: ref
+                  value: "{{inputs.parameters.ref}}"
+                - name: repo
+                  value: "{{inputs.parameters.repo}}"
+                - name: registry
+                  value: "{{inputs.parameters.registry}}"
+          - name: build-installer
+            template: bst-build
+            arguments:
+              parameters:
+                - name: element
+                  value: "oci/bluefin-server-installer.bst"
+                - name: tag
+                  value: "bluefin-server-installer"
                 - name: ref
                   value: "{{inputs.parameters.ref}}"
                 - name: repo
@@ -108,7 +123,7 @@ spec:
           REPO="{{inputs.parameters.repo}}"
 
           echo "=== Cloning bluefin-server @ ${REF} ==="
-          git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/server.git" /src
+          git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN}@${REPO#https://}" /src
           cd /src
 
           echo "=== Building ${ELEMENT} ==="
@@ -125,11 +140,19 @@ spec:
               --directory "${EXPORT_DIR}"
 
           echo "=== Pushing to local Zot ==="
-          # skopeo is not in the bst2 image; use podman instead.
-          # Load the OCI layout into podman local storage, then push by image ID.
-          # docker:// transport prefix is required for podman push to a registry.
-          IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-          podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
-          podman rmi "${IMAGE_ID}" 2>/dev/null || true
+          if [ -f "${EXPORT_DIR}/index.json" ] && [ -f "${EXPORT_DIR}/oci-layout" ]; then
+            IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
+            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
+            podman rmi "${IMAGE_ID}" 2>/dev/null || true
+          else
+            echo "Export is not an OCI layout — wrapping raw files in a scratch OCI image"
+            cat <<EOF > "${EXPORT_DIR}/Containerfile"
+          FROM scratch
+          COPY . /
+          EOF
+            podman build --tls-verify=false -t "localhost/${TAG}:latest" -f "${EXPORT_DIR}/Containerfile" "${EXPORT_DIR}"
+            podman push --tls-verify=false "localhost/${TAG}:latest" "docker://{{inputs.parameters.registry}}/${TAG}:latest"
+            podman rmi "localhost/${TAG}:latest" 2>/dev/null || true
+          fi
 
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="@github.com/projectbluefin/server.git}
+          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="

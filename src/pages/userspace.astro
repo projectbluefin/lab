@@ -59,10 +59,10 @@ const getContainerMetadata = (repoName: string): ContainerMetadata => {
     const sizeMb = sizeBytes > 0 ? (sizeBytes / (1024 * 1024)).toFixed(1) + ' MB' : 'unknown';
     
     return {
-      digest: data.Digest ? data.Digest.substring(0, 19) + '...' : 'unknown',
+      digest: data.Digest || 'unknown',
       created: data.Created ? new Date(data.Created).toLocaleDateString() : 'unknown',
       fsdkVersion: data.Labels?.['io.projectbluefin.fsdk.version'] || data.Labels?.['org.opencontainers.image.version'] || 'unknown',
-      fsdkRef: data.Labels?.['io.projectbluefin.fsdk.ref'] ? data.Labels['io.projectbluefin.fsdk.ref'].substring(0, 15) + '...' : 'unknown',
+      fsdkRef: data.Labels?.['io.projectbluefin.fsdk.ref'] || 'unknown',
       size: sizeMb,
       arch: data.Architecture || 'amd64',
       os: data.Os || 'linux'
@@ -72,10 +72,14 @@ const getContainerMetadata = (repoName: string): ContainerMetadata => {
     const isLabRunner = repoName.includes('lab-runner');
     const isQemu = repoName.includes('qemu-img');
     return {
-      digest: isLabRunner ? 'sha256:0b6a015c90...' : isQemu ? 'sha256:9e7ed0328d...' : 'sha256:e3b0c44298...',
+      digest: isLabRunner 
+        ? 'sha256:0b6a015c90c9f88398be0caabd57ace3e50a0fb5dab297152f668b85d0565176' 
+        : isQemu 
+          ? 'sha256:9e7ed0328ddb32bced3cd86fa78fb7738d5b6e0c8c5e6e606453d3b1c3d63a25' 
+          : 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
       created: '6/26/2026',
       fsdkVersion: '25.08.13',
-      fsdkRef: 'freedesktop-sdk-25.08.13...',
+      fsdkRef: 'freedesktop-sdk-25.08.13-0-g8446990f0a549bb1f3ceb654af64fc176b274488',
       size: isLabRunner ? '83.1 MB' : isQemu ? '50.8 MB' : 'unknown',
       arch: 'amd64',
       os: 'linux'
@@ -413,6 +417,7 @@ const generatedAt = new Date().toISOString();
       font-weight: 600;
       color: #cbd5e1;
       margin: 0;
+      word-break: break-all;
     }
     .registry-status-block {
       display: flex;
@@ -734,7 +739,7 @@ const generatedAt = new Date().toISOString();
             </div>
             <div class="registry-meta-item">
               <span>OCI Digest</span>
-              <p style="font-family: monospace; font-size: 0.75rem;">{container.metadata.digest}</p>
+              <p style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.78rem; word-break: break-all; color: #cbd5e1; margin: 0;">{container.metadata.digest}</p>
             </div>
             <div class="registry-meta-item">
               <span>Published</span>
@@ -742,7 +747,7 @@ const generatedAt = new Date().toISOString();
             </div>
             <div class="registry-meta-item" style="grid-column: 1 / -1;">
               <span>Git Commit Ref</span>
-              <p style="font-family: monospace; font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{container.metadata.fsdkRef}</p>
+              <p style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.78rem; word-break: break-all; color: #cbd5e1; margin: 0;">{container.metadata.fsdkRef}</p>
             </div>
           </div>
 

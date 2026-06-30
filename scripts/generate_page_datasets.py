@@ -672,6 +672,8 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
 
 def build_adoption_metrics(root: Path, collected_at: str) -> dict:
     publishers = load_json(root / 'docs/data/variant-publishers.json')
+    migrated_countme = load_optional_json(root / 'docs/data/adoption-countme-migrated.json') or {'distros': {}}
+    countme_by_variant = migrated_countme.get('distros', {})
 
     trust_cards = []
     for variant, details in (publishers.get('variants') or {}).items():
@@ -713,25 +715,26 @@ def build_adoption_metrics(root: Path, collected_at: str) -> dict:
             if repo
             else repo_blob_url('docs/data/variant-publishers.json')
         )
+        countme_value = countme_by_variant.get(variant)
         rows.append(
             {
                 'id': f'{variant}-{branch}',
                 'variant': variant,
                 'branch': branch,
                 'pull_count': None,
-                'countme_active_devices': None,
-                'state': 'unavailable',
-                'state_reason': (
+                'countme_active_devices': countme_value,
+                'state': 'available' if countme_value is not None else 'unavailable',
+                'state_reason': None if countme_value is not None else (
                     'No registry pull-count data (GHCR or container registry API) or active-device data '
-                    '(Fedora countme infrastructure) is tracked in docs/data/ for this lane. '
-                    'Collector will populate pull_count/countme_active_devices once repo-owned artifacts '
-                    'fetched from those sources are committed.'
+                    '(Fedora countme infrastructure) is tracked in docs/data/ for this lane.'
                 ),
-                'source_url': releases_url,
+                'source_url': migrated_countme.get('source_url', releases_url) if countme_value is not None else releases_url,
                 'collected_at': collected_at,
                 'derivation': (
-                    f'Lane derived from docs/data/variant-publishers.json {variant}.branches; '
-                    'no registry pull-count data (GHCR API) or Fedora countme data found in docs/data/.'
+                    'Variant-scoped countme value transplanted from repo-owned docs/data/adoption-countme-migrated.json; '
+                    'the same distro-wide signal is reused for each tracked branch because the source has no branch dimension.'
+                    if countme_value is not None
+                    else f'Lane derived from docs/data/variant-publishers.json {variant}.branches; no registry pull-count data (GHCR API) or Fedora countme data found in docs/data/.'
                 ),
             }
         )

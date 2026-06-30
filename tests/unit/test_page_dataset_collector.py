@@ -246,7 +246,26 @@ def test_adoption_metrics_derives_all_tracked_lanes():
     metrics = {m['id']: m for m in dataset['summary_metrics']}
     assert metrics['tracked_image_lanes']['value'] == 10
     assert metrics['lanes_with_pull_data']['value'] == 0
-    assert metrics['lanes_with_countme_data']['value'] == 0
+    assert metrics['lanes_with_countme_data']['value'] == 6
+
+
+def test_adoption_metrics_populates_countme_for_in_scope_variants():
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+    rows = {row['id']: row for row in dataset['rows']}
+    metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
+
+    assert rows['bluefin-testing']['state'] == 'available'
+    assert rows['bluefin-testing']['countme_active_devices'] == 3502
+    assert rows['bluefin-stable']['countme_active_devices'] == 3502
+    assert rows['aurora-testing']['countme_active_devices'] == 2527
+    assert rows['bazzite-stable']['countme_active_devices'] == 71550
+
+    assert rows['dakota-testing']['state'] == 'unavailable'
+    assert rows['flatcar-testing']['state'] == 'unavailable'
+    assert metrics['lanes_with_countme_data']['value'] == 6
+    assert metrics['lanes_with_pull_data']['value'] == 0
 
 
 def test_adoption_metrics_has_trust_cards_from_publishers():
@@ -283,19 +302,18 @@ def test_adoption_trust_card_unavailable_when_publisher_unknown():
     assert flatcar_card['state_reason'], "flatcar trust card must have explicit state_reason"
 
 
-def test_adoption_metrics_rows_unavailable_without_pull_data():
+def test_adoption_metrics_pull_count_always_null():
     module = load_module()
 
     dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
 
     for row in dataset['rows']:
         assert row['pull_count'] is None, f"Expected null pull_count for {row['id']}"
-        assert row['countme_active_devices'] is None, f"Expected null countme for {row['id']}"
-        assert row['state'] == 'unavailable', f"Expected unavailable for {row['id']}"
-        assert row['state_reason'], f"Missing state_reason for {row['id']}"
         assert row['source_url'], f"Missing source_url for {row['id']}"
         assert row['collected_at'] == '2026-06-29T19:22:22Z'
         assert row['derivation'], f"Missing derivation for {row['id']}"
+        if row['state'] == 'unavailable':
+            assert row['state_reason'], f"Missing state_reason for unavailable row {row['id']}"
 
 
 def test_adoption_metrics_metrics_have_full_provenance():
@@ -337,20 +355,25 @@ def test_adoption_metrics_names_authoritative_upstream_sources():
     dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
 
     for row in dataset['rows']:
-        reason = row['state_reason']
         derivation = row['derivation']
-        assert 'GHCR' in reason or 'registry' in reason.lower(), (
-            f"state_reason for {row['id']} must name a registry API (GHCR) as pull_count source"
-        )
-        assert 'countme' in reason.lower(), (
-            f"state_reason for {row['id']} must name Fedora countme as countme_active_devices source"
-        )
-        assert 'GHCR' in derivation or 'registry' in derivation.lower(), (
-            f"derivation for {row['id']} must name a registry API"
-        )
-        assert 'countme' in derivation.lower(), (
-            f"derivation for {row['id']} must name countme data"
-        )
+        if row['state'] == 'unavailable':
+            reason = row['state_reason']
+            assert 'GHCR' in reason or 'registry' in reason.lower(), (
+                f"state_reason for {row['id']} must name a registry API (GHCR) as pull_count source"
+            )
+            assert 'countme' in reason.lower(), (
+                f"state_reason for {row['id']} must name Fedora countme as countme_active_devices source"
+            )
+            assert 'GHCR' in derivation or 'registry' in derivation.lower(), (
+                f"derivation for {row['id']} must name a registry API"
+            )
+            assert 'countme' in derivation.lower(), (
+                f"derivation for {row['id']} must name countme data"
+            )
+        else:
+            assert 'countme' in derivation.lower(), (
+                f"derivation for available row {row['id']} must name countme data source"
+            )
 
     metrics = {m['id']: m for m in dataset['summary_metrics']}
     assert 'GHCR' in metrics['lanes_with_pull_data']['derivation'] or \

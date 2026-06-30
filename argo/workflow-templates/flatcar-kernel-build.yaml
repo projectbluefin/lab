@@ -364,8 +364,9 @@ spec:
         echo '{"data-root": "/var/tmp/build/docker", "insecure-registries": ["192.168.1.102:30501", "192.168.1.102:30500"]}' | sudo tee /etc/docker/daemon.json
         sudo systemctl start docker
         sudo systemctl is-active docker
+        SDK_IMAGE=192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
         echo "=== Preflight SDK cache pull ==="
-        docker pull 192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
+        docker pull \${SDK_IMAGE}
 
         echo "=== Regenerate Manifest checksums via SDK ==="
         # Run ephemeral SDK container just for manifest generation
@@ -373,7 +374,7 @@ spec:
           -v \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
           -v \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/coreos-overlay:/mnt/host/source/src/third_party/coreos-overlay \
           -v \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/portage-stable:/mnt/host/source/src/third_party/portage-stable \
-          192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION} \
+          \${SDK_IMAGE} \
           bash -c "
             ebuild /overlay/sys-kernel/coreos-sources/coreos-sources-\${KERNEL_VERSION}.ebuild manifest
             ebuild /overlay/sys-kernel/coreos-kernel/coreos-kernel-\${KERNEL_VERSION}.ebuild manifest 2>/dev/null || true
@@ -454,6 +455,8 @@ spec:
 
         # run_sdk_container detects Docker and uses it natively
         ./run_sdk_container --rm \
+          -a amd64 \
+          -C \${SDK_IMAGE} \
           -m \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
           -V \${SDK_VERSION} \
           -- /mnt/host/source/src/scripts/build-inside-sdk.sh

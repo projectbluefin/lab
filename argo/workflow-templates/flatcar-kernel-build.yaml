@@ -368,7 +368,8 @@ spec:
         sudo systemctl is-active docker
         SDK_IMAGE=192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
         echo "=== Preflight SDK cache pull ==="
-        docker pull \${SDK_IMAGE}
+        docker pull --quiet \${SDK_IMAGE}
+        SDK_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "\${SDK_IMAGE}")
 
         echo "=== Regenerate Manifest checksums via SDK ==="
         # Run ephemeral SDK container just for manifest generation
@@ -458,7 +459,7 @@ spec:
         # run_sdk_container detects Docker and uses it natively
         ./run_sdk_container --rm \
           -a amd64 \
-          -C \${SDK_IMAGE} \
+          -C \${SDK_IMAGE_ID} \
           -m \${BUILD_DIR}/\${OVERLAY_DEST}:/overlay \
           -V \${SDK_VERSION} \
           -- /mnt/host/source/src/scripts/build-inside-sdk.sh

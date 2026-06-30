@@ -577,7 +577,12 @@ def build_homebrew_ecosystem(root: Path, collected_at: str) -> dict:
                     'state_reason': None,
                     'source_url': repo_blob_url('docs/data/homebrew-package-stats-migrated.json'),
                     'collected_at': collected_at,
-                    'derivation': 'Variant inherits the transplanted Bluefin-family Brewfile package totals without branch-specific splitting.',
+                    'derivation': (
+                        f'Global formula analytics from formulae.brew.sh transplanted as a {len(tap["packages"])}-package subset '
+                        f'from repo-owned docs/data/homebrew-package-stats-migrated.json. '
+                        f'Numbers are not Bluefin-attributable lane installs — the same values appear on every '
+                        f'Bluefin-family branch row because the source has no branch dimension.'
+                    ),
                 }
             )
             continue
@@ -708,6 +713,8 @@ def build_adoption_metrics(root: Path, collected_at: str) -> dict:
         )
 
     rows = []
+    week_start = migrated_countme.get('week_start', '')
+    week_end = migrated_countme.get('week_end', '')
     for variant, branch, details in iter_tracked_lanes(publishers):
         repo = details.get('publisher_repo')
         releases_url = (
@@ -731,8 +738,9 @@ def build_adoption_metrics(root: Path, collected_at: str) -> dict:
                 'source_url': repo_blob_url('docs/data/adoption-countme-migrated.json') if countme_value is not None else releases_url,
                 'collected_at': collected_at,
                 'derivation': (
-                    'Variant-scoped countme value transplanted from repo-owned docs/data/adoption-countme-migrated.json; '
-                    'the same distro-wide signal is reused for each tracked branch because the source has no branch dimension.'
+                    f'Distro-wide countme active-device count transplanted from repo-owned '
+                    f'docs/data/adoption-countme-migrated.json (snapshot week {week_start} to {week_end}). '
+                    f'The same value is reused for each tracked branch because the source has no branch dimension.'
                     if countme_value is not None
                     else f'Lane derived from docs/data/variant-publishers.json {variant}.branches; no registry pull-count data (GHCR API) or Fedora countme data found in docs/data/.'
                 ),

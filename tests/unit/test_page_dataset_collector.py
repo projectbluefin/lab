@@ -443,3 +443,41 @@ def test_adoption_available_rows_use_repo_owned_source_url():
             assert OLD_UPSTREAM_SLUG not in row['source_url'], (
                 f"Row {row['id']} source_url must not point to {OLD_UPSTREAM_SLUG}"
             )
+
+
+# --- Disclosure tests (TDD: drive explicit provenance text for transplanted signals) ---
+
+def test_homebrew_available_rows_disclose_global_analytics_and_package_count():
+    """Available Homebrew rows must state they are global formula analytics and name the transplanted package count."""
+    module = load_module()
+
+    dataset = module.build_homebrew_ecosystem(ROOT, '2026-06-29T19:22:22Z')
+
+    available = [r for r in dataset['rows'] if r['state'] == 'available']
+    assert available, "Expected at least one available Homebrew row"
+
+    for row in available:
+        derivation = row['derivation']
+        assert 'global' in derivation.lower(), (
+            f"Row {row['id']} derivation must disclose 'global' formula analytics; got: {derivation}"
+        )
+        assert '3' in derivation, (
+            f"Row {row['id']} derivation must name the transplanted package count (3); got: {derivation}"
+        )
+
+
+def test_adoption_available_rows_disclose_snapshot_week_window():
+    """Available Adoption rows must include the countme snapshot week window in their derivation."""
+    module = load_module()
+
+    dataset = module.build_adoption_metrics(ROOT, '2026-06-29T19:22:22Z')
+
+    available = [r for r in dataset['rows'] if r['state'] == 'available']
+    assert available, "Expected at least one available Adoption row"
+
+    for row in available:
+        derivation = row['derivation']
+        # The snapshot week dates from adoption-countme-migrated.json must appear
+        assert '2026-03-16' in derivation or '2026-03-22' in derivation, (
+            f"Row {row['id']} derivation must include the snapshot week window dates; got: {derivation}"
+        )

@@ -369,7 +369,7 @@ spec:
         SDK_IMAGE=192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
         echo "=== Preflight SDK cache pull ==="
         docker pull --quiet \${SDK_IMAGE}
-        SDK_IMAGE_ID=$(docker image inspect --format '{{.Id}}' "\${SDK_IMAGE}")
+        SDK_IMAGE_ID=\$(docker image inspect --format '{{.Id}}' "\${SDK_IMAGE}")
 
         echo "=== Regenerate Manifest checksums via SDK ==="
         # Run ephemeral SDK container just for manifest generation

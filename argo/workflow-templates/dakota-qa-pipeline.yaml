@@ -108,12 +108,12 @@ spec:
           cpu: 500m
           memory: 512Mi
       source: |
-        set -euo pipefail
+        set -eu
         TAG="{{inputs.parameters.containerdisk-tag}}"
         CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
         DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
           "docker://${CD_IMAGE}" 2>/dev/null || echo "")
-        if [[ -n "${DIGEST}" ]]; then
+        if [ -n "${DIGEST}" ]; then
           echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
         else
           echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2

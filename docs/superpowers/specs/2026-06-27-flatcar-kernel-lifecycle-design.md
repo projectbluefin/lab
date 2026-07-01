@@ -6,6 +6,8 @@ Date: 2026-06-27
 
 Finish the lab design for upstream Flatcar kernel intake so exo-0 validates Linux 7.1 first, then the same release is safely consumable by other Flatcar nodes through the cluster-hosted update stack.
 
+If exo-0 is being reinstalled, treat the old node object as disposable and wait for the replacement to rejoin before running the canary gate.
+
 ## Scope
 
 - Keep Nebraska and payload hosting on-cluster.

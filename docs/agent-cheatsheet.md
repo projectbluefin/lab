@@ -1,6 +1,6 @@
 # Agent Cheatsheet — read this first, then stop
 
-> Deterministic, recipe-only reference for running the testing-lab cluster.
+> Deterministic, recipe-only reference for running the lab cluster.
 > Designed to be the **single file a weak-capability agent needs to load** for routine cluster operations.
 >
 > If your task is not in this file, escalate to:
@@ -120,22 +120,22 @@ Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limit
 
 **Trigger an ArgoCD sync:**
 ```bash
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl -n argocd annotate application testing-lab \
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl -n argocd annotate application lab \
   argocd.argoproj.io/refresh=normal --overwrite
 # or via argocd CLI:
-argocd app sync testing-lab
+argocd app sync lab
 ```
 
 **Read ArgoCD Application state:**
 ```bash
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl get application testing-lab-infra -n argocd \
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl get application lab-infra -n argocd \
   -o jsonpath='{.status.sync.status} {.status.health.status}'
 ```
 Key fields: `.status.operationState.phase`, `.status.sync.status`, `.status.operationState.message`, `.status.operationState.operation.sync.revision`
 
 **Cancel a stuck operation** (PreSync hook looping):
 ```bash
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl patch application testing-lab -n argocd \
+KUBECONFIG=~/.kube/bluespeed.yaml kubectl patch application lab -n argocd \
   --type=json -p='[{"op":"remove","path":"/operation"}]'
 ```
 
@@ -145,11 +145,11 @@ KUBECONFIG=~/.kube/bluespeed.yaml kubectl patch application testing-lab -n argoc
    -> if not: push first.
 
 2. just argocd-status
-   -> expected: `testing-lab` is synced to a revision that matches or post-dates your commit.
+   -> expected: `lab` is synced to a revision that matches or post-dates your commit.
    -> if older: just argocd-sync
 
 3. just argocd-status
-   -> expected: `testing-lab` is Healthy.
+   -> expected: `lab` is Healthy.
    -> if not Healthy: inspect the reported condition, fix the rejected field in git, push again, then repeat step 2.
 
 4. argo template get -n argo <name>
@@ -363,7 +363,7 @@ installed on the `projectbluefin` org. Credentials in `arc-github-secret`
 
 Ghost runs an OpenAI-compatible inference server at **`http://192.168.1.102:30800`**.
 Model: `Qwen/Qwen3.6-35B-A3B` Q4_K_M GGUF via `ghcr.io/ggml-org/llama.cpp:server-rocm` (~60 tok/s, gfx1151).
-Namespace: `llm-d`. Managed by GitOps (`testing-lab-infra` ArgoCD app).
+Namespace: `llm-d`. Managed by GitOps (`lab-infra` ArgoCD app).
 
 **Check status:**
 ```bash

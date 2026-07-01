@@ -14,7 +14,7 @@ metadata:
     - /bootc-dev/bootc
 ---
 
-# Flatcar Node Onboarding — testing-lab Skill
+# Flatcar Node Onboarding — lab Skill
 
 ## When to Use
 
@@ -326,7 +326,7 @@ When the KubeVirt / Argo VM pipeline (`flatcar-kernel-build.yaml`) is blocked by
    ```bash
    mkdir -p ~/work && cd ~/work
    git clone --filter=blob:none https://github.com/flatcar/scripts.git
-   git clone https://github.com/projectbluefin/testing-lab.git
+   git clone https://github.com/projectbluefin/lab.git
    cd scripts
    git checkout flatcar-4593  # Match the running Stable branch
    ```
@@ -334,7 +334,7 @@ When the KubeVirt / Argo VM pipeline (`flatcar-kernel-build.yaml`) is blocked by
 3. **Vendor the local overlay**:
    ```bash
    OVERLAY_DST=sdk_container/src/third_party/coreos-overlay/sys-kernel
-   OVERLAY_SRC=~/work/testing-lab/flatcar/kernel-overlay/sys-kernel
+   OVERLAY_SRC=~/work/lab/flatcar/kernel-overlay/sys-kernel
    rsync -av "$OVERLAY_SRC"/ "$OVERLAY_DST"/
    ```
 

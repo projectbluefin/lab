@@ -459,7 +459,7 @@ spec:
               cp "$SHOT" /tmp/desktop-screenshot.png
               oras push "${SCREENSHOT_IMAGE}:${PUSH_TAG}" \
                 --annotation "org.opencontainers.image.description=Bluefin desktop screenshot from lab e2e suite: ${SUITE}" \
-                --annotation "io.github.projectbluefin.caller_repo=projectbluefin/testing-lab" \
+                --annotation "io.github.projectbluefin.caller_repo=projectbluefin/lab" \
                 /tmp/desktop-screenshot.png:image/png 2>&1 || true
               echo "Screenshot pushed to ${SCREENSHOT_IMAGE}:${PUSH_TAG}" >&2
             else

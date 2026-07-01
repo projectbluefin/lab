@@ -6,7 +6,7 @@ metadata:
   name: nebraska-db-secret
   namespace: flatcar-update
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 type: Opaque
 stringData:
   password: "nebraska"
@@ -18,7 +18,7 @@ metadata:
   name: nebraska-postgres-data
   namespace: flatcar-update
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   accessModes: [ReadWriteOnce]
   storageClassName: local-path
@@ -33,7 +33,7 @@ metadata:
   namespace: flatcar-update
   labels:
     app: nebraska-postgres
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   replicas: 1
   selector:
@@ -85,7 +85,7 @@ metadata:
   name: nebraska-postgres
   namespace: flatcar-update
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   selector:
     app: nebraska-postgres

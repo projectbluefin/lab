@@ -32,7 +32,7 @@ Before changing anything, load the relevant skill file from `docs/skills/`:
 
 Bluefin QA pipeline: Argo Workflows + KubeVirt + ArgoCD + behave/dogtail.
 Tests boot Bluefin Linux VMs and run GNOME Shell accessibility smoke tests.
-Canonical issue tracker: **castrojo/testing-lab** (this repo). Do NOT file issues in castrojo/copilot-config.
+Canonical issue tracker: **projectbluefin/lab** (this repo). Do NOT file issues in castrojo/copilot-config.
 
 ## Test Suite Mantra
 
@@ -122,7 +122,7 @@ Every pipeline (Bluefin, Bluefin-LTS, Dakota, Knuckle) provisions a fresh VM on 
 | bazzite | k3s worker (offline) | 192.168.1.223 | Gaming machine — removed from active service; rejoin with `just k8s-on` when available |
 | hamilton | k3s worker (opt-in) | 192.168.1.225 | Bluefin workstation — 16c/31.2Gi; `just k8s-on/off` to join/leave |
 | Argo UI | — | http://192.168.1.102:32746 | NodePort; also http://192.168.1.102:2746 on host |
-| ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `testing-lab` + `testing-lab-infra` |
+| ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `lab` + `lab-infra` |
 | llm-d | LLM inference (hive node) | http://192.168.1.102:30800 | OpenAI-compatible API; model: Qwen/Qwen3.6-35B-A3B; namespace: `llm-d` |
 
 **No hostDisk VMs remain.** All VM types use containerDisk or PVC:
@@ -142,8 +142,8 @@ Two ArgoCD Applications manage this repo:
 
 | Application | Syncs | Namespace |
 |---|---|---|
-| `testing-lab` | `argo/workflow-templates/` | argo |
-| `testing-lab-infra` | `manifests/` | argo (+ others via namespace in manifest) |
+| `lab` | `argo/workflow-templates/` | argo |
+| `lab-infra` | `manifests/` | argo (+ others via namespace in manifest) |
 
 Rules:
 1. **WorkflowTemplate changes**: edit `argo/workflow-templates/*.yaml` → push to `main` → ArgoCD syncs.
@@ -165,7 +165,7 @@ Rules:
 
 ```
 argo/
-  workflow-templates/          ← ArgoCD (testing-lab App) syncs these
+  workflow-templates/          ← ArgoCD (lab App) syncs these
     build-containerdisk.yaml      build containerDisk from bootc image
     bluefin-qa-pipeline.yaml      full pipeline: build + provision + tests
     provision-bluefin-vm.yaml     boot Bluefin KubeVirt VM
@@ -186,7 +186,7 @@ argo/
   bluefin-smoke-test.yaml         submit: full build+provision+test run (latest)
   bluefin-test-matrix.yaml        submit: parallel latest+lts matrix
   flatcar-smoke-test.yaml         submit: Flatcar test run
-manifests/                     ← ArgoCD (testing-lab-infra App) syncs these
+manifests/                     ← ArgoCD (lab-infra App) syncs these
   argo-server-nodeport.yaml       NodePort 32746 for external Argo API access
   argo-server-auth.yaml           Argo Server auth config
   argo-default-sa-rbac.yaml       default service account RBAC
@@ -220,8 +220,8 @@ manifests/                     ← ArgoCD (testing-lab-infra App) syncs these
   zot-cache.yaml                  Zot pull-through cache (port 30501, all upstreams)
   zot-writable.yaml               Zot writable local registry (port 30500)
 argocd/
-  application.yaml               ArgoCD Application: testing-lab
-  infra-application.yaml         ArgoCD Application: testing-lab-infra
+  application.yaml               ArgoCD Application: lab
+  infra-application.yaml         ArgoCD Application: lab-infra
   arc-controller-app.yaml        ArgoCD Application: ARC controller
   arc-runners-app.yaml           ArgoCD Application: ARC runner scale set
 tests/
@@ -276,7 +276,7 @@ Pull path prefixes (used in hosts.toml mirror URLs and Zot destination mapping):
 - `registry.k8s.io` → `:30501/k8s`
 - `cgr.dev` → `:30501/cgr`
 
-All instances pinned to ghost (hostPath storage) and managed by ArgoCD `testing-lab-infra`
+All instances pinned to ghost (hostPath storage) and managed by ArgoCD `lab-infra`
 via `manifests/zot-cache.yaml` (pull-through) and `manifests/zot-writable.yaml` (write target).
 
 **Image policy:** all `image:` references in `argo/` and `manifests/` must use a cached registry.
@@ -372,7 +372,7 @@ Workflow pod logs are accessible via `argo logs`, the Argo UI, and `argo-mcp-log
 
 ## Issue Filing
 
-- All issues go in **castrojo/testing-lab**.
+- All issues go in **projectbluefin/lab**.
 - Label: `bug` for test failures and infrastructure breaks; `enhancement` for new capabilities.
 - Include: current behavior, expected behavior, exact file:line if code issue, acceptance criteria.
 - For infra failures: include workflow name, pod name, and relevant log excerpt.

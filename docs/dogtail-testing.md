@@ -91,7 +91,7 @@ tests/
 1. **You push** to `main` or a PR branch.
 2. **You submit** a workflow (e.g. `just run-titan-smoke` or `just run-tests`).
 3. **Argo** starts the `run-gnome-tests` pod on ghost.
-4. The pod's `git-sync` initContainer clones `testing-lab @ <branch>` into a shared volume.
+4. The pod's `git-sync` initContainer clones `lab @ <branch>` into a shared volume.
 5. The runner container waits for SSH on the target VM, then over SSH:
    - Verifies/installs `qecore`, `behave`, `dogtail`, `pytest`, `python-uinput`,
      `gnome-ponytail-daemon` (+ `python3-gnome-ponytail-daemon`).
@@ -799,9 +799,9 @@ if ext_state.get("dockCount", 0) > 0:
 The default polling interval can leave the cluster 5+ minutes behind. After pushing a
 WorkflowTemplate change, always force a refresh:
 ```bash
-kubectl annotate application testing-lab -n argocd argocd.argoproj.io/refresh=normal --overwrite
+kubectl annotate application lab -n argocd argocd.argoproj.io/refresh=normal --overwrite
 ```
-Then verify `kubectl get application testing-lab -n argocd -o jsonpath='{.status.sync.revision}'`
+Then verify `kubectl get application lab -n argocd -o jsonpath='{.status.sync.revision}'`
 matches your commit SHA before submitting a workflow.
 
 **Fresh titan disks have no default browser configured.**

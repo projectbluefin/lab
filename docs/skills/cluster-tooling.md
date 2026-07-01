@@ -1,6 +1,6 @@
 ---
 name: cluster-tooling
-description: "Cluster management tools for the testing-lab: kubectl, k3s, zot, external-secrets, and K8sGPT. Use when managing cluster state, installing cluster add-ons, configuring the OCI registry, or running cluster analysis through MCP."
+description: "Cluster management tools for the lab: kubectl, k3s, zot, external-secrets, and K8sGPT. Use when managing cluster state, installing cluster add-ons, configuring the OCI registry, or running cluster analysis through MCP."
 metadata:
   type: reference
   context7-sources:
@@ -11,7 +11,7 @@ metadata:
     - /k8sgpt-ai/k8sgpt
 ---
 
-# Cluster Tooling — testing-lab
+# Cluster Tooling — lab
 
 ## Mandatory first step
 

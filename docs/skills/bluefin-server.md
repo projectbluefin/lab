@@ -12,7 +12,7 @@ metadata:
     - /freedesktop/freedesktop-sdk
 ---
 
-# bluefin-server Building and Maintenance — testing-lab Skill
+# bluefin-server Building and Maintenance — lab Skill
 
 ## When to Use
 

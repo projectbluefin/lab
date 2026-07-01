@@ -115,7 +115,7 @@ ArgoCD polls (or webhook)
 ## Repository Layout
 
 ```
-testing-lab/
+lab/
 ├── README.md                         # This file
 ├── RUNBOOK.md                        # Timeless architecture + failure modes
 ├── AGENTS.md                         # Agent policy, scope rules, cluster topology
@@ -123,7 +123,7 @@ testing-lab/
 ├── Justfile                          # Operator convenience wrappers
 │
 ├── argo/
-│   ├── workflow-templates/           # ← ArgoCD (testing-lab App) auto-syncs these
+│   ├── workflow-templates/           # ← ArgoCD (lab App) auto-syncs these
 │   │   ├── build-containerdisk.yaml      build containerDisk from bootc image → Zot registry
 │   │   ├── bluefin-qa-pipeline.yaml      full pipeline: containerDisk + VM + tests
 │   │   ├── bluefin-migration-test.yaml   bootc switch migration validation
@@ -164,7 +164,7 @@ testing-lab/
 │   ├── gnomeos-access-spike.yaml     submit: GNOME OS accessibility spike
 │   └── one-shot-delete-golden-disks.yaml  emergency: delete all golden disks to reclaim space
 │
-├── manifests/                        # ← ArgoCD (testing-lab-infra App) auto-syncs these
+├── manifests/                        # ← ArgoCD (lab-infra App) auto-syncs these
 │   ├── nightly-smoke.yaml                CronWorkflow: nightly latest @ 02:00 UTC
 │   ├── nightly-smoke-lts.yaml            CronWorkflow: nightly lts @ 02:30 UTC
 │   ├── nightly-dakota.yaml               CronWorkflow: nightly dakota @ 03:00 UTC
@@ -245,8 +245,8 @@ with two ArgoCD Applications that own distinct resource classes:
 
 | Application | Syncs path | Namespace | prune | selfHeal |
 |---|---|---|---|---|
-| `testing-lab` | `argo/workflow-templates/` | argo | ✅ | ✅ |
-| `testing-lab-infra` | `manifests/` | argo (+ others) | ✅ | ✅ |
+| `lab` | `argo/workflow-templates/` | argo | ✅ | ✅ |
+| `lab-infra` | `manifests/` | argo (+ others) | ✅ | ✅ |
 
 **Rules:**
 1. Edit files in `argo/workflow-templates/` or `manifests/` → push to `main` → ArgoCD reconciles within ~3 minutes.
@@ -263,8 +263,8 @@ See **[docs/bootstrap.md](docs/bootstrap.md)** for the complete lab setup guide.
 **TL;DR for an existing k3s + KubeVirt cluster:**
 
 ```bash
-git clone https://github.com/castrojo/testing-lab
-cd testing-lab
+git clone https://github.com/projectbluefin/lab
+cd lab
 
 # 1. Bootstrap ArgoCD Applications (once)
 just setup-argocd

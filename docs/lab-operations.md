@@ -22,7 +22,7 @@ Pair with:
 ```text
 You ──submit──► Argo Workflow (argo namespace)
                   │
-                  ├─ git-sync clones testing-lab @ <branch>
+                  ├─ git-sync clones lab @ <branch>
                   ├─ ensure-disk (optional) builds or validates the golden disk
                   ├─ provision-vm creates a fresh KubeVirt VM
                   ├─ run-gnome-tests SSHes into the VM and runs qecore + behave/pytest
@@ -195,18 +195,18 @@ Expected outcome: after step 4 or 5 you should have a concrete failing template,
 
 | Application | Syncs |
 |---|---|
-| `testing-lab` | `argo/workflow-templates/*.yaml` |
-| `testing-lab-infra` | `manifests/*.yaml` |
+| `lab` | `argo/workflow-templates/*.yaml` |
+| `lab-infra` | `manifests/*.yaml` |
 
 ### 6.2 Decision tree — my template change did not take effect
 
 1. `git log -1 origin/main -- argo/workflow-templates/<file>`
    - **Expected:** the output includes your commit.
 2. `just argocd-status`
-   - **Expected:** `testing-lab` is synced to a revision that matches or post-dates your commit.
+   - **Expected:** `lab` is synced to a revision that matches or post-dates your commit.
    - **If older:** `just argocd-sync`.
 3. `just argocd-status`
-   - **Expected:** `testing-lab` is Healthy.
+   - **Expected:** `lab` is Healthy.
 4. `argo-mcp-get_workflow_template <name>`
    - **Expected:** the new value is live.
 5. Submit a **new** workflow.

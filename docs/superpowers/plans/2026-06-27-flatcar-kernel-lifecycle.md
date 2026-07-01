@@ -4,6 +4,8 @@
 
 **Goal:** Implement an end-to-end Flatcar kernel lifecycle where exo-0 validates the rebuilt 7.1.x kernel (with USB4/Thunderbolt support for the 40Gbps mesh) first for 24h and successful candidates are then promoted cluster-wide via the existing Nebraska service.
 
+If exo-0 is being reimaged, delete the stale node object first and do not advance the gate until the replacement rejoins as Ready.
+
 **Architecture:** Keep a single `GROUP=stable` for all Flatcar nodes and enforce canary behavior as workflow policy. The poller detects upstream versions, build workflow registers candidate packages, and a new gate workflow evaluates exo-0 health for 24h before promotion. Promotion and rollback are explicit state transitions recorded in a ConfigMap.
 
 **Tech Stack:** Argo Workflows/CronWorkflows, Kubernetes ConfigMap state, Nebraska package API, Flatcar update_engine, `kubectl`/`curl`/`jq`
@@ -53,7 +55,7 @@ metadata:
   name: flatcar-kernel-lifecycle-state
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 data:
   candidate-version: ""
   candidate-package: ""
@@ -77,7 +79,7 @@ Add a short table in `docs/skills/flatcar-node-onboarding.md` under kernel lifec
 
 - [ ] **Step 3: Lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`
 Expected: exit 0
 
 - [ ] **Step 4: Commit**
@@ -147,7 +149,7 @@ Add a new pipeline step:
 
 - [ ] **Step 3: Lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`
 Expected: exit 0
 
 - [ ] **Step 4: Commit**
@@ -202,7 +204,7 @@ for namespace/resource scopes used by the gate template.
 
 - [ ] **Step 3: Lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`
 Expected: exit 0
 
 - [ ] **Step 4: Commit**
@@ -258,7 +260,7 @@ argo submit -n argo --from workflowtemplate/flatcar-kernel-gate
 
 - [ ] **Step 3: Lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`
 Expected: exit 0
 
 - [ ] **Step 4: Commit**

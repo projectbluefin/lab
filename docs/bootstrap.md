@@ -1,6 +1,6 @@
 # Bootstrap Guide — Replicating the Ghostlab
 
-This guide walks through setting up the complete testing-lab stack from a bare
+This guide walks through setting up the complete lab stack from a bare
 metal node. Follow it in order. Each section is idempotent — you can re-run steps
 safely.
 

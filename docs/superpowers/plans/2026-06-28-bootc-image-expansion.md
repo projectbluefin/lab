@@ -62,7 +62,7 @@ spec:
 
 - [ ] **Step 4: Run lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`  
 Expected: success (no YAML or policy errors).
 
 - [ ] **Step 5: Commit**
@@ -117,7 +117,7 @@ metadata:
 
 - [ ] **Step 3: Run lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`  
 Expected: success.
 
 - [ ] **Step 4: Commit**
@@ -196,7 +196,7 @@ spec:
 
 - [ ] **Step 3: Run lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`  
 Expected: success.
 
 - [ ] **Step 4: Commit**
@@ -349,7 +349,7 @@ spec:
 
 - [ ] **Step 3: Run lint**
 
-Run: `cd /var/home/jorge/src/testing-lab && just lint`  
+Run: `cd /var/home/jorge/src/lab && just lint`  
 Expected: success.
 
 - [ ] **Step 4: Commit**
@@ -375,7 +375,7 @@ Run:
 
 ```bash
 export KUBECONFIG=~/.kube/bluespeed.yaml
-kubectl get application testing-lab-infra -n argocd -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
+kubectl get application lab-infra -n argocd -o jsonpath='{.status.sync.status} {.status.health.status}{"\n"}'
 argo cron list -n argo | rg 'image-poll-(bluefin|lts|aurora|bazzite|kinoite|fedora-bootc|dakota|akmods)'
 ```
 

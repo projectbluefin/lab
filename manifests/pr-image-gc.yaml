@@ -8,14 +8,14 @@
 # Prerequisite: github-token secret must exist in argo namespace with key "token".
 # Create: kubectl create secret generic github-token --from-literal=token=<PAT> -n argo
 #
-# ArgoCD: testing-lab-infra syncs this
+# ArgoCD: lab-infra syncs this
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
   name: pr-image-gc
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     app.kubernetes.io/component: gc
 spec:
   schedules:

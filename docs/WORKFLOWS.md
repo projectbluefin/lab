@@ -42,7 +42,7 @@
 | `provision-bluefin-vm` | Shared Bluefin/Dakota VM bring-up. `reflink-disk` clones `disk.raw`, `create-vm` defines a 4 vCPU / 8 GiB KubeVirt VM, and `wait-for-vm-ready` returns the pod IP once SSH is reachable. |
 | `teardown-bluefin-vm` | Shared Bluefin/Dakota/Knuckle VM cleanup. Deletes the KubeVirt VM and removes the matching hostDisk from the pipeline test root. |
 | `run-gnome-tests` | Shared test runner. Clones `projectbluefin/testsuite` (the single source of truth), waits for SSH, installs test dependencies, copies `tests/<suite>`, and runs `behave`. GUI suites (smoke) run via `qecore-headless` inside the VM. The `common` suite runs from the runner container with `VM_IP`/`SSH_KEY` exported so its SSH steps reach the VM directly — do NOT run common via qecore-headless. The `system` suite runs inside the VM without a display. |
-| `run-incluster-tests` | Shared in-cluster pytest runner. Git-syncs `testing-lab`, runs a pytest module against a live k8s workload, emits JUnit XML. |
+| `run-incluster-tests` | Shared in-cluster pytest runner. Git-syncs `lab`, runs a pytest module against a live k8s workload, emits JUnit XML. |
 | `dakota-build-pipeline` | Dakota BST build path. Builds `oci/bluefin.bst` and `oci/bluefin-nvidia.bst` in parallel via in-cluster buildbox-casd and pushes tags to local Zot. |
 
 ## Nightly Schedule

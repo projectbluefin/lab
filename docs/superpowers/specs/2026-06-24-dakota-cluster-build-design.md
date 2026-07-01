@@ -46,7 +46,7 @@ exo-1 auto-excluded by the 16Gi memory request.
 
 ## Components
 
-### New files in `testing-lab`
+### New files in `lab`
 
 | File | Purpose |
 |------|---------|
@@ -56,7 +56,7 @@ exo-1 auto-excluded by the 16Gi memory request.
 | `argo/workflow-templates/dakota-commit-poller.yaml` | WorkflowTemplate: poll GitHub API for new commits |
 | `manifests/dakota-commit-poller.yaml` | CronWorkflow: every 5 min trigger for commit-poller |
 
-### Modified files in `testing-lab`
+### Modified files in `lab`
 
 | File | Change |
 |------|--------|

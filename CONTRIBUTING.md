@@ -1,7 +1,7 @@
 # Contributing
 
 ## What this repo is
-`testing-lab` is the infrastructure repo for automated Bluefin testing: k3s, Argo Workflows, ArgoCD, KubeVirt, and supporting manifests. It is separate from `projectbluefin/testsuite`, which holds most test content.
+`lab` is the infrastructure repo for automated Bluefin testing: k3s, Argo Workflows, ArgoCD, KubeVirt, and supporting manifests. It is separate from `projectbluefin/testsuite`, which holds most test content.
 
 ## Who should change this repo
 Most contributors should work in `projectbluefin/testsuite`. Use this repo when you are changing lab infrastructure, workflow templates, cluster manifests, or VM orchestration.

@@ -63,7 +63,7 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
 
   assert.match(
     homebrewPage,
-    /https:\/\/github\.com\/projectbluefin\/testing-lab\/blob\/main\/docs\/data\/variant-publishers\.json/,
+    /https:\/\/github\.com\/projectbluefin\/lab\/blob\/main\/docs\/data\/variant-publishers\.json/,
     'homebrew page links source evidence from variant-publishers.json',
   );
 

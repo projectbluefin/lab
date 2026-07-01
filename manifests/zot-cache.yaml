@@ -11,7 +11,7 @@
 # manifests/registry-mirror-config.yaml (hosts.toml DaemonSet, no k3s restart needed)
 #
 # Storage: hostPath on ghost at /var/mnt/ghost-data/zot-cache/
-# ArgoCD: testing-lab-infra syncs this
+# ArgoCD: lab-infra syncs this
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -19,7 +19,7 @@ metadata:
   name: zot-cache-config
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 data:
   config.json: |
     {
@@ -84,7 +84,7 @@ metadata:
   name: zot-cache
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     app.kubernetes.io/component: registry-cache
 spec:
   selector:
@@ -94,7 +94,7 @@ spec:
     metadata:
       labels:
         app: zot-cache
-        app.kubernetes.io/part-of: testing-lab
+        app.kubernetes.io/part-of: lab
     spec:
       containers:
         - name: zot
@@ -132,7 +132,7 @@ metadata:
   name: zot-cache
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   selector:
     app: zot-cache
@@ -146,7 +146,7 @@ metadata:
   name: zot-cache-nodeport
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   type: NodePort
   externalTrafficPolicy: Local

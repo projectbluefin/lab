@@ -5,7 +5,7 @@ metadata:
   name: golden-disk-gc
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   schedules:
     - "0 4 * * *"
@@ -14,7 +14,7 @@ spec:
   startingDeadlineSeconds: 300
   workflowMetadata:
     labels:
-      app.kubernetes.io/part-of: testing-lab
+      app.kubernetes.io/part-of: lab
   workflowSpec:
     serviceAccountName: argo
     entrypoint: gc

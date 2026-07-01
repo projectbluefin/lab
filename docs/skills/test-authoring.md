@@ -17,9 +17,9 @@ Tests run in two places:
 - **GitHub Actions** (`e2e.yml`) — QEMU-based, triggers on every PR and image publish
 - **KubeVirt lab** (`run-gnome-tests` WorkflowTemplate) — clones `testsuite` main (or a branch), runs against a real VM
 
-Do NOT add Bluefin image tests here in `testing-lab`. Add them in `testsuite`.
+Do NOT add Bluefin image tests here in `lab`. Add them in `testsuite`.
 
-Tests that belong in `testing-lab/tests/` are lab infrastructure tests only:
+Tests that belong in `lab/tests/` are lab infrastructure tests only:
 `homelab_access`, `homelab_backup`, `homelab_storage`, `homelab_substrate`,
 `service_catalog`, `flatcar`.
 

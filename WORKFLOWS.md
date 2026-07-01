@@ -7,7 +7,7 @@ invocation. No bash, no `kubectl apply`, no SSH.
 Conventions:
 
 - All templates live in `argo/workflow-templates/*.yaml` and are reconciled
-  to namespace `argo` by the ArgoCD `testing-lab` Application.
+  to namespace `argo` by the ArgoCD `lab` Application.
 - Workflow-level parameters listed below are passed via `-p name=value`.
 - Wall-clock targets are warm-cache numbers; cold-cache figures add ~5–10 min.
 - The agent contract: prefer the **top-level** templates (`bluefin-qa-pipeline`,
@@ -139,7 +139,7 @@ just run-bst-build main               # build from main
 
 ## CronWorkflows
 
-Lives in `manifests/`, applied via the `testing-lab-infra` ArgoCD app:
+Lives in `manifests/`, applied via the `lab-infra` ArgoCD app:
 
 | Name | Schedule | Template called | Purpose |
 |---|---|---|---|

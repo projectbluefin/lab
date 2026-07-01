@@ -3,7 +3,7 @@
 Date: 2026-06-29
 
 ## Goal
-Fill the missing migrated data on the new `testing-lab` Homebrew and Adoption pages by transplanting the old `bootc-ecosystem` evidence into this repo's existing JSON-contract model.
+Fill the missing migrated data on the new `lab` Homebrew and Adoption pages by transplanting the old `bootc-ecosystem` evidence into this repo's existing JSON-contract model.
 
 This is a data migration, not a redesign.
 

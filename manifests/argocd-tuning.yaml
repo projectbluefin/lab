@@ -1,5 +1,5 @@
 # Scale down ArgoCD components not used in this single-tenant homelab.
-# ServerSideApply (configured in testing-lab-infra Application) patches
+# ServerSideApply (configured in lab-infra Application) patches
 # only the fields declared here — other fields are left intact.
 #
 # dex-server: SSO broker — not configured (admin local account only).
@@ -59,7 +59,7 @@ data:
 # (dex-server is scaled to zero above).
 #
 # reposerver.parallelism.limit:1 — sequential manifest rendering on repo-server.
-# Prevents OOM when both testing-lab apps sync simultaneously on this single node.
+# Prevents OOM when both lab apps sync simultaneously on this single node.
 #
 # controller.status.processors / controller.operation.processors: reduced from
 # defaults (20/10) to match the actual load of two static ArgoCD Applications.
@@ -76,7 +76,7 @@ data:
 ---
 # Resource requests for ArgoCD components — currently all BestEffort (resources: {}).
 # Without requests, these are first OOM-killed under VM memory pressure.
-# Values are conservative: sized for 2 static apps (testing-lab, testing-lab-infra).
+# Values are conservative: sized for 2 static apps (lab, lab-infra).
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

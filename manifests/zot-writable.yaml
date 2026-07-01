@@ -2,7 +2,7 @@
 # Replaces the unmanaged registry:2 Deployment that was running outside GitOps.
 # No upstream proxy — write-only / local storage.
 # GC enabled: orphaned layers reclaimed after 1h delay, checked every 24h.
-# ArgoCD: testing-lab-infra syncs this
+# ArgoCD: lab-infra syncs this
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -10,7 +10,7 @@ metadata:
   name: zot-local-config
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 data:
   config.json: |
     {
@@ -34,7 +34,7 @@ metadata:
   name: registry
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     app.kubernetes.io/component: registry-local
 spec:
   replicas: 1
@@ -45,7 +45,7 @@ spec:
     metadata:
       labels:
         app: registry
-        app.kubernetes.io/part-of: testing-lab
+        app.kubernetes.io/part-of: lab
     spec:
       nodeSelector:
         kubernetes.io/hostname: ghost
@@ -85,7 +85,7 @@ metadata:
   name: registry
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   type: NodePort
   selector:

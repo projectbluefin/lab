@@ -101,7 +101,7 @@ test('applications page renders Bazaar evidence, chart mounts, and explicit unav
   );
   assert.match(
     applicationsPage,
-    /https:\/\/github\.com\/projectbluefin\/testing-lab\/blob\/main\/docs\/results\/bluefin-testing-common\.json/,
+    /https:\/\/github\.com\/projectbluefin\/lab\/blob\/main\/docs\/results\/bluefin-testing-common\.json/,
     'applications page links fallback evidence',
   );
 });

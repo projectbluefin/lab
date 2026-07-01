@@ -3,7 +3,7 @@ kind: WorkflowTemplate
 metadata:
   annotations:
     argocd.argoproj.io/tracking-id: 
-      testing-lab:argoproj.io/WorkflowTemplate:argo/run-incluster-tests
+      lab:argoproj.io/WorkflowTemplate:argo/run-incluster-tests
     bluefin.io/stack: k8s workload + pytest
   name: run-incluster-tests
   namespace: argo
@@ -21,9 +21,9 @@ spec:
         exec > >(tee -a "${LOG}") 2>&1
 
 
-        SUITE="/workspace/testing-lab/tests/{{inputs.parameters.suite-path}}"
+        SUITE="/workspace/lab/tests/{{inputs.parameters.suite-path}}"
         test -e "${SUITE}"
-        export PYTHONPATH="/workspace/testing-lab:${PYTHONPATH:-}"
+        export PYTHONPATH="/workspace/lab:${PYTHONPATH:-}"
 
         TEST_RC=0
         python3 -m pytest -q "${SUITE}" --junitxml /tmp/results/pytest-results.xml || TEST_RC=$?
@@ -78,17 +78,17 @@ spec:
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         for attempt in 1 2 3; do
-          rm -rf /workspace/testing-lab
+          rm -rf /workspace/lab
           if git clone --depth 1 --branch "${BRANCH}" \
-              https://github.com/projectbluefin/testing-lab \
-              /workspace/testing-lab 2>&1; then
-            echo "Synced testing-lab @ ${BRANCH} (attempt ${attempt})"
+              https://github.com/projectbluefin/lab \
+              /workspace/lab 2>&1; then
+            echo "Synced lab @ ${BRANCH} (attempt ${attempt})"
             exit 0
           fi
-          rm -rf /workspace/testing-lab
-          if git clone https://github.com/projectbluefin/testing-lab /workspace/testing-lab 2>&1 && \
-             git -C /workspace/testing-lab checkout "${BRANCH}" 2>&1; then
-            echo "Synced testing-lab @ ${BRANCH} via SHA fallback (attempt ${attempt})"
+          rm -rf /workspace/lab
+          if git clone https://github.com/projectbluefin/lab /workspace/lab 2>&1 && \
+             git -C /workspace/lab checkout "${BRANCH}" 2>&1; then
+            echo "Synced lab @ ${BRANCH} via SHA fallback (attempt ${attempt})"
             exit 0
           fi
           echo "Attempt ${attempt} failed, retrying in 15s..."

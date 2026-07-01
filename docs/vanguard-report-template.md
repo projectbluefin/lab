@@ -35,4 +35,4 @@ e.g.:
 
 - None  
   _or_  
-- `projectbluefin/testing-lab#<N>` — <one-line description>
+- `projectbluefin/lab#<N>` — <one-line description>

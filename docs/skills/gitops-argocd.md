@@ -1,7 +1,7 @@
 ---
 name: gitops-argocd
 description: >
-  ArgoCD GitOps model for the testing-lab: what is and isn't managed, sync
+  ArgoCD GitOps model for the lab: what is and isn't managed, sync
   rules, bootstrap vs managed distinction, and common sync failures. Use when
   working with ArgoCD Applications, adding new templates to git, or
   troubleshooting sync issues.
@@ -10,7 +10,7 @@ metadata:
     - /argoproj/argo-cd
 ---
 
-# GitOps / ArgoCD — testing-lab Skill
+# GitOps / ArgoCD — lab Skill
 
 ## When to Use
 
@@ -31,8 +31,8 @@ metadata:
 
 | Application | Git path | Namespace | What it manages |
 |---|---|---|---|
-| `testing-lab` | `argo/workflow-templates/` | argo | WorkflowTemplates |
-| `testing-lab-infra` | `manifests/` | argo + others | CronWorkflows, RBAC, NodePorts, ConfigMaps |
+| `lab` | `argo/workflow-templates/` | argo | WorkflowTemplates |
+| `lab-infra` | `manifests/` | argo + others | CronWorkflows, RBAC, NodePorts, ConfigMaps |
 
 Both use `automated: { prune: true, selfHeal: true }` — per
 [Argo CD best practices](https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/).
@@ -52,7 +52,7 @@ New file to add to the repo?
         │   └─ → argo/bootstrap/            (NOT ArgoCD managed, apply manually)
         │
         └─ Cluster infrastructure (CronWorkflow, RBAC, NodePort, ConfigMap)?
-            └─ → manifests/                 (ArgoCD managed via testing-lab-infra)
+            └─ → manifests/                 (ArgoCD managed via lab-infra)
 ```
 
 ### 3. The deploy loop
@@ -115,17 +115,17 @@ names to track resources. Always use a fixed `name:`.
 # Check status
 just argocd-status
 # or
-argocd app get testing-lab
-argocd app get testing-lab-infra
+argocd app get lab
+argocd app get lab-infra
 
 # Force sync
 just argocd-sync
 # or
-argocd app sync testing-lab testing-lab-infra --timeout 120
+argocd app sync lab lab-infra --timeout 120
 ```
 
 If a template change is in git but not yet live:
-1. Check `argocd app get testing-lab` — is it Synced?
+1. Check `argocd app get lab` — is it Synced?
 2. If OutOfSync, run `just argocd-sync`
 3. If sync fails, check ArgoCD logs: `kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller`
 

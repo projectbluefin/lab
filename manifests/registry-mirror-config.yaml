@@ -20,7 +20,7 @@ metadata:
   name: registry-mirror-hosts
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 data:
   ghcr.io.hosts.toml: |
     server = "https://ghcr.io"
@@ -64,7 +64,7 @@ metadata:
   name: registry-mirror-config
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     app.kubernetes.io/component: registry-cache
 spec:
   selector:
@@ -74,7 +74,7 @@ spec:
     metadata:
       labels:
         app: registry-mirror-config
-        app.kubernetes.io/part-of: testing-lab
+        app.kubernetes.io/part-of: lab
     spec:
       initContainers:
         - name: write-hosts

@@ -7,6 +7,8 @@ This document specifies the highly optimized technical implementation of the Pro
 
 The primary design principle is **zero hardware waste**. By aggressively minimizing control plane and Kubernetes overhead, we ensure that maximum CPU, RAM, and disk I/O are allocated directly to container builds and KubeVirt test VMs.
 
+If `exo-0` is being reimaged, remove the stale node object first and treat the replacement as unavailable until it rejoins under the same hostname.
+
 ---
 
 ## 2. Cluster Topology & Node Specifications

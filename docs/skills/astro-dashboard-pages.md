@@ -91,7 +91,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 
 - Astro page reads `docs/results/*` through fragile `import.meta.url` math
 - Repeated `npm run build` fails because `docs/.prerender` still points at old hashed chunks
-- Generated HTML references a stale path prefix (for example `/testing-lab/_astro/*`) that does not match the active custom-domain root hosting
+- Generated HTML references a stale path prefix (for example `/lab/_astro/*`) that does not match the active custom-domain root hosting
 - Chart section disappears entirely when data is missing
 - Detail cards show pass/fail text without raw result, source, screenshot, or workflow links
 - Browser script invents fallback metrics not present in the contract

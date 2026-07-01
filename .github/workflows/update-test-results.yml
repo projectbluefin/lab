@@ -71,7 +71,7 @@ jobs:
         run: |
           # Fetch open bug issues
           gh issue list \
-            --repo projectbluefin/testing-lab \
+            --repo projectbluefin/lab \
             --label bug \
             --state open \
             --limit 50 \
@@ -79,9 +79,9 @@ jobs:
             > /tmp/bugs-raw.json
 
           # Fetch issue + PR counts
-          ISSUE_COUNT=$(gh issue list --repo projectbluefin/testing-lab --state open --limit 200 --json number | jq length)
-          PR_COUNT=$(gh pr list --repo projectbluefin/testing-lab --state open --limit 200 --json number | jq length)
-          MERGED_7D=$(gh pr list --repo projectbluefin/testing-lab --state merged --limit 200 \
+          ISSUE_COUNT=$(gh issue list --repo projectbluefin/lab --state open --limit 200 --json number | jq length)
+          PR_COUNT=$(gh pr list --repo projectbluefin/lab --state open --limit 200 --json number | jq length)
+          MERGED_7D=$(gh pr list --repo projectbluefin/lab --state merged --limit 200 \
             --json mergedAt | jq "[.[] | select(.mergedAt > \"$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)\")] | length")
 
           # Compute aggregate stats from result files + live cluster snapshots when reachable
@@ -116,7 +116,7 @@ jobs:
 
           def gh_actions_query_url(term):
               safe = (term or '').replace(' ', '+')
-              return f"https://github.com/projectbluefin/testing-lab/actions?query={safe}"
+              return f"https://github.com/projectbluefin/lab/actions?query={safe}"
 
           def phase_to_overall(phase):
               if phase in ('Running', 'Pending'):
@@ -582,9 +582,9 @@ jobs:
               snapshot_state = 'degraded'
 
           collector_run_id = os.environ.get('GITHUB_RUN_ID')
-          collector_url = f"https://github.com/projectbluefin/testing-lab/actions/runs/{collector_run_id}" if collector_run_id else "https://github.com/projectbluefin/testing-lab/actions"
+          collector_url = f"https://github.com/projectbluefin/lab/actions/runs/{collector_run_id}" if collector_run_id else "https://github.com/projectbluefin/lab/actions"
           collector_sha = os.environ.get('GITHUB_SHA') or ''
-          collector_commit_url = f"https://github.com/projectbluefin/testing-lab/commit/{collector_sha}" if collector_sha else "https://github.com/projectbluefin/testing-lab/commits/main"
+          collector_commit_url = f"https://github.com/projectbluefin/lab/commit/{collector_sha}" if collector_sha else "https://github.com/projectbluefin/lab/commits/main"
 
           inputs = []
           for p in sorted(Path('docs/results').glob('*.json')):

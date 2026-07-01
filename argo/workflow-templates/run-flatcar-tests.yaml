@@ -83,7 +83,7 @@ spec:
         python3 -m pip install --quiet behave 2>&1 | tail -3
 
         # Clone tests fresh from git — matches run-gnome-tests pattern, always current
-        git clone --depth 1 https://github.com/projectbluefin/testing-lab /workspace/testing-lab 2>&1 | tail -3
+        git clone --depth 1 https://github.com/projectbluefin/lab /workspace/lab 2>&1 | tail -3
 
         # Wait for Flatcar SSH (up to 5 minutes — faster boot than Bluefin)
         SSH_OPTS="-i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
@@ -95,7 +95,7 @@ spec:
 
         # Run tests from runner pod; steps SSH into VM using FLATCAR_VM_IP env var
         TAGS_ARG="${BEHAVE_TAGS:-}"
-        cd /workspace/testing-lab/tests/flatcar/features
+        cd /workspace/lab/tests/flatcar/features
 
         BEHAVE_RC=0
         behave . \

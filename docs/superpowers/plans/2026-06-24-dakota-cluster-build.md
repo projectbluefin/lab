@@ -16,7 +16,7 @@
 - Argo v3.6+: use `synchronization.semaphores` (list), `schedules:` (array).
 - VM names ≤63 chars.
 - BST build pods: `requests.memory=16Gi` — this naturally excludes exo-1 (15.1Gi allocatable). No nodeSelector needed.
-- Run `just lint` after every change to testing-lab `argo/` or `manifests/`.
+- Run `just lint` after every change to lab `argo/` or `manifests/`.
 - No SSH to ghost. No kubectl apply for ArgoCD-managed resources.
 
 ## Cluster Nodes (current)
@@ -80,7 +80,7 @@ kind: PriorityClass
 metadata:
   name: bst-build
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 value: 500000
 preemptionPolicy: Never
 globalDefault: false
@@ -90,7 +90,7 @@ description: "BST build pods. Lower priority than lab-test-vm. Preemptable on re
 - [ ] **Step 2: Lint**
 
 ```bash
-cd /var/home/jorge/src/testing-lab && just lint
+cd /var/home/jorge/src/lab && just lint
 ```
 
 Expected: exit 0, no errors.
@@ -136,7 +136,7 @@ metadata:
   namespace: local-registry
   labels:
     app.kubernetes.io/component: buildbox-casd
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   storageClassName: local-path
   accessModes: [ReadWriteOnce]
@@ -151,7 +151,7 @@ metadata:
   namespace: local-registry
   labels:
     app.kubernetes.io/component: buildbox-casd
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   replicas: 1
   selector:
@@ -162,7 +162,7 @@ spec:
       labels:
         app: buildbox-casd
         app.kubernetes.io/component: buildbox-casd
-        app.kubernetes.io/part-of: testing-lab
+        app.kubernetes.io/part-of: lab
     spec:
       nodeSelector:
         kubernetes.io/hostname: ghost
@@ -207,7 +207,7 @@ metadata:
   namespace: local-registry
   labels:
     app.kubernetes.io/component: buildbox-casd
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   selector:
     app: buildbox-casd
@@ -221,7 +221,7 @@ spec:
 - [ ] **Step 2: Lint**
 
 ```bash
-cd /var/home/jorge/src/testing-lab && just lint
+cd /var/home/jorge/src/lab && just lint
 ```
 
 Expected: exit 0.
@@ -339,7 +339,7 @@ Result: ghost contributes `floor((62 - 12 - 16) / 8) = 4` VM slots instead of 6.
 - [ ] **Step 3: Lint**
 
 ```bash
-cd /var/home/jorge/src/testing-lab && just lint
+cd /var/home/jorge/src/lab && just lint
 ```
 
 Expected: exit 0.
@@ -513,7 +513,7 @@ spec:
 - [ ] **Step 2: Lint**
 
 ```bash
-cd /var/home/jorge/src/testing-lab && just lint
+cd /var/home/jorge/src/lab && just lint
 ```
 
 Expected: exit 0.
@@ -743,10 +743,10 @@ git commit -m "feat: add buildstream-cluster.conf for homelab cluster builds"
 git push origin testing
 ```
 
-- [ ] **Step 5: Lint, commit, push testing-lab changes**
+- [ ] **Step 5: Lint, commit, push lab changes**
 
 ```bash
-cd /var/home/jorge/src/testing-lab && just lint
+cd /var/home/jorge/src/lab && just lint
 git add \
   manifests/image-polling-state.yaml \
   argo/workflow-templates/dakota-commit-poller.yaml \
@@ -827,7 +827,7 @@ In `AGENTS.md`, find the Cluster Topology table and add the two new rows:
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /var/home/jorge/src/testing-lab
+cd /var/home/jorge/src/lab
 git add docs/superpowers/specs/2026-06-24-dakota-cluster-build-design.md AGENTS.md
 git commit -m "docs: update node topology — add bluefin/hamilton, exo-1 ready"
 git push

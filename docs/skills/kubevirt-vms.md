@@ -1,7 +1,7 @@
 ---
 name: kubevirt-vms
 description: >
-  KubeVirt ephemeral VM lifecycle in the testing-lab: containerDisk build,
+  KubeVirt ephemeral VM lifecycle in the lab: containerDisk build,
   VM provisioning, SSH wait, teardown. Use when writing provision-vm templates,
   debugging VM boot failures, or working with KubeVirt manifests.
 metadata:
@@ -11,7 +11,7 @@ metadata:
     - /kubevirt/containerized-data-importer
 ---
 
-# KubeVirt VMs — testing-lab Skill
+# KubeVirt VMs — lab Skill
 
 ## When to Use
 

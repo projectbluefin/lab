@@ -40,8 +40,8 @@ ContainerDisk VMs (Bluefin test VMs) float freely and can schedule on ghost or b
 
 | Area | Source of truth | Reconciler |
 |---|---|---|
-| WorkflowTemplates | `argo/workflow-templates/*.yaml` | ArgoCD application `testing-lab` |
-| Cluster infra and CronWorkflows | `manifests/*.yaml` | ArgoCD application `testing-lab-infra` |
+| WorkflowTemplates | `argo/workflow-templates/*.yaml` | ArgoCD application `lab` |
+| Cluster infra and CronWorkflows | `manifests/*.yaml` | ArgoCD application `lab-infra` |
 | Operator entrypoints | `Justfile` | Local operator / MCP tooling |
 
 The repo is intentionally GitOps-first: cluster state should converge from git, not from manual template applies or node SSH.

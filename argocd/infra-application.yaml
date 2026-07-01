@@ -4,14 +4,14 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: testing-lab-infra
+  name: lab-infra
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   project: default
   source:
-    repoURL: https://github.com/projectbluefin/testing-lab
+    repoURL: https://github.com/projectbluefin/lab
     targetRevision: main
     path: manifests
   destination:

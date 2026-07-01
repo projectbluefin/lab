@@ -22,7 +22,7 @@ metadata:
   name: flatcar-kernel-build
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   entrypoint: pipeline
   onExit: teardown-build-vm
@@ -365,14 +365,14 @@ spec:
         echo "=== Patching kernel-2.eclass to support EAPI 7 and 8 ==="
         sed -i 's/2|3|4|5|6/2|3|4|5|6|7|8/g' \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/portage-stable/eclass/kernel-2.eclass
 
-        echo "=== Clone testing-lab for kernel overlay ==="
+        echo "=== Clone lab for kernel overlay ==="
         git clone --depth=1 \
-          https://github.com/projectbluefin/testing-lab \
-          \${BUILD_DIR}/testing-lab
+          https://github.com/projectbluefin/lab \
+          \${BUILD_DIR}/lab
 
         echo "=== Install kernel overlay ==="
         OVERLAY_DEST=src/third_party/flatcar-kernel-overlay
-        cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
+        cp -r \${BUILD_DIR}/lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
         chmod -R a+w \${BUILD_DIR}/\${OVERLAY_DEST}
 
         echo "=== Move Docker data-root to PVC (SDK image is ~15GB) ==="

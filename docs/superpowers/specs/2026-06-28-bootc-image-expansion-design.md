@@ -76,7 +76,7 @@ This is the lowest-risk path and matches existing lab operations patterns.
 ## Validation plan
 
 1. `just lint`
-2. Confirm ArgoCD app health (`testing-lab-infra`) after merge/sync.
+2. Confirm ArgoCD app health (`lab-infra`) after merge/sync.
 3. Manually submit 1-2 new pollers:
    - verify no-change path (no matrix workflow)
    - verify changed-digest path (matrix workflow appears)

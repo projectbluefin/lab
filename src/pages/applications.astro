@@ -132,7 +132,7 @@ let discoveredFeatures: string[] = [];
 
 try {
   // Query projectbluefin/testsuite repo tree recursive
-  const treeRes = execSync('curl -s -H "User-Agent: testing-lab-builder" --max-time 3 https://api.github.com/repos/projectbluefin/testsuite/git/trees/main?recursive=1', { encoding: 'utf8' });
+  const treeRes = execSync('curl -s -H "User-Agent: lab-builder" --max-time 3 https://api.github.com/repos/projectbluefin/testsuite/git/trees/main?recursive=1', { encoding: 'utf8' });
   const treeData = JSON.parse(treeRes) as GithubTree;
   discoveredFeatures = (treeData.tree || [])
     .filter((entry) => entry.type === 'blob' && entry.path.endsWith('.feature'))

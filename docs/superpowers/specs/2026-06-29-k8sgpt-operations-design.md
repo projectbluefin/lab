@@ -1,7 +1,7 @@
 # K8sGPT On-Demand Operator Assistant — Design
 
 Date: 2026-06-29  
-Repo: `projectbluefin/testing-lab`  
+Repo: `projectbluefin/lab`  
 Status: Approved design (ready for implementation planning)
 
 ## Goal

@@ -1,7 +1,7 @@
 ---
 name: ci-tooling
 description: >
-  GitHub Actions workflow authoring and debugging for testing-lab dashboards and
+  GitHub Actions workflow authoring and debugging for lab dashboards and
   automation. Use when changing .github/workflows/, troubleshooting stale Pages
   data, or wiring CI jobs that need private-cluster data.
 metadata:
@@ -10,7 +10,7 @@ metadata:
     - /websites/github_en_rest
 ---
 
-# CI Tooling — GitHub Actions in testing-lab
+# CI Tooling — GitHub Actions in lab
 
 ## When to Use
 

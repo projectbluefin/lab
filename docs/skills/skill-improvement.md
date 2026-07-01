@@ -1,7 +1,7 @@
 ---
 name: skill-improvement
 description: >
-  Self-learning and skill-maintenance loop for the testing-lab. Run at the
+  Self-learning and skill-maintenance loop for the lab. Run at the
   end of every session that produces non-trivial work, and at the **start**
   of any session to check unanalyzed nightly failures. Enforces the
   write-back loop so the next agent starts smarter than this one did.
@@ -9,7 +9,7 @@ description: >
   to check failures, or when a pattern was discovered through trial and error.
 ---
 
-# Skill Improvement — testing-lab Self-Learning Loop
+# Skill Improvement — lab Self-Learning Loop
 
 Every session produces exactly **two** outputs: the work and the learning.
 Output 1 without Output 2 leaves the lab no smarter than before you arrived.
@@ -122,7 +122,7 @@ The model test: *"Read this as a fresh agent with zero session context. Does it 
 Any gap, blocker, or open question you cannot fix this session:
 
 ```bash
-gh issue create --repo castrojo/testing-lab \
+gh issue create --repo projectbluefin/lab \
   --title "infra: <what is broken>" \
   --label "bug" \
   --body "What: ...\nFix: ...\nAutomatable: yes/no"
@@ -183,6 +183,6 @@ Before marking any session done:
 - [ ] Code examples verified against Context7 if the skill covers a library
 - [ ] Library ID noted in `metadata.context7-sources` frontmatter
 - [ ] No resolved items or dated entries left in skill files
-- [ ] Any unresolved gaps filed as GitHub issues in `castrojo/testing-lab`
+- [ ] Any unresolved gaps filed as GitHub issues in `projectbluefin/lab`
 - [ ] `.github/copilot-instructions.md` updated if the session revealed a repo-wide behavior change
 - [ ] Skill file has: When to Use, When NOT to Use, Core Process, Common Rationalizations, Red Flags, Verification

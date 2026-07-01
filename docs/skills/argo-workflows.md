@@ -2,7 +2,7 @@
 name: argo-workflows
 description: >
   Authoring, linting, and submitting Argo Workflows and WorkflowTemplates in
-  the testing-lab. Use when writing or editing any .yaml file under
+  the lab. Use when writing or editing any .yaml file under
   argo/workflow-templates/, argo/bootstrap/, or argo/*.yaml, or when
   debugging a failed workflow run.
 metadata:
@@ -10,7 +10,7 @@ metadata:
     - /argoproj/argo-workflows
 ---
 
-# Argo Workflows — testing-lab Skill
+# Argo Workflows — lab Skill
 
 ## When to Use
 
@@ -292,7 +292,7 @@ Or use the convenience wrapper: `just lint`
 
 ### 12. ArgoCD ownership — never apply manually
 
-`argo/workflow-templates/` is managed by the `testing-lab` ArgoCD Application with `prune: true` and `selfHeal: true`. Manual `kubectl apply` or `argo create workflow-template` for templates in this directory is forbidden — ArgoCD will overwrite or conflict.
+`argo/workflow-templates/` is managed by the `lab` ArgoCD Application with `prune: true` and `selfHeal: true`. Manual `kubectl apply` or `argo create workflow-template` for templates in this directory is forbidden — ArgoCD will overwrite or conflict.
 
 `argo/bootstrap/` is **not** ArgoCD managed. Apply manually once:
 ```bash
@@ -452,7 +452,7 @@ Key rules:
             key: token
     source: |
       set -euo pipefail
-      API_URL="https://api.github.com/repos/projectbluefin/testing-lab/contents/docs/data/factory-stats.json"
+      API_URL="https://api.github.com/repos/projectbluefin/lab/contents/docs/data/factory-stats.json"
       # Fetch JSON file + SHA
       CURRENT=$(curl -sf -H "Authorization: token ${GITHUB_TOKEN}" \
         -H "Accept: application/vnd.github+json" "${API_URL}" || echo "{}")

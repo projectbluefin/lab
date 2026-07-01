@@ -430,8 +430,10 @@ spec:
             spec:
               containers:
                 - name: init
-                  image: 192.168.1.102:30500/fsdk/qemu-img:latest
-                  command: [qemu-img, create, -f, raw, /mnt/disk.img, 20G]
+                  image: ghcr.io/projectbluefin/lab-runner:latest
+                  command: [bash, -lc]
+                  args:
+                    - truncate -s 20G /mnt/disk.img
                   securityContext:
                     runAsUser: 0
                   resources:

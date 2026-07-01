@@ -573,7 +573,8 @@ spec:
             key: id_ed25519.pub
       source: |
         exec bash <<'SCRIPT_EOF'
-        set -euo pipefail
+        set -euxo pipefail
+        trap 'rc=$?; echo "ERROR rc=${rc} line=${LINENO} cmd=${BASH_COMMAND}" >&2' ERR
         VIRTCTL=/tmp/virtctl
         curl -fsSL -o "${VIRTCTL}" \
           https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64

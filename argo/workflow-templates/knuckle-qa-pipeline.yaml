@@ -553,9 +553,10 @@ spec:
       source: |
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
-        curl -fsSL -o /usr/local/bin/virtctl \
+        VIRTCTL=/tmp/virtctl
+        curl -fsSL -o "${VIRTCTL}" \
           https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
-        chmod +x /usr/local/bin/virtctl
+        chmod +x "${VIRTCTL}"
 
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
@@ -563,7 +564,7 @@ spec:
         BIN="/var/mnt/ghost-data/knuckle-test/${VM}-knuckle"
         SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
-        virtctl -n "${NS}" start "${VM}"
+        "${VIRTCTL}" -n "${NS}" start "${VM}"
         kubectl wait vmi -n "${NS}" "${VM}" --for=condition=Ready --timeout=300s >&2
 
         INSTALLER_IP=""
@@ -691,14 +692,15 @@ spec:
       source: |
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
-        curl -fsSL -o /usr/local/bin/virtctl \
+        VIRTCTL=/tmp/virtctl
+        curl -fsSL -o "${VIRTCTL}" \
           https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
-        chmod +x /usr/local/bin/virtctl
+        chmod +x "${VIRTCTL}"
 
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
 
-        virtctl -n "${NS}" stop "${VM}" || true
+        "${VIRTCTL}" -n "${NS}" stop "${VM}" || true
         for _ in $(seq 1 60); do
           if ! kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
             break
@@ -751,7 +753,7 @@ spec:
                     claimName: ${VM}-rootdisk
         EOF
 
-        virtctl -n "${NS}" start "${VM}"
+        "${VIRTCTL}" -n "${NS}" start "${VM}"
         echo "Transitioned ${VM} to installed-disk boot" >&2
         SCRIPT_EOF
 

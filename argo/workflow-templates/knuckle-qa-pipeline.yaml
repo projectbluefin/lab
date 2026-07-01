@@ -181,12 +181,14 @@ spec:
         {"volumes":[{"image":"installer.iso","capacity":"1Gi"}]}
         JSON
 
-        CTR=$(buildah from scratch)
-        buildah copy --chown 107:107 "${CTR}" "${ISO}" /disk/installer.iso
-        buildah copy "${CTR}" "${STAGING}/containerDisk.json" /containerDisk.json
-        buildah commit "${CTR}" "${IMAGE}"
-        buildah push --tls-verify=false "${IMAGE}"
-        buildah rm "${CTR}" 2>/dev/null || true
+        export STORAGE_DRIVER=vfs
+
+        CTR=$(buildah --storage-driver=vfs from scratch)
+        buildah --storage-driver=vfs copy --chown 107:107 "${CTR}" "${ISO}" /disk/installer.iso
+        buildah --storage-driver=vfs copy "${CTR}" "${STAGING}/containerDisk.json" /containerDisk.json
+        buildah --storage-driver=vfs commit "${CTR}" "${IMAGE}"
+        buildah --storage-driver=vfs push --tls-verify=false "${IMAGE}"
+        buildah --storage-driver=vfs rm "${CTR}" 2>/dev/null || true
         rm -rf "${STAGING}"
         echo "Pushed containerDisk: ${IMAGE}" >&2
 

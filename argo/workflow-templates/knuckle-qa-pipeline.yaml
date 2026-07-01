@@ -204,9 +204,9 @@ spec:
         PY
 
         "${WORK}/crane" append \
-          --base scratch \
-          --new_layer "${WORK}/layer.tar.gz" \
-          --image "${IMAGE}" \
+          -b scratch \
+          -f "${WORK}/layer.tar.gz" \
+          -t "${IMAGE}" \
           --insecure
         rm -rf "${WORK}"
         echo "Pushed containerDisk: ${IMAGE}" >&2

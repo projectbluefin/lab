@@ -1,8 +1,7 @@
 # Self Hosted Cloud Native Operating System Factory
 ### Introducing the first "Agentic OS Factory" that isn't made up bullshit!
-### bootc reference architecture
 
-- [Factory Dashboard](https://factory.projectbluefin.io)
+#### [Factory Dashboard](https://factory.projectbluefin.io)
 
 > A production-quality, fully GitOps-driven QA pipeline for testing
 > [bootc](https://containers.github.io/bootc/) (image-based Linux) deployments,

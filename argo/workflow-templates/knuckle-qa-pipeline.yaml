@@ -587,7 +587,9 @@ spec:
 
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
-        KEY="/etc/ssh/test-key/id_ed25519"
+        KEY_SRC="/etc/ssh/test-key/id_ed25519"
+        KEY="/tmp/id_ed25519"
+        cp "${KEY_SRC}" "${KEY}"
         chmod 600 "${KEY}"
         BIN="/var/mnt/ghost-data/knuckle-test/${VM}-knuckle"
         SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
@@ -702,7 +704,9 @@ spec:
         set -euo pipefail
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
-        KEY="/etc/ssh/test-key/id_ed25519"
+        KEY_SRC="/etc/ssh/test-key/id_ed25519"
+        KEY="/tmp/id_ed25519"
+        cp "${KEY_SRC}" "${KEY}"
         chmod 600 "${KEY}"
         SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
@@ -863,7 +867,9 @@ spec:
         set -euo pipefail
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
-        KEY="/etc/ssh/test-key/id_ed25519"
+        KEY_SRC="/etc/ssh/test-key/id_ed25519"
+        KEY="/tmp/id_ed25519"
+        cp "${KEY_SRC}" "${KEY}"
         chmod 600 "${KEY}"
         SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 

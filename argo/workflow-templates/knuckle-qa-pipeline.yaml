@@ -222,8 +222,11 @@ spec:
       source: |
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
-        git ls-remote https://github.com/projectbluefin/knuckle \
-          "refs/heads/{{inputs.parameters.branch}}" | awk '{print $1}' > /work/commit-sha
+        read -r commit_sha _ <<EOF
+        $(git ls-remote https://github.com/projectbluefin/knuckle \
+          "refs/heads/{{inputs.parameters.branch}}")
+        EOF
+        printf '%s\n' "$commit_sha" > /work/commit-sha
         if [[ ! -s /work/commit-sha ]]; then
           echo "ERROR: branch {{inputs.parameters.branch}} not found" >&2
           exit 1

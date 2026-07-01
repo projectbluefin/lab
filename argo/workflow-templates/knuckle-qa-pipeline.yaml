@@ -154,8 +154,8 @@ spec:
       parameters:
       - name: vm-name
     script:
-      image: ghcr.io/projectbluefin/lab-runner:latest
-      command: [sh]
+      image: quay.io/fedora/fedora:latest
+      command: [bash, -c]
       resources:
         requests:
           cpu: 500m
@@ -167,49 +167,28 @@ spec:
       - name: knuckle-test
         mountPath: /var/mnt/ghost-data/knuckle-test
       source: |
-        exec bash <<'SCRIPT_EOF'
         set -euo pipefail
+
+        dnf install -y -q buildah >/dev/null
+
         VM="{{inputs.parameters.vm-name}}"
-        WORK="/var/mnt/ghost-data/knuckle-test/.crane-${VM}"
-        mkdir -p "${WORK}"
-
-        curl -fsSL \
-          -o "${WORK}/go-containerregistry.tar.gz" \
-          https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz
-        python3 - <<'PY' "${WORK}"
-        import os
-        import pathlib
-        import sys
-        import tarfile
-
-        work = pathlib.Path(sys.argv[1])
-        with tarfile.open(work / "go-containerregistry.tar.gz", "r:gz") as archive:
-            archive.extract("crane", path=work)
-        os.chmod(work / "crane", 0o755)
-        PY
-        chmod +x "${WORK}/crane"
-
+        STAGING="/var/mnt/ghost-data/knuckle-test/.containerdisk-${VM}"
+        mkdir -p "${STAGING}"
         ISO="/var/mnt/ghost-data/knuckle-test/${VM}-installer.iso"
         IMAGE="192.168.1.102:30500/knuckle-iso-${VM}:latest"
 
-        python3 - <<'PY' "${WORK}" "${ISO}"
-        import pathlib
-        import sys
-        import tarfile
+        cat > "${STAGING}/containerDisk.json" <<'JSON'
+        {"volumes":[{"image":"installer.iso","capacity":"1Gi"}]}
+        JSON
 
-        work = pathlib.Path(sys.argv[1])
-        iso = pathlib.Path(sys.argv[2])
-        with tarfile.open(work / "layer.tar.gz", "w:gz") as archive:
-            archive.add(iso, arcname="disk/installer.iso")
-        PY
-
-        "${WORK}/crane" append \
-          -f "${WORK}/layer.tar.gz" \
-          -t "${IMAGE}" \
-          --insecure
-        rm -rf "${WORK}"
+        CTR=$(buildah from scratch)
+        buildah copy --chown 107:107 "${CTR}" "${ISO}" /disk/installer.iso
+        buildah copy "${CTR}" "${STAGING}/containerDisk.json" /containerDisk.json
+        buildah commit "${CTR}" "${IMAGE}"
+        buildah push --tls-verify=false "${IMAGE}"
+        buildah rm "${CTR}" 2>/dev/null || true
+        rm -rf "${STAGING}"
         echo "Pushed containerDisk: ${IMAGE}" >&2
-        SCRIPT_EOF
 
   - name: resolve-source
     inputs:

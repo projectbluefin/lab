@@ -606,6 +606,36 @@ spec:
           exit 1
         fi
 
+        AGENT_CONNECTED=""
+        for _ in $(seq 1 60); do
+          AGENT_CONNECTED=$(kubectl get vmi -n "${NS}" "${VM}" \
+            -o jsonpath='{.status.conditions[?(@.type=="AgentConnected")].status}' 2>/dev/null || true)
+          if [[ "${AGENT_CONNECTED}" == "True" ]]; then
+            break
+          fi
+          sleep 5
+        done
+        if [[ "${AGENT_CONNECTED}" != "True" ]]; then
+          echo "ERROR: guest agent never connected; cannot inject SSH key" >&2
+          exit 1
+        fi
+
+        LAUNCHER_POD=$(kubectl get pod -n "${NS}" -l "kubevirt.io/vm=${VM}" -o jsonpath='{.items[0].metadata.name}')
+        DOMAIN="${NS}_${VM}"
+        kubectl exec -n "${NS}" "${LAUNCHER_POD}" -c compute -- bash -lc '
+          set -euo pipefail
+          domain="'"${DOMAIN}"'"
+          key="'"${SSH_PUBKEY}"'"
+          payload=$(cat <<EOF
+        {"execute":"guest-exec","arguments":{"path":"/usr/bin/sh","arg":["-lc","set -euo pipefail; mkdir -p /root/.ssh; printf '\''%s\\n'\'' '\''${key}'\'' > /root/.ssh/authorized_keys; chmod 700 /root/.ssh; chmod 600 /root/.ssh/authorized_keys; if id -u core >/dev/null 2>&1; then mkdir -p /home/core/.ssh; printf '\''%s\\n'\'' '\''${key}'\'' > /home/core/.ssh/authorized_keys; chown -R core:core /home/core/.ssh; chmod 700 /home/core/.ssh; chmod 600 /home/core/.ssh/authorized_keys; fi"],"capture-output":true}}
+        EOF
+          )
+          resp=$(virsh qemu-agent-command "${domain}" "${payload}")
+          pid=$(printf "%s" "${resp}" | sed -n "s/.*\"pid\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p")
+          sleep 2
+          virsh qemu-agent-command "${domain}" "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":${pid}}}"
+        ' >&2
+
         for _ in $(seq 1 60); do
           if ssh ${SSH_OPTS} root@"${INSTALLER_IP}" true 2>/dev/null; then
             break

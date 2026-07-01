@@ -174,16 +174,34 @@ spec:
         mkdir -p "${WORK}"
 
         curl -fsSL \
-          https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz \
-          | tar xz -C "${WORK}" crane
+          -o "${WORK}/go-containerregistry.tar.gz" \
+          https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz
+        python3 - <<'PY' "${WORK}"
+        import os
+        import pathlib
+        import sys
+        import tarfile
+
+        work = pathlib.Path(sys.argv[1])
+        with tarfile.open(work / "go-containerregistry.tar.gz", "r:gz") as archive:
+            archive.extract("crane", path=work)
+        os.chmod(work / "crane", 0o755)
+        PY
         chmod +x "${WORK}/crane"
 
         ISO="/var/mnt/ghost-data/knuckle-test/${VM}-installer.iso"
         IMAGE="192.168.1.102:30500/knuckle-iso-${VM}:latest"
 
-        mkdir -p "${WORK}/disk"
-        cp "${ISO}" "${WORK}/disk/installer.iso"
-        tar -C "${WORK}" -czf "${WORK}/layer.tar.gz" disk/installer.iso
+        python3 - <<'PY' "${WORK}" "${ISO}"
+        import pathlib
+        import sys
+        import tarfile
+
+        work = pathlib.Path(sys.argv[1])
+        iso = pathlib.Path(sys.argv[2])
+        with tarfile.open(work / "layer.tar.gz", "w:gz") as archive:
+            archive.add(iso, arcname="disk/installer.iso")
+        PY
 
         "${WORK}/crane" append \
           --base scratch \

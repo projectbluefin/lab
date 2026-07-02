@@ -19,7 +19,7 @@ test('Astro build emits multipage factory routes into docs', () => {
 
   const expectedFiles = [
     'docs/index.html',
-    'docs/upstream/index.html',
+    'docs/images/index.html',
     'docs/tests/index.html',
     'docs/applications/index.html',
     'docs/homebrew/index.html',
@@ -38,13 +38,13 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /class="kpi-grid"/, 'overview renders build-time KPI cards');
   assert.match(html('docs/index.html'), /class="nodes-grid"/, 'overview renders contributor nodes');
   assert.match(html('docs/index.html'), /class="image-status-grid"/, 'overview renders image status section');
-  assert.match(html('docs/index.html'), /href="\/upstream\/"/, 'overview links to upstream at domain root');
+  assert.match(html('docs/index.html'), /href="\/images\/"/, 'overview links to images at domain root');
   assert.match(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav shows Overview tab');
   assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+" data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
-  assert.match(html('docs/upstream/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'upstream page keeps Cloudflare-safe chart script');
+  assert.match(html('docs/images/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'images page keeps Cloudflare-safe chart script');
   assert.match(html('docs/homebrew/index.html'), /data-cfasync="false"/, 'homebrew page keeps Cloudflare-safe chart script');
   assert.match(html('docs/adoption/index.html'), /data-cfasync="false"/, 'adoption page keeps Cloudflare-safe chart script');
-  assert.match(html('docs/upstream/index.html'), /Upstream/, 'upstream page renders');
+  assert.match(html('docs/images/index.html'), /Image status/, 'images page renders');
   assert.match(html('docs/tests/index.html'), /Tests/, 'tests page renders');
   assert.match(html('docs/applications/index.html'), /Applications/, 'applications page renders');
   assert.match(html('docs/homebrew/index.html'), /Homebrew/, 'homebrew page renders');
@@ -54,7 +54,7 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /href="\/homebrew\/"/, 'overview links to homebrew at domain root');
   assert.match(html('docs/index.html'), /href="\/adoption\/"/, 'overview links to adoption at domain root');
   assert.match(html('docs/index.html'), /href="\/userspace\/"/, 'overview links to userspace at domain root');
-  assert.match(html('docs/upstream/index.html'), /Unavailable|pending|coming soon/i, 'subpages show explicit unavailable state');
+  assert.match(html('docs/images/index.html'), /Unavailable|pending|coming soon/i, 'subpages show explicit unavailable state');
 });
 
 test('tests page renders matrix views, chart mounts, evidence links, and unavailable states', () => {
@@ -81,25 +81,25 @@ test('tests page renders matrix views, chart mounts, evidence links, and unavail
   assert.match(testsPage, /Evidence-backed authenticity/i, 'tests page renders evidence-backed authenticity disclosure');
 });
 
-test('upstream page renders grouped views, chart mounts, evidence links, and unavailable states', () => {
+test('images page renders grouped views, chart mounts, evidence links, and unavailable states', () => {
   execFileSync('npm', ['run', 'build'], {
     cwd: repo,
     stdio: 'pipe',
     encoding: 'utf8',
   });
 
-  const upstreamPage = html('docs/upstream/index.html');
+  const imagesPage = html('docs/images/index.html');
 
-  assert.match(upstreamPage, /Stream availability by family/i, 'upstream page shows grouped availability chart section');
-  assert.match(upstreamPage, /Release freshness by stream/i, 'upstream page shows freshness chart section');
-  assert.match(upstreamPage, /Release timeline/i, 'upstream page shows release timeline chart section');
-  assert.match(upstreamPage, /Dakota testing/i, 'upstream page includes projectbluefin streams');
-  assert.match(upstreamPage, /https:\/\/github\.com\/projectbluefin\/dakota\/releases/i, 'upstream page links projectbluefin evidence');
-  assert.match(upstreamPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this stream\./i, 'upstream page keeps unavailable reason explicit');
-  assert.match(upstreamPage, /https:\/\/github\.com\/ublue-os\/aurora\/releases/i, 'upstream page links non-bluefin evidence');
-  assert.match(upstreamPage, /Fedora Silverblue|Fedora Kinoite/i, 'upstream page references Silverblue and Kinoite upstream parent OSes');
-  assert.match(upstreamPage, /https:\/\/fedoraproject\.org\/silverblue\/|https:\/\/fedoraproject\.org\/kinoite\//i, 'upstream page links upstream Silverblue and Kinoite homepages');
-  assert.match(upstreamPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart/, 'upstream page renders chart containers');
+  assert.match(imagesPage, /Stream availability by family/i, 'images page shows grouped availability chart section');
+  assert.match(imagesPage, /Release freshness by stream/i, 'images page shows freshness chart section');
+  assert.match(imagesPage, /Release timeline/i, 'images page shows release timeline chart section');
+  assert.match(imagesPage, /Dakota testing/i, 'images page includes projectbluefin streams');
+  assert.match(imagesPage, /https:\/\/github\.com\/projectbluefin\/dakota\/releases/i, 'images page links projectbluefin evidence');
+  assert.match(imagesPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this stream\./i, 'images page keeps unavailable reason explicit');
+  assert.match(imagesPage, /https:\/\/github\.com\/ublue-os\/aurora\/releases/i, 'images page links non-bluefin evidence');
+  assert.match(imagesPage, /Fedora Silverblue|Fedora Kinoite/i, 'images page references Silverblue and Kinoite upstream parent OSes');
+  assert.match(imagesPage, /https:\/\/fedoraproject\.org\/silverblue\/|https:\/\/fedoraproject\.org\/kinoite\//i, 'images page links upstream Silverblue and Kinoite homepages');
+  assert.match(imagesPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart/, 'images page renders chart containers');
 });
 
 test('userspace page renders FSDK containers, registry metadata, and charts', () => {

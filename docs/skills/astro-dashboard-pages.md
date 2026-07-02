@@ -2,7 +2,7 @@
 name: astro-dashboard-pages
 description: >
   Building or revising Astro dashboard detail pages backed by repo-tracked JSON and
-  browser-side charts. Use when adding docs routes like /tests, /upstream, /bluefin, or
+  browser-side charts. Use when adding docs routes like /tests, /images, or
   /applications that must render real evidence, explicit unavailable states, GitHub
   Pages-safe static output, and dense table sections without crushed columns.
 metadata:
@@ -53,7 +53,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 8. Every detail row must link to raw evidence when present: local result JSON, GitHub source URL, screenshot URL, workflow run URL.
 8b. When rendering historical trends (such as active devices over time or Quay image pull count timelines), load them from a secondary repo-tracked JSON raw dataset at pre-render time, merge them into the page's generated metrics contract, and pass them via the client script payload. Slicing/filtering data ranges (e.g., 30d vs 90d vs 365d) must be performed client-side using JavaScript on the deserialized payload without additional network calls.
 9. Because this repo builds Astro directly into `docs/`, scrub transient build outputs before each build (`docs/.prerender`, `docs/_astro`, generated page directories) so repeated builds do not reuse stale hashed chunks.
-10. When splitting one contract across multiple pages (for example `/upstream` vs `/bluefin`), keep one source dataset and apply page-level filters in shared model code. Do not fork collector schemas just to support route splits.
+10. When splitting one contract across multiple pages, keep one source dataset and apply page-level filters in shared model code. Do not fork collector schemas just to support route splits.
 11. Preserve explicit unavailable states and evidence links after filtering. Filtered pages must hide out-of-scope families, not hide missing data within in-scope families.
 12. This site is served on the custom domain root (`factory.projectbluefin.io`). Keep Astro paths root-relative (`/`) and still use `import.meta.env.BASE_URL` so links/scripts stay correct if hosting topology changes.
 13. Mark every browser-runtime script that must escape Cloudflare Rocket Loader with `data-cfasync="false"`, including bundled Astro page scripts, not just the legacy dashboard shell.
@@ -111,7 +111,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - [ ] ECharts mounts at least one real chart from published fields and shows explicit empty states otherwise
 - [ ] Detail cards link to `results_path`, `source_url`, and screenshot/workflow evidence when present
 - [ ] Repeated `npm run build` runs succeed from the same worktree without stale chunk imports
-- [ ] Build cleanup includes every generated route directory (for example `docs/upstream`, `docs/bluefin`, `docs/tests`, `docs/applications`)
+- [ ] Build cleanup includes every generated route directory (for example `docs/images`, `docs/tests`, `docs/applications`)
 - [ ] Built HTML prefixes Astro `_astro` assets with the active domain root path contract (currently `/_astro/*` on `factory.projectbluefin.io`)
 - [ ] Runtime script tags that must execute unmodified keep `data-cfasync="false"` in built HTML
 - [ ] Wide table sections span the full grid row so columns stay readable and scroll instead of collapsing

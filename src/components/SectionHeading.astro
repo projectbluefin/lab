@@ -1,0 +1,25 @@
+---
+interface Props {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  metadata?: string[];
+  class?: string;
+}
+
+const { eyebrow, title, description, metadata = [], class: className = "" } = Astro.props;
+---
+<div class:list={["section-heading", className]}>
+  <div>
+    {eyebrow && <p class="status-card__eyebrow">{eyebrow}</p>}
+    <h2>{title}</h2>
+    {description && <p>{description}</p>}
+  </div>
+  {metadata.length > 0 && (
+    <div class="section-heading__meta">
+      {metadata.map((item) => (
+        <span>{item}</span>
+      ))}
+    </div>
+  )}
+</div>

@@ -2,6 +2,7 @@
 import SiteLayout from '../layouts/SiteLayout.astro';
 import { loadApplicationsPageModel } from '../lib/applications-page';
 import { serializeJsonScript } from '../lib/json-script';
+import { execSync } from 'node:child_process';
 
 const baseUrl = import.meta.env.BASE_URL;
 const pageModel = loadApplicationsPageModel(
@@ -132,9 +133,12 @@ let discoveredFeatures: string[] = [];
 
 try {
   // Query projectbluefin/testsuite repo tree recursive
-  const treeRes = execSync('curl -s -H "User-Agent: lab-builder" --max-time 3 https://api.github.com/repos/projectbluefin/testsuite/git/trees/main?recursive=1', { encoding: 'utf8' });
+  const treeRes = execSync('curl -fs -H "User-Agent: lab-builder" --max-time 3 https://api.github.com/repos/projectbluefin/testsuite/git/trees/main?recursive=1', { encoding: 'utf8' });
   const treeData = JSON.parse(treeRes) as GithubTree;
-  discoveredFeatures = (treeData.tree || [])
+  if (!treeData || !treeData.tree || !Array.isArray(treeData.tree)) {
+    throw new Error("Rate limit or invalid response");
+  }
+  discoveredFeatures = treeData.tree
     .filter((entry) => entry.type === 'blob' && entry.path.endsWith('.feature'))
     .map((entry) => entry.path);
 } catch (e) {

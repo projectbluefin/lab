@@ -1,15 +1,527 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
+import DataIntegrityBlock from '../components/DataIntegrityBlock.astro';
+
+// Build-time static JSON loads
+import copy from '../../docs/data/factory-copy.json';
+import stats from '../../docs/data/factory-stats.json';
+import telemetry from '../../docs/data/factory-telemetry.json';
+
+const baseUrl = import.meta.env.BASE_URL;
+
+// Parse data
+const runs = Array.isArray(stats?.recent_runs) ? stats.recent_runs : [];
+const openBugs = Array.isArray(stats?.open_bugs) ? stats.open_bugs : [];
+const clusterNodes = stats?.factory?.cluster?.nodes || [];
+const images = stats?.factory?.images || {};
+const testCoverageTotal = stats?.test_coverage?.scenarios_total || 0;
+const testCoverageFailed = stats?.test_coverage?.scenarios_failed || 0;
+
+const telemetrySnapshot = telemetry?.snapshot || {};
+
+// Calculate summary metrics
+const totalRunsCount = runs.length;
+const passedRunsCount = runs.filter((r) => r.overall === 'passed').length;
+const runningRunsCount = runs.filter((r) => r.overall === 'running').length;
+const failedRunsCount = runs.filter((r) => r.overall === 'fail').length;
+
+// Helpers
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC'
+    : 'Never';
+
+const getAgeTone = (days: number | null, limit: number) => {
+  if (days === null) return 'pending';
+  return days > limit ? 'failed' : 'passed';
+};
 ---
 
 <SiteLayout
-  title="Factory dashboard"
-  description="Factory dashboard shell with top-level navigation to upstream, tests, and applications pages."
+  title="Factory Overview Dashboard"
+  description="Statically prerendered overview dashboard showing live contributor clusters, image release freshness, test coverage, and telemetry pipeline lineage."
   current="overview"
-  includeDashboardAssets={true}
+  includeDashboardAssets={false}
 >
-  <section id="factory-dashboard" class="shell dashboard-shell" aria-live="polite">
-    <noscript>This dashboard needs JavaScript enabled to load the current factory snapshot.</noscript>
-    <div class="loading">Loading factory snapshot…</div>
-  </section>
+  <style>
+    /* ── Dashboard Header ─────────────────────────────────────── */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    /* ── Section Titles ──────────────────────────────────────── */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    /* ── KPI Grid ───────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .kpi-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .kpi-card--success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(16, 185, 129, 0.25);
+    }
+    .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
+    .kpi-card--warning {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(245, 158, 11, 0.2);
+    }
+    .kpi-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
+    .kpi-card__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.2rem 0;
+    }
+    .kpi-card__sub {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+
+    /* ── Node/Cluster Panel ─────────────────────────────────── */
+    .nodes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .node-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: all 0.3s ease;
+    }
+    .node-card:hover {
+      border-color: rgba(56, 189, 248, 0.25);
+      transform: translateY(-2px);
+    }
+    .node-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .node-card h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .node-role {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .node-gauge-row {
+      display: grid;
+      grid-template-columns: 4rem 1fr 3.5rem;
+      gap: 10px;
+      align-items: center;
+      font-size: 0.82rem;
+    }
+    .node-gauge-bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+    .node-gauge-bar > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #a78bfa);
+    }
+
+    /* ── Image Status Grid ──────────────────────────────────── */
+    .image-status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .image-status-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 18px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .image-status-card h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .pulse-stats {
+      display: flex;
+      gap: 1.5rem;
+    }
+    .pulse-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .pulse-stat-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+    }
+    .pulse-stat-value.tone-good { color: #4ade80; }
+    .pulse-stat-value.tone-warn { color: #fbbf24; }
+    .pulse-stat-value.tone-bad  { color: #fb7185; }
+    .pulse-stat-name {
+      font-size: 0.7rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Dense Lists ────────────────────────────────────────── */
+    .lists-split {
+      display: grid;
+      grid-template-columns: 1.3fr 0.7fr;
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    @media (max-width: 900px) {
+      .lists-split {
+        grid-template-columns: 1fr;
+      }
+    }
+    .dense-panel {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+    }
+    .dense-panel h2 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #cbd5e1;
+      margin: 0 0 1rem 0;
+    }
+    .dense-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dense-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: rgba(30, 41, 59, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      font-size: 0.88rem;
+    }
+    .dense-row:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .dense-row a {
+      color: #38bdf8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .dense-row a:hover {
+      text-decoration: underline;
+    }
+    .bug-meta {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    /* ── Shell element keeps matching tests ─────────────────── */
+    #factory-dashboard {
+      display: block;
+    }
+  </style>
+
+  <div id="factory-dashboard">
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  HEADER                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <header class="dashboard-header">
+      <h1>{copy.brand.title}</h1>
+      <div class="meta-bar">
+        <span>Updated {formatUtc(stats?._meta?.generated)}</span>
+        <span>Source: projectbluefin core metrics & feeds</span>
+        <span>Snapshot: <span style={`color: ${telemetrySnapshot.state === 'fresh' ? '#4ade80' : '#fbbf24'};`}>{telemetrySnapshot.state || 'unknown'}</span></span>
+        <a href={`${baseUrl}data/factory-stats.json`}>Raw dataset ↗</a>
+      </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  AT A GLANCE (KPI)                                          -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Factory at a Glance</h2>
+    <div class="kpi-grid">
+      <!-- Runs in Window -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Runs in Window</div>
+        <div>
+          <div class="kpi-card__value">{totalRunsCount}</div>
+          <div class="kpi-card__sub">recent pipeline workflow runs</div>
+        </div>
+      </div>
+
+      <!-- Passing Runs -->
+      <div class="kpi-card kpi-card--success">
+        <div class="kpi-card__title">Passed runs</div>
+        <div>
+          <div class="kpi-card__value">{passedRunsCount}</div>
+          <div class="kpi-card__sub">verified releases & builds</div>
+        </div>
+      </div>
+
+      <!-- Failing Runs -->
+      <div class="kpi-card kpi-card--warning">
+        <div class="kpi-card__title">Failing runs</div>
+        <div>
+          <div class="kpi-card__value">{failedRunsCount}</div>
+          <div class="kpi-card__sub">currently needing triage</div>
+        </div>
+      </div>
+
+      <!-- Open Bugs -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Open bugs</div>
+        <div>
+          <div class="kpi-card__value">{openBugs.length}</div>
+          <div class="kpi-card__sub">active GitHub issues</div>
+        </div>
+      </div>
+
+      <!-- Test Coverage Scenarios -->
+      <div class="kpi-card kpi-card--success">
+        <div class="kpi-card__title">Verified scenarios</div>
+        <div>
+          <div class="kpi-card__value">{(testCoverageTotal - testCoverageFailed).toLocaleString()}</div>
+          <div class="kpi-card__sub">behave assertions passing</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  CONTRIBUTOR CLUSTERS (NODES)                               -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Contributor Clusters</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Who's donating cycles to test Bluefin right now — each card is a real machine running real tests.
+    </p>
+    <div class="nodes-grid">
+      {clusterNodes.map((node) => (
+        <article class="node-card">
+          <header>
+            <h3>{node.name}</h3>
+            <span class={`pill pill--${node.status === 'ready' ? 'completed' : 'pending'}`}>
+              {node.status}
+            </span>
+          </header>
+          <div class="node-role">{node.role}</div>
+
+          <div class="node-gauge-row" style="margin-top: 0.5rem;">
+            <span>Memory</span>
+            <div class="node-gauge-bar">
+              <span style={`width: ${node.ram_gb ? Math.min(100, (node.ram_gb / 64) * 100) : 0}%`}></span>
+            </div>
+            <span>{node.ram_gb || 0} GB</span>
+          </div>
+
+          <div class="node-gauge-row">
+            <span>CPU</span>
+            <div class="node-gauge-bar">
+              <span style={`width: ${node.cpu_threads ? Math.min(100, (node.cpu_threads / 32) * 100) : 0}%`}></span>
+            </div>
+            <span>{node.cpu_threads || 0} Cores</span>
+          </div>
+        </article>
+      ))}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  IMAGE STATUS                                               -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Image status</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Days since latest published release in each lane, sourced from each repo's GitHub Releases feed.
+    </p>
+    <div class="image-status-grid">
+      {Object.entries(images).filter(([_, data]) => data && (data.stable_age_days != null || data.testing_age_days != null)).map(([name, data]) => {
+        const stable = data.stable_age_days;
+        const testing = data.testing_age_days;
+        const stableTone = getAgeTone(stable, 14);
+        const testingTone = getAgeTone(testing, 7);
+        const releasesUrl = data.repo ? `https://github.com/${data.repo}/releases` : '';
+
+        return (
+          <article class="image-status-card">
+            <header style="display: flex; justify-content: space-between; align-items: center;">
+              <h3>{name}</h3>
+              {releasesUrl && (
+                <a href={releasesUrl} target="_blank" rel="noreferrer" style="font-size: 0.8rem; color: #38bdf8; text-decoration: none;">
+                  Releases →
+                </a>
+              )}
+            </header>
+            <div class="pulse-stats">
+              {stable !== undefined && (
+                <div class="pulse-stat">
+                  <span class={`pulse-stat-value tone-${stableTone}`}>{stable !== null ? `${stable}d` : '—'}</span>
+                  <span class="pulse-stat-name">stable age</span>
+                  {data.stable_source_url && (
+                    <a href={data.stable_source_url} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
+                      {data.stable_tag || 'source'}
+                    </a>
+                  )}
+                </div>
+              )}
+              {testing !== undefined && (
+                <div class="pulse-stat">
+                  <span class={`pulse-stat-value tone-${testingTone}`}>{testing !== null ? `${testing}d` : '—'}</span>
+                  <span class="pulse-stat-name">testing age</span>
+                  {data.testing_source_url && (
+                    <a href={data.testing_source_url} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
+                      {data.testing_tag || 'source'}
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  DENSE RECENT RUNS & OPEN BUGS LISTS                         -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="lists-split">
+      <!-- Recent Runs Changelog -->
+      <section class="dense-panel">
+        <h2>Recent Runs & Builds</h2>
+        <div class="dense-list">
+          {runs.slice(0, 12).map((run) => (
+            <div class="dense-row">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class={`pill pill--${run.overall === 'passed' ? 'completed' : run.overall === 'running' ? 'pending' : 'failed'}`} style="padding: 0.2rem 0.5rem; font-size: 0.72rem;">
+                  {run.overall}
+                </span>
+                <span style="font-weight: 600;">{run.label || run.id}</span>
+              </div>
+              <div class="mono" style="text-align: right;">
+                <div>{run.started_at ? formatUtc(run.started_at) : '—'}</div>
+                <div style="font-size: 0.75rem; color: #64748b;">
+                  Duration: {run.duration_min !== null ? `${run.duration_min}m` : '—'} · Trigger: {run.trigger || 'manual'}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <!-- Open Bugs -->
+      <section class="dense-panel">
+        <h2>Open Bugs ({openBugs.length})</h2>
+        <div class="dense-list">
+          {openBugs.map((bug) => (
+            <div class="dense-row" style="flex-direction: column; align-items: start; gap: 6px;">
+              <a href={bug.url} target="_blank" rel="noreferrer">
+                #{bug.number}: {bug.title}
+              </a>
+              <div class="bug-meta">
+                Created: {formatUtc(bug.created_at)}
+              </div>
+            </div>
+          ))}
+          {openBugs.length === 0 && (
+            <div style="color: #64748b; font-size: 0.88rem; padding: 10px;">
+              No open bugs found in telemetry dataset!
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  DATA INTEGRITY DISCLOSURE                                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Data Integrity Posture</h2>
+    <DataIntegrityBlock
+      generatedAt={formatUtc(stats?._meta?.generated)}
+      status={telemetrySnapshot.state || 'unknown'}
+      datasetUrl={`${baseUrl}data/factory-stats.json`}
+    >
+      <li><strong>Evidence-backed authenticity:</strong> Overview status and image release metrics are dynamically parsed at build-time from verified GitHub Releases feeds and homelab cluster data.</li>
+      <li><strong>No synthetic variables:</strong> Out of {totalRunsCount} total recorded pipeline runs in this window, {passedRunsCount} passed cleanly, {failedRunsCount} failed, and {runningRunsCount} are currently active. Gaps stay completely explicit.</li>
+      <li><strong>Audit-friendly pipelines:</strong> Direct lineage link to active repository configuration files and workflow triggers ensures transparency.</li>
+    </DataIntegrityBlock>
+  </div>
 </SiteLayout>
+

@@ -15,8 +15,39 @@ const serializedModel = serializeJsonScript(model);
 <SiteLayout
   title="Bluefin upstream"
   description="Factory upstream status focused on Bluefin, Bluefin-LTS, and Dakota image streams."
-  current="upstream"
+  current="bluefin"
 >
+  <style>
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+  </style>
+
+  <header class="dashboard-header">
+    <h1>Bluefin Upstream Status</h1>
+    <div class="meta-bar">
+      <span>Status of tracked Bluefin image streams</span>
+    </div>
+  </header>
+
   <section class="upstream-summary-grid" aria-label="Upstream summary metrics">
     {model.summaryMetrics.map((metric: any) => (
       <article class="status-card upstream-metric-card">

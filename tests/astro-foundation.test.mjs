@@ -26,6 +26,7 @@ test('Astro build emits multipage factory routes into docs', () => {
     'docs/homebrew/index.html',
     'docs/adoption/index.html',
     'docs/userspace/index.html',
+    'docs/about/index.html',
   ];
 
   for (const file of expectedFiles) {
@@ -33,10 +34,13 @@ test('Astro build emits multipage factory routes into docs', () => {
   }
 
   assert.match(html('docs/index.html'), /factory-dashboard/, 'overview keeps the dashboard shell');
-  assert.doesNotMatch(html('docs/index.html'), /Factory overview/i, 'overview hero box is removed');
+  assert.doesNotMatch(html('docs/index.html'), /factory-dashboard\.js/, 'legacy dashboard script is removed');
+  assert.doesNotMatch(html('docs/index.html'), /factory-dashboard\.css/, 'legacy dashboard style is removed');
+  assert.match(html('docs/index.html'), /class="kpi-grid"/, 'overview renders build-time KPI cards');
+  assert.match(html('docs/index.html'), /class="nodes-grid"/, 'overview renders contributor nodes');
+  assert.match(html('docs/index.html'), /class="image-status-grid"/, 'overview renders image status section');
   assert.match(html('docs/index.html'), /href="\/upstream\/"/, 'overview links to upstream at domain root');
-  assert.match(html('docs/index.html'), /src="\/assets\/factory-dashboard\.js" defer data-cfasync="false"/, 'overview keeps Cloudflare-safe dashboard script');
-  assert.doesNotMatch(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav no longer shows Overview tab');
+  assert.match(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav shows Overview tab');
   assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+" data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
   assert.match(html('docs/upstream/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'upstream page keeps Cloudflare-safe chart script');
   assert.match(html('docs/bluefin/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'bluefin page keeps Cloudflare-safe chart script');
@@ -48,6 +52,7 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/applications/index.html'), /Applications/, 'applications page renders');
   assert.match(html('docs/homebrew/index.html'), /Homebrew/, 'homebrew page renders');
   assert.match(html('docs/adoption/index.html'), /Adoption/, 'adoption page renders');
+  assert.match(html('docs/about/index.html'), /Bluefin QA — Methodology/i, 'about page renders methodology');
   assert.match(html('docs/applications/index.html'), /Bazaar/, 'applications page calls out Bazaar scope');
   assert.match(html('docs/index.html'), /href="\/homebrew\/"/, 'overview links to homebrew at domain root');
   assert.match(html('docs/index.html'), /href="\/adoption\/"/, 'overview links to adoption at domain root');

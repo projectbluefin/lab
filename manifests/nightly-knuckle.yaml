@@ -9,12 +9,12 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 spec:
+  suspend: true
   schedules:
     - "30 3 * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
-  suspend: false
   workflowMetadata:
     labels:
       app.kubernetes.io/part-of: bluefin-test-suite

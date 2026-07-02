@@ -42,60 +42,70 @@ spec:
           import tarfile
           import urllib.request
           from pathlib import Path
+    
+          def normalize_results(data, ignored_services):
+            ignored = {item for item in ignored_services.split(",") if item}
+            results = data.get("results") or []
+            data["results"] = [
+              item for item in results
+              if item.get("kind") != "Service" or item.get("name") not in ignored
+            ]
+            return data
 
-          k8sgpt_version = "v0.4.24"
-          namespace = "{{workflow.parameters.namespace}}"
-          filters = "{{workflow.parameters.filters}}"
-          ignored_services = "{{workflow.parameters.ignored-services}}"
-          results_dir = Path("/tmp/results")
-          bin_dir = Path("/tmp/bin")
-          results_dir.mkdir(parents=True, exist_ok=True)
-          bin_dir.mkdir(parents=True, exist_ok=True)
 
-          if namespace and not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", namespace):
-            raise SystemExit(f"invalid namespace parameter: {namespace}")
-          if filters and not re.fullmatch(r"[A-Za-z,]+", filters):
-            raise SystemExit(f"invalid filters parameter: {filters}")
-          if ignored_services and not re.fullmatch(r"[a-z0-9./,_-]+", ignored_services):
-            raise SystemExit(f"invalid ignored-services parameter: {ignored_services}")
+          def main():
+            k8sgpt_version = "v0.4.24"
+            namespace = "{{workflow.parameters.namespace}}"
+            filters = "{{workflow.parameters.filters}}"
+            ignored_services = "{{workflow.parameters.ignored-services}}"
+            results_dir = Path("/tmp/results")
+            bin_dir = Path("/tmp/bin")
+            results_dir.mkdir(parents=True, exist_ok=True)
+            bin_dir.mkdir(parents=True, exist_ok=True)
+    
+            if namespace and not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", namespace):
+              raise SystemExit(f"invalid namespace parameter: {namespace}")
+            if filters and not re.fullmatch(r"[A-Za-z,]+", filters):
+              raise SystemExit(f"invalid filters parameter: {filters}")
+            if ignored_services and not re.fullmatch(r"[a-z0-9./,_-]+", ignored_services):
+              raise SystemExit(f"invalid ignored-services parameter: {ignored_services}")
+    
+            arch = os.uname().machine
+            if arch in {"x86_64", "amd64"}:
+              archive = "k8sgpt_Linux_x86_64.tar.gz"
+            elif arch in {"aarch64", "arm64"}:
+              archive = "k8sgpt_Linux_arm64.tar.gz"
+            else:
+              raise SystemExit(f"unsupported architecture: {arch}")
+    
+            archive_path = Path("/tmp/k8sgpt.tgz")
+            url = f"https://github.com/k8sgpt-ai/k8sgpt/releases/download/{k8sgpt_version}/{archive}"
+            with urllib.request.urlopen(url, timeout=60) as response, archive_path.open("wb") as fh:
+              shutil.copyfileobj(response, fh)
+    
+            with tarfile.open(archive_path, "r:gz") as tf:
+              member = tf.getmember("k8sgpt")
+              tf.extract(member, bin_dir)
+            k8sgpt = bin_dir / "k8sgpt"
+            k8sgpt.chmod(0o755)
+    
+            cmd = [str(k8sgpt), "analyze", "--output=json"]
+            if filters:
+              cmd += ["--filter", filters]
+            if namespace:
+              cmd += ["--namespace", namespace]
+    
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            data = normalize_results(json.loads(result.stdout), ignored_services)
+    
+            with (results_dir / "k8sgpt-results.json").open("w", encoding="utf-8") as fh:
+              json.dump(data, fh)
+    
+            print(f"k8sgpt findings: {len(data['results'])}")
 
-          arch = os.uname().machine
-          if arch in {"x86_64", "amd64"}:
-            archive = "k8sgpt_Linux_x86_64.tar.gz"
-          elif arch in {"aarch64", "arm64"}:
-            archive = "k8sgpt_Linux_arm64.tar.gz"
-          else:
-            raise SystemExit(f"unsupported architecture: {arch}")
 
-          archive_path = Path("/tmp/k8sgpt.tgz")
-          url = f"https://github.com/k8sgpt-ai/k8sgpt/releases/download/{k8sgpt_version}/{archive}"
-          with urllib.request.urlopen(url, timeout=60) as response, archive_path.open("wb") as fh:
-            shutil.copyfileobj(response, fh)
-
-          with tarfile.open(archive_path, "r:gz") as tf:
-            member = tf.getmember("k8sgpt")
-            tf.extract(member, bin_dir)
-          k8sgpt = bin_dir / "k8sgpt"
-          k8sgpt.chmod(0o755)
-
-          cmd = [str(k8sgpt), "analyze", "--output=json"]
-          if filters:
-            cmd += ["--filter", filters]
-          if namespace:
-            cmd += ["--namespace", namespace]
-
-          result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-          data = json.loads(result.stdout)
-          ignored = {item for item in ignored_services.split(",") if item}
-          data["results"] = [
-            item for item in data.get("results", [])
-            if item.get("kind") != "Service" or item.get("name") not in ignored
-          ]
-
-          with (results_dir / "k8sgpt-results.json").open("w", encoding="utf-8") as fh:
-            json.dump(data, fh)
-
-          print(f"k8sgpt findings: {len(data['results'])}")
+          if __name__ == "__main__":
+            main()
         resources:
           requests:
             cpu: 100m

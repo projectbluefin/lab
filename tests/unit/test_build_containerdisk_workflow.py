@@ -22,3 +22,8 @@ def test_build_containerdisk_prepares_podman_tempdir_before_bootable_derivation(
 
     assert "mkdir -p /var/tmp" in workflow
     assert 'export TMPDIR="/var/tmp"' in workflow
+    assert (
+        "bootc exec-in-host-mount-namespace mkdir -p /var/tmp\\n"
+        "export TMPDIR=/var/tmp\\n"
+        'exec bootc exec-in-host-mount-namespace %s "$@"\\n'
+    ) in workflow

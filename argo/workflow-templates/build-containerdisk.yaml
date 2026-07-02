@@ -292,10 +292,10 @@ spec:
         for TOOL in podman skopeo; do
           if ! command -v "${TOOL}" >/dev/null 2>&1; then
             if [ "${TOOL}" = skopeo ]; then
-              printf '#!/bin/sh\nexec bootc exec-in-host-mount-namespace %s --tls-verify=false "$@"\n' "${TOOL}" \
+              printf '#!/bin/sh\nbootc exec-in-host-mount-namespace mkdir -p /var/tmp\nexport TMPDIR=/var/tmp\nexec bootc exec-in-host-mount-namespace %s --tls-verify=false "$@"\n' "${TOOL}" \
                 > "/var/usrlocal/bin/${TOOL}"
             else
-              printf '#!/bin/sh\nexec bootc exec-in-host-mount-namespace %s "$@"\n' "${TOOL}" \
+              printf '#!/bin/sh\nbootc exec-in-host-mount-namespace mkdir -p /var/tmp\nexport TMPDIR=/var/tmp\nexec bootc exec-in-host-mount-namespace %s "$@"\n' "${TOOL}" \
                 > "/var/usrlocal/bin/${TOOL}"
             fi
             chmod +x "/var/usrlocal/bin/${TOOL}"

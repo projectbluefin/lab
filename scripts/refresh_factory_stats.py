@@ -340,6 +340,7 @@ def main():
         except Exception:
             existing_nodes = {}
         usage_by_node = {}
+        seen_nodes = set()
         if metrics_doc and isinstance(metrics_doc.get('items'), list):
             for item in metrics_doc.get('items', []):
                 md = item.get('metadata') or {}
@@ -373,6 +374,7 @@ def main():
                 cpu_pct = round((usage.get('cpu_m') / cap_cpu_m) * 100, 1)
             if usage.get('mem_b') is not None and cap_mem_b and cap_mem_b > 0:
                 mem_pct = round((usage.get('mem_b') / cap_mem_b) * 100, 1)
+            seen_nodes.add(node_name)
             prev = existing_nodes.get(node_name, {})
             load_hist = list(prev.get('load_1m_history') or [])
             if cpu_pct is not None:
@@ -390,6 +392,22 @@ def main():
                 'cpu_usage_pct': cpu_pct,
                 'mem_usage_pct': mem_pct,
                 'load_1m_history': load_hist,
+            })
+        for node_name, prev in existing_nodes.items():
+            if node_name in seen_nodes:
+                continue
+            nodes.append({
+                'name': node_name,
+                'status': 'not-ready',
+                'role': prev.get('role', 'worker'),
+                'ram_gb': prev.get('ram_gb'),
+                'cpu_threads': prev.get('cpu_threads'),
+                'os_image': prev.get('os_image'),
+                'kernel_version': prev.get('kernel_version'),
+                'kubelet_version': prev.get('kubelet_version'),
+                'cpu_usage_pct': prev.get('cpu_usage_pct'),
+                'mem_usage_pct': prev.get('mem_usage_pct'),
+                'load_1m_history': list(prev.get('load_1m_history') or []),
             })
         factory = stats.setdefault('factory', {})
         cluster = factory.setdefault('cluster', {})

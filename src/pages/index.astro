@@ -19,6 +19,9 @@ const testCoverageFailed = stats?.test_coverage?.scenarios_failed || 0;
 
 const telemetrySnapshot = telemetry?.snapshot || {};
 
+const getNodeStatusTone = (status) => (status === 'ready' ? 'ready' : 'not-ready');
+const formatNodeStatus = (status) => (status === 'ready' ? 'Ready' : 'Not ready');
+
 // Calculate summary metrics
 const totalRunsCount = runs.length;
 const passedRunsCount = runs.filter((r) => r.overall === 'passed').length;
@@ -380,11 +383,12 @@ const getAgeTone = (days: number | null, limit: number) => {
         <article class="node-card">
           <header>
             <h3>{node.name}</h3>
-            <span class={`pill pill--${node.status === 'ready' ? 'completed' : 'pending'}`}>
-              {node.status}
+            <span class={`pill pill--${getNodeStatusTone(node.status)}`}>
+              {formatNodeStatus(node.status)}
             </span>
           </header>
           <div class="node-role">{node.role}</div>
+          <div class="node-role" style="margin-top: 0.1rem; color: #64748b;">{node.os_image || 'Cluster snapshot'}</div>
 
           <div class="node-gauge-row" style="margin-top: 0.5rem;">
             <span>Memory</span>

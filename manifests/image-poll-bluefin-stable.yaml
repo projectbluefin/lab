@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
+  suspend: true
   schedules:
     - "4/10 * * * *"
   timezone: "UTC"
@@ -28,6 +29,8 @@ spec:
         - name: image
           value: "ghcr.io/projectbluefin/bluefin"
         - name: image-tag
+          value: "stable"
+        - name: containerdisk-tag
           value: "stable"
         - name: state-key
           value: "digest-bluefin-stable"

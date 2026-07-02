@@ -1,0 +1,35 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_image_poller_templates_do_not_self_reference_containerdisk_tag_defaults():
+    bluefin_pipeline = (ROOT / "argo/workflow-templates/bluefin-qa-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+    image_poller = (ROOT / "argo/workflow-templates/image-poller.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        '- name: containerdisk-tag\n      value: "{{workflow.parameters.image-tag}}"'
+        not in bluefin_pipeline
+    )
+    assert (
+        '- name: containerdisk-tag\n        value: "{{workflow.parameters.image-tag}}"'
+        not in image_poller
+    )
+
+
+def test_image_poller_cron_manifests_set_containerdisk_tag_explicitly():
+    missing = []
+
+    for manifest in sorted((ROOT / "manifests").glob("image-poll-*.yaml")):
+        content = manifest.read_text(encoding="utf-8")
+        if "workflowTemplateRef:\n      name: image-poller" not in content:
+            continue
+        if "name: containerdisk-tag" not in content:
+            missing.append(manifest.name)
+
+    assert not missing, f"missing containerdisk-tag in: {', '.join(missing)}"

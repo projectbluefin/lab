@@ -27,3 +27,14 @@ def test_build_containerdisk_prepares_podman_tempdir_before_bootable_derivation(
         "export TMPDIR=/var/tmp\\n"
         'exec bootc exec-in-host-mount-namespace %s "$@"\\n'
     ) in workflow
+
+
+def test_build_containerdisk_bootable_derivation_does_not_require_boot_vmlinuz():
+    workflow = (ROOT / "argo/workflow-templates/build-containerdisk.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'test -e \\"/usr/lib/modules/\\${kver}/vmlinuz\\" || cp /boot/vmlinuz '
+        '\\"/usr/lib/modules/\\${kver}/vmlinuz\\"'
+    ) in workflow

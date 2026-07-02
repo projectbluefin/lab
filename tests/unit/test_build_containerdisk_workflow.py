@@ -13,3 +13,12 @@ def test_build_containerdisk_uses_writable_usrlocal_overlay_for_wrapper_tools():
     assert 'export PATH="/var/usrlocal/sbin:/var/usrlocal/bin:${PATH}"' in workflow
     assert '"/usr/local/sbin/${TOOL}"' not in workflow
     assert '"/usr/local/bin/${TOOL}"' not in workflow
+
+
+def test_build_containerdisk_prepares_podman_tempdir_before_bootable_derivation():
+    workflow = (ROOT / "argo/workflow-templates/build-containerdisk.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "mkdir -p /var/tmp" in workflow
+    assert 'export TMPDIR="/var/tmp"' in workflow

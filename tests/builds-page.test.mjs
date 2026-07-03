@@ -27,23 +27,18 @@ test('builds page renders pipeline rows, sparkline mounts, nav link, and explici
   );
   assert.match(
     buildsPage,
-    /bluefin-qa-pipeline/i,
-    'builds page includes the bluefin QA pipeline',
+    /Bluefin\s*(&mdash;|—|-)\s*stable/i,
+    'builds page includes the Bluefin stable pipeline',
   );
   assert.match(
     buildsPage,
-    /dakota-qa-pipeline/i,
-    'builds page includes the dakota QA pipeline',
+    /Bluefin LTS/i,
+    'builds page includes the Bluefin LTS pipelines',
   );
   assert.match(
     buildsPage,
-    /knuckle-qa-pipeline/i,
-    'builds page includes the knuckle QA pipeline',
-  );
-  assert.match(
-    buildsPage,
-    /build-containerdisk/i,
-    'builds page includes the containerdisk build template',
+    /Dakota/i,
+    'builds page includes the Dakota pipeline',
   );
   assert.match(
     buildsPage,
@@ -52,18 +47,13 @@ test('builds page renders pipeline rows, sparkline mounts, nav link, and explici
   );
   assert.match(
     buildsPage,
-    /pill--unavailable/,
-    'builds page renders explicit unavailable status pills until a live snapshot lands',
+    /pill--(passed|failed|pending)/,
+    'builds page renders real status pills sourced from GitHub Actions run history',
   );
   assert.match(
     buildsPage,
-    /Cluster snapshot is stale/i,
-    'builds page discloses stale cluster snapshot state',
-  );
-  assert.match(
-    buildsPage,
-    /ghost-runners/i,
-    'builds page explains the self-hosted runner bridge in the stale banner',
+    /GitHub Actions/i,
+    'builds page discloses that data comes from the public GitHub Actions API',
   );
   assert.match(
     buildsPage,
@@ -77,8 +67,8 @@ test('builds page renders pipeline rows, sparkline mounts, nav link, and explici
   );
   assert.match(
     buildsPage,
-    /Template ↗/,
-    'builds page links each pipeline to its workflow template source',
+    /Workflow source ↗/,
+    'builds page links each pipeline to its workflow source file',
   );
   assert.match(
     buildsPage,

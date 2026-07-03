@@ -917,64 +917,74 @@ def build_adoption_metrics(root: Path, collected_at: str) -> dict:
     }
 
 
-# Argo Workflows run on the ghost cluster (LAN only, see manifests/argo-server-nodeport.yaml).
-# The catalog below is the fixed set of build pipelines this page tracks; each is joined
-# against docs/data/factory-stats.json['build_history'], which is populated by the
-# self-hosted (ghost-runners) snapshot job in .github/workflows/update-test-results.yml.
+# The real, currently-shipping OS image build pipelines: actual GitHub Actions
+# workflows in the image repos, publicly queryable via the GitHub REST API from
+# any GitHub-hosted runner (no cluster/LAN/ARC access needed at all). Each is
+# joined against docs/data/factory-stats.json['image_builds'], populated by
+# fetch_image_build_history() in scripts/refresh_factory_stats.py.
 BUILD_PIPELINE_CATALOG = [
     {
-        'id': 'bluefin-qa-pipeline',
-        'display_name': 'Bluefin QA pipeline',
-        'description': 'Build containerDisk, provision a Bluefin VM, run the GNOME smoke/developer/software/system suites.',
-        'template_path': 'argo/workflow-templates/bluefin-qa-pipeline.yaml',
+        'id': 'bluefin-stable',
+        'display_name': 'Bluefin — stable',
+        'description': 'Bluefin main-branch image build (published as the :stable tag).',
+        'repo': 'projectbluefin/bluefin',
+        'workflow_path': '.github/workflows/build-image-testing.yml',
     },
     {
-        'id': 'dakota-qa-pipeline',
-        'display_name': 'Dakota QA pipeline',
-        'description': 'Pull the Dakota image from ghcr.io/projectbluefin/dakota, provision a VM, and run the full test suite.',
-        'template_path': 'argo/workflow-templates/dakota-qa-pipeline.yaml',
+        'id': 'bluefin-testing',
+        'display_name': 'Bluefin — testing',
+        'description': 'Bluefin testing-branch image build (published as the :testing tag).',
+        'repo': 'projectbluefin/bluefin',
+        'workflow_path': '.github/workflows/build-image-testing.yml',
     },
     {
-        'id': 'knuckle-qa-pipeline',
-        'display_name': 'Knuckle QA pipeline',
-        'description': 'Provision a Flatcar VM and run the Knuckle installer test suite end to end.',
-        'template_path': 'argo/workflow-templates/knuckle-qa-pipeline.yaml',
+        'id': 'bluefin-next',
+        'display_name': 'Bluefin — next (sealed)',
+        'description': 'Bluefin sealed/next preview image build.',
+        'repo': 'projectbluefin/bluefin',
+        'workflow_path': '.github/workflows/build-image-next.yml',
     },
     {
-        'id': 'bst-qa-pipeline',
-        'display_name': 'BuildStream QA pipeline',
-        'description': 'BuildStream 2.x distributed build with bazel-remote caching, then QA the resulting artifact.',
-        'template_path': 'argo/workflow-templates/bst-qa-pipeline.yaml',
+        'id': 'bluefin-lts-stable',
+        'display_name': 'Bluefin LTS — stable',
+        'description': 'Bluefin LTS main-branch image build (published as the :stable tag).',
+        'repo': 'projectbluefin/bluefin-lts',
+        'workflow_path': '.github/workflows/build-regular.yml',
     },
     {
-        'id': 'build-containerdisk',
-        'display_name': 'containerDisk build',
-        'description': 'Build a bootc image into a KubeVirt containerDisk artifact for VM provisioning.',
-        'template_path': 'argo/workflow-templates/build-containerdisk.yaml',
+        'id': 'bluefin-lts-testing',
+        'display_name': 'Bluefin LTS — testing',
+        'description': 'Bluefin LTS testing-branch image build (published as the :testing tag).',
+        'repo': 'projectbluefin/bluefin-lts',
+        'workflow_path': '.github/workflows/build-regular.yml',
     },
     {
-        'id': 'build-cd-sync',
-        'display_name': 'containerDisk sync',
-        'description': 'Sync a published stable/testing lane into a ready-to-boot containerDisk image.',
-        'template_path': 'argo/workflow-templates/build-containerdisk.yaml',
+        'id': 'bluefin-lts-hwe',
+        'display_name': 'Bluefin LTS HWE',
+        'description': 'Bluefin LTS build with the Hardware Enablement (HWE) kernel.',
+        'repo': 'projectbluefin/bluefin-lts',
+        'workflow_path': '.github/workflows/build-regular-hwe.yml',
     },
     {
-        'id': 'flatcar-kernel-build',
-        'display_name': 'Flatcar kernel build',
-        'description': 'Build a custom Flatcar kernel/initramfs for the Knuckle and Flatcar node-onboarding lanes.',
-        'template_path': 'argo/workflow-templates/flatcar-kernel-build.yaml',
+        'id': 'bluefin-lts-nvidia',
+        'display_name': 'Bluefin LTS Nvidia',
+        'description': 'Bluefin LTS build with proprietary Nvidia driver layering.',
+        'repo': 'projectbluefin/bluefin-lts',
+        'workflow_path': '.github/workflows/build-nvidia.yml',
     },
     {
-        'id': 'bluefin-server-build-pipeline',
-        'display_name': 'Bluefin Server build pipeline',
-        'description': 'Build the bluefin-server-ddi payload and the bootable bluefin-server-installer artifact.',
-        'template_path': 'argo/workflow-templates/bluefin-server-build-pipeline.yaml',
+        'id': 'dakota',
+        'display_name': 'Dakota',
+        'description': 'Dakota bootc image build (x86_64), published to ghcr.io/projectbluefin/dakota.',
+        'repo': 'projectbluefin/dakota',
+        'workflow_path': '.github/workflows/build.yml',
     },
     {
-        'id': 'dakota-build-pipeline',
-        'display_name': 'Dakota build pipeline',
-        'description': 'Build the Dakota bootc image and publish it to ghcr.io/projectbluefin/dakota.',
-        'template_path': 'argo/workflow-templates/dakota-build-pipeline.yaml',
+        'id': 'dakota-aarch64',
+        'display_name': 'Dakota (aarch64)',
+        'description': 'Dakota bootc image build for the aarch64 architecture.',
+        'repo': 'projectbluefin/dakota',
+        'workflow_path': '.github/workflows/build-aarch64.yml',
     },
 ]
 
@@ -982,13 +992,11 @@ BUILD_PIPELINE_CATALOG = [
 def build_builds_matrix(root: Path, collected_at: str) -> dict:
     factory_stats_path = root / 'docs/data/factory-stats.json'
     factory_stats = load_json(factory_stats_path) if factory_stats_path.exists() else {}
-    build_history = factory_stats.get('build_history') or {}
-    snapshot_meta = factory_stats.get('_meta') or {}
-    argo_ui_base = 'http://192.168.1.102:32746/workflows/argo'
+    image_builds = factory_stats.get('image_builds') or {}
 
     rows = []
     for entry in BUILD_PIPELINE_CATALOG:
-        history = build_history.get(entry['id']) or []
+        history = image_builds.get(entry['id']) or []
         history_points = [
             {
                 'id': run.get('id'),
@@ -997,6 +1005,7 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
                 'finished_at': run.get('finished_at'),
                 'duration_min': run.get('duration_min'),
                 'run_url': run.get('run_url'),
+                'branch': run.get('branch'),
             }
             for run in history
         ]
@@ -1013,10 +1022,8 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
         else:
             state = 'unavailable'
             state_reason = (
-                'No live Argo snapshot has captured a run of this pipeline yet. '
-                'The self-hosted ghost-runners snapshot job refreshes docs/data/factory-stats.json '
-                'build_history on the existing 5-minute cron; see _meta.freshness for the last '
-                'successful cluster snapshot.'
+                'No GitHub Actions run has been published yet for this workflow/branch '
+                'combination, or the GitHub API request failed on the last collector run.'
             )
 
         rows.append(
@@ -1029,15 +1036,15 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
                 'success_rate': success_rate,
                 'avg_duration_min': avg_duration_min,
                 'runs_tracked': len(history_points),
-                'argo_ui_url': f"{argo_ui_base}/{last_run['id']}" if last_run else None,
+                'ci_url': last_run.get('run_url') if last_run else f"https://github.com/{entry['repo']}/actions/workflows/{Path(entry['workflow_path']).name}",
                 'state': state,
                 'state_reason': state_reason,
-                'source_url': repo_blob_url(entry['template_path']),
+                'source_url': f"https://github.com/{entry['repo']}/blob/main/{entry['workflow_path']}",
                 'collected_at': collected_at,
                 'derivation': (
                     "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json "
-                    f"build_history['{entry['id']}'], which the self-hosted ghost-runners "
-                    'snapshot job populates from a live Argo Workflow API query.'
+                    f"image_builds['{entry['id']}'], populated by a live GitHub Actions "
+                    f"workflow-runs query against {entry['repo']}."
                 ),
             }
         )
@@ -1050,16 +1057,10 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
         'schema_version': 'v1',
         '_meta': {
             'page': 'builds',
-            'description': 'Collector-derived contract for the cluster Builds page.',
+            'description': 'Collector-derived contract for the OS image Builds page.',
             'generated_at': collected_at,
             'starter_artifact': False,
             'status': 'partial' if unavailable_rows else 'ready',
-            'cluster_snapshot': {
-                'refreshed_at': snapshot_meta.get('refreshed_at'),
-                'live_snapshot_ok': snapshot_meta.get('live_snapshot_ok', False),
-                'freshness': snapshot_meta.get('freshness'),
-                'source': 'ghost-runners self-hosted snapshot job (see .github/workflows/update-test-results.yml)',
-            },
         },
         'summary_metrics': [
             {
@@ -1069,7 +1070,7 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
                 'unit': 'count',
                 'state': 'available',
                 'state_reason': None,
-                'source_url': repo_blob_url('argo/workflow-templates'),
+                'source_url': repo_blob_url('scripts/generate_page_datasets.py'),
                 'collected_at': collected_at,
                 'derivation': 'Count entries in BUILD_PIPELINE_CATALOG.',
             },
@@ -1082,7 +1083,7 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
                 'state_reason': None,
                 'source_url': repo_blob_url('docs/data/factory-stats.json'),
                 'collected_at': collected_at,
-                'derivation': "Count rows whose factory-stats.json build_history entry is non-empty.",
+                'derivation': "Count rows whose factory-stats.json image_builds entry is non-empty.",
             },
             {
                 'id': 'build_runs_tracked',

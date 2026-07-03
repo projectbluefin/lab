@@ -22,19 +22,12 @@ interface BuildRow {
   success_rate: number | null;
   avg_duration_min: number | null;
   runs_tracked: number;
-  argo_ui_url: string | null;
+  ci_url: string | null;
   state: string;
   state_reason: string | null;
   source_url: string;
   collected_at: string;
   derivation: string;
-}
-
-interface ClusterSnapshotMeta {
-  refreshed_at: string | null;
-  live_snapshot_ok: boolean;
-  freshness: { age_minutes: number; threshold_minutes: number; state: string } | null;
-  source: string;
 }
 
 interface BuildsContract {
@@ -44,7 +37,6 @@ interface BuildsContract {
     description: string;
     generated_at: string;
     status: string;
-    cluster_snapshot: ClusterSnapshotMeta;
   };
   summary_metrics: Array<{ id: string; label: string; value: number; unit: string }>;
   rows: BuildRow[];
@@ -55,8 +47,6 @@ const baseUrl = import.meta.env.BASE_URL;
 const rows = contract.rows;
 const availableRows = rows.filter((row) => row.state === 'available');
 const unavailableRows = rows.filter((row) => row.state !== 'available');
-const snapshot = contract._meta.cluster_snapshot;
-const snapshotStale = !snapshot.live_snapshot_ok || snapshot.freshness?.state === 'stale';
 
 const formatUtc = (value: string | null) =>
   value
@@ -86,7 +76,7 @@ const payloadJson = serializeJsonScript(chartPayload);
 
 <SiteLayout
   title="Builds"
-  description="Live build pipeline activity on the ghost KubeVirt/Argo cluster: last run, duration trend, and evidence links per pipeline."
+  description="Real OS image build pipelines for Bluefin, Bluefin LTS, and Dakota: last run, duration trend, and evidence links straight from GitHub Actions."
   current="builds"
 >
   <style>
@@ -113,17 +103,6 @@ const payloadJson = serializeJsonScript(chartPayload);
     }
     .meta-bar a { color: #38bdf8; text-decoration: none; }
     .meta-bar a:hover { text-decoration: underline; }
-
-    .stale-banner {
-      margin: 1rem 0 2rem 0;
-      padding: 0.9rem 1.25rem;
-      border-radius: 12px;
-      border: 1px solid rgba(245, 158, 11, 0.35);
-      background: rgba(245, 158, 11, 0.08);
-      color: #fbbf24;
-      font-size: 0.85rem;
-      line-height: 1.5;
-    }
 
     .section-title {
       font-size: 1.1rem;
@@ -241,21 +220,11 @@ const payloadJson = serializeJsonScript(chartPayload);
     <h1>Builds</h1>
     <div class="meta-bar">
       <span>Updated {formatUtc(contract._meta.generated_at)}</span>
-      <span>Source: live Argo Workflow snapshot on the ghost cluster</span>
+      <span>Source: GitHub Actions workflow runs (public API, no cluster access needed)</span>
       <span>Status: <span style="color: #fbbf24;">{contract._meta.status}</span></span>
       <a href={`${baseUrl}data/builds-matrix.json`}>Raw dataset ↗</a>
     </div>
   </div>
-
-  {snapshotStale && (
-    <div class="stale-banner">
-      <strong>Cluster snapshot is stale.</strong> Argo Workflows and the k8s API are LAN-only
-      (never reachable from GitHub-hosted runners); a self-hosted <code>ghost-runners</code> job
-      refreshes this data on the existing 5-minute cron. Last successful snapshot:
-      {' '}{formatUtc(snapshot.refreshed_at)}
-      {snapshot.freshness && ` (${snapshot.freshness.age_minutes} minutes ago)`}.
-    </div>
-  )}
 
   <h2 class="section-title">Builds at a Glance</h2>
   <div class="kpi-grid">
@@ -309,11 +278,11 @@ const payloadJson = serializeJsonScript(chartPayload);
                   <div id={`sparkline-${row.id}`} style="width: 100%; height: 100%;" role="img" aria-label={`Duration trend for ${row.display_name}`}></div>
                 </td>
                 <td>
-                  <a class="evidence-link" href={row.source_url} target="_blank" rel="noreferrer">Template ↗</a>
-                  {row.argo_ui_url && (
+                  <a class="evidence-link" href={row.source_url} target="_blank" rel="noreferrer">Workflow source ↗</a>
+                  {row.ci_url && (
                     <>
                       <br />
-                      <a class="evidence-link" href={row.argo_ui_url} target="_blank" rel="noreferrer">Last run in Argo ↗</a>
+                      <a class="evidence-link" href={row.ci_url} target="_blank" rel="noreferrer">Last run on GitHub ↗</a>
                     </>
                   )}
                   {row.state !== 'available' && (
@@ -332,9 +301,7 @@ const payloadJson = serializeJsonScript(chartPayload);
     <h4>Data Integrity Posture</h4>
     <ul class="integrity-list">
       <li><strong>{availableRows.length}</strong> of <strong>{rows.length}</strong> tracked pipelines have at least one published run.</li>
-      <li><strong>{unavailableRows.length}</strong> pipelines are waiting on their first live Argo snapshot capture.</li>
-      <li>Cluster snapshot source: <strong>{snapshot.source}</strong>.</li>
-      <li>Live snapshot ok: <strong>{String(snapshot.live_snapshot_ok)}</strong>, freshness state: <strong>{snapshot.freshness?.state ?? 'unknown'}</strong>.</li>
+      <li><strong>{unavailableRows.length}</strong> pipelines have no published GitHub Actions run yet for their tracked branch.</li>
     </ul>
     <a href={`${baseUrl}data/builds-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
   </div>

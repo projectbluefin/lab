@@ -2,10 +2,6 @@ import json, glob, datetime, sys, subprocess, re, os, hashlib
 from pathlib import Path
 
 def main():
-    # --cluster-only is used by the self-hosted (ghost-runners) snapshot job,
-    # which has LAN access to the Argo/kubectl APIs but does not have the
-    # GH issue/PR/bug artifacts the ubuntu-latest job prepares beforehand.
-    cluster_only = '--cluster-only' in sys.argv[1:]
     issue_count = int(sys.argv[1]) if sys.argv[1:] and sys.argv[1].isdigit() else 0
     pr_count    = int(sys.argv[2]) if sys.argv[2:] and sys.argv[2].isdigit() else 0
     merged_7d   = int(sys.argv[3]) if sys.argv[3:] and sys.argv[3].isdigit() else 0
@@ -302,23 +298,22 @@ def main():
         return summary
 
     # --- Open bugs ---
-    if not cluster_only:
-        with open('/tmp/bugs-raw.json') as f:
-            raw = json.load(f)
+    with open('/tmp/bugs-raw.json') as f:
+        raw = json.load(f)
 
-        existing = {b['number']: b for b in stats.get('open_bugs', [])}
-        bugs = []
-        for i in raw:
-            prev = existing.get(i['number'], {})
-            bugs.append({
-                'number':     i['number'],
-                'title':      i['title'],
-                'url':        i['url'],
-                'created_at': i['createdAt'],
-                'affects':    prev.get('affects', []),
-                'area':       prev.get('area', 'unknown'),
-            })
-        stats['open_bugs'] = bugs
+    existing = {b['number']: b for b in stats.get('open_bugs', [])}
+    bugs = []
+    for i in raw:
+        prev = existing.get(i['number'], {})
+        bugs.append({
+            'number':     i['number'],
+            'title':      i['title'],
+            'url':        i['url'],
+            'created_at': i['createdAt'],
+            'affects':    prev.get('affects', []),
+            'area':       prev.get('area', 'unknown'),
+        })
+    stats['open_bugs'] = bugs
 
 
     # --- Aggregate test coverage from result files ---
@@ -355,24 +350,22 @@ def main():
     cov['coverage_by_suite']    = coverage_by_suite
 
     # --- GitHub counts ---
-    if not cluster_only:
-        stats.setdefault('github', {}).setdefault('testing_lab', {})
-        stats['github']['testing_lab']['open_issues'] = issue_count
-        stats['github']['testing_lab']['open_prs']    = pr_count
-        if merged_7d > 0:
-            stats['github']['testing_lab']['prs_merged_7d'] = merged_7d
+    stats.setdefault('github', {}).setdefault('testing_lab', {})
+    stats['github']['testing_lab']['open_issues'] = issue_count
+    stats['github']['testing_lab']['open_prs']    = pr_count
+    if merged_7d > 0:
+        stats['github']['testing_lab']['prs_merged_7d'] = merged_7d
 
     # --- Hive/org-wide counts (source: GitHub search API) ---
-    if not cluster_only:
-        hive_open_issues = run_json("gh api search/issues -f q='org:projectbluefin is:issue is:open' --jq .total_count")
-        hive_open_prs = run_json("gh api search/issues -f q='org:projectbluefin is:pr is:open' --jq .total_count")
-        if isinstance(hive_open_issues, int) and isinstance(hive_open_prs, int):
-            stats.setdefault('hive', {})
-            stats['hive']['open_issues'] = hive_open_issues
-            stats['hive']['open_prs'] = hive_open_prs
-            stats['hive']['source'] = 'github-search-api'
-        else:
-            stats.pop('hive', None)
+    hive_open_issues = run_json("gh api search/issues -f q='org:projectbluefin is:issue is:open' --jq .total_count")
+    hive_open_prs = run_json("gh api search/issues -f q='org:projectbluefin is:pr is:open' --jq .total_count")
+    if isinstance(hive_open_issues, int) and isinstance(hive_open_prs, int):
+        stats.setdefault('hive', {})
+        stats['hive']['open_issues'] = hive_open_issues
+        stats['hive']['open_prs'] = hive_open_prs
+        stats['hive']['source'] = 'github-search-api'
+    else:
+        stats.pop('hive', None)
 
     # --- Optional live Argo snapshot ---
     argo = run_json("curl -k -sS --max-time 12 https://192.168.1.102:32746/api/v1/workflows/argo")
@@ -445,6 +438,71 @@ def main():
     else:
         stats.setdefault('recent_runs', [])
         stats.setdefault('build_history', {})
+
+    # --- Real OS image build history (GitHub Actions, public API, no cluster needed) ---
+    # These are the actual bootc image build pipelines for bluefin/bluefin-lts/dakota -
+    # the thing users mean by "factory builds". Runs on ubuntu-latest fine: this is a
+    # plain GitHub REST API call, not the LAN-only Argo/k8s API.
+    IMAGE_BUILD_CATALOG = [
+        {'id': 'bluefin-stable', 'repo': 'projectbluefin/bluefin', 'workflow': 'build-image-testing.yml', 'branch': 'main'},
+        {'id': 'bluefin-testing', 'repo': 'projectbluefin/bluefin', 'workflow': 'build-image-testing.yml', 'branch': 'testing'},
+        {'id': 'bluefin-next', 'repo': 'projectbluefin/bluefin', 'workflow': 'build-image-next.yml', 'branch': None},
+        {'id': 'bluefin-lts-stable', 'repo': 'projectbluefin/bluefin-lts', 'workflow': 'build-regular.yml', 'branch': 'main'},
+        {'id': 'bluefin-lts-testing', 'repo': 'projectbluefin/bluefin-lts', 'workflow': 'build-regular.yml', 'branch': 'testing'},
+        {'id': 'bluefin-lts-hwe', 'repo': 'projectbluefin/bluefin-lts', 'workflow': 'build-regular-hwe.yml', 'branch': None},
+        {'id': 'bluefin-lts-nvidia', 'repo': 'projectbluefin/bluefin-lts', 'workflow': 'build-nvidia.yml', 'branch': None},
+        {'id': 'dakota', 'repo': 'projectbluefin/dakota', 'workflow': 'build.yml', 'branch': 'testing'},
+        {'id': 'dakota-aarch64', 'repo': 'projectbluefin/dakota', 'workflow': 'build-aarch64.yml', 'branch': 'testing'},
+    ]
+
+    def gh_run_to_overall(run):
+        status = run.get('status')
+        conclusion = run.get('conclusion')
+        if status != 'completed':
+            return 'running'
+        if conclusion == 'success':
+            return 'passed'
+        if conclusion in ('failure', 'timed_out', 'startup_failure'):
+            return 'fail'
+        if conclusion == 'cancelled':
+            return 'pending'
+        return 'pending'
+
+    def gh_run_duration_min(run):
+        try:
+            started = datetime.datetime.fromisoformat(run['run_started_at'].replace('Z', '+00:00'))
+            updated = datetime.datetime.fromisoformat(run['updated_at'].replace('Z', '+00:00'))
+            return max(0, round((updated - started).total_seconds() / 60))
+        except Exception:
+            return None
+
+    image_builds = {}
+    for entry in IMAGE_BUILD_CATALOG:
+        query = f"repos/{entry['repo']}/actions/workflows/{entry['workflow']}/runs?per_page=20"
+        if entry['branch']:
+            query += f"&branch={entry['branch']}"
+        doc = run_json(f"gh api '{query}'")
+        runs = []
+        if doc and isinstance(doc.get('workflow_runs'), list):
+            for run in doc['workflow_runs']:
+                runs.append({
+                    'id': str(run.get('id')),
+                    'overall': gh_run_to_overall(run),
+                    'started_at': run.get('run_started_at') or run.get('created_at'),
+                    'finished_at': run.get('updated_at') if run.get('status') == 'completed' else None,
+                    'duration_min': gh_run_duration_min(run) if run.get('status') == 'completed' else None,
+                    'run_url': run.get('html_url'),
+                    'branch': run.get('head_branch'),
+                })
+            runs.sort(key=lambda r: r.get('started_at') or '')
+            image_builds[entry['id']] = runs[-20:]
+        else:
+            # Preserve whatever was already committed rather than clobbering it
+            # with an empty list on a transient GitHub API failure.
+            existing = stats.get('image_builds', {}).get(entry['id'])
+            if existing:
+                image_builds[entry['id']] = existing
+    stats['image_builds'] = image_builds
 
     # --- Optional live cluster node snapshot ---
     node_doc = run_json("kubectl get nodes -o json --request-timeout=8s")
@@ -723,7 +781,7 @@ def main():
     with open(telemetry_path, 'w') as f:
         json.dump(telemetry, f, indent=2)
 
-    bugs_count = len(bugs) if not cluster_only else len(stats.get('open_bugs', []))
+    bugs_count = len(bugs)
     print(f"Updated {stats_path}: {bugs_count} open bugs, {total_scenarios} scenarios, {len(images_with_results)} images with results")
 
 if __name__ == '__main__':

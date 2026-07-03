@@ -307,5 +307,6 @@ const payloadJson = serializeJsonScript(chartPayload);
   </div>
 
   <script type="application/json" id="builds-chart-data" set:html={payloadJson}></script>
-  <script type="module" src={buildsChartsScript} data-cfasync="false"></script>
+  <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
+  <script is:inline src={buildsChartsScript} defer data-cfasync="false"></script>
 </SiteLayout>

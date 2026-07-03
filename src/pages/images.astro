@@ -257,5 +257,6 @@ const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unava
   </section>
 
   <script type="application/json" id="upstream-page-data" set:html={serializedModel}></script>
-  <script type="module" src={upstreamPageScript} data-cfasync="false"></script>
+  <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
+  <script is:inline src={upstreamPageScript} defer data-cfasync="false"></script>
 </SiteLayout>

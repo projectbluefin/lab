@@ -39,8 +39,8 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /class="image-status-grid"/, 'overview renders image status section');
   assert.match(html('docs/index.html'), /href="\/images\/"/, 'overview links to images at domain root');
   assert.match(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav shows Overview tab');
-  assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+" data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
-  assert.match(html('docs/images/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'images page keeps Cloudflare-safe chart script');
+  assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+"[^>]* data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
+  assert.match(html('docs/images/index.html'), /src="\/_astro\/upstream-page\.[^"]+"[^>]* data-cfasync="false"/, 'images page keeps Cloudflare-safe chart script');
   const adoptionPage = html('docs/adoption/index.html');
   assert.match(adoptionPage, /data-cfasync="false"/, 'adoption page keeps Cloudflare-safe chart script');
   assert.match(html('docs/images/index.html'), /Image status/, 'images page renders');
@@ -56,6 +56,48 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /Zot OCI Registry Cache & Heat/i, 'overview renders Zot OCI cache section');
   assert.match(html('docs/index.html'), /:30501/i, 'overview renders zot-cache port details');
   assert.match(html('docs/images/index.html'), /Unavailable|pending|coming soon/i, 'subpages show explicit unavailable state');
+
+  // Regression guard: chart scripts must load echarts globally from a CDN classic script
+  // and never rely on a bare `import ... from 'echarts'` inside a type="module" script
+  // whose src came from a `?url` import. Astro never bundles/resolves that pattern, so the
+  // import throws `Failed to resolve module specifier "echarts"` in every real browser and
+  // the chart silently fails to render (caught this only via a real headless-browser check,
+  // never via these text assertions alone).
+  function decodeInlineScriptSource(pageHtml, matchToken) {
+    const scriptTagRe = new RegExp(`<script src="([^"]*${matchToken}[^"]*)"[^>]*>`);
+    const match = pageHtml.match(scriptTagRe);
+    assert.ok(match, `expected to find a script tag referencing ${matchToken}`);
+    const src = match[1];
+    if (src.startsWith('data:')) {
+      const base64 = src.split(',')[1];
+      return Buffer.from(base64, 'base64').toString('utf8');
+    }
+    return readFileSync(path.join(repo, 'docs', src), 'utf8');
+  }
+
+  for (const [page, scriptToken] of [
+    ['docs/images/index.html', 'upstream-page'],
+    ['docs/tests/index.html', 'tests-charts'],
+    ['docs/builds/index.html', 'builds-charts'],
+  ]) {
+    const pageHtml = html(page);
+    assert.match(
+      pageHtml,
+      /cdn\.jsdelivr\.net\/npm\/echarts/,
+      `${page} loads echarts globally from CDN before its chart script`,
+    );
+    assert.doesNotMatch(
+      pageHtml,
+      new RegExp(`type="module"[^>]*${scriptToken}`),
+      `${page} chart script is not an unresolved ES module import`,
+    );
+    const scriptSource = decodeInlineScriptSource(pageHtml, scriptToken);
+    assert.doesNotMatch(
+      scriptSource,
+      /import\s+\*\s+as\s+echarts\s+from\s+['"]echarts['"]/,
+      `${scriptToken}.js has no unresolved bare echarts import`,
+    );
+  }
 });
 
 test('tests page renders matrix views, chart mounts, evidence links, and unavailable states', () => {

@@ -1,5 +1,3 @@
-import * as echarts from 'echarts';
-
 function readModel() {
   const element = document.getElementById('upstream-page-data');
   if (!element?.textContent) return null;

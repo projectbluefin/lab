@@ -1,5 +1,3 @@
-import * as echarts from 'echarts';
-
 const payloadNode = document.getElementById('builds-chart-data');
 const payload = payloadNode ? JSON.parse(payloadNode.textContent ?? '{}') : {};
 const rows = Array.isArray(payload.rows) ? payload.rows : [];

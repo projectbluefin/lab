@@ -39,46 +39,6 @@ const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unava
     </div>
   </header>
 
-  <section class="upstream-summary-grid" aria-label="Upstream summary metrics">
-    {model.summaryMetrics.map((metric: any) => (
-      <article class="status-card upstream-metric-card">
-        <div class="upstream-card__header">
-          <p class="status-card__eyebrow">{metric.label}</p>
-          <span class:list={['upstream-pill', metric.stateTone]}>{metric.state}</span>
-        </div>
-        <h2>{metric.displayValue}</h2>
-        <p>{metric.derivation}</p>
-        <dl class="status-card__meta">
-          <div>
-            <dt>Collected</dt>
-            <dd>{metric.collectedLabel}</dd>
-          </div>
-          <div>
-            <dt>Evidence</dt>
-            <dd><a href={metric.source_url}>Source link</a></dd>
-          </div>
-        </dl>
-      </article>
-    ))}
-    <article class="status-card upstream-metric-card">
-      <div class="upstream-card__header">
-        <p class="status-card__eyebrow">Dataset status</p>
-        <span class:list={['upstream-pill', model.meta.stateTone]}>{model.meta.status}</span>
-      </div>
-      <h2>{model.meta.generatedLabel}</h2>
-      <p>{model.meta.description}</p>
-      <dl class="status-card__meta">
-        <div>
-          <dt>Schema</dt>
-          <dd>{upstreamStatus.schema_version}</dd>
-        </div>
-        <div>
-          <dt>Explicit gaps</dt>
-          <dd>{unavailableStreams} streams remain unavailable</dd>
-        </div>
-      </dl>
-    </article>
-  </section>
   <section class="upstream-chart-grid">
     <article class="status-card upstream-chart-card upstream-chart-card--wide">
       <div class="upstream-card__header">

@@ -82,15 +82,118 @@ Follow this precise order of operations to disable power management and reset th
    udevadm settle
    ```
 
-### 3. Optimal Formatting and Mounting
-Always use optimal Btrfs parameters for SSD storage to maximize performance over the 40G USB4 link:
-```bash
-# Format skipping slow full-disk discard
-mkfs.btrfs -f -K /dev/nvme1n1
+### 3. Optimal Formatting and Mounting (Btrfs to XFS Migration)
 
-# Optimal mount options
-mount -o rw,noatime,compress=zstd:3,ssd,discard=async,space_cache=v2 /dev/nvme1n1 /var/mnt/ghost-data
+The 4TB local data NVMe drives (mounted at `/var/mnt/ghost-data` on `ghost` and `exo-0`) have been transitioned from Btrfs to XFS to optimize for container builds and BuildStream cache workloads.
+
+XFS with `reflink=1` provides copy-on-write capability (e.g. `cp --reflink=auto`) identical to Btrfs, but without the high write metadata fragmentation and degradation under OverlayFS / loop-device pressure.
+
+#### Optimal XFS Formatting:
+Format the NVMe devices skipping hardware blocks pre-discards (`-K`) and explicitly enabling reflink/copy-on-write and CRC verification (`-m reflink=1,crc=1`):
+```bash
+mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme1n1
 ```
+
+#### Optimal XFS Mount Options:
+For high-concurrency container building, use these options:
+- `noatime,nodiratime`: Drastically reduces metadata write wear on the NVMe SSD.
+- `logbufs=8,logbsize=256k`: Allocates 8 in-memory log buffers of 256KB to accelerate tiny file overlay metadata updates.
+- `allocsize=64m`: Sets sequential disk preallocation block sizes to 64MB to optimize sequential virtual machine `.raw` disk block updates.
+
+```ini
+Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
+```
+
+---
+
+## 4TB SSD Migration Procedures (Btrfs to XFS)
+
+### 1. Migrating `exo-0` (Ephemeral Cache Storage)
+`exo-0` contains transient REAPI cache items under `/var/mnt/ghost-data`.
+
+1. **Scale down cache pod**:
+   ```bash
+   kubectl scale deployment bst-artifact-server -n argo --replicas=0
+   ```
+2. **Stop and unmount unit on `exo-0`**:
+   ```bash
+   ssh core@192.168.1.170 "sudo systemctl stop 'var-mnt-ghost\x2ddata.mount'"
+   ```
+3. **Format to XFS**:
+   ```bash
+   ssh core@192.168.1.170 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme1n1"
+   ```
+4. **Update systemd mount file**:
+   Edit `/etc/systemd/system/var-mnt-ghost\x2ddata.mount` on `exo-0` to specify XFS:
+   ```ini
+   [Mount]
+   What=/dev/nvme1n1
+   Where=/var/mnt/ghost-data
+   Type=xfs
+   Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
+   ```
+5. **Reload systemd, mount, and enable**:
+   ```bash
+   ssh core@192.168.1.170 "sudo systemctl daemon-reload && sudo systemctl start 'var-mnt-ghost\x2ddata.mount' && sudo systemctl enable 'var-mnt-ghost\x2ddata.mount'"
+   ```
+6. **Recreate empty cache structure**:
+   ```bash
+   ssh core@192.168.1.170 "sudo mkdir -p /var/mnt/ghost-data/ac.v2 /var/mnt/ghost-data/cas.v2 /var/mnt/ghost-data/raw.v2 && sudo chmod -R 777 /var/mnt/ghost-data"
+   ```
+7. **Scale up deployment**:
+   ```bash
+   kubectl scale deployment bst-artifact-server -n argo --replicas=1
+   ```
+
+### 2. Migrating `ghost` (Stateful Control Plane Storage)
+`ghost` holds persistent states like OCI cache layers in `zot-local` and persistent volume data in `local-path`. This data must be preserved.
+
+1. **Prepare backup space on `exo-0` XFS storage**:
+   On `ghost`, create a temporary backup folder:
+   ```bash
+   ssh jorge@192.168.1.102 "mkdir -p /tmp/ghost-backup"
+   ```
+2. **Stop dependent workloads**:
+   Scale down all services writing to `/var/mnt/ghost-data` (Zot registries, persistent volume consumers):
+   ```bash
+   kubectl scale deployment registry -n local-registry --replicas=0
+   kubectl scale deployment zot-cache -n local-registry --replicas=0
+   ```
+3. **Back up `/var/mnt/ghost-data` to `exo-0`**:
+   Perform a high-speed copy using the 40G USB4 link:
+   ```bash
+   ssh jorge@192.168.1.102 "rsync -aHAXxv --numeric-ids /var/mnt/ghost-data/ core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/"
+   ```
+4. **Unmount on `ghost`**:
+   ```bash
+   ssh jorge@192.168.1.102 "sudo umount /var/mnt/ghost-data"
+   ```
+5. **Format `ghost` NVMe to XFS**:
+   ```bash
+   ssh jorge@192.168.1.102 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme0n1"
+   ```
+6. **Update `/etc/fstab` on `ghost`**:
+   Get the new UUID: `blkid /dev/nvme0n1`.
+   Replace the old Btrfs entry in `/etc/fstab` with the new UUID, optimized options, and type `xfs`:
+   ```text
+   UUID=<new-uuid> /var/mnt/ghost-data xfs defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m 0 0
+   ```
+7. **Mount `/var/mnt/ghost-data` on `ghost`**:
+   ```bash
+   ssh jorge@192.168.1.102 "sudo mount -a"
+   ```
+8. **Restore from backup**:
+   Pull the backed-up directories back with precise attributes:
+   ```bash
+   ssh jorge@192.168.1.102 "rsync -aHAXxv --numeric-ids core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/ /var/mnt/ghost-data/"
+   ```
+9. **Resume services**:
+   ```bash
+   kubectl scale deployment registry -n local-registry --replicas=1
+   kubectl scale deployment zot-cache -n local-registry --replicas=1
+   ```
+10. **Clean up backup**:
+    Once all pods are healthy and verified, clean up the backup folders on both hosts.
 
 ## BuildStream 2.x Distributed Builds and Caching
 

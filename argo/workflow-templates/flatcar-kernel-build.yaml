@@ -148,6 +148,7 @@ spec:
               labels:
                 kubevirt.io/vm: "{{workflow.parameters.vm-name}}"
             spec:
+              priorityClassName: bst-build   # preemptable by lab-test-vm pods (6h kernel compile)
               nodeSelector:
                 kubernetes.io/hostname: ghost
               domain:

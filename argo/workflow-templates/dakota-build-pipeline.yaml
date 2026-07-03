@@ -6,8 +6,9 @@ metadata:
   annotations:
     description: |
       Parallel dakota BST build pipeline. Builds bluefin and bluefin-nvidia OCI variants
-      in parallel against the in-cluster buildbox-casd CAS service. Triggered by push to
-      dakota:testing via dakota-commit-poller CronWorkflow. On success, exports to local Zot (:30500).
+      in parallel against the in-cluster bst-artifact-server CAS service (bazel-remote,
+      argo namespace, :9092 gRPC). Triggered by push to dakota:testing via
+      dakota-commit-poller CronWorkflow. On success, exports to local Zot (:30500).
       Uses bst-build PriorityClass — preemptable by lab-test-vm pods.
   labels:
     app.kubernetes.io/component: dakota-build

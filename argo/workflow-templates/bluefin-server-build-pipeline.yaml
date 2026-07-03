@@ -70,6 +70,7 @@ spec:
                   value: "{{inputs.parameters.registry}}"
 
     - name: bst-build
+      priorityClassName: bst-build   # preemptable by lab-test-vm pods (4h build)
       inputs:
         parameters:
           - name: element
@@ -112,6 +113,8 @@ spec:
           set -euo pipefail
 
           # Run completely with local cache for extreme stability and speed
+          # (deliberate: see commit 22c7d2ad — do not point this at a remote
+          # cache without confirming the original instability is resolved)
           cat > /tmp/buildstream-cluster.conf << 'BSTCONF'
           # Local cache only
           BSTCONF

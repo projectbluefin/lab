@@ -233,4 +233,41 @@ When generating `buildstream.conf` dynamically inside an Argo YAML script block:
 - **Avoid multiline heredocs (`cat << EOF`)**: Indented heredocs preserve spaces unless processed carefully, while non-indented lines violate YAML script structure.
 - **Prefer explicit sequential writes**: Use `echo "..." > file` and `echo "..." >> file` for structured text generation. This completely eliminates YAML indentation parse bugs and is 100% robust.
 
+### 5. `cache.projectbluefin.io` is reachable but slow — not "down"
+
+Diagnosed 2026-07-03. `cache.projectbluefin.io:11001` (artifacts/source-caches) and
+`:11002` (remote-execution, currently disabled) complete TLS handshakes fine from
+both the homelab LAN and from inside the k3s cluster (ghost node). Port 443 refused
+is a non-issue — nothing is meant to listen there.
+
+The real symptom is **latency, not downtime**: in `projectbluefin/dakota`'s GitHub
+Actions "Build Bluefin dakota" run logs, individual cache-miss lookups against
+`cache.projectbluefin.io:11001`/`:11002` stall for 6–17+ minutes before BuildStream
+logs `Remote (...) does not have artifact <ref> cached`. Confirmed via
+`gh run view <id> --log-failed`, timestamp-diffing consecutive
+`Pulling artifact`/`does not have ... cached` lines.
+
+This is why **dakota builds on GitHub Actions are unreliable but the in-cluster
+`dakota-commit-poller` build (this repo) works**: the GH Actions workflow's
+`project.conf` points artifacts/source-caches at the remote Hetzner box
+(`cache.projectbluefin.io`), which is degraded. The in-cluster BST build
+(`dakota-build-pipeline`/`bst-qa-pipeline`) never talks to that host at all — it
+points `artifacts.servers` at the local `bst-artifact-server:9092` (bazel-remote,
+same cluster, sub-second round trip) and builds cold, so it's insulated from the
+Hetzner CAS's degraded performance entirely (at the cost of no shared upstream
+cache history).
+
+The dakota CI workflow (`.github/workflows/build.yml`) already documents related
+CAS incidents inline: enabling `remote-execution` with a top-level
+`cache.storage-service` previously caused a 3.5-hour gRPC flooding failure — hence
+`enable-remote-execution: 'false'` and a global `concurrency: dakota-bst-build-global`
+(max 1 build cluster-wide) because "the remote CAS at cache.projectbluefin.io is
+rate-limited and supports a single build at a time."
+
+**Do not conclude cache.projectbluefin.io is "broken" from connection-refused
+tests on port 443 — test the actual BST ports (11001/11002) and check for
+multi-minute stalls in build logs, not connectivity.** Filed as a human-priority
+gap: see `projectbluefin/lab` issue tracker (CAS latency root cause — box
+resourcing vs. network path — needs Hetzner-side investigation, not something
+fixable from the k3s cluster).
 

@@ -31,6 +31,8 @@ spec:
         value: "testing"
       - name: state-key
         value: "sha-dakota-testing"
+      - name: registry
+        value: "192.168.1.102:30500"
 
   templates:
 
@@ -51,6 +53,8 @@ spec:
                   value: "{{workflow.parameters.branch}}"
                 - name: repo
                   value: "https://github.com/{{workflow.parameters.repo}}.git"
+                - name: registry
+                  value: "{{workflow.parameters.registry}}"
 
     - name: check-sha
       outputs:

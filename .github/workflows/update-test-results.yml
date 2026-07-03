@@ -27,43 +27,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  snapshot-cluster:
-    # Argo Workflows and the k8s API are LAN-only (see manifests/argo-server-nodeport.yaml)
-    # and are never reachable from GitHub-hosted runners. ghost-runners are self-hosted
-    # ARC runners that live on the ghost k3s cluster itself, so this job is the only place
-    # the live Argo/kubectl snapshot can actually succeed.
-    runs-on: ghost-runners
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: '3.12'
-
-      - name: Snapshot live Argo workflows + cluster nodes
-        run: python3 scripts/refresh_factory_stats.py --cluster-only
-
-      - name: Commit cluster snapshot
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/data/factory-stats.json
-          if git diff --cached --quiet; then
-            echo "No cluster snapshot changes to commit"
-          else
-            git commit \
-              -m 'chore: refresh live cluster snapshot (self-hosted)' \
-              -m 'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>'
-            git pull --rebase -X ours origin main
-            git push origin HEAD:main
-          fi
-
   update:
-    needs: snapshot-cluster
-    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write

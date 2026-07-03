@@ -1,0 +1,29 @@
+# CronWorkflow: refreshes the live Argo/cluster snapshot every 5 minutes,
+# in step with the update-test-results.yml site rebuild cadence.
+# Runs entirely in-cluster - no GitHub Actions runner (hosted or self-hosted)
+# is involved. See argo/workflow-templates/cluster-snapshot.yaml.
+# Requires: github-token secret in argo namespace (already present).
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: cluster-snapshot
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+    bluefin.io/trigger: dashboard-data
+spec:
+  suspend: true
+  schedules:
+    - "*/5 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 60
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    workflowTemplateRef:
+      name: cluster-snapshot

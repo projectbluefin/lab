@@ -145,6 +145,18 @@ value self-referenced `{{workflow.parameters.image-tag}}` inside the same
 (`tests/unit/test_workflow_defaults.py`). Re-enabled 2026-07-03 after
 confirming the fix holds and re-verifying package/network availability.
 
+**Known gap:** `digest-watch` only rebuilds a containerDisk when the upstream
+GHCR digest *changes* vs the `containerdisk-source-digests` ConfigMap — it has
+no way to notice the containerDisk itself disappeared out-of-band (e.g. a Zot
+disk wipe) while the upstream digest stayed the same. This actually happened
+2026-07-03 after the ghost XFS migration wiped Zot: `bluefin-containerdisk`
+was completely absent, `digest-watch` kept reporting "no change — skipping",
+and `bluefin-qa-pipeline`'s `assert-cd` would have failed indefinitely.
+Recovered by manually submitting `build-containerdisk` with `force=true`
+directly. If this needs to self-heal automatically next time, `digest-watch`
+would need an additional Zot-existence check (like `assert-cd`'s skopeo probe)
+alongside the digest comparison — not implemented yet.
+
 ## Nightly Schedule
 
 | CronWorkflow | Time (UTC) | Pipeline | Parameters |

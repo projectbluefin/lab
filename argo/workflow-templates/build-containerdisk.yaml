@@ -11,6 +11,9 @@ metadata:
       All build steps are pinned to ghost (loop devices + /var/mnt/ghost-data staging).
 spec:
   serviceAccountName: argo
+  synchronization:
+    mutexes:
+    - name: build-containerdisk-global
   entrypoint: build-containerdisk
   arguments:
     parameters:

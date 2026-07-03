@@ -46,6 +46,8 @@ metadata:
 14. Extract large inline scripts (especially Python/bash blocks over ~10-15 lines) from GHA YAML workflow files into standalone executable scripts under `scripts/`. This enables independent local execution, linting, testing, and modular maintenance.
 15. Configure explicit GHA concurrency limits (`concurrency:`) on any automated workflow that commits/pushes files back to git. Use a unique group name (e.g. `group: update-test-results`) and set `cancel-in-progress: true` to prevent race conditions and rebase conflicts when multiple runs trigger in rapid succession.
 16. After changing collector logic (`scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py`), run the same local refresh sequence as CI (`refresh_factory_stats.py` → `generate_page_datasets.py` → `npm run build`) before handoff.
+17. **Network timeouts are mandatory for any cluster-facing call in CI**: every `execSync`, `fetch`, `curl`, `skopeo`, or similar command that reaches `192.168.1.x` or any private endpoint must have an explicit timeout (e.g. `timeout: 2000` for Node.js, `--max-time` for curl, or socket timeout). Without timeouts, a single unreachable endpoint will hang the entire GitHub-hosted runner indefinitely, starving the concurrency group and blocking all downstream runs.
+18. **Build-time assertions must handle environment drift**: if a test asserts presence of specific live data (e.g. `:30501` registry port), but the build environment differs from the test environment (GitHub runners → no homelab network access), the assertion will always fail. Instead: allow the code to handle missing data gracefully (e.g. fallback rendering), and update the assertion to accept both the live path and the fallback path. This prevents false CI failures that don't reflect real code bugs.
 
 ## Common Rationalizations
 
@@ -68,6 +70,8 @@ metadata:
 - A page-level JSON contract omits row-level provenance or hides missing values by dropping rows.
 - Large inline Python or bash blocks (exceeding ~15 lines) are nested in workflow YAML, making testing and linting painful.
 - Automated workflows that commit/push back to the git repository lack a concurrency limit block, causing push race conditions.
+- **A single CI run hangs indefinitely on a private-network call; the concurrency group is starved** — missing timeout on an unreachable endpoint.
+- **Tests fail in CI but pass locally** — the test environment diverges from runner environment (e.g. expects homelab LAN data that GitHub runners cannot reach). Without fallback handling and environment-aware assertions, this creates phantom CI failures that don't reflect real bugs.
 
 ## Verification
 
@@ -78,6 +82,9 @@ metadata:
 - [ ] Browser fetch code avoids unnecessary custom headers that trigger preflight
 - [ ] Production `https://factory.projectbluefin.io/` renders with real table/cluster content (no loading placeholders)
 - [ ] Render validation includes a real browser run (headless is fine) and captures evidence
+- [ ] Every `execSync`, `fetch`, or network call to private endpoints (`192.168.1.x`, internal IPs) has an explicit timeout set
+- [ ] Build-time test assertions accept both live-environment data AND fallback/degraded paths (never assert presence of unreachable data)
+- [ ] After fixing network timeouts or assertions, a CI run completed within 10 minutes with no hanging steps
 - [ ] Image-status cards derive age from GHCR package tag publish/update timestamps when available, otherwise release `published_at`, and link to exact evidence URLs.
 - [ ] Unsupported metrics (no source-of-truth feed) are hidden or explicitly unavailable, never synthesized.
 - [ ] Page-level dashboard JSON keeps stable row keys plus row-level provenance/state fields so collector-only follow-up work can populate data without changing the contract.

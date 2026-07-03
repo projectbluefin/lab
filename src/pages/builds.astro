@@ -1,0 +1,344 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import buildsChartsScript from '../scripts/builds-charts.js?url';
+import buildsMatrix from '../../docs/data/builds-matrix.json';
+import { serializeJsonScript } from '../lib/json-script';
+
+interface HistoryPoint {
+  id: string | null;
+  overall: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_min: number | null;
+  run_url: string | null;
+}
+
+interface BuildRow {
+  id: string;
+  display_name: string;
+  description: string;
+  last_run: HistoryPoint | null;
+  history_points: HistoryPoint[];
+  success_rate: number | null;
+  avg_duration_min: number | null;
+  runs_tracked: number;
+  argo_ui_url: string | null;
+  state: string;
+  state_reason: string | null;
+  source_url: string;
+  collected_at: string;
+  derivation: string;
+}
+
+interface ClusterSnapshotMeta {
+  refreshed_at: string | null;
+  live_snapshot_ok: boolean;
+  freshness: { age_minutes: number; threshold_minutes: number; state: string } | null;
+  source: string;
+}
+
+interface BuildsContract {
+  schema_version: string;
+  _meta: {
+    page: string;
+    description: string;
+    generated_at: string;
+    status: string;
+    cluster_snapshot: ClusterSnapshotMeta;
+  };
+  summary_metrics: Array<{ id: string; label: string; value: number; unit: string }>;
+  rows: BuildRow[];
+}
+
+const contract = buildsMatrix as unknown as BuildsContract;
+const baseUrl = import.meta.env.BASE_URL;
+const rows = contract.rows;
+const availableRows = rows.filter((row) => row.state === 'available');
+const unavailableRows = rows.filter((row) => row.state !== 'available');
+const snapshot = contract._meta.cluster_snapshot;
+const snapshotStale = !snapshot.live_snapshot_ok || snapshot.freshness?.state === 'stale';
+
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC'
+    : 'Never';
+
+const statusPill = (overall: string | null | undefined) => {
+  if (overall === 'passed') return { label: 'passed', tone: 'passed' };
+  if (overall === 'fail') return { label: 'failed', tone: 'failed' };
+  if (overall === 'running' || overall === 'pending') return { label: overall, tone: 'pending' };
+  return { label: 'unavailable', tone: 'unavailable' };
+};
+
+const chartPayload = {
+  generatedAt: contract._meta.generated_at,
+  rows: rows.map((row) => ({
+    id: row.id,
+    history_points: row.history_points,
+  })),
+};
+const payloadJson = serializeJsonScript(chartPayload);
+---
+
+<SiteLayout
+  title="Builds"
+  description="Live build pipeline activity on the ghost KubeVirt/Argo cluster: last run, duration trend, and evidence links per pipeline."
+  current="builds"
+>
+  <style>
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    .stale-banner {
+      margin: 1rem 0 2rem 0;
+      padding: 0.9rem 1.25rem;
+      border-radius: 12px;
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: rgba(245, 158, 11, 0.08);
+      color: #fbbf24;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+    }
+    .kpi-card__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.2rem 0;
+    }
+    .kpi-card__sub { font-size: 0.72rem; color: #64748b; }
+
+    .builds-table-card {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      grid-column: 1 / -1;
+    }
+    .table-scroll { overflow-x: auto; }
+    .builds-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 920px;
+    }
+    .builds-table th {
+      text-align: left;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .builds-table td {
+      padding: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      vertical-align: middle;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+    .builds-table__name { font-weight: 700; color: #f8fafc; }
+    .builds-table__desc { font-size: 0.75rem; color: #64748b; max-width: 260px; }
+    .sparkline-cell { width: 160px; height: 46px; }
+    .sparkline-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 46px;
+      font-size: 0.7rem;
+      color: #64748b;
+      border: 1px dashed rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      text-align: center;
+      padding: 0 0.4rem;
+    }
+    .evidence-link { color: #38bdf8; text-decoration: none; font-size: 0.8rem; }
+    .evidence-link:hover { text-decoration: underline; }
+    .unavailable-row td { color: #64748b; }
+
+    .integrity-panel {
+      background: rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-top: 2rem;
+    }
+    .integrity-panel h4 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.75rem 0;
+    }
+    .integrity-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #64748b;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .integrity-list strong { color: #cbd5e1; }
+  </style>
+
+  <div class="dashboard-header">
+    <h1>Builds</h1>
+    <div class="meta-bar">
+      <span>Updated {formatUtc(contract._meta.generated_at)}</span>
+      <span>Source: live Argo Workflow snapshot on the ghost cluster</span>
+      <span>Status: <span style="color: #fbbf24;">{contract._meta.status}</span></span>
+      <a href={`${baseUrl}data/builds-matrix.json`}>Raw dataset ↗</a>
+    </div>
+  </div>
+
+  {snapshotStale && (
+    <div class="stale-banner">
+      <strong>Cluster snapshot is stale.</strong> Argo Workflows and the k8s API are LAN-only
+      (never reachable from GitHub-hosted runners); a self-hosted <code>ghost-runners</code> job
+      refreshes this data on the existing 5-minute cron. Last successful snapshot:
+      {' '}{formatUtc(snapshot.refreshed_at)}
+      {snapshot.freshness && ` (${snapshot.freshness.age_minutes} minutes ago)`}.
+    </div>
+  )}
+
+  <h2 class="section-title">Builds at a Glance</h2>
+  <div class="kpi-grid">
+    {contract.summary_metrics.map((metric) => (
+      <div class="kpi-card">
+        <div class="kpi-card__title">{metric.label}</div>
+        <div class="kpi-card__value">{metric.value}</div>
+        <div class="kpi-card__sub">{metric.unit}</div>
+      </div>
+    ))}
+  </div>
+
+  <h2 class="section-title">Pipelines</h2>
+  <div class="builds-table-card">
+    <div class="table-scroll">
+      <table class="builds-table">
+        <thead>
+          <tr>
+            <th scope="col">Pipeline</th>
+            <th scope="col">Last run</th>
+            <th scope="col">Duration</th>
+            <th scope="col">Success rate</th>
+            <th scope="col">Trend ({`last ${20} runs`})</th>
+            <th scope="col">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const pill = statusPill(row.last_run?.overall);
+            return (
+              <tr class:list={[row.state !== 'available' && 'unavailable-row']}>
+                <td>
+                  <div class="builds-table__name">{row.display_name}</div>
+                  <div class="builds-table__desc">{row.description}</div>
+                </td>
+                <td>
+                  {row.last_run ? (
+                    <>
+                      <span class={`pill pill--${pill.tone}`}>{pill.label}</span>
+                      <div style="margin-top: 0.35rem; font-size: 0.75rem; color: #64748b;">
+                        {formatUtc(row.last_run.started_at)}
+                      </div>
+                    </>
+                  ) : (
+                    <span class="pill pill--unavailable">unavailable</span>
+                  )}
+                </td>
+                <td>{row.avg_duration_min !== null ? `${row.avg_duration_min} min avg` : '—'}</td>
+                <td>{row.success_rate !== null ? `${row.success_rate}%` : '—'}</td>
+                <td class="sparkline-cell">
+                  <div id={`sparkline-${row.id}`} style="width: 100%; height: 100%;" role="img" aria-label={`Duration trend for ${row.display_name}`}></div>
+                </td>
+                <td>
+                  <a class="evidence-link" href={row.source_url} target="_blank" rel="noreferrer">Template ↗</a>
+                  {row.argo_ui_url && (
+                    <>
+                      <br />
+                      <a class="evidence-link" href={row.argo_ui_url} target="_blank" rel="noreferrer">Last run in Argo ↗</a>
+                    </>
+                  )}
+                  {row.state !== 'available' && (
+                    <p style="font-size: 0.72rem; color: #64748b; margin: 0.35rem 0 0 0;">{row.state_reason}</p>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="integrity-panel">
+    <h4>Data Integrity Posture</h4>
+    <ul class="integrity-list">
+      <li><strong>{availableRows.length}</strong> of <strong>{rows.length}</strong> tracked pipelines have at least one published run.</li>
+      <li><strong>{unavailableRows.length}</strong> pipelines are waiting on their first live Argo snapshot capture.</li>
+      <li>Cluster snapshot source: <strong>{snapshot.source}</strong>.</li>
+      <li>Live snapshot ok: <strong>{String(snapshot.live_snapshot_ok)}</strong>, freshness state: <strong>{snapshot.freshness?.state ?? 'unknown'}</strong>.</li>
+    </ul>
+    <a href={`${baseUrl}data/builds-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+  </div>
+
+  <script type="application/json" id="builds-chart-data" set:html={payloadJson}></script>
+  <script type="module" src={buildsChartsScript} data-cfasync="false"></script>
+</SiteLayout>

@@ -917,11 +917,195 @@ def build_adoption_metrics(root: Path, collected_at: str) -> dict:
     }
 
 
+# Argo Workflows run on the ghost cluster (LAN only, see manifests/argo-server-nodeport.yaml).
+# The catalog below is the fixed set of build pipelines this page tracks; each is joined
+# against docs/data/factory-stats.json['build_history'], which is populated by the
+# self-hosted (ghost-runners) snapshot job in .github/workflows/update-test-results.yml.
+BUILD_PIPELINE_CATALOG = [
+    {
+        'id': 'bluefin-qa-pipeline',
+        'display_name': 'Bluefin QA pipeline',
+        'description': 'Build containerDisk, provision a Bluefin VM, run the GNOME smoke/developer/software/system suites.',
+        'template_path': 'argo/workflow-templates/bluefin-qa-pipeline.yaml',
+    },
+    {
+        'id': 'dakota-qa-pipeline',
+        'display_name': 'Dakota QA pipeline',
+        'description': 'Pull the Dakota image from ghcr.io/projectbluefin/dakota, provision a VM, and run the full test suite.',
+        'template_path': 'argo/workflow-templates/dakota-qa-pipeline.yaml',
+    },
+    {
+        'id': 'knuckle-qa-pipeline',
+        'display_name': 'Knuckle QA pipeline',
+        'description': 'Provision a Flatcar VM and run the Knuckle installer test suite end to end.',
+        'template_path': 'argo/workflow-templates/knuckle-qa-pipeline.yaml',
+    },
+    {
+        'id': 'bst-qa-pipeline',
+        'display_name': 'BuildStream QA pipeline',
+        'description': 'BuildStream 2.x distributed build with bazel-remote caching, then QA the resulting artifact.',
+        'template_path': 'argo/workflow-templates/bst-qa-pipeline.yaml',
+    },
+    {
+        'id': 'build-containerdisk',
+        'display_name': 'containerDisk build',
+        'description': 'Build a bootc image into a KubeVirt containerDisk artifact for VM provisioning.',
+        'template_path': 'argo/workflow-templates/build-containerdisk.yaml',
+    },
+    {
+        'id': 'build-cd-sync',
+        'display_name': 'containerDisk sync',
+        'description': 'Sync a published stable/testing lane into a ready-to-boot containerDisk image.',
+        'template_path': 'argo/workflow-templates/build-containerdisk.yaml',
+    },
+    {
+        'id': 'flatcar-kernel-build',
+        'display_name': 'Flatcar kernel build',
+        'description': 'Build a custom Flatcar kernel/initramfs for the Knuckle and Flatcar node-onboarding lanes.',
+        'template_path': 'argo/workflow-templates/flatcar-kernel-build.yaml',
+    },
+    {
+        'id': 'bluefin-server-build-pipeline',
+        'display_name': 'Bluefin Server build pipeline',
+        'description': 'Build the bluefin-server-ddi payload and the bootable bluefin-server-installer artifact.',
+        'template_path': 'argo/workflow-templates/bluefin-server-build-pipeline.yaml',
+    },
+    {
+        'id': 'dakota-build-pipeline',
+        'display_name': 'Dakota build pipeline',
+        'description': 'Build the Dakota bootc image and publish it to ghcr.io/projectbluefin/dakota.',
+        'template_path': 'argo/workflow-templates/dakota-build-pipeline.yaml',
+    },
+]
+
+
+def build_builds_matrix(root: Path, collected_at: str) -> dict:
+    factory_stats_path = root / 'docs/data/factory-stats.json'
+    factory_stats = load_json(factory_stats_path) if factory_stats_path.exists() else {}
+    build_history = factory_stats.get('build_history') or {}
+    snapshot_meta = factory_stats.get('_meta') or {}
+    argo_ui_base = 'http://192.168.1.102:32746/workflows/argo'
+
+    rows = []
+    for entry in BUILD_PIPELINE_CATALOG:
+        history = build_history.get(entry['id']) or []
+        history_points = [
+            {
+                'id': run.get('id'),
+                'overall': run.get('overall'),
+                'started_at': run.get('started_at'),
+                'finished_at': run.get('finished_at'),
+                'duration_min': run.get('duration_min'),
+                'run_url': run.get('run_url'),
+            }
+            for run in history
+        ]
+        last_run = history_points[-1] if history_points else None
+        completed = [p for p in history_points if p['overall'] in ('passed', 'fail')]
+        passed = [p for p in completed if p['overall'] == 'passed']
+        success_rate = round((len(passed) / len(completed)) * 100, 1) if completed else None
+        durations = [p['duration_min'] for p in completed if p['duration_min'] is not None]
+        avg_duration_min = round(sum(durations) / len(durations), 1) if durations else None
+
+        if last_run:
+            state = 'available'
+            state_reason = None
+        else:
+            state = 'unavailable'
+            state_reason = (
+                'No live Argo snapshot has captured a run of this pipeline yet. '
+                'The self-hosted ghost-runners snapshot job refreshes docs/data/factory-stats.json '
+                'build_history on the existing 5-minute cron; see _meta.freshness for the last '
+                'successful cluster snapshot.'
+            )
+
+        rows.append(
+            {
+                'id': entry['id'],
+                'display_name': entry['display_name'],
+                'description': entry['description'],
+                'last_run': last_run,
+                'history_points': history_points,
+                'success_rate': success_rate,
+                'avg_duration_min': avg_duration_min,
+                'runs_tracked': len(history_points),
+                'argo_ui_url': f"{argo_ui_base}/{last_run['id']}" if last_run else None,
+                'state': state,
+                'state_reason': state_reason,
+                'source_url': repo_blob_url(entry['template_path']),
+                'collected_at': collected_at,
+                'derivation': (
+                    "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json "
+                    f"build_history['{entry['id']}'], which the self-hosted ghost-runners "
+                    'snapshot job populates from a live Argo Workflow API query.'
+                ),
+            }
+        )
+
+    available_rows = [row for row in rows if row['state'] == 'available']
+    unavailable_rows = [row for row in rows if row['state'] != 'available']
+    total_runs_tracked = sum(row['runs_tracked'] for row in rows)
+
+    return {
+        'schema_version': 'v1',
+        '_meta': {
+            'page': 'builds',
+            'description': 'Collector-derived contract for the cluster Builds page.',
+            'generated_at': collected_at,
+            'starter_artifact': False,
+            'status': 'partial' if unavailable_rows else 'ready',
+            'cluster_snapshot': {
+                'refreshed_at': snapshot_meta.get('refreshed_at'),
+                'live_snapshot_ok': snapshot_meta.get('live_snapshot_ok', False),
+                'freshness': snapshot_meta.get('freshness'),
+                'source': 'ghost-runners self-hosted snapshot job (see .github/workflows/update-test-results.yml)',
+            },
+        },
+        'summary_metrics': [
+            {
+                'id': 'build_pipelines_tracked',
+                'label': 'Build pipelines tracked',
+                'value': len(rows),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('argo/workflow-templates'),
+                'collected_at': collected_at,
+                'derivation': 'Count entries in BUILD_PIPELINE_CATALOG.',
+            },
+            {
+                'id': 'build_pipelines_with_history',
+                'label': 'Pipelines with published run history',
+                'value': len(available_rows),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/factory-stats.json'),
+                'collected_at': collected_at,
+                'derivation': "Count rows whose factory-stats.json build_history entry is non-empty.",
+            },
+            {
+                'id': 'build_runs_tracked',
+                'label': 'Runs in tracked history',
+                'value': total_runs_tracked,
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/factory-stats.json'),
+                'collected_at': collected_at,
+                'derivation': 'Sum of history_points length across all rows (capped at 20 runs per pipeline).',
+            },
+        ],
+        'rows': rows,
+    }
+
+
 def write_page_datasets(root: Path, collected_at: str) -> dict[str, dict]:
     data_dir = root / 'docs/data'
     datasets = {
         'upstream-status.json': build_upstream_status(root, collected_at),
         'tests-matrix.json': build_tests_matrix(root, collected_at),
+        'builds-matrix.json': build_builds_matrix(root, collected_at),
         'applications-matrix.json': build_applications_matrix(root, collected_at),
         'homebrew-ecosystem.json': build_homebrew_ecosystem(root, collected_at),
         'adoption-metrics.json': build_adoption_metrics(root, collected_at),

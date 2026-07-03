@@ -2,6 +2,10 @@ import json, glob, datetime, sys, subprocess, re, os, hashlib
 from pathlib import Path
 
 def main():
+    # --cluster-only is used by the self-hosted (ghost-runners) snapshot job,
+    # which has LAN access to the Argo/kubectl APIs but does not have the
+    # GH issue/PR/bug artifacts the ubuntu-latest job prepares beforehand.
+    cluster_only = '--cluster-only' in sys.argv[1:]
     issue_count = int(sys.argv[1]) if sys.argv[1:] and sys.argv[1].isdigit() else 0
     pr_count    = int(sys.argv[2]) if sys.argv[2:] and sys.argv[2].isdigit() else 0
     merged_7d   = int(sys.argv[3]) if sys.argv[3:] and sys.argv[3].isdigit() else 0
@@ -31,6 +35,11 @@ def main():
         safe = (term or '').replace(' ', '+')
         return f"https://github.com/projectbluefin/lab/actions?query={safe}"
 
+    def argo_ui_url(workflow_name):
+        # Argo Workflows run on the cluster, not GitHub Actions; link straight to
+        # the Argo Server UI for the actual workflow instance.
+        return f"http://192.168.1.102:32746/workflows/argo/{workflow_name}"
+
     def phase_to_overall(phase):
         if phase in ('Running', 'Pending'):
             return 'running'
@@ -50,6 +59,35 @@ def main():
         if re.match(r'^[a-z]+-\d+-', name):
             return 'pr-poller'
         return 'manual'
+
+    # Pipelines that produce a build artifact (image, containerdisk, kernel), as
+    # opposed to maintenance/polling CronWorkflows (orphan-*-gc, image-poll-*, etc).
+    BUILD_PIPELINE_PREFIXES = (
+        'bluefin-qa-pipeline',
+        'dakota-qa-pipeline',
+        'knuckle-qa-pipeline',
+        'bst-qa-pipeline',
+        'build-containerdisk',
+        'build-cd-sync',
+        'flatcar-kernel-build',
+        'bluefin-server-build-pipeline',
+        'dakota-build-pipeline',
+    )
+
+    def pipeline_base_name(name):
+        # Argo generateName workflows append a random 5-char suffix
+        # (build-containerdisk-dsrlm); CronWorkflow instances append an epoch
+        # timestamp (orphan-pod-gc-1783047600). Strip either to get a stable key.
+        stripped = re.sub(r'-[a-z0-9]{5}$', '', name)
+        stripped = re.sub(r'-\d{9,}$', '', stripped)
+        return stripped
+
+    def build_pipeline_key(name):
+        base = pipeline_base_name(name)
+        for prefix in BUILD_PIPELINE_PREFIXES:
+            if base == prefix or base.startswith(f'{prefix}-'):
+                return prefix
+        return None
 
     def infer_label(params, wf_name):
         p = {x.get('name'): x.get('value') for x in (params or [])}
@@ -264,22 +302,24 @@ def main():
         return summary
 
     # --- Open bugs ---
-    with open('/tmp/bugs-raw.json') as f:
-        raw = json.load(f)
+    if not cluster_only:
+        with open('/tmp/bugs-raw.json') as f:
+            raw = json.load(f)
 
-    existing = {b['number']: b for b in stats.get('open_bugs', [])}
-    bugs = []
-    for i in raw:
-        prev = existing.get(i['number'], {})
-        bugs.append({
-            'number':     i['number'],
-            'title':      i['title'],
-            'url':        i['url'],
-            'created_at': i['createdAt'],
-            'affects':    prev.get('affects', []),
-            'area':       prev.get('area', 'unknown'),
-        })
-    stats['open_bugs'] = bugs
+        existing = {b['number']: b for b in stats.get('open_bugs', [])}
+        bugs = []
+        for i in raw:
+            prev = existing.get(i['number'], {})
+            bugs.append({
+                'number':     i['number'],
+                'title':      i['title'],
+                'url':        i['url'],
+                'created_at': i['createdAt'],
+                'affects':    prev.get('affects', []),
+                'area':       prev.get('area', 'unknown'),
+            })
+        stats['open_bugs'] = bugs
+
 
     # --- Aggregate test coverage from result files ---
     total_scenarios = 0
@@ -315,26 +355,29 @@ def main():
     cov['coverage_by_suite']    = coverage_by_suite
 
     # --- GitHub counts ---
-    stats.setdefault('github', {}).setdefault('testing_lab', {})
-    stats['github']['testing_lab']['open_issues'] = issue_count
-    stats['github']['testing_lab']['open_prs']    = pr_count
-    if merged_7d > 0:
-        stats['github']['testing_lab']['prs_merged_7d'] = merged_7d
+    if not cluster_only:
+        stats.setdefault('github', {}).setdefault('testing_lab', {})
+        stats['github']['testing_lab']['open_issues'] = issue_count
+        stats['github']['testing_lab']['open_prs']    = pr_count
+        if merged_7d > 0:
+            stats['github']['testing_lab']['prs_merged_7d'] = merged_7d
 
     # --- Hive/org-wide counts (source: GitHub search API) ---
-    hive_open_issues = run_json("gh api search/issues -f q='org:projectbluefin is:issue is:open' --jq .total_count")
-    hive_open_prs = run_json("gh api search/issues -f q='org:projectbluefin is:pr is:open' --jq .total_count")
-    if isinstance(hive_open_issues, int) and isinstance(hive_open_prs, int):
-        stats.setdefault('hive', {})
-        stats['hive']['open_issues'] = hive_open_issues
-        stats['hive']['open_prs'] = hive_open_prs
-        stats['hive']['source'] = 'github-search-api'
-    else:
-        stats.pop('hive', None)
+    if not cluster_only:
+        hive_open_issues = run_json("gh api search/issues -f q='org:projectbluefin is:issue is:open' --jq .total_count")
+        hive_open_prs = run_json("gh api search/issues -f q='org:projectbluefin is:pr is:open' --jq .total_count")
+        if isinstance(hive_open_issues, int) and isinstance(hive_open_prs, int):
+            stats.setdefault('hive', {})
+            stats['hive']['open_issues'] = hive_open_issues
+            stats['hive']['open_prs'] = hive_open_prs
+            stats['hive']['source'] = 'github-search-api'
+        else:
+            stats.pop('hive', None)
 
     # --- Optional live Argo snapshot ---
     argo = run_json("curl -k -sS --max-time 12 https://192.168.1.102:32746/api/v1/workflows/argo")
     recent_runs = []
+    build_history = {}
     newest_live_ts = None
     live_runs_ok = False
     runs_all_time = 0
@@ -369,7 +412,7 @@ def main():
                 'finished_at': finished,
                 'duration_min': duration_min,
                 'trigger': infer_trigger(name),
-                'run_url': gh_actions_query_url(name),
+                'run_url': argo_ui_url(name),
             }
             recent_runs.append(run)
             runs_all_time += 1
@@ -380,6 +423,10 @@ def main():
                 if ts and (newest_live_ts is None or ts > newest_live_ts):
                     newest_live_ts = ts
 
+            pipeline_key = build_pipeline_key(name)
+            if pipeline_key:
+                build_history.setdefault(pipeline_key, []).append(run)
+
         recent_runs.sort(key=lambda r: r.get('started_at') or '', reverse=True)
         stats['recent_runs'] = recent_runs[:25]
         pipelines = stats.setdefault('pipelines', {})
@@ -387,8 +434,17 @@ def main():
         containerdisk['runs_7d'] = runs_7d
         containerdisk['runs_all_time'] = runs_all_time
         live_runs_ok = True
+
+        # Retain up to the last 20 runs per build pipeline, oldest first, so
+        # the Builds page can render a real sparkline instead of one flat
+        # cross-pipeline list.
+        for key, runs in build_history.items():
+            runs.sort(key=lambda r: r.get('started_at') or '')
+            build_history[key] = runs[-20:]
+        stats['build_history'] = build_history
     else:
         stats.setdefault('recent_runs', [])
+        stats.setdefault('build_history', {})
 
     # --- Optional live cluster node snapshot ---
     node_doc = run_json("kubectl get nodes -o json --request-timeout=8s")
@@ -667,7 +723,8 @@ def main():
     with open(telemetry_path, 'w') as f:
         json.dump(telemetry, f, indent=2)
 
-    print(f"Updated {stats_path}: {len(bugs)} open bugs, {total_scenarios} scenarios, {len(images_with_results)} images with results")
+    bugs_count = len(bugs) if not cluster_only else len(stats.get('open_bugs', []))
+    print(f"Updated {stats_path}: {bugs_count} open bugs, {total_scenarios} scenarios, {len(images_with_results)} images with results")
 
 if __name__ == '__main__':
     main()

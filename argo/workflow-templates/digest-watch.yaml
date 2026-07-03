@@ -250,6 +250,17 @@ spec:
             echo "Patched ConfigMap ${CD_TAG}=${LIVE_DIGEST} (http=${HTTP})" >&2
           fi
 
+          # ponytail: don't queue duplicate heavy builds for the same tag.
+          # If one build-cd-sync-<tag>-* workflow is already active, let it finish.
+          IN_FLIGHT=$(curl -sf --cacert "${CACERT}" \
+            -H "Authorization: Bearer ${SA_TOKEN}" \
+            "${KS}/apis/argoproj.io/v1alpha1/namespaces/argo/workflows" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); p='build-cd-sync-${CD_TAG}-'; print(sum(1 for i in d.get('items', []) if i.get('metadata', {}).get('name', '').startswith(p) and i.get('status', {}).get('phase', '') in ('Pending', 'Running')))")
+          if [[ "${IN_FLIGHT}" -gt 0 ]]; then
+            echo "Build already active for ${CD_TAG} (${IN_FLIGHT} in flight) — skipping duplicate submit"
+            exit 0
+          fi
+
           # Submit build-containerdisk workflow via Argo API
           curl -sf --cacert "${CACERT}" \
             -H "Authorization: Bearer ${SA_TOKEN}" \
@@ -273,4 +284,3 @@ spec:
               }
             }" > /dev/null
           echo "Build workflow submitted for ${IMAGE}:${IMAGE_TAG} → containerdisk:${CD_TAG}"
-

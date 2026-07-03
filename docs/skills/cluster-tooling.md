@@ -92,3 +92,34 @@ mkfs.btrfs -f -K /dev/nvme1n1
 mount -o rw,noatime,compress=zstd:3,ssd,discard=async,space_cache=v2 /dev/nvme1n1 /var/mnt/ghost-data
 ```
 
+## BuildStream 2.x Distributed Builds and Caching
+
+BuildStream 2.x has migrated to standard Remote Execution API (REAPI) Content Addressable Storage (CAS) protocols, replacing legacy python-based daemons with lightweight, high-performance, single-binary REAPI caching servers (e.g. `bazel-remote`).
+
+### 1. REAPI CAS Backend (`bazel-remote`)
+- **Image**: `quay.io/bazel-remote/bazel-remote`
+- **Deployment**: Pinned to the high-speed Btrfs storage node (`exo-0` via `/var/mnt/ghost-data`).
+- **Configuration**: Exposes gRPC on port `9092` and HTTP/1.1 on port `8080`.
+
+### 2. Client-Side `buildbox-casd` Mandate
+- BuildStream 2.x **cannot** initialize any remote cache (gRPC or HTTP) unless `buildbox-casd` is installed and available in the client's `PATH`. Standard python/pip container environments will fail with connection or type errors.
+- Always use the mirrored `bst2` image (`192.168.1.102:30500/bst2:<tag>`) as the build-container runner, which includes both `buildbox-casd` and BuildStream 2.7.0.
+
+### 3. Client-Side Configuration Layout
+In `buildstream.conf`, project-specific remote caches must be nested within the project dictionary under the `servers:` list. Using an incorrect structure causes configuration type errors:
+
+```yaml
+projects:
+  bst-prototype:
+    artifacts:
+      servers:
+      - url: grpc://bst-artifact-server:9092
+        push: true
+```
+
+### 4. YAML Scripting and Indentation Safety
+When generating `buildstream.conf` dynamically inside an Argo YAML script block:
+- **Avoid multiline heredocs (`cat << EOF`)**: Indented heredocs preserve spaces unless processed carefully, while non-indented lines violate YAML script structure.
+- **Prefer explicit sequential writes**: Use `echo "..." > file` and `echo "..." >> file` for structured text generation. This completely eliminates YAML indentation parse bugs and is 100% robust.
+
+

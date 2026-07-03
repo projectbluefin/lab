@@ -1,0 +1,29 @@
+# Exclude everything by default, then include just what we need
+# Especially note this means that .git is not included, and not tests/
+# to avoid spurious rebuilds.
+*
+
+# This one signals we're in a bootc toplevel
+!ADOPTERS.md
+# Toplevel build bits
+!Makefile
+!Cargo.*
+# cargo alias config (defines `cargo xtask` shorthand used in Dockerfile stages)
+!.cargo/config.toml
+# License and doc files needed for RPM
+!LICENSE-*
+!README.md
+# We do build manpages from markdown
+!docs/
+# We use the spec file
+!contrib/
+# This is used to add content on top of our default base
+!hack/
+# The systemd units and baseimage bits end up in installs
+!systemd/
+!baseimage/
+# Workaround for podman bug with secrets + remote
+# https://github.com/containers/podman/issues/25314
+!podman-build-secret*
+# And finally of course all the Rust sources
+!crates/

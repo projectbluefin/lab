@@ -1,0 +1,15 @@
+# Enable fsverity at install time
+# Use bootc-install (not bootc) to avoid LBIs that can't be fetched in this test environment
+FROM localhost/bootc-install
+RUN <<EORUN
+set -xeuo pipefail
+cat > /usr/lib/ostree/prepare-root.conf <<EOF
+[composefs]
+enabled = verity
+EOF
+cat > /usr/lib/bootc/install/90-ext4.toml <<EOF
+[install.filesystem.root]
+type = "ext4"
+EOF
+bootc container lint
+EORUN

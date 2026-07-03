@@ -1,0 +1,55 @@
+[dependencies.bytes]
+optional = true
+version = "1.10.1"
+
+[dependencies.http]
+optional = true
+version = "1.3.1"
+
+[dependencies.http-body]
+optional = true
+version = "1.0.1"
+
+[dependencies.thiserror]
+optional = true
+version = "2.0.17"
+
+[dependencies.wit-bindgen]
+default-features = false
+features = ["async"]
+version = "0.51.0"
+
+[dev-dependencies.futures]
+version = "0.3.31"
+
+[dev-dependencies.http]
+version = "1.3.1"
+
+[dev-dependencies.wit-bindgen]
+default-features = false
+features = ["async-spawn"]
+version = "0.51.0"
+
+[features]
+http-compat = ["dep:bytes", "dep:http-body", "dep:http", "dep:thiserror", "wit-bindgen/async-spawn"]
+
+[lib]
+path = "src/lib.rs"
+
+[package]
+autobenches = false
+autobins = false
+autoexamples = false
+autolib = false
+autotests = false
+categories = ["no-std", "wasm"]
+description = "WASIp3 API bindings for Rust"
+documentation = "https://docs.rs/wasip3"
+edition = "2021"
+keywords = ["webassembly", "wasm"]
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+name = "wasip3"
+readme = "README.md"
+repository = "https://github.com/bytecodealliance/wasi-rs"
+rust-version = "1.87.0"
+version = "0.4.0+wasi-0.3.0-rc-2026-01-06"

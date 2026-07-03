@@ -1,0 +1,38 @@
+[dependencies.valuable-derive]
+optional = true
+version = "=0.1.1"
+
+[dev-dependencies.criterion]
+version = "0.3"
+
+[features]
+alloc = []
+default = ["std"]
+derive = ["valuable-derive"]
+std = ["alloc"]
+
+[lib]
+path = "src/lib.rs"
+
+[package]
+autobenches = false
+autobins = false
+autoexamples = false
+autolib = false
+autotests = false
+categories = ["development-tools::debugging", "encoding"]
+description = """
+Object-safe value inspection, used to pass un-typed structured data across trait-object boundaries.
+"""
+edition = "2021"
+keywords = ["valuable", "serialization", "debugging", "no_std"]
+license = "MIT"
+name = "valuable"
+readme = "README.md"
+repository = "https://github.com/tokio-rs/valuable"
+rust-version = "1.56"
+version = "0.1.1"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

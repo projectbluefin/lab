@@ -1,0 +1,14 @@
+#!/bin/bash
+# An implementation of --cleanup for bootc installs on Fedora derivatives
+
+set -xeuo pipefail
+
+# Remove all RPMs installed in the physical root (i.e. the previous OS)
+mount -o remount,rw /sysroot
+rpm -qa --root=/sysroot --dbpath=/usr/lib/sysimage/rpm | xargs -r rpm -e --root=/sysroot --dbpath=/usr/lib/sysimage/rpm
+
+# Remove all container images (including the one that was used to install)
+# Note that this does not remove stopped containers, and so some storage
+# may leak. This may change in the future.
+mount --bind -o rw /sysroot/var/lib/containers /var/lib/containers
+podman system prune --all -f

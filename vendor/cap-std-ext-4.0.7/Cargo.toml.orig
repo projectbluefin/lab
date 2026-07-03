@@ -1,0 +1,31 @@
+[package]
+authors = ["Colin Walters <walters@verbum.org>"]
+description = "Extension APIs for cap-std"
+edition = "2021"
+rust-version = "1.70.0"
+license = "MIT OR Apache-2.0"
+name = "cap-std-ext"
+readme = "README.md"
+repository = "https://github.com/coreos/cap-std-ext"
+# For historical reasons, the major version number is one greater than the cap-std major.
+version = "4.0.7"
+
+[dependencies]
+cap-tempfile = "3.2.0"
+cap-primitives = "3"
+
+[target.'cfg(not(windows))'.dependencies]
+rustix = { version = "1.0", features = ["fs", "process", "pipe"] }
+libc = "0.2"
+
+[dev-dependencies]
+anyhow = "1.0"
+rand = "0.9"
+uuid = "1.10"
+
+[features]
+default = []
+# This just enables support for the fs_utf8 feature in cap-std.
+fs_utf8 = [
+    "cap-tempfile/fs_utf8",
+]

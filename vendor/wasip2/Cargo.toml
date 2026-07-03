@@ -1,0 +1,40 @@
+[dependencies.alloc]
+optional = true
+package = "rustc-std-workspace-alloc"
+version = "1.0"
+
+[dependencies.core]
+optional = true
+package = "rustc-std-workspace-core"
+version = "1.0"
+
+[dependencies.wit-bindgen]
+default-features = false
+version = "0.57.1"
+
+[features]
+bitflags = ["wit-bindgen/bitflags"]
+default = ["std", "bitflags"]
+rustc-dep-of-std = ["core", "alloc", "wit-bindgen/rustc-dep-of-std"]
+std = []
+
+[lib]
+path = "src/lib.rs"
+
+[package]
+autobenches = false
+autobins = false
+autoexamples = false
+autolib = false
+autotests = false
+categories = ["no-std", "wasm"]
+description = "WASIp2 API bindings for Rust"
+documentation = "https://docs.rs/wasip2"
+edition = "2021"
+keywords = ["webassembly", "wasm"]
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+name = "wasip2"
+readme = "README.md"
+repository = "https://github.com/bytecodealliance/wasi-rs"
+rust-version = "1.87.0"
+version = "1.0.3+wasi-0.2.9"

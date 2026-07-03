@@ -1,0 +1,31 @@
+[package]
+name = "bootc-internal-utils"
+description = "Internal implementation component of bootc; do not use"
+version = "1.16.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/bootc-dev/bootc"
+
+[dependencies]
+# Workspace dependencies
+anstream = { workspace = true }
+anyhow = { workspace = true }
+cap-std-ext = {workspace = true, features = ["fs_utf8"] }
+chrono = { workspace = true, features = ["std"] }
+owo-colors = { workspace = true }
+rustix = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+shlex = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["process", "rt", "macros"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-journald = { workspace = true }
+
+[dev-dependencies]
+similar-asserts = { workspace = true }
+static_assertions = { workspace = true }
+
+[lints]
+workspace = true

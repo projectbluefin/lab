@@ -1,0 +1,39 @@
+[package]
+name = "openssh-keys"
+version = "0.6.5"
+edition = "2021"
+rust-version = "1.90.0"
+authors = ["Stephen Demos <stephen@demos.zone>"]
+description = "read and write OpenSSH public keys"
+documentation = "https://docs.rs/openssh-keys"
+homepage = "https://github.com/coreos/openssh-keys"
+repository = "https://github.com/coreos/openssh-keys"
+readme = "README.md"
+keywords = ["ssh", "ssh-keys", "keys", "rsa", "openssh"]
+license = "MIT OR Apache-2.0"
+exclude = [".github", ".gitignore", "examples", "fixtures"]
+
+[dependencies]
+# Private dependencies.
+base64 = "0.21"
+byteorder = "1.1"
+# Do not use a range on the crates md-5 or sha2. RustCrypto crate
+# versions cannot be mixed and matched. Doing so will cause hard
+# to understand build failures. Read about it at
+# https://github.com/coreos/openssh-keys/issues/89
+md-5 = "0.10"
+sha2 = "0.10"
+thiserror = "1.0"
+# Public dependencies, exposed through library API.
+# <none>
+
+[dev-dependencies]
+home = "~0.5"
+
+[package.metadata.release]
+publish = false
+push = false
+pre-release-commit-message = "cargo: openssh-keys release {{version}}"
+sign-commit = true
+sign-tag = true
+tag-message = "openssh-keys {{version}}"

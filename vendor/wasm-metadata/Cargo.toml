@@ -1,0 +1,110 @@
+[dependencies.anyhow]
+version = "1.0.58"
+
+[dependencies.auditable-serde]
+optional = true
+version = "0.8.0"
+
+[dependencies.clap]
+features = ["derive"]
+optional = true
+version = "4.0.0"
+
+[dependencies.flate2]
+optional = true
+version = "1.1.0"
+
+[dependencies.indexmap]
+default-features = false
+features = ["serde"]
+version = "2.7.0"
+
+[dependencies.serde]
+default-features = false
+features = ["alloc"]
+optional = true
+version = "1.0.166"
+
+[dependencies.serde_derive]
+optional = true
+version = "1.0.166"
+
+[dependencies.serde_json]
+optional = true
+version = "1"
+
+[dependencies.spdx]
+optional = true
+version = "0.10.1"
+
+[dependencies.url]
+optional = true
+version = "2.0.0"
+
+[dependencies.wasm-encoder]
+default-features = false
+features = ["std", "component-model"]
+version = "0.244.0"
+
+[dependencies.wasmparser]
+default-features = false
+features = ["simd", "std", "component-model", "hash-collections"]
+version = "0.244.0"
+
+[features]
+default = ["oci", "serde"]
+oci = ["dep:auditable-serde", "dep:flate2", "dep:url", "dep:spdx", "dep:serde_json", "serde"]
+serde = ["dep:serde_derive", "dep:serde"]
+
+[lib]
+path = "src/lib.rs"
+
+[lints.clippy]
+clone_on_copy = "warn"
+manual_strip = "warn"
+map_clone = "warn"
+uninlined_format_args = "warn"
+unnecessary_cast = "warn"
+unnecessary_fallible_conversions = "warn"
+unnecessary_mut_passed = "warn"
+unnecessary_to_owned = "warn"
+
+[lints.clippy.all]
+level = "allow"
+priority = -1
+
+[lints.rust]
+deprecated-safe-2024 = "warn"
+keyword_idents_2024 = "warn"
+missing-unsafe-on-extern = "warn"
+rust-2024-guarded-string-incompatible-syntax = "warn"
+rust-2024-incompatible-pat = "warn"
+rust-2024-prelude-collisions = "warn"
+unsafe-attr-outside-unsafe = "warn"
+unsafe-op-in-unsafe-fn = "warn"
+unsafe_code = "deny"
+unstable_features = "warn"
+unused-lifetimes = "warn"
+unused-macro-rules = "warn"
+unused_extern_crates = "warn"
+unused_import_braces = "warn"
+
+[lints.rust.unexpected_cfgs]
+check-cfg = ["cfg(fuzzing)"]
+level = "warn"
+priority = 0
+
+[package]
+autobenches = false
+autobins = false
+autoexamples = false
+autolib = false
+autotests = false
+description = "Read and manipulate WebAssembly metadata"
+edition = "2021"
+license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+name = "wasm-metadata"
+readme = "README.md"
+repository = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasm-metadata"
+rust-version = "1.81.0"
+version = "0.244.0"

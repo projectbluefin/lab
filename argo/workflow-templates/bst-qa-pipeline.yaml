@@ -86,7 +86,7 @@ spec:
           cd "${PROJECT_SUBDIR}"
 
           echo "=== Configuring .config/buildstream.conf (artifact cache: ${ARTIFACT_SERVER}) ==="
-          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf)
+          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           mkdir -p "${HOME}/.config"
           echo "projects:" > "${HOME}/.config/buildstream.conf"
           echo "  ${PROJECT_NAME}:" >> "${HOME}/.config/buildstream.conf"

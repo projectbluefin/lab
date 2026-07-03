@@ -1,0 +1,61 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: test-find-vmlinuz-
+  namespace: argo
+spec:
+  entrypoint: run
+  serviceAccountName: argo
+  volumes:
+    - name: fuse
+      hostPath:
+        path: /dev/fuse
+    - name: bst-cache
+      emptyDir: {}
+  templates:
+    - name: run
+      script:
+        image: "192.168.1.102:30500/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
+        command: [bash]
+        securityContext:
+          privileged: true
+          seLinuxOptions:
+            type: spc_t
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: "8"
+            memory: 16Gi
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
+        volumeMounts:
+          - name: fuse
+            mountPath: /dev/fuse
+          - name: bst-cache
+            mountPath: /root/.cache/buildstream
+        source: |
+          set -euo pipefail
+
+          # Setup basic BuildStream config
+          cat > /tmp/buildstream.conf << 'BSTCONF'
+          # Local cache only
+          BSTCONF
+
+          git clone --depth=1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/server.git" /src
+          cd /src
+
+          echo "=== Building installer/installer-stack.bst ==="
+          bst --config /tmp/buildstream.conf --no-interactive build installer/installer-stack.bst
+
+          echo "=== Checking out installer-stack ==="
+          mkdir -p /layer
+          bst --config /tmp/buildstream.conf --no-interactive artifact checkout installer/installer-stack.bst --directory /layer
+
+          echo "=== Searching for vmlinuz ==="
+          find /layer -name "*vmlinuz*" -o -name "*vmlinux*" -o -name "*bzImage*"

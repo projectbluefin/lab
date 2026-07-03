@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+image=$1
+shift
+
+cd $(dirname $0)
+
+tests=$(find . -maxdepth 1 -type d)
+for case in $tests; do
+  if test $case = .; then continue; fi
+  echo "Running: $case"
+  cd $case
+  ./run $image
+  cd -
+  echo "ok $case"
+done

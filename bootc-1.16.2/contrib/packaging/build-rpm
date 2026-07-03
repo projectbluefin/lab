@@ -1,0 +1,51 @@
+#!/bin/bash
+# Build bootc RPM package from source
+set -xeuo pipefail
+
+# Version can be passed via RPM_VERSION env var (set by Dockerfile ARG)
+# or defaults to the hardcoded value in the spec file
+VERSION="${RPM_VERSION:-}"
+
+# Determine output directory (defaults to /out)
+OUTPUT_DIR="${1:-/out}"
+SRC_DIR="${2:-/src}"
+
+if [ -n "${VERSION}" ]; then
+    echo "Building RPM with version: ${VERSION}"
+else
+    echo "Building RPM with version from spec file"
+fi
+
+# Create temporary rpmbuild directories
+mkdir -p /tmp/rpmbuild/{RPMS,BUILDROOT,SPECS}
+
+# If version is provided, create modified spec file; otherwise use original
+if [ -n "${VERSION}" ]; then
+    sed "s/^Version:.*/Version:        ${VERSION}/" \
+        "${SRC_DIR}/contrib/packaging/bootc.spec" > /tmp/rpmbuild/SPECS/bootc.spec
+    SPEC_FILE=/tmp/rpmbuild/SPECS/bootc.spec
+else
+    SPEC_FILE="${SRC_DIR}/contrib/packaging/bootc.spec"
+fi
+
+# Build RPM
+# For reproducible builds:
+# - use_source_date_epoch_as_buildtime: RPM build timestamp uses SOURCE_DATE_EPOCH
+# - clamp_mtime_to_source_date_epoch: file mtimes clamped to SOURCE_DATE_EPOCH
+# - _buildhost: fixed hostname for consistent RPM metadata
+rpmbuild -bb \
+  --define "_topdir /tmp/rpmbuild" \
+  --define "_builddir ${SRC_DIR}" \
+  --define "container_build 1" \
+  --define "use_source_date_epoch_as_buildtime 1" \
+  --define "clamp_mtime_to_source_date_epoch 1" \
+  --define "_buildhost reproducible" \
+  --with tests \
+  --nocheck \
+  "${SPEC_FILE}"
+
+# Copy built RPMs to output directory
+ARCH=$(uname -m)
+mkdir -p "${OUTPUT_DIR}"
+cp /tmp/rpmbuild/RPMS/${ARCH}/*.rpm "${OUTPUT_DIR}/"
+rm -rf /tmp/rpmbuild

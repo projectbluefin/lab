@@ -1,0 +1,64 @@
+name: Build and Publish Images
+
+permissions:
+  packages: write
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  LIBVIRT_DEFAULT_URI: "qemu:///session"
+  DEV_IMAGE: ghcr.io/bootc-dev/dev-bootc
+
+jobs:
+  # Build and publish container images to ghcr.io
+  publish-images:
+    strategy:
+      matrix:
+        test_os: [fedora-43, fedora-44, fedora-45, centos-9, centos-10]
+        variant: [ostree, composefs-sealeduki-sdboot]
+        exclude:
+          # centos-9 UKI is experimental/broken (https://github.com/bootc-dev/bootc/issues/1812)
+          - test_os: centos-9
+            variant: composefs-sealeduki-sdboot
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Bootc Ubuntu Setup
+        uses: bootc-dev/actions/bootc-ubuntu-setup@main
+
+      - name: Setup env
+        run: |
+          BASE=$(just pullspec-for-os base ${{ matrix.test_os }})
+          echo "BOOTC_base=${BASE}" >> $GITHUB_ENV
+          echo "BOOTC_variant=${{ matrix.variant }}" >> $GITHUB_ENV
+
+          if [ "${{ matrix.variant }}" = "composefs-sealeduki-sdboot" ]; then
+            BUILDROOTBASE=$(just pullspec-for-os buildroot-base ${{ matrix.test_os }})
+            echo "BOOTC_buildroot_base=${BUILDROOTBASE}" >> $GITHUB_ENV
+          fi
+
+      - name: Build container
+        # TODO: Also consider building + publishing an image that is just "base + bootc"
+        # as this implicitly changed to also publish our integration test images.
+        run: just build
+
+      - name: Login to ghcr.io
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push container image
+        run: |
+          if [ "${{ matrix.variant }}" = "composefs-sealeduki-sdboot" ]; then
+            TAG="${{ matrix.test_os }}-uki"
+          else
+            TAG="${{ matrix.test_os }}"
+          fi
+          podman tag localhost/bootc ${{ env.DEV_IMAGE }}:${TAG}
+          podman push ${{ env.DEV_IMAGE }}:${TAG}

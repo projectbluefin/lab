@@ -1,0 +1,106 @@
+[package]
+authors = ["Felix Krull"]
+description = "Rust bindings for libostree"
+documentation = "https://docs.rs/ostree"
+edition = "2021"
+keywords = ["ostree", "libostree"]
+license = "MIT"
+name = "ostree"
+readme = "rust-bindings/README.md"
+repository = "https://github.com/ostreedev/ostree"
+rust-version = "1.77.0"
+version = "0.20.5"
+
+include = [
+    "/COPYING",
+    "/rust-bindings/**",
+    "!/rust-bindings/conf/**",
+    "!/rust-bindings/gir-files/**",
+    "!/rust-bindings/sys/**",
+]
+
+[package.metadata.docs.rs]
+features = ["dox"]
+
+[lib]
+name = "ostree"
+path = "rust-bindings/src/lib.rs"
+
+[[test]]
+name = "integration"
+path = "rust-bindings/tests/tests.rs"
+
+[workspace]
+members = [".", "rust-bindings/sys"]
+
+[dependencies]
+base64 = "0.20.0"
+bitflags = "1.2.1"
+ffi = { package = "ostree-sys", path = "rust-bindings/sys", version = "0.15.3" }
+gio = "0.20"
+glib = "0.20"
+hex = "0.4.2"
+libc = "0.2"
+once_cell = "1.4.0"
+thiserror = "1.0.20"
+
+[dev-dependencies]
+maplit = "1.0.2"
+tempfile = "3"
+io-lifetimes = "1"
+cap-tempfile = "2"
+
+[features]
+dox = ["ffi/dox"]
+v2014_9 = ["ffi/v2014_9"]
+v2015_7 = ["v2014_9", "ffi/v2015_7"]
+v2016_3 = ["v2015_7", "ffi/v2016_3"]
+v2016_4 = ["v2016_3", "ffi/v2016_4"]
+v2016_5 = ["v2016_4", "ffi/v2016_5"]
+v2016_6 = ["v2016_5", "ffi/v2016_6"]
+v2016_7 = ["v2016_6", "ffi/v2016_7"]
+v2016_8 = ["v2016_7", "ffi/v2016_8"]
+v2016_14 = ["v2016_8", "ffi/v2016_14"]
+v2017_1 = ["v2016_14", "ffi/v2017_1"]
+v2017_2 = ["v2017_1", "ffi/v2017_2"]
+v2017_3 = ["v2017_2", "ffi/v2017_3"]
+v2017_4 = ["v2017_3", "ffi/v2017_4"]
+v2017_6 = ["v2017_4", "ffi/v2017_6"]
+v2017_7 = ["v2017_6", "ffi/v2017_7"]
+v2017_8 = ["v2017_7", "ffi/v2017_8"]
+v2017_9 = ["v2017_8", "ffi/v2017_9"]
+v2017_10 = ["v2017_9", "ffi/v2017_10"]
+v2017_11 = ["v2017_10", "ffi/v2017_11"]
+v2017_12 = ["v2017_11", "ffi/v2017_12"]
+v2017_13 = ["v2017_12", "ffi/v2017_13"]
+v2017_15 = ["v2017_13", "ffi/v2017_15"]
+v2018_2 = ["v2017_15", "ffi/v2018_2"]
+v2018_3 = ["v2018_2", "ffi/v2018_3"]
+v2018_5 = ["v2018_3", "ffi/v2018_5"]
+v2018_6 = ["v2018_5", "ffi/v2018_6"]
+v2018_7 = ["v2018_6", "ffi/v2018_7"]
+v2018_9 = ["v2018_7", "ffi/v2018_9"]
+v2019_2 = ["v2018_9", "ffi/v2019_2"]
+v2019_3 = ["v2019_2", "ffi/v2019_3"]
+v2019_4 = ["v2019_3", "ffi/v2019_4"]
+v2019_6 = ["v2019_4", "ffi/v2019_6"]
+v2020_1 = ["v2019_6", "ffi/v2020_1"]
+v2020_2 = ["v2020_1", "ffi/v2020_2"]
+v2020_4 = ["v2020_2", "ffi/v2020_4"]
+v2020_7 = ["v2020_4", "ffi/v2020_7"]
+v2020_8 = ["v2020_7", "ffi/v2020_8"]
+v2021_1 = ["v2020_8", "ffi/v2021_1"]
+v2021_2 = ["v2021_1", "ffi/v2021_2"]
+v2021_3 = ["v2021_2", "ffi/v2021_3"]
+v2021_4 = ["v2021_3", "ffi/v2021_4"]
+v2021_5 = ["v2021_4", "ffi/v2021_5"]
+v2022_2 = ["v2021_5", "ffi/v2022_2"]
+v2022_5 = ["v2022_2", "ffi/v2022_5"]
+v2022_6 = ["v2022_5", "ffi/v2022_6"]
+v2022_7 = ["v2022_6", "ffi/v2022_7"]
+v2023_1 = ["v2022_7", "ffi/v2023_1"]
+v2023_8 = ["v2023_1", "ffi/v2023_8"]
+v2023_11 = ["v2023_8", "ffi/v2023_11"]
+v2025_1 = ["v2023_11", "ffi/v2025_1"]
+v2025_2 = ["v2025_1", "ffi/v2025_2"]
+v2025_3 = ["v2025_2", "ffi/v2025_3"]

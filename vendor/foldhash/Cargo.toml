@@ -1,0 +1,51 @@
+[dependencies]
+
+[dev-dependencies.ahash]
+version = "0.8"
+
+[dev-dependencies.chrono]
+version = "0.4"
+
+[dev-dependencies.criterion]
+version = "0.5"
+
+[dev-dependencies.fxhash]
+version = "0.2"
+
+[dev-dependencies.hashbrown]
+version = "0.14"
+
+[dev-dependencies.rand]
+version = "0.8"
+
+[dev-dependencies.uuid]
+version = "1.8"
+
+[features]
+default = ["std"]
+std = []
+
+[lib]
+path = "src/lib.rs"
+
+[package]
+authors = ["Orson Peters <orsonpeters@gmail.com>"]
+autobenches = false
+autobins = false
+autoexamples = false
+autolib = false
+autotests = false
+categories = ["algorithms", "no-std"]
+description = "A fast, non-cryptographic, minimally DoS-resistant hashing algorithm."
+edition = "2021"
+exclude = ["benches", "tools", "assets"]
+keywords = ["hash", "hasher", "no-std"]
+license = "Zlib"
+name = "foldhash"
+readme = "README.md"
+repository = "https://github.com/orlp/foldhash"
+rust-version = "1.60"
+version = "0.1.5"
+
+[profile.release]
+lto = "thin"

@@ -148,10 +148,10 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 ### 2. Migrating `ghost` (Stateful Control Plane Storage)
 `ghost` holds persistent states like OCI cache layers in `zot-local` and persistent volume data in `local-path`. This data must be preserved.
 
-1. **Prepare backup space on `exo-0` XFS storage**:
-   On `ghost`, create a temporary backup folder:
+1. **Verify destination space on `exo-0` XFS storage**:
+   Make sure `exo-0` has sufficient disk space before starting the copy:
    ```bash
-   ssh jorge@192.168.1.102 "mkdir -p /tmp/ghost-backup"
+   ssh core@192.168.1.170 "df -h /var/mnt/ghost-data"
    ```
 2. **Stop dependent workloads**:
    Scale down all services writing to `/var/mnt/ghost-data` (Zot registries, persistent volume consumers):
@@ -159,40 +159,48 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
    kubectl scale deployment registry -n local-registry --replicas=0
    kubectl scale deployment zot-cache -n local-registry --replicas=0
    ```
-3. **Back up `/var/mnt/ghost-data` to `exo-0`**:
-   Perform a high-speed copy using the 40G USB4 link:
+3. **Stop K3s service on `ghost`**:
+   Stop the container orchestrator to release all active container storage references, open file descriptors, and mount locks on `/var/mnt/ghost-data`:
    ```bash
-   ssh jorge@192.168.1.102 "rsync -aHAXxv --numeric-ids /var/mnt/ghost-data/ core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/"
+   ssh jorge@192.168.1.102 "sudo systemctl stop k3s"
    ```
-4. **Unmount on `ghost`**:
+4. **Back up `/var/mnt/ghost-data` to `exo-0`**:
+   Perform a root-elevated rsync using `sudo` and `--rsync-path="sudo rsync"` to preserve numeric UIDs, ACLs, and SELinux contexts over the 40G USB4 link:
+   ```bash
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" /var/mnt/ghost-data/ core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/"
+   ```
+5. **Unmount on `ghost`**:
+   Since K3s is stopped, the unmount will now succeed cleanly without "device is busy" failures:
    ```bash
    ssh jorge@192.168.1.102 "sudo umount /var/mnt/ghost-data"
    ```
-5. **Format `ghost` NVMe to XFS**:
+6. **Format `ghost` NVMe to XFS**:
    ```bash
    ssh jorge@192.168.1.102 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme0n1"
    ```
-6. **Update `/etc/fstab` on `ghost`**:
+7. **Update `/etc/fstab` on `ghost`**:
    Get the new UUID: `blkid /dev/nvme0n1`.
    Replace the old Btrfs entry in `/etc/fstab` with the new UUID, optimized options, and type `xfs`:
    ```text
    UUID=<new-uuid> /var/mnt/ghost-data xfs defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m 0 0
    ```
-7. **Mount `/var/mnt/ghost-data` on `ghost`**:
+8. **Mount `/var/mnt/ghost-data` on `ghost`**:
    ```bash
    ssh jorge@192.168.1.102 "sudo mount -a"
    ```
-8. **Restore from backup**:
-   Pull the backed-up directories back with precise attributes:
+9. **Restore from backup**:
+   Pull the backed-up directories back with precise attributes using root-elevated rsync:
    ```bash
-   ssh jorge@192.168.1.102 "rsync -aHAXxv --numeric-ids core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/ /var/mnt/ghost-data/"
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/ /var/mnt/ghost-data/"
    ```
-9. **Resume services**:
-   ```bash
-   kubectl scale deployment registry -n local-registry --replicas=1
-   kubectl scale deployment zot-cache -n local-registry --replicas=1
-   ```
-10. **Clean up backup**:
+10. **Resume services**:
+    Restart the K3s engine and scale up your workloads:
+    ```bash
+    ssh jorge@192.168.1.102 "sudo systemctl start k3s"
+    kubectl scale deployment registry -n local-registry --replicas=1
+    kubectl scale deployment zot-cache -n local-registry --replicas=1
+    ```
+11. **Clean up backup**:
     Once all pods are healthy and verified, clean up the backup folders on both hosts.
 
 ## BuildStream 2.x Distributed Builds and Caching

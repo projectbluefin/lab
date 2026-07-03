@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Don't waste job slots on superseded code
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and run CI in devcontainer
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: just ci
+
+  kani:
+    name: Kani formal verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Kani proofs in devcontainer
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: just kani

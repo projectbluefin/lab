@@ -1,0 +1,288 @@
+# Common settings for all plans
+provision:
+  how: virtual
+  image: $@{test_disk_image}
+prepare:
+  # Install image mode system on package mode system
+  # Do not run on image mode VM running on Github CI and Locally
+  # Run on package mode VM running on Packit and Gating
+  # order 9x means run it at the last job of prepare
+  - how: install
+    order: 97
+    package:
+      - podman
+      - skopeo
+      - jq
+      - bootc
+      - system-reinstall-bootc
+      - expect
+      - ansible-core
+      - zstd
+      # Required for test-32-install-to-filesystem-var-mount
+      - parted
+      - lvm2
+      - dosfstools
+      - e2fsprogs
+    when: running_env != image_mode
+  - how: shell
+    order: 98
+    script:
+      - mkdir -p bootc && cp /var/share/test-artifacts/*.src.rpm bootc
+      - cd bootc && rpm2cpio *.src.rpm | cpio -idmv && rm -f *-vendor.tar.zstd && zstd -d *.tar.zstd && tar -xvf *.tar -C . --strip-components=1 && ls -al
+      - pwd && ls -al && cd bootc/hack && ./provision-packit.sh
+    when: running_env != image_mode
+  # tmt-reboot and reboot do not work in this case
+  # reboot in ansible is the only way to reboot in tmt prepare
+  - how: ansible
+    order: 99
+    playbook:
+      - https://github.com/bootc-dev/bootc/raw/refs/heads/main/hack/packit-reboot.yml
+    when: running_env != image_mode
+execute:
+  how: tmt
+
+# BEGIN GENERATED PLANS
+/plan-01-readonly:
+  summary: Execute booted readonly/nondestructive tests
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-01-readonly
+  extra-try_bind_storage: true
+
+/plan-20-image-pushpull-upgrade:
+  summary: Execute local upgrade tests
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-20-image-pushpull-upgrade
+
+/plan-21-logically-bound-switch:
+  summary: Execute logically bound images tests for switching images
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-21-logically-bound-switch
+  extra-fixme_skip_if_composefs: true
+
+/plan-22-logically-bound-install:
+  summary: Execute logically bound images tests for installing image
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-22-logically-bound-install
+  extra-fixme_skip_if_composefs: true
+
+/plan-23-install-outside-container:
+  summary: Execute tests for installing outside of a container
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-23-install-outside-container
+
+/plan-23-usroverlay:
+  summary: Execute tests for bootc usrover
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-23-usroverlay
+
+/plan-24-image-upgrade-reboot:
+  summary: Execute local upgrade tests
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-24-image-upgrade-reboot
+  extra-try_bind_storage: true
+
+/plan-25-soft-reboot:
+  summary: Execute soft reboot test
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-25-soft-reboot
+
+/plan-26-download-only-upgrade:
+  summary: Execute download-only upgrade tests
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-26-download-only-upgrade
+
+/plan-27-custom-selinux-policy:
+  summary: Execute custom selinux policy test
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-27-custom-selinux-policy
+  adjust:
+  - when: running_env != image_mode
+    enabled: false
+    because: these tests require features only available in image mode
+  extra-fixme_skip_if_composefs: true
+
+/plan-28-factory-reset:
+  summary: Execute factory reset tests
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-28-factory-reset
+  extra-fixme_skip_if_composefs: true
+
+/plan-29-soft-reboot-selinux-policy:
+  summary: Test soft reboot with SELinux policy changes
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-29-soft-reboot-selinux-policy
+  extra-fixme_skip_if_uki: true
+
+/plan-30-install-unified-flag:
+  summary: Test bootc install with experimental unified storage flag
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-30-install-unified-flag
+  extra-fixme_skip_if_composefs: true
+
+/plan-31-switch-mutate-in-place:
+  summary: switch --mutate-in-place
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-31-switch-mutate-in-place
+  extra-fixme_skip_if_composefs: true
+
+/plan-31-switch-to-unified:
+  summary: Onboard to unified storage, build derived image, and switch to it
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-31-switch-to-unified
+  extra-fixme_skip_if_composefs: true
+
+/plan-32-install-to-filesystem-var-mount:
+  summary: Test bootc install to-filesystem with separate /var mount
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-32-install-to-filesystem-var-mount
+
+/plan-32-multi-device-esp:
+  summary: Test multi-device ESP detection for to-existing-root
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-32-multi-device-esp
+
+/plan-33-bib-build:
+  summary: Test building a qcow2 disk image with bootc-image-builder
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-33-bib-build
+  extra-fixme_skip_if_composefs: true
+
+/plan-34-user-agent:
+  summary: Verify bootc sends correct User-Agent header to registries
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-34-user-agent
+
+/plan-35-composefs-gc:
+  summary: Test composefs garbage collection with same and different kernel+initrd
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-35-composefs-gc
+
+/plan-35-upgrade-preflight-disk-check:
+  summary: Verify pre-flight disk space check rejects images with inflated layer sizes
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-35-upgrade-preflight-disk-check
+
+/plan-36-rollback:
+  summary: Test bootc rollback functionality
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-36-rollback
+
+/plan-37-install-no-boot-dir:
+  summary: Test bootc install to-filesystem without /boot directory
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-37-install-no-boot-dir
+  extra-fixme_skip_if_composefs: true
+
+/plan-37-upgrade-check-status:
+  summary: Verify upgrade --check populates cached update in status
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-37-upgrade-check-status
+  extra-fixme_skip_if_composefs: true
+
+/plan-38-install-bootloader-none:
+  summary: Test bootc install with --bootloader=none
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-38-install-bootloader-none
+  extra-fixme_skip_if_composefs: true
+
+/plan-39-upgrade-tag:
+  summary: Test bootc upgrade --tag functionality with containers-storage
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-39-upgrade-tag
+
+/plan-40-install-karg-delete:
+  summary: Test bootc install --karg-delete
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-40-install-karg-delete
+  extra-fixme_skip_if_composefs: true
+
+/plan-41-composefs-gc-uki:
+  summary: Test composefs garbage collection for UKI
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-41-composefs-gc-uki
+
+/plan-42-loader-entries-source:
+  summary: Test bootc loader-entries set-options-for-source
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-42-loader-entries-source
+  extra-fixme_skip_if_composefs: true
+
+/plan-43-switch-same-digest:
+  summary: Error on bootc switch to image with identical fs-verity digest
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-43-switch-same-digest
+
+/plan-44-shadow-fixup:
+  summary: Test bootc-sysusers-shadow-sync removes orphaned gshadow entries before sysusers
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-44-shadow-fixup
+
+/plan-45-composefs-corruped-state-resilience:
+  summary: Test composefs backend resilience to state corruption
+  discover:
+    how: fmf
+    test:
+      - /tmt/tests/tests/test-45-composefs-corruped-state-resilience
+# END GENERATED PLANS

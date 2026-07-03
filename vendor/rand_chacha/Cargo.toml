@@ -1,0 +1,54 @@
+[dependencies.ppv-lite86]
+default-features = false
+features = ["simd"]
+version = "0.2.14"
+
+[dependencies.rand_core]
+version = "0.9.0"
+
+[dependencies.serde]
+features = ["derive"]
+optional = true
+version = "1.0"
+
+[dev-dependencies.rand_core]
+features = ["os_rng"]
+version = "0.9.0"
+
+[dev-dependencies.serde_json]
+version = "1.0"
+
+[features]
+default = ["std"]
+os_rng = ["rand_core/os_rng"]
+serde = ["dep:serde"]
+std = ["ppv-lite86/std", "rand_core/std"]
+
+[lib]
+path = "src/lib.rs"
+
+[package]
+authors = ["The Rand Project Developers", "The Rust Project Developers", "The CryptoCorrosion Contributors"]
+autobenches = false
+autobins = false
+autoexamples = false
+autolib = false
+autotests = false
+categories = ["algorithms", "no-std"]
+description = """
+ChaCha random number generator
+"""
+documentation = "https://docs.rs/rand_chacha"
+edition = "2021"
+homepage = "https://rust-random.github.io/book"
+keywords = ["random", "rng", "chacha"]
+license = "MIT OR Apache-2.0"
+name = "rand_chacha"
+readme = "README.md"
+repository = "https://github.com/rust-random/rand"
+rust-version = "1.63"
+version = "0.9.0"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--generate-link-to-definition"]

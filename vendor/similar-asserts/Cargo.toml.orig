@@ -1,0 +1,31 @@
+[package]
+name = "similar-asserts"
+version = "2.0.0"
+authors = ["Armin Ronacher <armin.ronacher@active-4.com>"]
+edition = "2024"
+license = "Apache-2.0"
+description = "provides assert_eq! like macros with colorized diff output"
+repository = "https://github.com/mitsuhiko/similar-asserts"
+keywords = ["assert", "diff", "color"]
+readme = "README.md"
+exclude = ["assets/*"]
+rust-version = "1.85.0"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = ["unicode"]
+unicode = ["similar/unicode"]
+
+[dependencies]
+similar = { version = "3.0.0", features = ["inline"] }
+console = { version = "0.16.0", default-features = false, features = ["std"] }
+serde = { version = "1.0.228", optional = true }
+
+[dev-dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+
+[[example]]
+name = "serde"
+required-features = ["serde"]

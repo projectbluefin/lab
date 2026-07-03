@@ -1,0 +1,22 @@
+#!/bin/bash
+# Verify that invoking `bootc internals reboot` actually invokes a reboot, when
+# running inside systemd.
+# xref:
+# - https://github.com/bootc-dev/bootc/issues/1416
+# - https://github.com/bootc-dev/bootc/issues/1419
+set -euo pipefail
+image=$1
+tmpd=$(mktemp -d)
+log() {
+  echo "$@"
+  "$@"
+}
+log timeout 120 podman run --rm --systemd=always --privileged -v /sys:/sys:ro --label bootc.test=reboot --net=none -v $(pwd):/src:ro -v $tmpd:/run/bootc-test-reboot $image /bin/sh -c 'cp /src/*.service /etc/systemd/system && systemctl enable bootc-test-reboot && exec /sbin/init' || true
+ls -al $tmpd
+if test '!' -f $tmpd/success; then
+  echo "reboot failed" 1>&2
+  rm -rf "$tmpd"
+  exit 1
+fi
+rm -rf "$tmpd"
+echo "ok reboot"

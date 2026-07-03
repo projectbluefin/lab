@@ -1,0 +1,12 @@
+[Unit]
+ConditionPathExists=!/etc/initrd-release 
+Requires=bootc-finish-test-reboot.service
+After=bootc-finish-test-reboot.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=bootc internals reboot
+
+[Install]
+WantedBy=multi-user.target

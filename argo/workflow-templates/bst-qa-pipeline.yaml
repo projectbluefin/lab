@@ -1,0 +1,108 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: bst-qa-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      BuildStream QA pipeline for the bst-prototype project.
+      Installs buildstream via pip in a chainguard/python container, stages
+      bst-prototype/ from this repo, configures the in-cluster artifact
+      cache (bst-artifact-server:8080) for push/pull, and builds hello.bst.
+  labels:
+    app.kubernetes.io/component: bst-qa
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  activeDeadlineSeconds: 1800   # 30 minutes
+
+  arguments:
+    parameters:
+      - name: repo
+        value: "https://github.com/projectbluefin/lab.git"
+      - name: ref
+        value: "main"
+      - name: project-subdir
+        value: "bst-prototype"
+      - name: element
+        value: "hello.bst"
+      - name: artifact-server
+        value: "http://bst-artifact-server:8080"
+
+  entrypoint: build
+
+  templates:
+
+    - name: build
+      inputs:
+        parameters:
+          - name: repo
+            value: "{{workflow.parameters.repo}}"
+          - name: ref
+            value: "{{workflow.parameters.ref}}"
+          - name: project-subdir
+            value: "{{workflow.parameters.project-subdir}}"
+          - name: element
+            value: "{{workflow.parameters.element}}"
+          - name: artifact-server
+            value: "{{workflow.parameters.artifact-server}}"
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      volumes:
+        - name: workdir
+          emptyDir: {}
+      script:
+        image: cgr.dev/chainguard/python:latest-dev
+        command: [bash]
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: workdir
+            mountPath: /work
+        env:
+          - name: REPO
+            value: "{{inputs.parameters.repo}}"
+          - name: REF
+            value: "{{inputs.parameters.ref}}"
+          - name: PROJECT_SUBDIR
+            value: "{{inputs.parameters.project-subdir}}"
+          - name: ELEMENT
+            value: "{{inputs.parameters.element}}"
+          - name: ARTIFACT_SERVER
+            value: "{{inputs.parameters.artifact-server}}"
+        source: |
+          set -euo pipefail
+
+          echo "=== Installing BuildStream 2.2.x ==="
+          pip install --no-cache-dir buildstream==2.2.*
+
+          echo "=== Staging ${PROJECT_SUBDIR} from ${REPO}@${REF} ==="
+          cd /work
+          git clone --depth=1 --branch "${REF}" --filter=blob:none --sparse "${REPO}" src
+          cd src
+          git sparse-checkout set "${PROJECT_SUBDIR}"
+          cd "${PROJECT_SUBDIR}"
+
+          echo "=== Configuring .config/buildstream.conf (artifact cache: ${ARTIFACT_SERVER}) ==="
+          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf)
+          mkdir -p "${HOME}/.config"
+          cat > "${HOME}/.config/buildstream.conf" << EOF
+          projects:
+            ${PROJECT_NAME}:
+              artifacts:
+              - url: ${ARTIFACT_SERVER}
+                push: true
+          EOF
+
+          echo "=== Building ${ELEMENT} ==="
+          bst --no-interactive build "${ELEMENT}"
+
+          echo "=== Verifying build result ==="
+          bst --no-interactive show --format '%{state}' "${ELEMENT}" | grep -qx cached \
+            && echo "✔ ${ELEMENT} built and cached successfully" \
+            || (echo "✘ ${ELEMENT} did not reach cached state" >&2; exit 1)

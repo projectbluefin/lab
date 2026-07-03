@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bst-artifact-server
+  namespace: argo
+  labels:
+    app: bst-artifact-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bst-artifact-server
+  template:
+    metadata:
+      labels:
+        app: bst-artifact-server
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: exo-0
+      containers:
+      - name: bst-artifact-server
+        image: cgr.dev/chainguard/python:latest-dev
+        command:
+        - sh
+        - -c
+        - |
+          pip install --no-cache-dir buildstream==2.2.* && \
+          bst-artifact-server serve --directory /artifacts --listen 0.0.0.0:8080
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: artifact-storage
+          mountPath: /artifacts
+      volumes:
+      - name: artifact-storage
+        hostPath:
+          path: /var/mnt/ghost-data
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bst-artifact-server
+  namespace: argo
+spec:
+  selector:
+    app: bst-artifact-server
+  ports:
+  - port: 8080
+    targetPort: 8080

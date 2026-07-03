@@ -64,10 +64,14 @@ test('Astro build emits multipage factory routes into docs', () => {
   // the chart silently fails to render (caught this only via a real headless-browser check,
   // never via these text assertions alone).
   function decodeInlineScriptSource(pageHtml, matchToken) {
-    const scriptTagRe = new RegExp(`<script src="([^"]*${matchToken}[^"]*)"[^>]*>`);
-    const match = pageHtml.match(scriptTagRe);
-    assert.ok(match, `expected to find a script tag referencing ${matchToken}`);
-    const src = match[1];
+    // The chart script may be emitted either as a separate built asset (its filename
+    // contains matchToken) or inlined as a base64 data: URI when small enough for
+    // Vite's asset-inlining threshold — a data: URI never contains the original
+    // filename, so match either shape rather than requiring the token in the src.
+    const allScriptSrcs = [...pageHtml.matchAll(/<script src="([^"]+)"[^>]*>/g)].map((m) => m[1]);
+    const src = allScriptSrcs.find((s) => s.includes(matchToken))
+      ?? allScriptSrcs.find((s) => !s.includes('cdn.jsdelivr.net'));
+    assert.ok(src, `expected to find a local chart script tag near ${matchToken}`);
     if (src.startsWith('data:')) {
       const base64 = src.split(',')[1];
       return Buffer.from(base64, 'base64').toString('utf8');

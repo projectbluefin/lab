@@ -665,6 +665,71 @@ argo-mcp-logs_workflow <workflow-name>
 - Adding Loki + Promtail duplicates storage, adds 2–3 pods, and a 10Gi PVC for no
   additional capability that `argo logs` doesn't already provide
 
+### 22. CronWorkflow `suspend` field can survive a git removal — verify live, don't trust ArgoCD "Synced"
+
+Removing `spec.suspend: true` from a CronWorkflow's git manifest and syncing does **not**
+reliably clear the live field, even when ArgoCD reports the resource `Synced` and the sync
+`operationState` says `Succeeded`. This was observed directly: after removing `suspend: true`
+from 10 CronWorkflow manifests, committing, pushing, and force-syncing (`annotate
+argocd.argoproj.io/refresh=hard`), ArgoCD reported all 10 as `Synced` — but `kubectl get
+cronworkflow <name> -o jsonpath='{.spec.suspend}'` still returned `true` on every one of them.
+
+**Always verify the live field directly after removing it from git — never trust the
+ArgoCD sync/resource status alone for boolean fields that may have been set by a prior
+apply.** If live state doesn't match git after a confirmed sync, patch it directly:
+
+```bash
+kubectl patch cronworkflow -n argo <name> --type=merge -p '{"spec":{"suspend":false}}'
+```
+
+Root cause not conclusively identified (suspected Server-Side Apply field-ownership —
+a boolean field set by an earlier field manager isn't cleared just because a later
+manifest omits it). Treat any boolean/scalar field removal from a CronWorkflow the same
+way: confirm live state with `kubectl get -o jsonpath`, don't stop at "ArgoCD says Synced".
+
+### 23. Digest-comparison pollers can't detect out-of-band artifact loss
+
+`digest-watch` (and similarly-shaped pollers) only rebuild an artifact when the **upstream
+source digest changes** vs a ConfigMap-stored value. They have no way to notice that the
+artifact itself disappeared for an unrelated reason (disk wipe, PVC reset, registry GC)
+while the upstream digest stayed the same — the poller will keep reporting "no change,
+skipping" indefinitely even though the artifact is gone and every downstream consumer
+(e.g. `assert-cd` in a QA pipeline) is failing.
+
+**This happened concretely:** a ghost XFS migration wiped the local Zot registry.
+`bluefin-containerdisk` was completely absent, but `ghcr.io/projectbluefin/bluefin:testing`'s
+digest hadn't changed, so `digest-watch` never rebuilt it. `bluefin-qa-pipeline` would have
+failed indefinitely without manual intervention.
+
+**Recovery:** manually submit the build Workflow directly with `force=true`, bypassing the
+digest comparison:
+```bash
+kubectl create -f - <<'EOF'
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: manual-build-cd-<tag>-
+  namespace: argo
+spec:
+  workflowTemplateRef:
+    name: build-containerdisk
+  arguments:
+    parameters:
+      - {name: image, value: "ghcr.io/projectbluefin/<repo>"}
+      - {name: image-tag, value: "<upstream-tag>"}
+      - {name: containerdisk-tag, value: "<zot-tag>"}
+      - {name: force, value: "true"}
+EOF
+```
+
+**Durable fix (not yet implemented):** digest-comparison pollers that gate a downstream
+`assert-cd`-style check should also probe the destination registry for artifact existence
+(same skopeo pattern `assert-cd` already uses), not just compare source digests. Any disk
+wipe, registry migration, or manual Zot cleanup should trigger a manual force-rebuild of
+every containerDisk tag immediately afterward — don't assume the poller will self-heal.
+
+## Common Rationalizations
+
 | "The sub-template will see workflow.parameters directly." | It will not. Argo Workflows scopes parameters per-template. Always pass explicitly. |
 | "I applied the template with kubectl — it's fine." | ArgoCD selfHeal will overwrite it within minutes. Use git. |
 | "The lint passed locally, I'll skip CI." | CI runs against the same offline linter. If it passed locally, it passes in CI. |
@@ -708,6 +773,8 @@ argo-mcp-logs_workflow <workflow-name>
 - Aurora/Bazzite digest pollers running full GNOME suite sets (`smoke,common,developer,software,system`) even though these variants are KDE-focused — this creates 5x VM pressure per trigger and overloads scheduling. Keep Aurora/Bazzite pollers on `suites: system`.
 - K8sGPT finding no-endpoint Services for `argocd-applicationset-controller`, `argocd-dex-server`, `argocd-notifications-controller-metrics`, or `kubevirt/virt-exportproxy` — these are documented control-plane exceptions in this cluster shape.
 - Commit message not in Conventional Commits format — the pre-commit hook rejects any commit not matching `<type>(<scope>): <description>`. Valid types: `feat fix ci chore docs refactor test build perf revert`
+- Removing `suspend: true` from a CronWorkflow, seeing ArgoCD report `Synced`, and stopping there — the live field can silently stay `true`. Always re-check with `kubectl get cronworkflow <name> -o jsonpath='{.spec.suspend}'` after sync.
+- A digest-comparison poller (`digest-watch`, `dakota-commit-poller`, etc.) treated as a guarantee that a downstream artifact exists — it only reacts to source digest *changes*, not to the artifact disappearing out-of-band (disk wipe, registry GC). After any disk/registry event, force-rebuild manually; don't wait for the poller.
 
 ## Verification
 
@@ -730,3 +797,5 @@ Before marking any WorkflowTemplate change done:
 - [ ] All local OCI registry references use `:30500` (NodePort), not `:5000` (container-internal)
 - [ ] `grep -rn 'image:' argo/ manifests/` shows only allowlisted registries: `ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`, `registry.k8s.io`, `192.168.1.102`, `localhost`
 - [ ] Image pollers update digest state only after QA pipeline success (failed runs must retry on next poll)
+- [ ] After removing `suspend: true` from a CronWorkflow and syncing, live `spec.suspend` confirmed via `kubectl get -o jsonpath` — not assumed from ArgoCD's `Synced` status alone
+- [ ] After any disk wipe/registry migration/Zot cleanup, every affected containerDisk tag manually force-rebuilt rather than assuming a digest-comparison poller will self-heal

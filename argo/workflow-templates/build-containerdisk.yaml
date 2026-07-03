@@ -217,11 +217,22 @@ spec:
         STAGING="/var/mnt/ghost-data/bluefin-cd-build/${TAG}"
         DISK="${STAGING}/disk.raw"
         BUILDLOG="${STAGING}/build.log"
+        CACHE_ROOT="/var/mnt/ghost-data/bluefin-cd-build/_containers-storage"
+        RUN_ROOT="/var/mnt/ghost-data/bluefin-cd-build/_containers-runroot"
 
         mkdir -p "${STAGING}"
         exec > >(tee -a "${BUILDLOG}") 2>&1
 
         echo "[BUILD] start: $(date -u) image=${IMAGE} disk-size={{inputs.parameters.disk-size}}"
+        mkdir -p "${CACHE_ROOT}" "${RUN_ROOT}"
+        cat > /tmp/storage.conf <<EOF
+        [storage]
+        driver = "overlay"
+        graphroot = "${CACHE_ROOT}"
+        runroot = "${RUN_ROOT}"
+        EOF
+        export CONTAINERS_STORAGE_CONF=/tmp/storage.conf
+        echo "[BUILD] containers storage graphroot=${CACHE_ROOT}"
 
         if [[ -f "${DISK}" ]]; then
           echo "Removing stale disk: ${DISK}"

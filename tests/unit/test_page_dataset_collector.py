@@ -71,12 +71,12 @@ def test_tests_matrix_derives_rows_from_surface_and_results():
     assert dataset['schema_version'] == 'v1'
     assert dataset['_meta']['page'] == 'tests'
     assert dataset['_meta']['starter_artifact'] is False
-    assert len(dataset['rows']) == 22
+    assert len(dataset['rows']) == 14
 
     metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
-    assert metrics['published_matrix_rows']['value'] == 22
+    assert metrics['published_matrix_rows']['value'] == 14
     assert metrics['rows_with_completed_runs']['value'] == 7
-    assert metrics['rows_waiting_for_results']['value'] == 15
+    assert metrics['rows_waiting_for_results']['value'] == 7
 
     rows = {row['id']: row for row in dataset['rows']}
     assert rows['bluefin-testing-developer']['state'] == 'available'
@@ -84,11 +84,16 @@ def test_tests_matrix_derives_rows_from_surface_and_results():
     assert rows['bluefin-testing-developer']['history_points'] == 5
     assert rows['bluefin-testing-smoke']['state'] == 'available'
     assert rows['bluefin-testing-smoke']['pass_rate'] == 87.59
-    assert rows['aurora-testing-smoke']['state'] == 'unavailable'
-    assert rows['aurora-testing-smoke']['state_reason']
+    assert rows['bluefin-lts-testing-developer']['state'] == 'unavailable'
+    assert rows['bluefin-lts-testing-developer']['state_reason']
     assert rows['dakota-testing-smoke']['screenshot_url'].endswith(
         '/screenshots/dakota-testing-smoke-latest.png'
     )
+    # The fabricated 'aurora'/'bazzite' variants (never tested by any Argo QA pipeline)
+    # must not appear in the matrix.
+    assert {row['variant'] for row in dataset['rows']} == {
+        'bluefin', 'bluefin-lts', 'dakota', 'flatcar',
+    }
 
 
 def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
@@ -103,7 +108,7 @@ def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
 
     metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
     assert metrics['tracked_applications']['value'] == 2
-    assert metrics['application_rows']['value'] == 10
+    assert metrics['application_rows']['value'] == 6
     assert metrics['rows_with_primary_app_results']['value'] == 6
     assert metrics['rows_with_fallback_signals']['value'] == 1
 
@@ -118,7 +123,11 @@ def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
         'bazaar user service is available',
     ]
     assert rows['bazaar-dakota-testing']['fallback_signal_count'] == 0
-    assert rows['bazaar-aurora-testing']['state'] == 'unavailable'
+    # The fabricated 'aurora'/'bazzite' variants must not appear here either — they
+    # are seeded from the same docs/data/test-surface.json software cells.
+    assert {row['variant'] for row in dataset['rows']} == {
+        'bluefin', 'bluefin-lts', 'dakota',
+    }
     assert rows['firefox-bluefin-testing']['state'] == 'available'
     assert rows['firefox-bluefin-testing']['fallback_signal_count'] == 0
 
@@ -462,11 +471,11 @@ def test_adoption_metrics_names_authoritative_upstream_sources():
 # --- Provenance fix tests (TDD: added to drive the source_url fix) ---
 
 REPO_HB_MIGRATED_URL = (
-    'https://github.com/projectbluefin/testing-lab/blob/main/'
+    'https://github.com/projectbluefin/lab/blob/main/'
     'docs/data/homebrew-package-stats-migrated.json'
 )
 REPO_AC_MIGRATED_URL = (
-    'https://github.com/projectbluefin/testing-lab/blob/main/'
+    'https://github.com/projectbluefin/lab/blob/main/'
     'docs/data/adoption-countme-migrated.json'
 )
 OLD_UPSTREAM_SLUG = 'castrojo/bootc-ecosystem'

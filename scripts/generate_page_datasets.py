@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 
-REPO_SLUG = 'projectbluefin/testing-lab'
-PAGES_BASE = 'https://projectbluefin.github.io/testing-lab'
+REPO_SLUG = 'projectbluefin/lab'
+PAGES_BASE = 'https://factory.projectbluefin.io'
 
 
 def now_utc_iso() -> str:
@@ -37,6 +39,49 @@ def row_state(last_run: str | None) -> tuple[str, str | None]:
     if last_run:
         return 'available', None
     return 'unavailable', 'Result file exists, but no completed run is published for this matrix cell yet.'
+
+
+# testsuite renamed its "system" contract-check directory to "lifecycle"; the Argo
+# pipelines alias it back (see argo/workflow-templates/run-gnome-tests.yaml:298-301).
+SUITE_TO_TESTSUITE_DIR = {
+    'system': 'lifecycle',
+}
+
+
+def warn_if_surface_drifted_from_testsuite(root: Path) -> None:
+    """Best-effort, log-only guard against docs/data/test-surface.json drifting from the
+    real projectbluefin/testsuite feature inventory (the way the fabricated 'aurora' and
+    'bazzite' rows drifted in undetected). Never fails the build — network/rate-limit
+    failures are swallowed, matching the fallback pattern in src/pages/applications.astro.
+    """
+    try:
+        tree_json = subprocess.run(
+            [
+                'curl', '-fs', '-H', 'User-Agent: lab-builder', '--max-time', '3',
+                'https://api.github.com/repos/projectbluefin/testsuite/git/trees/main?recursive=1',
+            ],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout
+        tree = json.loads(tree_json)
+        feature_dirs = {
+            entry['path'].split('/')[1]
+            for entry in tree.get('tree', [])
+            if entry.get('type') == 'blob' and entry['path'].startswith('tests/') and entry['path'].endswith('.feature')
+        }
+    except Exception:
+        return
+
+    surface = load_json(root / 'docs/data/test-surface.json')
+    tracked_suites = {cell['suite'] for cell in surface.get('surface', [])}
+    for suite in sorted(tracked_suites):
+        testsuite_dir = SUITE_TO_TESTSUITE_DIR.get(suite, suite)
+        if testsuite_dir not in feature_dirs:
+            print(
+                f"WARNING: test-surface.json tracks suite '{suite}' (testsuite dir "
+                f"'{testsuite_dir}') but projectbluefin/testsuite has no tests/{testsuite_dir}/ "
+                "features. The matrix may be tracking a renamed or removed suite.",
+                file=sys.stderr,
+            )
 
 
 def iter_surface_cells(root: Path):
@@ -894,6 +939,7 @@ def main() -> int:
 
     root = Path(args.root).resolve()
     collected_at = args.collected_at or now_utc_iso()
+    warn_if_surface_drifted_from_testsuite(root)
     write_page_datasets(root, collected_at)
     return 0
 

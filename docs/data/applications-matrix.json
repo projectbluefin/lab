@@ -3,9 +3,9 @@
   "_meta": {
     "page": "applications",
     "description": "Collector-derived contract for the multipage applications matrix view.",
-    "generated_at": "2026-06-30T18:05:29Z",
+    "generated_at": "2026-07-03T00:18:06Z",
     "starter_artifact": false,
-    "status": "partial"
+    "status": "ready"
   },
   "summary_metrics": [
     {
@@ -16,18 +16,18 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/page-contracts.md",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Count applications[] entries in this collector-derived artifact."
     },
     {
       "id": "application_rows",
       "label": "Application matrix rows",
-      "value": 10,
+      "value": 6,
       "unit": "count",
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/test-surface.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Count software suite rows in docs/data/test-surface.json."
     },
     {
@@ -38,7 +38,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Count application rows whose software suite has a completed result with last_run."
     },
     {
@@ -49,7 +49,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-common.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Count application rows that picked up coarse Bazaar fallback signals from published non-application results."
     }
   ],
@@ -65,7 +65,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/page-contracts.md",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Catalog entry from the page contract: applications v1 includes Bazaar and Firefox."
     },
     {
@@ -77,47 +77,11 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/page-contracts.md",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Catalog entry from the page contract: applications v1 includes Bazaar and Firefox."
     }
   ],
   "rows": [
-    {
-      "id": "bazaar-aurora-testing",
-      "app_id": "bazaar",
-      "variant": "aurora",
-      "branch": "testing",
-      "primary_suite": "software",
-      "primary_result_status": "pending",
-      "primary_last_run": null,
-      "scenario_total": 0,
-      "scenario_failed": 0,
-      "fallback_signal_count": 0,
-      "fallback_signals": [],
-      "state": "unavailable",
-      "state_reason": "No completed Bazaar-specific software result is published for this variant/branch; fallback signals remain coarse only.",
-      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-aurora-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
-      "derivation": "Seed row from docs/data/test-surface.json software cells for Bazaar; join docs/results/bluefin-aurora-testing-software.json for primary evidence. Attach coarse Bazaar fallback signals from matching non-application results."
-    },
-    {
-      "id": "bazaar-bazzite-testing",
-      "app_id": "bazaar",
-      "variant": "bazzite",
-      "branch": "testing",
-      "primary_suite": "software",
-      "primary_result_status": "pending",
-      "primary_last_run": null,
-      "scenario_total": 0,
-      "scenario_failed": 0,
-      "fallback_signal_count": 0,
-      "fallback_signals": [],
-      "state": "unavailable",
-      "state_reason": "No completed Bazaar-specific software result is published for this variant/branch; fallback signals remain coarse only.",
-      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-bazzite-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
-      "derivation": "Seed row from docs/data/test-surface.json software cells for Bazaar; join docs/results/bluefin-bazzite-testing-software.json for primary evidence. Attach coarse Bazaar fallback signals from matching non-application results."
-    },
     {
       "id": "bazaar-bluefin-lts-testing",
       "app_id": "bazaar",
@@ -133,7 +97,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Seed row from docs/data/test-surface.json software cells for Bazaar; join docs/results/bluefin-lts-testing-software.json for primary evidence. Attach coarse Bazaar fallback signals from matching non-application results."
     },
     {
@@ -160,14 +124,14 @@
           "state": "unavailable",
           "state_reason": "Coarse fallback only: Bazaar evidence comes from scenario-name substring matching in a non-application suite.",
           "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-common.json",
-          "collected_at": "2026-06-30T18:05:29Z",
+          "collected_at": "2026-07-03T00:18:06Z",
           "derivation": "Case-insensitive /bazaar/ match against failed_scenarios in docs/results/bluefin-testing-common.json."
         }
       ],
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Seed row from docs/data/test-surface.json software cells for Bazaar; join docs/results/bluefin-testing-software.json for primary evidence. Attach coarse Bazaar fallback signals from matching non-application results."
     },
     {
@@ -185,44 +149,8 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Seed row from docs/data/test-surface.json software cells for Bazaar; join docs/results/dakota-testing-software.json for primary evidence. Attach coarse Bazaar fallback signals from matching non-application results."
-    },
-    {
-      "id": "firefox-aurora-testing",
-      "app_id": "firefox",
-      "variant": "aurora",
-      "branch": "testing",
-      "primary_suite": "software",
-      "primary_result_status": "pending",
-      "primary_last_run": null,
-      "scenario_total": 0,
-      "scenario_failed": 0,
-      "fallback_signal_count": 0,
-      "fallback_signals": [],
-      "state": "unavailable",
-      "state_reason": "No completed Firefox-specific software result is published for this variant/branch; fallback signals remain coarse only.",
-      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-aurora-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
-      "derivation": "Seed row from docs/data/test-surface.json software cells for Firefox; join docs/results/bluefin-aurora-testing-software.json for primary evidence. No fallback suite is configured for Firefox yet."
-    },
-    {
-      "id": "firefox-bazzite-testing",
-      "app_id": "firefox",
-      "variant": "bazzite",
-      "branch": "testing",
-      "primary_suite": "software",
-      "primary_result_status": "pending",
-      "primary_last_run": null,
-      "scenario_total": 0,
-      "scenario_failed": 0,
-      "fallback_signal_count": 0,
-      "fallback_signals": [],
-      "state": "unavailable",
-      "state_reason": "No completed Firefox-specific software result is published for this variant/branch; fallback signals remain coarse only.",
-      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-bazzite-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
-      "derivation": "Seed row from docs/data/test-surface.json software cells for Firefox; join docs/results/bluefin-bazzite-testing-software.json for primary evidence. No fallback suite is configured for Firefox yet."
     },
     {
       "id": "firefox-bluefin-lts-testing",
@@ -239,7 +167,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Seed row from docs/data/test-surface.json software cells for Firefox; join docs/results/bluefin-lts-testing-software.json for primary evidence. No fallback suite is configured for Firefox yet."
     },
     {
@@ -257,7 +185,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Seed row from docs/data/test-surface.json software cells for Firefox; join docs/results/bluefin-testing-software.json for primary evidence. No fallback suite is configured for Firefox yet."
     },
     {
@@ -275,7 +203,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-software.json",
-      "collected_at": "2026-06-30T18:05:29Z",
+      "collected_at": "2026-07-03T00:18:06Z",
       "derivation": "Seed row from docs/data/test-surface.json software cells for Firefox; join docs/results/dakota-testing-software.json for primary evidence. No fallback suite is configured for Firefox yet."
     }
   ]

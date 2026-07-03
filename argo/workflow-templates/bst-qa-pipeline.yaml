@@ -8,7 +8,10 @@ metadata:
       BuildStream QA pipeline for the bst-prototype project.
       Installs buildstream via pip in a chainguard/python container, stages
       bst-prototype/ from this repo, configures the in-cluster artifact
-      cache (bst-artifact-server:9092 via gRPC) for push/pull, and builds hello.bst.
+      cache (bst-artifact-server:9092 via gRPC) for push/pull, points
+      remote-execution at the in-cluster Buildbarn frontend
+      (buildbarn/frontend:8980, distributed across ghost+exo-0 workers),
+      and builds hello.bst.
   labels:
     app.kubernetes.io/component: bst-qa
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -28,6 +31,8 @@ spec:
         value: "hello.bst"
       - name: artifact-server
         value: "grpc://bst-artifact-server:9092"
+      - name: remote-execution-service
+        value: "http://frontend.buildbarn.svc.cluster.local:8980"
 
   entrypoint: build
 
@@ -46,6 +51,8 @@ spec:
             value: "{{workflow.parameters.element}}"
           - name: artifact-server
             value: "{{workflow.parameters.artifact-server}}"
+          - name: remote-execution-service
+            value: "{{workflow.parameters.remote-execution-service}}"
       volumes:
         - name: workdir
           emptyDir: {}
@@ -73,6 +80,8 @@ spec:
             value: "{{inputs.parameters.element}}"
           - name: ARTIFACT_SERVER
             value: "{{inputs.parameters.artifact-server}}"
+          - name: REMOTE_EXECUTION_SERVICE
+            value: "{{inputs.parameters.remote-execution-service}}"
         source: |
           set -euo pipefail
 
@@ -83,15 +92,26 @@ spec:
           git sparse-checkout set "${PROJECT_SUBDIR}"
           cd "${PROJECT_SUBDIR}"
 
-          echo "=== Configuring .config/buildstream.conf (artifact cache: ${ARTIFACT_SERVER}) ==="
+          echo "=== Configuring .config/buildstream.conf (artifact cache: ${ARTIFACT_SERVER}, remote-execution: ${REMOTE_EXECUTION_SERVICE}) ==="
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           mkdir -p "${HOME}/.config"
-          echo "projects:" > "${HOME}/.config/buildstream.conf"
-          echo "  ${PROJECT_NAME}:" >> "${HOME}/.config/buildstream.conf"
-          echo "    artifacts:" >> "${HOME}/.config/buildstream.conf"
-          echo "      servers:" >> "${HOME}/.config/buildstream.conf"
-          echo "      - url: ${ARTIFACT_SERVER}" >> "${HOME}/.config/buildstream.conf"
-          echo "        push: true" >> "${HOME}/.config/buildstream.conf"
+          {
+            echo "projects:"
+            echo "  ${PROJECT_NAME}:"
+            echo "    artifacts:"
+            echo "      servers:"
+            echo "      - url: ${ARTIFACT_SERVER}"
+            echo "        push: true"
+            # Buildbarn frontend serves CAS+AC+Execute-forwarding on a single
+            # port; storage-service and action-cache-service both point at it.
+            echo "remote-execution:"
+            echo "  execution-service:"
+            echo "    url: ${REMOTE_EXECUTION_SERVICE}"
+            echo "  storage-service:"
+            echo "    url: ${REMOTE_EXECUTION_SERVICE}"
+            echo "  action-cache-service:"
+            echo "    url: ${REMOTE_EXECUTION_SERVICE}"
+          } > "${HOME}/.config/buildstream.conf"
 
           echo "=== Building ${ELEMENT} ==="
           bst --no-interactive build "${ELEMENT}"

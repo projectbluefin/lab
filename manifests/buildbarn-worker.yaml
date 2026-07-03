@@ -1,0 +1,108 @@
+# Buildbarn worker + runner — one pair per node (DaemonSet naturally covers
+# both ghost and exo-0; add nodes later and they join automatically, same as
+# the rest of this cluster's scheduling model).
+#
+# Runner is BuildStream-specific: chrootIntoInputRoot (see buildbarn-config
+# runner.jsonnet) requires CAP_SYS_CHROOT, so it runs as root with only that
+# capability added — not privileged. The runner container's own image is
+# irrelevant to build output (chroot replaces its rootfs with the action's
+# input root at execution time); wolfi-base is used only so bb_runner itself
+# has a libc to run against before the chroot happens.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: worker
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      initContainers:
+        - name: bb-runner-installer
+          image: ghcr.io/buildbarn/bb-runner-installer:20260527T162223Z-c48dcda
+          volumeMounts:
+            - mountPath: /bb/
+              name: bb-runner-bin
+        - name: volume-init
+          image: cgr.dev/chainguard/wolfi-base:latest
+          command:
+            - sh
+            - -c
+            - mkdir -pm 0777 /worker/build && mkdir -pm 0700 /worker/cache && chmod 0777 /worker
+          volumeMounts:
+            - mountPath: /worker
+              name: worker
+      containers:
+        - name: worker
+          image: ghcr.io/buildbarn/bb-worker:20260527T162223Z-c48dcda
+          args:
+            - /config/worker.jsonnet
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - mountPath: /config/
+              name: configs
+              readOnly: true
+            - mountPath: /worker
+              name: worker
+        - name: runner
+          image: cgr.dev/chainguard/wolfi-base:latest
+          command: [/bb/bb_runner, /config/runner.jsonnet]
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [SYS_CHROOT]
+          resources:
+            requests:
+              cpu: 1
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          volumeMounts:
+            - mountPath: /config/
+              name: configs
+              readOnly: true
+            - mountPath: /worker
+              name: worker
+            - mountPath: /bb
+              name: bb-runner-bin
+              readOnly: true
+      volumes:
+        - name: bb-runner-bin
+          emptyDir: {}
+        - name: configs
+          configMap:
+            name: buildbarn-config
+            items:
+              - key: common.libsonnet
+                path: common.libsonnet
+              - key: runner.jsonnet
+                path: runner.jsonnet
+              - key: worker.jsonnet
+                path: worker.jsonnet
+        - name: worker
+          emptyDir: {}

@@ -1,0 +1,70 @@
+# Buildbarn scheduler — single instance (control plane for the execution
+# grid; not sharded like storage). No Ingress: internal-only, reached at
+# scheduler.buildbarn.svc.cluster.local from the frontend and workers.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler
+  template:
+    metadata:
+      labels:
+        app: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: ghcr.io/buildbarn/bb-scheduler:20260527T162223Z-c48dcda
+          args:
+            - /config/scheduler.jsonnet
+          ports:
+            - name: client-grpc
+              containerPort: 8982
+            - name: worker-grpc
+              containerPort: 8983
+            - name: http
+              containerPort: 7982
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - mountPath: /config/
+              name: configs
+              readOnly: true
+      volumes:
+        - name: configs
+          configMap:
+            name: buildbarn-config
+            items:
+              - key: common.libsonnet
+                path: common.libsonnet
+              - key: scheduler.jsonnet
+                path: scheduler.jsonnet
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    app: scheduler
+  ports:
+    - name: client-grpc
+      port: 8982
+    - name: worker-grpc
+      port: 8983
+    - name: http
+      port: 7982

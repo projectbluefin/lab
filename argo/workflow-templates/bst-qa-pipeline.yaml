@@ -92,8 +92,9 @@ spec:
           projects:
             ${PROJECT_NAME}:
               artifacts:
-              - url: ${ARTIFACT_SERVER}
-                push: true
+                servers:
+                - url: ${ARTIFACT_SERVER}
+                  push: true
           EOF
 
           echo "=== Building ${ELEMENT} ==="

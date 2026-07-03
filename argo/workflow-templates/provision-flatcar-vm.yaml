@@ -146,6 +146,8 @@ spec:
               labels:
                 kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 cpu:
                   cores: 2

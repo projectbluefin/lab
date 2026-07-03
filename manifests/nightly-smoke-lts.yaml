@@ -1,8 +1,7 @@
 # CronWorkflow: nightly LTS smoke suite at 02:30 UTC.
-# The ensure-disk step (inside bluefin-qa-pipeline) checks for the golden disk
-# and runs BIB only when missing — so first fire will build the LTS disk,
-# subsequent fires skip the build and go straight to tests (~4-5 min).
-# This is the permanent fix for the missing LTS golden disk (#10).
+# bluefin-qa-pipeline's assert-cd step fails fast if the containerdisk is missing
+# from Zot — it does not build one inline. digest-watch (5-min CronWorkflow) is
+# solely responsible for keeping the lts-testing containerdisk current.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -11,7 +10,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 spec:
-  suspend: true
   schedules:
     - "30 2 * * *"
   timezone: "UTC"

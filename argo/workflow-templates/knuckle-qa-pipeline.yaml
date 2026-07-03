@@ -486,6 +486,8 @@ spec:
                 kubevirt.io/ignitiondata: >-
                   {{inputs.parameters.ignition-json}}
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 firmware:
                   bootloader:
@@ -804,6 +806,8 @@ spec:
               labels:
                 kubevirt.io/vm: ${VM}
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 cpu:
                   cores: 4

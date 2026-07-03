@@ -175,18 +175,6 @@ const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unava
       <p>Image streams grouped by age ranges (Fresh, Recent, Stale, and Awaiting evidence).</p>
       <div id="upstream-brackets-chart" class="upstream-chart" role="img" aria-label="Freshness brackets chart"></div>
     </article>
-    <!-- Missing Streams List (Gaps) at the bottom of the chart grid -->
-    <div class="upstream-missing-list" style="grid-column: 1 / -1; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.06);">
-      <h3 style="font-size: 1rem; color: #cbd5e1; margin-bottom: 0.5rem; letter-spacing: -0.02em;">Streams Awaiting Published Evidence</h3>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
-        {model.missingLanes.map((lane: any) => (
-          <article class="upstream-missing-item" style="margin: 0; background: rgba(15,23,42,0.3); border: 1px solid rgba(239,68,68,0.15);">
-            <strong style="color: #f1f5f9; display: block; margin-bottom: 0.25rem;">{lane.label}</strong>
-            <span style="font-size: 0.8rem; color: #94a3b8;">{lane.state_reason}</span>
-          </article>
-        ))}
-      </div>
-    </div>
   </section>
 
   <section class="upstream-lanes-section">
@@ -272,20 +260,39 @@ const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unava
 
               {lane.state_reason && <p class="upstream-state-reason">{lane.state_reason}</p>}
 
-              <div class="upstream-evidence-row">
-                <a href={lane.source_url}>Evidence link</a>
-                <span>Collected {lane.collected_at}</span>
-              </div>
-
               <details class="upstream-details">
                 <summary>Derivation</summary>
                 <p>{lane.derivation}</p>
               </details>
+
+              <div class="upstream-evidence-row">
+                <a href={lane.source_url}>Evidence link</a>
+                <span>Collected {lane.collected_at}</span>
+              </div>
             </article>
           ))}
         </div>
       </section>
     ))}
+  </section>
+
+  <!-- Missing Streams List (Gaps) at the bottom of the page -->
+  <section class="upstream-missing-section" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.06);">
+    <div class="upstream-section-heading" style="margin-bottom: 1rem;">
+      <div>
+        <p class="page-intro__eyebrow">Awaiting evidence</p>
+        <h2 style="letter-spacing: -0.03em; margin: 0;">Streams Awaiting Published Evidence</h2>
+      </div>
+      <p>These image streams are configured but currently lack verified release timestamps.</p>
+    </div>
+    <div class="upstream-missing-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">
+      {model.missingLanes.map((lane: any) => (
+        <article class="upstream-missing-item" style="margin: 0; background: rgba(15,23,42,0.3); border: 1px solid rgba(239,68,68,0.15); border-radius: 18px; padding: 14px 16px;">
+          <strong style="color: #f1f5f9; display: block; margin-bottom: 0.25rem;">{lane.label}</strong>
+          <span style="font-size: 0.8rem; color: #94a3b8; line-height: 1.55;">{lane.state_reason}</span>
+        </article>
+      ))}
+    </div>
   </section>
 
   <script type="application/json" id="upstream-page-data" set:html={serializedModel}></script>

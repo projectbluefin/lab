@@ -88,14 +88,12 @@ spec:
           echo "=== Configuring .config/buildstream.conf (artifact cache: ${ARTIFACT_SERVER}) ==="
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf)
           mkdir -p "${HOME}/.config"
-          cat > "${HOME}/.config/buildstream.conf" << EOF
-          projects:
-            ${PROJECT_NAME}:
-              artifacts:
-                servers:
-                - url: ${ARTIFACT_SERVER}
-                  push: true
-          EOF
+          echo "projects:" > "${HOME}/.config/buildstream.conf"
+          echo "  ${PROJECT_NAME}:" >> "${HOME}/.config/buildstream.conf"
+          echo "    artifacts:" >> "${HOME}/.config/buildstream.conf"
+          echo "      servers:" >> "${HOME}/.config/buildstream.conf"
+          echo "      - url: ${ARTIFACT_SERVER}" >> "${HOME}/.config/buildstream.conf"
+          echo "        push: true" >> "${HOME}/.config/buildstream.conf"
 
           echo "=== Building ${ELEMENT} ==="
           bst --no-interactive build "${ELEMENT}"

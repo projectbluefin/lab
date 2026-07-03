@@ -8,7 +8,7 @@ metadata:
       BuildStream QA pipeline for the bst-prototype project.
       Installs buildstream via pip in a chainguard/python container, stages
       bst-prototype/ from this repo, configures the in-cluster artifact
-      cache (bst-artifact-server:8080) for push/pull, and builds hello.bst.
+      cache (bst-artifact-server:9092 via gRPC) for push/pull, and builds hello.bst.
   labels:
     app.kubernetes.io/component: bst-qa
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -27,7 +27,7 @@ spec:
       - name: element
         value: "hello.bst"
       - name: artifact-server
-        value: "http://bst-artifact-server:8080"
+        value: "grpc://bst-artifact-server:9092"
 
   entrypoint: build
 

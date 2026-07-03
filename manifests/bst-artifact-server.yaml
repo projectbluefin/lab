@@ -19,19 +19,22 @@ spec:
         kubernetes.io/hostname: exo-0
       containers:
       - name: bst-artifact-server
-        image: cgr.dev/chainguard/python:latest-dev
-        command:
-        - sh
-        - -c
-        - |
-          export PATH="${HOME}/.local/bin:${PATH}" && \
-          pip install --no-cache-dir buildstream-artifact-server && \
-          buildstream-artifact-server serve --directory /artifacts --listen 0.0.0.0:8080
+        image: quay.io/bazel-remote/bazel-remote:latest
+        args:
+        - --dir=/data
+        - --max_size=2000
+        - --port=8080
+        - --grpc_port=9092
+        securityContext:
+          runAsUser: 0
         ports:
-        - containerPort: 8080
+        - name: http
+          containerPort: 8080
+        - name: grpc
+          containerPort: 9092
         volumeMounts:
         - name: artifact-storage
-          mountPath: /artifacts
+          mountPath: /data
       volumes:
       - name: artifact-storage
         hostPath:
@@ -47,5 +50,9 @@ spec:
   selector:
     app: bst-artifact-server
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
     targetPort: 8080
+  - name: grpc
+    port: 9092
+    targetPort: 9092

@@ -16,7 +16,7 @@ spec:
         app: bst-artifact-server
     spec:
       nodeSelector:
-        kubernetes.io/hostname: exo-0
+        kubernetes.io/hostname: ghost   # must match hostPath below (ghost-data only exists on ghost)
       containers:
       - name: bst-artifact-server
         image: quay.io/bazel-remote/bazel-remote:latest
@@ -38,8 +38,8 @@ spec:
       volumes:
       - name: artifact-storage
         hostPath:
-          path: /var/mnt/ghost-data
-          type: Directory
+          path: /var/mnt/ghost-data/bst-artifact-cache
+          type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service

@@ -123,6 +123,10 @@ spec:
             name: zot-cache-config
         - name: data
           hostPath:
+            # Moved back onto the XFS ghost-data disk 2026-07-03: the prior
+            # node-local btrfs path (/var/mnt/framework-cache, fb9866d0) grew
+            # to 286G and pushed the root disk to 88% full. Root disk stability
+            # takes priority over the marginal local-btrfs throughput gain.
             path: /var/mnt/ghost-data/zot-cache
             type: DirectoryOrCreate
 ---

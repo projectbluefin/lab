@@ -54,7 +54,8 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /href="\/userspace\/"/, 'overview links to userspace at domain root');
   assert.match(html('docs/index.html'), /Ryzen AI MAX\+/i, 'overview renders control-plane Ryzen AI specs');
   assert.match(html('docs/index.html'), /Zot OCI Registry Cache & Heat/i, 'overview renders Zot OCI cache section');
-  assert.match(html('docs/index.html'), /:30501/i, 'overview renders zot-cache port details');
+  // Accept either :30501 (live LAN data) or :30500 (fallback when LAN unreachable, e.g. GitHub Actions)
+  assert.match(html('docs/index.html'), /:305(?:00|01)/i, 'overview renders zot-cache port details');
   assert.match(html('docs/images/index.html'), /Unavailable|pending|coming soon/i, 'subpages show explicit unavailable state');
 
   // Regression guard: chart scripts must load echarts globally from a CDN classic script

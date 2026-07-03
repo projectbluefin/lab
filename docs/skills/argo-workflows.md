@@ -345,6 +345,9 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
   ```
   Anonymous GHCR token API returns a 60-char non-JWT token that produces 404 on manifest
   requests — do NOT use the anonymous token endpoint. Use PAT via `--creds "_token:PAT"`.
+- `quay.io/skopeo/stable:latest` does **not** include `python3` or `jq`. Keep digest comparison
+  shell-only (`tr`/`sed`) or install tooling explicitly; otherwise stored digest reads collapse to
+  empty and every poll cycle submits duplicate `build-cd-sync-*` workflows.
 - Use in-cluster k8s API (SA token at `/var/run/secrets/kubernetes.io/serviceaccount/`)
   with `curl` for all ConfigMap and Workflow CRUD — no kubectl image needed.
 - **HTTP status detection trap**: `curl -sf -w "%{http_code}" ... || echo "000"` appends

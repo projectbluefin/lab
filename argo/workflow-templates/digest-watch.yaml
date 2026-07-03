@@ -216,7 +216,7 @@ spec:
             -H "Authorization: Bearer ${SA_TOKEN}" \
             "${KS}/api/v1/namespaces/argo/configmaps/containerdisk-source-digests" \
             | tr -d '\n' \
-            | sed -n "s/.*\"${CD_TAG}\":\"\\([^\"]*\\)\".*/\\1/p" \
+            | sed -n "s/.*\"${CD_TAG}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" \
             2>/dev/null || true)
           echo "Stored digest for ${CD_TAG}: ${STORED_DIGEST:-<none>}"
 

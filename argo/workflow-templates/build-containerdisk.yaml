@@ -8,9 +8,17 @@ metadata:
       Build a KubeVirt containerDisk from a bootc image.
       Flow: check (zot existence; short-circuits to "missing" when force=true) → install-to-disk → convert-and-push
       Replaces bib-build-and-push + golden-disk hostDisk approach.
-      All build steps are pinned to ghost (loop devices + /var/mnt/ghost-data staging).
+      Build steps are unpinned; workflow-local PVC staging keeps install/convert data together.
 spec:
   serviceAccountName: argo
+  volumeClaimTemplates:
+  - metadata:
+      name: staging
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 100Gi
   synchronization:
     mutexes:
     - name: build-containerdisk-global
@@ -115,8 +123,6 @@ spec:
       - name: containerdisk-tag
       - name: force
         value: "false"
-    nodeSelector:
-      kubernetes.io/hostname: ghost
     script:
       image: quay.io/skopeo/stable:latest
       command: [sh]
@@ -162,8 +168,6 @@ spec:
     # correct loopback device visibility and udev settle across namespaces.
     # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
     podSpecPatch: '{"hostPID":true,"hostIPC":true}'
-    nodeSelector:
-      kubernetes.io/hostname: ghost
     volumes:
     - name: dev
       hostPath:
@@ -172,9 +176,8 @@ spec:
       hostPath:
         path: /run/udev
     - name: staging
-      hostPath:
-        path: /var/mnt/ghost-data/bluefin-cd-build
-        type: DirectoryOrCreate
+      persistentVolumeClaim:
+        claimName: staging
     script:
       image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
       command: [bash]
@@ -403,13 +406,10 @@ spec:
       - name: image-tag
       - name: containerdisk-tag
       - name: disk-size
-    nodeSelector:
-      kubernetes.io/hostname: ghost
     volumes:
     - name: staging
-      hostPath:
-        path: /var/mnt/ghost-data/bluefin-cd-build
-        type: DirectoryOrCreate
+      persistentVolumeClaim:
+        claimName: staging
     script:
       image: quay.io/fedora/fedora:latest
       command: [sh]

@@ -107,13 +107,11 @@ spec:
         source: |
           set -euo pipefail
 
-          # Write in-cluster BST config — plain gRPC to in-cluster casd, no TLS
-          cat > /tmp/buildstream-cluster.conf << 'BSTCONF'
-          cache:
-            storage-service:
-              url: http://buildbox-casd.local-registry.svc.cluster.local:11002
-              push: true
-          BSTCONF
+          # Write in-cluster BST config — plain gRPC to in-cluster bazel-remote CAS, no TLS
+          echo "cache:" > /tmp/buildstream-cluster.conf
+          echo "  storage-service:" >> /tmp/buildstream-cluster.conf
+          echo "    url: http://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "    push: true" >> /tmp/buildstream-cluster.conf
 
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"

@@ -64,6 +64,7 @@ Route by area changed:
 | ArgoCD Applications, `argocd/`, `manifests/` | `docs/skills/gitops-argocd.md` |
 | `tests/`, `behave`, `dogtail`, `qecore` | `docs/skills/test-authoring.md` |
 | `.github/workflows/` | `docs/skills/ci-tooling.md` |
+| `scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py` | `docs/skills/ci-tooling.md` (+ `docs/skills/astro-dashboard-pages.md` when page contracts/rendering changed) |
 | Repo-wide agent behavior or session hygiene | `.github/copilot-instructions.md` |
 | Bootstrap cluster setup, `argo/bootstrap/` | `docs/bootstrap.md` |
 | Cluster topology, namespaces, RBAC | `AGENTS.md` |

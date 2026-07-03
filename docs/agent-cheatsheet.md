@@ -35,6 +35,7 @@
 | List workflows / VMs | `just list-workflows` · `just list-vms` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |
 | Lint Argo YAML | `just lint` |
+| Refresh dashboard data contracts locally | `gh issue list --repo projectbluefin/lab --label bug --state open --limit 50 --json number,title,url,labels,createdAt > /tmp/bugs-raw.json && ISSUE_COUNT=$(gh issue list --repo projectbluefin/lab --state open --limit 200 --json number \| jq length) && PR_COUNT=$(gh pr list --repo projectbluefin/lab --state open --limit 200 --json number \| jq length) && MERGED_7D=$(gh pr list --repo projectbluefin/lab --state merged --limit 200 --json mergedAt \| jq "[.[] \| select(.mergedAt > \"$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)\")] \| length") && python3 scripts/refresh_factory_stats.py "$ISSUE_COUNT" "$PR_COUNT" "$MERGED_7D" && python3 scripts/generate_page_datasets.py --root . && npm run build` |
 | Bootstrap repo-owner workstation access | §9 |
 
 Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.

@@ -153,6 +153,18 @@ export function buildUpstreamPageModel(dataset, options = {}) {
             })),
         })),
       },
+      distribution: {
+        categories: groups.map((group) => group.label),
+        data: groups.map((group) => ({ name: group.label, value: group.lanes.length })),
+      },
+      freshnessBrackets: {
+        data: [
+          { name: 'Fresh (< 3d)', value: lanes.filter(l => l.state === 'available' && typeof l.freshness_age_days === 'number' && l.freshness_age_days < 3).length },
+          { name: 'Recent (3-14d)', value: lanes.filter(l => l.state === 'available' && typeof l.freshness_age_days === 'number' && l.freshness_age_days >= 3 && l.freshness_age_days <= 14).length },
+          { name: 'Stale (> 14d)', value: lanes.filter(l => l.state === 'available' && typeof l.freshness_age_days === 'number' && l.freshness_age_days > 14).length },
+          { name: 'Awaiting', value: missingLanes.length }
+        ]
+      }
     },
   };
 }

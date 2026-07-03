@@ -125,9 +125,17 @@ const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unava
         </dl>
       </article>
     ))}
-  </section>
+  </section>  <section class="upstream-chart-grid">
+    <article class="status-card upstream-chart-card upstream-chart-card--wide">
+      <div class="upstream-card__header">
+        <p class="status-card__eyebrow">Timeline</p>
+        <span class="upstream-pill muted">Evidence links below</span>
+      </div>
+      <h2>Release timeline</h2>
+      <p>Published streams plot against their release timestamp. Streams without published evidence remain listed underneath.</p>
+      <div id="upstream-timeline-chart" class="upstream-chart upstream-chart--timeline" role="img" aria-label="Release timeline for upstream streams"></div>
+    </article>
 
-  <section class="upstream-chart-grid">
     <article class="status-card upstream-chart-card">
       <div class="upstream-card__header">
         <p class="status-card__eyebrow">Availability</p>
@@ -148,23 +156,37 @@ const unavailableStreams = model.summaryMetrics.find((m: any) => m.id === 'unava
       <div id="upstream-freshness-chart" class="upstream-chart" role="img" aria-label="Release freshness by upstream stream"></div>
     </article>
 
-    <article class="status-card upstream-chart-card upstream-chart-card--wide">
+    <article class="status-card upstream-chart-card">
       <div class="upstream-card__header">
-        <p class="status-card__eyebrow">Timeline</p>
-        <span class="upstream-pill muted">Evidence links below</span>
+        <p class="status-card__eyebrow">Family Distribution</p>
+        <span class="upstream-pill good">Ecosystem share</span>
       </div>
-      <h2>Release timeline</h2>
-      <p>Published streams plot against their release timestamp. Streams without published evidence remain listed underneath.</p>
-      <div id="upstream-timeline-chart" class="upstream-chart upstream-chart--timeline" role="img" aria-label="Release timeline for upstream streams"></div>
-      <div class="upstream-missing-list">
+      <h2>Streams by upstream family</h2>
+      <p>Proportion of streams mapped under each upstream family and publisher group.</p>
+      <div id="upstream-distribution-chart" class="upstream-chart" role="img" aria-label="Family distribution chart"></div>
+    </article>
+
+    <article class="status-card upstream-chart-card">
+      <div class="upstream-card__header">
+        <p class="status-card__eyebrow">Freshness Health</p>
+        <span class="upstream-pill good">Freshness brackets</span>
+      </div>
+      <h2>Release freshness brackets</h2>
+      <p>Image streams grouped by age ranges (Fresh, Recent, Stale, and Awaiting evidence).</p>
+      <div id="upstream-brackets-chart" class="upstream-chart" role="img" aria-label="Freshness brackets chart"></div>
+    </article>
+    <!-- Missing Streams List (Gaps) at the bottom of the chart grid -->
+    <div class="upstream-missing-list" style="grid-column: 1 / -1; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.06);">
+      <h3 style="font-size: 1rem; color: #cbd5e1; margin-bottom: 0.5rem; letter-spacing: -0.02em;">Streams Awaiting Published Evidence</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem;">
         {model.missingLanes.map((lane: any) => (
-          <article class="upstream-missing-item">
-            <strong>{lane.label}</strong>
-            <span>{lane.state_reason}</span>
+          <article class="upstream-missing-item" style="margin: 0; background: rgba(15,23,42,0.3); border: 1px solid rgba(239,68,68,0.15);">
+            <strong style="color: #f1f5f9; display: block; margin-bottom: 0.25rem;">{lane.label}</strong>
+            <span style="font-size: 0.8rem; color: #94a3b8;">{lane.state_reason}</span>
           </article>
         ))}
       </div>
-    </article>
+    </div>
   </section>
 
   <section class="upstream-lanes-section">

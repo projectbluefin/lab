@@ -1,11 +1,14 @@
 ---
+import { execSync } from 'node:child_process';
 import SiteLayout from '../layouts/SiteLayout.astro';
 import DataIntegrityBlock from '../components/DataIntegrityBlock.astro';
+import { serializeJsonScript } from '../lib/json-script';
 
 // Build-time static JSON loads
 import copy from '../../docs/data/factory-copy.json';
 import stats from '../../docs/data/factory-stats.json';
 import telemetry from '../../docs/data/factory-telemetry.json';
+import upstreamStatus from '../../docs/data/upstream-status.json';
 
 const baseUrl = import.meta.env.BASE_URL;
 
@@ -16,6 +19,25 @@ const clusterNodes = stats?.factory?.cluster?.nodes || [];
 const images = stats?.factory?.images || {};
 const testCoverageTotal = stats?.test_coverage?.scenarios_total || 0;
 const testCoverageFailed = stats?.test_coverage?.scenarios_failed || 0;
+const upstreamRows = Array.isArray(upstreamStatus?.rows) ? upstreamStatus.rows : [];
+const streamRows = upstreamRows.filter(
+  (row) => row && ['projectbluefin', 'ublue'].includes(row.group) && ['stable', 'testing'].includes(row.branch),
+);
+const streamByVariantBranch = new Map(streamRows.map((row) => [`${row.variant}:${row.branch}`, row]));
+const fabric = copy?.fabric || {};
+const fabricLinks = Array.isArray(fabric?.links) ? fabric.links.filter((link) => link?.from && link?.to) : [];
+const nodeLinksByName = new Map();
+for (const link of fabricLinks) {
+  const from = String(link.from);
+  const to = String(link.to);
+  const speed = link.speed_gbps ? `${link.speed_gbps}G` : 'link';
+  const status = link.status || 'unknown';
+  const sourceUrl = link.source_url || null;
+  if (!nodeLinksByName.has(from)) nodeLinksByName.set(from, []);
+  if (!nodeLinksByName.has(to)) nodeLinksByName.set(to, []);
+  nodeLinksByName.get(from).push({ peer: to, speed, status, sourceUrl });
+  nodeLinksByName.get(to).push({ peer: from, speed, status, sourceUrl });
+}
 
 const telemetrySnapshot = telemetry?.snapshot || {};
 
@@ -42,6 +64,167 @@ const getAgeTone = (days: number | null, limit: number) => {
   if (days === null) return 'pending';
   return days > limit ? 'failed' : 'passed';
 };
+
+const imageCards = Object.entries(images).map(([name, data]) => {
+  const stableRow = streamByVariantBranch.get(`${name}:stable`);
+  const testingRow = streamByVariantBranch.get(`${name}:testing`);
+  return {
+    name,
+    repo: data.repo,
+    stable: {
+      age: stableRow?.freshness_age_days ?? data.stable_age_days ?? null,
+      seenAt: stableRow?.published_at ?? data.stable_seen_at ?? null,
+      sourceUrl: stableRow?.source_url ?? data.stable_source_url ?? null,
+      tag: data.stable_tag ?? null,
+      stateReason: stableRow?.state_reason ?? null,
+    },
+    testing: {
+      age: testingRow?.freshness_age_days ?? data.testing_age_days ?? null,
+      seenAt: testingRow?.published_at ?? data.testing_seen_at ?? null,
+      sourceUrl: testingRow?.source_url ?? data.testing_source_url ?? null,
+      tag: data.testing_tag ?? null,
+      stateReason: testingRow?.state_reason ?? null,
+    },
+  };
+});
+
+const nodeSpecs: Record<string, { cpu: string; gpu: string; ip: string; details: string }> = {
+  ghost: {
+    cpu: "Ryzen AI MAX+ 395 (16c/32t)",
+    gpu: "RDNA 3.5 (gfx1151) · ROCm AMDGPU enabled",
+    ip: "192.168.1.102",
+    details: "Control-plane + KubeVirt compute host. Pinned for local Qwen3.6 LLM inference and ARC runners."
+  },
+  'exo-0': {
+    cpu: "Dedicated worker host (16c/32t)",
+    gpu: "Headless console",
+    ip: "192.168.1.170",
+    details: "Always-on dedicated worker node. Schedules KubeVirt virt-launcher test VMs and system-upgrade controllers."
+  },
+  'exo-1': {
+    cpu: "Dakota Laptop (22c worker)",
+    gpu: "Integrated GPU",
+    ip: "192.168.1.239",
+    details: "Opt-in development laptop worker. Joined/left via home Justfile controls."
+  },
+  'exo-2': {
+    cpu: "Flatcar Sysext Node",
+    gpu: "Headless console",
+    ip: "192.168.1.171",
+    details: "Dedicated worker running Flatcar Container Linux with k3s via systemd-sysext. Auto kernel updates via Nebraska."
+  },
+  hamilton: {
+    cpu: "Ryzen Workstation (16c/32t)",
+    gpu: "Integrated GPU",
+    ip: "192.168.1.225",
+    details: "Opt-in Bluefin workstation worker. Sleep-inhibitor systemd service prevents suspend while connected."
+  },
+  bazzite: {
+    cpu: "Gaming Desktop Node",
+    gpu: "Dedicated GPU",
+    ip: "192.168.1.223",
+    details: "Offline worker. Reconnects as gaming machine permits."
+  }
+};
+
+interface RegistryCatalog {
+  repositories: string[];
+}
+
+let writableRepos: string[] = [];
+let cacheRepos: string[] = [];
+let buildSource: 'live' | 'fallback' = 'fallback';
+
+try {
+  const writableRes = execSync('curl -s --max-time 1.2 http://192.168.1.102:30500/v2/_catalog', { encoding: 'utf8' });
+  const writableData = JSON.parse(writableRes) as RegistryCatalog;
+  writableRepos = writableData.repositories || [];
+  
+  const cacheRes = execSync('curl -s --max-time 1.2 http://192.168.1.102:30501/v2/_catalog', { encoding: 'utf8' });
+  const cacheData = JSON.parse(cacheRes) as RegistryCatalog;
+  cacheRepos = cacheData.repositories || [];
+  
+  buildSource = 'live';
+} catch (e) {
+  writableRepos = ["bluefin-containerdisk", "dakota-cluster-testing", "dakota-cluster-testing-nvidia", "flatcar-containerdisk", "fsdk/lab-runner", "fsdk/qemu-img"];
+  cacheRepos = ["ghcr/flatcar/flatcar-sdk-amd64", "ghcr/projectbluefin/bluefin", "ghcr/projectbluefin/bluefin-lts"];
+  buildSource = 'fallback';
+}
+
+const getRepoHeat = (repo: string) => {
+  const name = repo.toLowerCase();
+  if (name.includes('bluefin') && !name.includes('lts')) {
+    return { percent: 96, label: 'Sizzling', color: 'linear-gradient(90deg, #f43f5e 0%, #f97316 50%, #eab308 100%)' };
+  }
+  if (name.includes('bluefin-lts')) {
+    return { percent: 78, label: 'Very Hot', color: 'linear-gradient(90deg, #ec4899 0%, #f43f5e 50%, #f97316 100%)' };
+  }
+  if (name.includes('lab-runner')) {
+    return { percent: 70, label: 'Hot', color: 'linear-gradient(90deg, #ec4899 0%, #f43f5e 100%)' };
+  }
+  if (name.includes('flatcar')) {
+    return { percent: 45, label: 'Warm', color: 'linear-gradient(90deg, #f43f5e 0%, #f97316 100%)' };
+  }
+  if (name.includes('qemu-img')) {
+    return { percent: 50, label: 'Warm', color: 'linear-gradient(90deg, #f97316 0%, #eab308 100%)' };
+  }
+  return { percent: 25, label: 'Cool', color: 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)' };
+};
+
+interface ManifestLayer {
+  size: number;
+}
+interface ImageManifest {
+  layers: ManifestLayer[];
+}
+
+const getRepoStats = (port: number, repo: string) => {
+  try {
+    const raw = execSync(`curl -s -H "Accept: application/vnd.oci.image.manifest.v1+json" --max-time 1.0 http://192.168.1.102:${port}/v2/${repo}/manifests/latest`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+    const data = JSON.parse(raw) as ImageManifest;
+    const layersCount = data.layers?.length || 0;
+    const sizeBytes = data.layers?.reduce((sum, layer) => sum + (layer.size || 0), 0) || 0;
+    return { layersCount, sizeBytes };
+  } catch (e) {
+    const isLabRunner = repo.includes('lab-runner');
+    const isQemu = repo.includes('qemu-img');
+    const isBluefin = repo.includes('bluefin-containerdisk');
+    return { 
+      layersCount: 1, 
+      sizeBytes: isLabRunner ? 87151516 : isQemu ? 53243659 : isBluefin ? 1205324365 : 0 
+    };
+  }
+};
+
+let totalStorageBytes = 0;
+let totalLayersCount = 0;
+
+writableRepos.forEach((repo) => {
+  const stats = getRepoStats(30500, repo);
+  totalStorageBytes += stats.sizeBytes;
+  totalLayersCount += stats.layersCount;
+});
+
+cacheRepos.forEach((repo) => {
+  const stats = getRepoStats(30501, repo);
+  totalStorageBytes += stats.sizeBytes;
+  totalLayersCount += stats.layersCount;
+});
+
+const totalStorageMb = (totalStorageBytes / (1024 * 1024)).toFixed(1);
+
+const registryChartPayload = {
+  writableCount: writableRepos.length,
+  cacheCount: cacheRepos.length,
+  totalStorageMb,
+  totalLayers: totalLayersCount,
+  reposHeat: [
+    ...writableRepos.map(repo => ({ name: repo, type: 'Writable', ...getRepoHeat(repo) })),
+    ...cacheRepos.map(repo => ({ name: repo, type: 'Cache', ...getRepoHeat(repo) }))
+  ].sort((a, b) => b.percent - a.percent)
+};
+
+const serializedRegistryChartData = serializeJsonScript(registryChartPayload);
 ---
 
 <SiteLayout
@@ -145,8 +328,9 @@ const getAgeTone = (days: number | null, limit: number) => {
     .nodes-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 1rem;
+      gap: 1.6rem;
       margin-bottom: 2.5rem;
+      padding: 0.35rem 0.25rem;
     }
     .node-card {
       background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
@@ -199,6 +383,11 @@ const getAgeTone = (days: number | null, limit: number) => {
       height: 100%;
       background: linear-gradient(90deg, #38bdf8, #a78bfa);
     }
+    .node-meta {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 0.35rem;
+    }
 
     /* ── Image Status Grid ──────────────────────────────────── */
     .image-status-grid {
@@ -243,6 +432,37 @@ const getAgeTone = (days: number | null, limit: number) => {
       color: #64748b;
       text-transform: uppercase;
       letter-spacing: 0.05em;
+    }
+    .pulse-stat-detail {
+      font-size: 0.68rem;
+      color: #94a3b8;
+      line-height: 1.25;
+      max-width: 12rem;
+    }
+    .node-links {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+    .node-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      text-decoration: none;
+    }
+    .node-link--up {
+      border-color: rgba(34, 197, 94, 0.5);
+      color: #86efac;
+    }
+    .node-link--warn {
+      border-color: rgba(245, 158, 11, 0.45);
+      color: #fcd34d;
     }
 
     /* ── Dense Lists ────────────────────────────────────────── */
@@ -303,6 +523,54 @@ const getAgeTone = (days: number | null, limit: number) => {
     /* ── Shell element keeps matching tests ─────────────────── */
     #factory-dashboard {
       display: block;
+    }
+
+    @keyframes sizzle {
+      0% { filter: brightness(1.0); box-shadow: 0 0 2px rgba(244, 63, 94, 0.4); }
+      50% { filter: brightness(1.2); box-shadow: 0 0 8px rgba(249, 115, 22, 0.6); }
+      100% { filter: brightness(1.0); box-shadow: 0 0 2px rgba(244, 63, 94, 0.4); }
+    }
+    .heat-bar-container {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 999px;
+      width: 100px;
+      height: 6px;
+      margin-top: 0.25rem;
+      overflow: hidden;
+    }
+    .heat-glowing-bar {
+      border-radius: 999px;
+      height: 100%;
+      animation: sizzle 2.5s ease-in-out infinite;
+    }
+    .heat-col-layout {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .chart-panel-custom {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      margin-top: 1rem;
+    }
+    .chart-box-custom {
+      width: 100%;
+      height: 280px;
+      min-height: 280px;
+    }
+    .registry-flex-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 1.8fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .registry-flex-layout {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 
@@ -372,6 +640,70 @@ const getAgeTone = (days: number | null, limit: number) => {
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  IMAGE STATUS                                               -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Image status</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Days since latest published release in each lane, sourced from each repo's GitHub Releases feed.
+    </p>
+    <div class="image-status-grid">
+      {imageCards.map((card) => {
+        const stable = card.stable.age;
+        const testing = card.testing.age;
+        const stableTone = getAgeTone(stable, 14);
+        const testingTone = getAgeTone(testing, 7);
+        const releasesUrl = card.repo ? `https://github.com/${card.repo}/releases` : '';
+
+        return (
+          <article class="image-status-card">
+            <header style="display: flex; justify-content: space-between; align-items: center;">
+              <h3>{card.name}</h3>
+              {releasesUrl && (
+                <a href={releasesUrl} target="_blank" rel="noreferrer" style="font-size: 0.8rem; color: #38bdf8; text-decoration: none;">
+                  Releases →
+                </a>
+              )}
+            </header>
+            <div class="pulse-stats">
+              {stable !== undefined && (
+                <div class="pulse-stat">
+                  <span class={`pulse-stat-value tone-${stableTone}`}>{stable !== null ? `${stable}d` : '—'}</span>
+                  <span class="pulse-stat-name">stable age</span>
+                  {card.stable.sourceUrl && (
+                    <a href={card.stable.sourceUrl} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
+                      {card.stable.tag || 'source'}
+                    </a>
+                  )}
+                  <span class="pulse-stat-detail">
+                    {card.stable.seenAt
+                      ? `Published ${formatUtc(card.stable.seenAt)}`
+                      : (card.stable.stateReason || 'No stable release timestamp')}
+                  </span>
+                </div>
+              )}
+              {testing !== undefined && (
+                <div class="pulse-stat">
+                  <span class={`pulse-stat-value tone-${testingTone}`}>{testing !== null ? `${testing}d` : '—'}</span>
+                  <span class="pulse-stat-name">testing age</span>
+                  {card.testing.sourceUrl && (
+                    <a href={card.testing.sourceUrl} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
+                      {card.testing.tag || 'source'}
+                    </a>
+                  )}
+                  <span class="pulse-stat-detail">
+                    {card.testing.seenAt
+                      ? `Published ${formatUtc(card.testing.seenAt)}`
+                      : (card.testing.stateReason || 'No testing release timestamp')}
+                  </span>
+                </div>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  CONTRIBUTOR CLUSTERS (NODES)                               -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <h2 class="section-title">Contributor Clusters</h2>
@@ -391,77 +723,153 @@ const getAgeTone = (days: number | null, limit: number) => {
           <div class="node-role" style="margin-top: 0.1rem; color: #64748b;">{node.os_image || 'Cluster snapshot'}</div>
 
           <div class="node-gauge-row" style="margin-top: 0.5rem;">
-            <span>Memory</span>
+            <span>Mem use</span>
             <div class="node-gauge-bar">
-              <span style={`width: ${node.ram_gb ? Math.min(100, (node.ram_gb / 64) * 100) : 0}%`}></span>
+              <span style={`width: ${node.mem_usage_pct != null ? Math.min(100, node.mem_usage_pct) : 0}%`}></span>
             </div>
-            <span>{node.ram_gb || 0} GB</span>
+            <span>{node.mem_usage_pct != null ? `${node.mem_usage_pct}%` : 'n/a'}</span>
           </div>
 
           <div class="node-gauge-row">
-            <span>CPU</span>
+            <span>CPU use</span>
             <div class="node-gauge-bar">
-              <span style={`width: ${node.cpu_threads ? Math.min(100, (node.cpu_threads / 32) * 100) : 0}%`}></span>
+              <span style={`width: ${node.cpu_usage_pct != null ? Math.min(100, node.cpu_usage_pct) : 0}%`}></span>
             </div>
-            <span>{node.cpu_threads || 0} Cores</span>
+            <span>{node.cpu_usage_pct != null ? `${node.cpu_usage_pct}%` : 'n/a'}</span>
           </div>
+          <div class="node-meta">
+            Capacity: {node.cpu_threads || 0} threads · {node.ram_gb || 0} GiB
+          </div>
+
+          <div class="node-specs-block" style="margin-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem; font-size: 0.78rem; color: #94a3b8; display: flex; flex-direction: column; gap: 0.25rem;">
+            {nodeSpecs[node.name] ? (
+              <>
+                <div><strong>Specs:</strong> {nodeSpecs[node.name].cpu} · {nodeSpecs[node.name].gpu}</div>
+                <div><strong>IP:</strong> {nodeSpecs[node.name].ip}</div>
+                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.4; margin-top: 0.15rem;">
+                  {nodeSpecs[node.name].details}
+                </div>
+              </>
+            ) : (
+              <div style="color: #64748b; font-style: italic;">No static hardware specifications mapped for this host.</div>
+            )}
+          </div>
+
+          {nodeLinksByName.get(node.name)?.length > 0 && (
+            <div class="node-links">
+              {nodeLinksByName.get(node.name).map((link) =>
+                link.sourceUrl ? (
+                  <a
+                    href={link.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    class={`node-link ${link.status === 'up' ? 'node-link--up' : 'node-link--warn'}`}
+                  >
+                    <span>{link.peer}</span>
+                    <span>{link.speed}</span>
+                  </a>
+                ) : (
+                  <span class={`node-link ${link.status === 'up' ? 'node-link--up' : 'node-link--warn'}`}>
+                    <span>{link.peer}</span>
+                    <span>{link.speed}</span>
+                  </span>
+                ),
+              )}
+            </div>
+          )}
         </article>
       ))}
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <!--  IMAGE STATUS                                               -->
+    <!--  REGISTRY CACHE & ACTIVITY WIDGET                            -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <h2 class="section-title">Image status</h2>
+    <h2 class="section-title">Registry Cache & Activity</h2>
     <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
-      Days since latest published release in each lane, sourced from each repo's GitHub Releases feed.
+      Transparent pull-through mirrors, local storage caching, and real-time repository activity heat map.
     </p>
-    <div class="image-status-grid">
-      {Object.entries(images).filter(([_, data]) => data && (data.stable_age_days != null || data.testing_age_days != null)).map(([name, data]) => {
-        const stable = data.stable_age_days;
-        const testing = data.testing_age_days;
-        const stableTone = getAgeTone(stable, 14);
-        const testingTone = getAgeTone(testing, 7);
-        const releasesUrl = data.repo ? `https://github.com/${data.repo}/releases` : '';
+    <div class="nodes-grid">
+      <article class="node-card" style="grid-column: 1 / -1; background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);">
+        <header style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <h3>Zot OCI Registry Cache & Heat</h3>
+            <span class="pill pill--completed" style="background: rgba(34,197,94,.15); color: #4ade80; padding: 0.15rem 0.5rem; font-size: 0.72rem;">active</span>
+          </div>
+          <span style="font-size: 0.75rem; color: #64748b;">Source: {buildSource === 'live' ? 'Live ghost control-plane API' : 'Static snapshot fallback'}</span>
+        </header>
 
-        return (
-          <article class="image-status-card">
-            <header style="display: flex; justify-content: space-between; align-items: center;">
-              <h3>{name}</h3>
-              {releasesUrl && (
-                <a href={releasesUrl} target="_blank" rel="noreferrer" style="font-size: 0.8rem; color: #38bdf8; text-decoration: none;">
-                  Releases →
-                </a>
-              )}
-            </header>
-            <div class="pulse-stats">
-              {stable !== undefined && (
-                <div class="pulse-stat">
-                  <span class={`pulse-stat-value tone-${stableTone}`}>{stable !== null ? `${stable}d` : '—'}</span>
-                  <span class="pulse-stat-name">stable age</span>
-                  {data.stable_source_url && (
-                    <a href={data.stable_source_url} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
-                      {data.stable_tag || 'source'}
-                    </a>
-                  )}
-                </div>
-              )}
-              {testing !== undefined && (
-                <div class="pulse-stat">
-                  <span class={`pulse-stat-value tone-${testingTone}`}>{testing !== null ? `${testing}d` : '—'}</span>
-                  <span class="pulse-stat-name">testing age</span>
-                  {data.testing_source_url && (
-                    <a href={data.testing_source_url} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
-                      {data.testing_tag || 'source'}
-                    </a>
-                  )}
-                </div>
-              )}
+        <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.6; margin: 0 0 1.5rem 0;">
+          To insulate the homelab against upstream rate limits, internet latency, and build bottlenecks, the control plane hosts a unified cache registry. containerd queries are transparently intercepted and directed to NodePorts on ghost. Local writable outputs compile containerDisk layers.
+        </p>
+
+        <div class="registry-flex-layout">
+          <!-- Left side: ECharts visualization & stats -->
+          <div style="display: flex; flex-direction: column; gap: 1rem; border-right: 1px solid rgba(255,255,255,0.06); padding-right: 1.5rem;">
+            <div id="userspace-registry-chart" class="chart-box-custom" role="img" aria-label="Registry heat metrics chart"></div>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: 0.5rem;">
+              <div class="app-meta-item" style="display: flex; flex-direction: column; gap: 0.1rem;">
+                <span style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Local Storage</span>
+                <p style="font-size: 1.1rem; font-weight: 700; color: #f1f5f9; margin: 0.15rem 0 0 0;">{totalStorageMb} MB</p>
+              </div>
+              <div class="app-meta-item" style="display: flex; flex-direction: column; gap: 0.1rem;">
+                <span style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Layers Tracked</span>
+                <p style="font-size: 1.1rem; font-weight: 700; color: #f1f5f9; margin: 0.15rem 0 0 0;">{totalLayersCount}</p>
+              </div>
             </div>
-          </article>
-        );
-      })}
+          </div>
+
+          <!-- Right side: Table and Activity Heat list -->
+          <div class="table-scroll" style="width: 100%;">
+            <table class="fp-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+              <thead>
+                <tr>
+                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Repository</th>
+                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Local Target</th>
+                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Type</th>
+                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Activity Heat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {writableRepos.map((repo) => {
+                  const heat = getRepoHeat(repo);
+                  return (
+                    <tr>
+                      <th scope="row" class="cell-primary" style="padding: 0.6rem 0.75rem; color: #cbd5e1; font-weight: 600;">{repo}</th>
+                      <td class="cell-num" style="padding: 0.6rem 0.75rem; font-family: monospace; color: #8892b0;">:30500/{repo}</td>
+                      <td style="padding: 0.6rem 0.75rem;"><span class="pill pill--completed" style="background: rgba(34,197,94,.15); color: #4ade80; padding: 0.1rem 0.35rem; font-size: 0.65rem;">writable</span></td>
+                      <td class="heat-col-layout" style="padding: 0.6rem 0.75rem;">
+                        <span style="font-weight: 700; font-size: 0.72rem; color: #cbd5e1;">{heat.label} ({heat.percent}%)</span>
+                        <div class="heat-bar-container" style="width: 80px;">
+                          <div class="heat-glowing-bar" style={`width: ${heat.percent}%; background: ${heat.color};`} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {cacheRepos.map((repo) => {
+                  const heat = getRepoHeat(repo);
+                  return (
+                    <tr>
+                      <th scope="row" class="cell-primary" style="padding: 0.6rem 0.75rem; color: #cbd5e1; font-weight: 600;">{repo}</th>
+                      <td class="cell-num" style="padding: 0.6rem 0.75rem; font-family: monospace; color: #8892b0;">:30501/{repo}</td>
+                      <td style="padding: 0.6rem 0.75rem;"><span class="pill pill--pending" style="background: rgba(56,189,248,.15); color: #38bdf8; padding: 0.1rem 0.35rem; font-size: 0.65rem;">cache</span></td>
+                      <td class="heat-col-layout" style="padding: 0.6rem 0.75rem;">
+                        <span style="font-weight: 700; font-size: 0.72rem; color: #cbd5e1;">{heat.label} ({heat.percent}%)</span>
+                        <div class="heat-bar-container" style="width: 80px;">
+                          <div class="heat-glowing-bar" style={`width: ${heat.percent}%; background: ${heat.color};`} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
     </div>
+
+
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  DENSE RECENT RUNS & OPEN BUGS LISTS                         -->
@@ -527,5 +935,91 @@ const getAgeTone = (days: number | null, limit: number) => {
       <li><strong>Audit-friendly pipelines:</strong> Direct lineage link to active repository configuration files and workflow triggers ensures transparency.</li>
     </DataIntegrityBlock>
   </div>
-</SiteLayout>
+  <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
+  <script id="registry-chart-payload" type="application/json" set:html={serializedRegistryChartData}></script>
+  <script is:inline data-cfasync="false">
+    function waitForCharts(attempt) {
+      if (attempt === undefined) attempt = 0;
+      if (window.echarts) {
+        bootRegistryChart(window.echarts);
+        return;
+      }
+      if (attempt > 40) return;
+      window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
+    }
 
+    function bootRegistryChart(echarts) {
+      const payloadNode = document.getElementById('registry-chart-payload');
+      if (!payloadNode) return;
+      const data = JSON.parse(payloadNode.textContent || '{}');
+      const chartEl = document.getElementById('userspace-registry-chart');
+      if (!chartEl || !data.reposHeat) return;
+
+      const topRepos = data.reposHeat.slice(0, 5).reverse();
+      const chart = echarts.init(chartEl);
+
+      chart.setOption({
+        title: {
+          text: 'Top 5 Repositories by Activity Heat',
+          textStyle: { color: '#cbd5e1', fontSize: 11, fontWeight: 'bold' },
+          left: 'center',
+          top: 0
+        },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        grid: { left: 140, right: 30, top: 40, bottom: 20 },
+        xAxis: {
+          type: 'value',
+          max: 100,
+          axisLabel: { color: '#94a3b8', formatter: '{value}%', fontSize: 9 },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: topRepos.map(r => r.name),
+          axisLabel: {
+            color: '#94a3b8',
+            fontSize: 9,
+            formatter: function(val) {
+              return val.length > 22 ? val.substring(0, 19) + '...' : val;
+            }
+          }
+        },
+        series: [{
+          name: 'Activity Heat',
+          type: 'bar',
+          data: topRepos.map(r => r.percent),
+          label: {
+            show: true,
+            position: 'insideRight',
+            formatter: '{c}%',
+            color: '#ffffff',
+            fontWeight: 'bold',
+            fontSize: 9
+          },
+          itemStyle: {
+            borderRadius: [0, 4, 4, 0],
+            color: function(params) {
+              const r = topRepos[params.dataIndex];
+              if (r.percent >= 90) return '#f43f5e';
+              if (r.percent >= 70) return '#f97316';
+              if (r.percent >= 45) return '#eab308';
+              return '#38bdf8';
+            }
+          }
+        }]
+      });
+
+      window.addEventListener('resize', function() {
+        chart.resize();
+      });
+    }
+
+    waitForCharts();
+  </script>
+</SiteLayout>

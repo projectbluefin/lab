@@ -515,6 +515,13 @@ const chartPayload = {
                     <dd>{row.branch}</dd>
                   </div>
                   <div>
+                    <dt>Architecture</dt>
+                    <dd>
+                      <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">x86_64</span>
+                      <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">aarch64</span>
+                    </dd>
+                  </div>
+                  <div>
                     <dt>Last run</dt>
                     <dd>{row.last_run ? new Date(row.last_run).toLocaleString() : 'Unavailable'}</dd>
                   </div>
@@ -625,6 +632,63 @@ const chartPayload = {
       ))}
     </div>
   </section>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  TRIAGE & RUNBOOK SECTION                                   -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <h2 class="section-title">Triage & Local Execution Runbook</h2>
+  <div class="integrity-panel" style="background: rgba(15, 23, 42, 0.55); border-color: rgba(56, 189, 248, 0.15);">
+    <h4>Common Test Failures & Diagnostic Commands</h4>
+    <div class="table-scroll" style="margin-bottom: 1.5rem;">
+      <table class="history-table" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Observed Log/Symptom</th>
+            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Root Cause</th>
+            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Remediation CLI Command</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">Permission denied (publickey) at SSH wait</td>
+            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Test VM is running but lacks the injected SSH public keys in the guest authorized_keys.</td>
+            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just setup-ssh-secret</code></td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">Workflow times out waiting for SSH</td>
+            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Test VM failed to boot, or the KubeVirt QEMU guest agent is not running to accept credentials.</td>
+            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just list-vms</code><br/><span style="font-size: 0.7rem; color: #64748b;">Verify the VM is ready; check if the namespace secret matches.</span></td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f59e0b;">LTS VM goes "Stopped" immediately</td>
+            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">SSH public key secret is missing from the bluefin-lts-test namespace.</td>
+            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just argocd-sync</code><br/><span style="font-size: 0.7rem; color: #64748b;">Forces ArgoCD to re-sync namespaces and apply SSH secrets.</span></td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #ef4444;">FailedCreate: metadata.labels must be ≤63 chars</td>
+            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Argo workflow generated a VM name that exceeds the Kubernetes label length limits.</td>
+            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">use workflow.name-item pattern</code><br/><span style="font-size: 0.7rem; color: #64748b;">Shorten test naming definitions in the YAML templates.</span></td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #94a3b8;">VM stuck in Terminating status</td>
+            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Virt-launcher pod is locked by system processes and needs manual termination.</td>
+            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">kubectl delete pod -n bluefin-test ...</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="margin-top: 1.5rem;">How to Reproduce & Run Tests Locally</h4>
+    <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.6; margin-bottom: 0.75rem;">
+      Bluefin operates as an atomic, image-based OS. You can replicate the exact dashboard BDD verification checks locally using the following steps:
+    </p>
+    <ol style="margin: 0; padding-left: 1.25rem; color: #64748b; font-size: 0.85rem; line-height: 1.7;">
+      <li><strong>Verify Cluster Access:</strong> Run <code>just list-vms</code> to confirm connection and schedule availability on ghost control plane.</li>
+      <li><strong>Initialize Local SSH Credentials:</strong> Execute <code>just setup-ssh-secret</code> to build the ed25519 key-pair used by workflow pods to ssh into the test VMs.</li>
+      <li><strong>Prepare Golden Disk:</strong> Run <code>just ensure-disk testing</code> or <code>just ensure-disk lts-testing</code> to build the VM disk container.</li>
+      <li><strong>Submit Test Suite:</strong> Run <code>just run-tests-tag testing</code> to provision the ephemeral VM and watch the live test logs.</li>
+    </ol>
+  </div>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  DATA INTEGRITY DISCLOSURE                                   -->

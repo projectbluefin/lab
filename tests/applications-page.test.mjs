@@ -104,4 +104,19 @@ test('applications page renders Bazaar evidence, chart mounts, and explicit unav
     /https:\/\/github\.com\/projectbluefin\/lab\/blob\/main\/docs\/results\/bluefin-testing-common\.json/,
     'applications page links fallback evidence',
   );
+  assert.match(
+    applicationsPage,
+    /Sandbox Permissions/i,
+    'applications page renders Sandbox Permissions headers',
+  );
+  assert.match(
+    applicationsPage,
+    /file-access:downloads/i,
+    'applications page renders downloads permission tag',
+  );
+  assert.match(
+    applicationsPage,
+    /flatpak install flathub/i,
+    'applications page renders flatpak install CLI helper snippets',
+  );
 });

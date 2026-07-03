@@ -130,7 +130,7 @@ def build_upstream_status(root: Path, collected_at: str) -> dict:
         },
         {
             'id': 'ublue',
-            'label': 'uBlue derivatives',
+            'label': 'Universal Blue derivatives',
             'description': 'Derivative desktop images published by ublue-os.',
             'source_url': repo_blob_url('docs/data/variant-publishers.json'),
             'collected_at': collected_at,

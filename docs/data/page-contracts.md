@@ -45,6 +45,10 @@ Purpose: one row per tracked upstream stream for both `/upstream` (non-Bluefin f
 | `state` / `state_reason` | Explicit availability contract |
 | `source_url` / `collected_at` / `derivation` | Provenance for the row |
 
+`published_at` for image lanes is sourced from the strongest available publish signal in this order:
+1. GHCR package tag timestamps for lane tags (`stable`, `testing`) when available.
+2. GitHub Releases `published_at` when package tag timestamps are unavailable.
+
 ## `docs/data/tests-matrix.json`
 
 Purpose: one row per `(variant, branch, suite)` result for the `/tests` page.
@@ -116,7 +120,7 @@ These files are implementation-ready contracts plus honest seed data. Later coll
 
 ## `docs/data/homebrew-ecosystem.json`
 
-Purpose: one row per tracked image lane for the `/homebrew` page. Covers Homebrew tap/package install and download statistics per `(variant, branch)`.
+Purpose: one row per tracked image lane, integrated into the `/adoption` page as supplementary ecosystem context. Covers Homebrew tap/package install and download statistics per `(variant, branch)`.
 
 ### Top-level shape
 

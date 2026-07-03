@@ -77,6 +77,9 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 77. When pulling in container registries or caches data (e.g. Zot local and Zot cache), execute live queries at pre-render build-time using `execSync` with defensive timeouts and stashing, falling back gracefully to static mock snapshots to ensure builds never fail offline or under homelab network latency. Standard compliant OCI registry endpoints (such as `/v2/<repo>/manifests/latest`) should be queried with media-type Accept headers to calculate exact OCI local storage size (bytes) and OCI layers counts.
 78. To prevent hardcoded application lists from drifting out of sync with test repos, implement build-time auto-discovery of BDD features (e.g. behave `.feature` files) by polling the test suite repository's recursive directory tree (`/git/trees/main?recursive=1`) at prerender-time, dynamically generating fully-linked cards and terminal execute instructions for any unmapped test suites.
 79. For site layouts, enforce dark color-schemes (`<meta name="color-scheme" content="dark" />`), include standard favicon and Open Graph/Twitter meta tags referencing page parameters, and add a focusable skip-to-content link targeting the main content wrapper. Highlight active navigation links dynamically using `Astro.url.pathname` rather than hardcoding simple props like `current`, supporting custom path prefixes and base URLs.
+80. On `src/pages/index.astro`, treat `docs/data/upstream-status.json` as the canonical image-status contract (lane rows keyed by `variant + branch`), with `docs/data/factory-stats.json` as fallback only so row-level `state_reason` and evidence links stay consistent.
+81. For contributor cluster visuals, keep USB4 link context attached to node cards (box-to-box chips/badges) unless a detached topology diagram is explicitly requested.
+82. When asserting evidence links in unit tests (e.g. tests checking if the built pages link to raw source/evidence URLs), design the assertion regex to be flexible. As image streams transition from pending/unavailable (having only a generic repo releases link) to available (having a specific GHCR package container version link), hardcoded URL assertions will break.
 
 ## Common Rationalizations
 
@@ -102,6 +105,10 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - Validation mentions `astro check` as passing when it actually OOMed
 - Disclosure about reused global or distro-wide values exists only in JSON fields and is absent from rendered HTML
 - Deleting chart containers that breaks legacy test suites instead of wrapping them in a hidden container
+- Overview image cards bypass `upstream-status.json` and lose row-level state/evidence semantics
+- Contributor cluster links are shown only in a detached graphic instead of within node-card context
+83. When integrating live/cached OCI registry stats and activity heat on the main index page (`src/pages/index.astro`), combine the ECharts container and the repository details list into a unified layout widget (e.g. 2-column layout on wide screens). Query the local Zot APIs defensively with short timeouts at build time, fall back cleanly to static snapshots, and render the top active repositories using a responsive horizontal ECharts bar chart colored by heat intensity alongside a detailed table of repositories with animated sizzling activity bars.
+84. Do not use the term "uBlue" (case-sensitive or insensitive shorthand) in user-facing texts, page labels, or descriptions. The permitted longform name is "Universal Blue" and the permitted short slug is "ublue-os" (such as in GitHub repository/org references).
 
 ## Verification
 
@@ -120,3 +127,5 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - [ ] `npm run build` succeeds for the Astro worktree
 - [ ] Any failed/blocked validation step (for example `astro check` OOM) is reported explicitly, not silently dropped
 - [ ] Deprecated or legacy chart containers are retained with `display: none` to support legacy test assertions
+- [ ] Overview image cards preserve row-level evidence/state from `docs/data/upstream-status.json`
+- [ ] Contributor cluster cards show node-to-node link context directly on or near each node card

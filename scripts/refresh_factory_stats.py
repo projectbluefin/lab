@@ -123,22 +123,25 @@ def main():
         except Exception:
             return None
 
-    def summarize_image_status():
+    def summarize_image_status(recent_runs):
         image_map = {
             'bluefin': {
                 'repo': 'projectbluefin/bluefin',
                 'stable_selector': {'tag_regex': r'^stable-'},
                 'testing_selector': {'tag_regex': r'^testing-'},
+                'ghcr_package': 'bluefin',
             },
             'bluefin-lts': {
                 'repo': 'projectbluefin/bluefin-lts',
                 'stable_selector': {'tag_regex': r'^stable-'},
                 'testing_selector': {'tag_regex': r'^testing-'},
+                'ghcr_package': 'bluefin-lts',
             },
             'dakota': {
                 'repo': 'projectbluefin/dakota',
                 'stable_selector': {'tag_regex': r'^stable-'},
                 'testing_selector': {'tag_regex': r'^testing-'},
+                'ghcr_package': 'dakota',
             },
             'aurora': {
                 'repo': 'ublue-os/aurora',
@@ -173,6 +176,50 @@ def main():
                     return rel
             return None
 
+        def ghcr_tag_snapshot(package_name, tag_name):
+            if not package_name or not tag_name:
+                return None
+            versions = run_json(f"gh api orgs/projectbluefin/packages/container/{package_name}/versions?per_page=100")
+            if not isinstance(versions, list):
+                return None
+            for version in versions:
+                tags = (((version.get('metadata') or {}).get('container') or {}).get('tags') or [])
+                if tag_name in tags:
+                    return {
+                        'seen_at': version.get('updated_at'),
+                        'source_url': version.get('html_url'),
+                        'tag': tag_name,
+                    }
+            return None
+
+        def fallback_run_labels(image, branch):
+            labels = [f'{image}:{branch}']
+            if image == 'dakota' and branch == 'testing':
+                labels.append('dakota:latest')
+            if image == 'bluefin' and branch == 'testing':
+                labels.append('bluefin:latest')
+            if image == 'bluefin-lts' and branch == 'testing':
+                labels.append('bluefin-lts:latest')
+            return labels
+
+        def fallback_seen_from_runs(image, branch):
+            if not isinstance(recent_runs, list):
+                return None
+            labels = set(fallback_run_labels(image, branch))
+            for run in recent_runs:
+                if run.get('overall') != 'passed':
+                    continue
+                if run.get('label') not in labels:
+                    continue
+                seen_at = run.get('finished_at') or run.get('started_at')
+                if seen_at:
+                    return {
+                        'seen_at': seen_at,
+                        'run_url': run.get('run_url'),
+                        'run_id': run.get('id'),
+                    }
+            return None
+
         summary = {}
         for image, cfg in image_map.items():
             repo = cfg['repo']
@@ -184,6 +231,20 @@ def main():
 
             stable_seen_at = stable_rel.get('published_at') if stable_rel else None
             testing_seen_at = testing_rel.get('published_at') if testing_rel else None
+            stable_fallback = None
+            testing_fallback = None
+            if not stable_seen_at:
+                stable_fallback = fallback_seen_from_runs(image, 'stable')
+                stable_seen_at = stable_fallback.get('seen_at') if stable_fallback else None
+            if not testing_seen_at:
+                testing_fallback = fallback_seen_from_runs(image, 'testing')
+                testing_seen_at = testing_fallback.get('seen_at') if testing_fallback else None
+            stable_ghcr = ghcr_tag_snapshot(cfg.get('ghcr_package'), 'stable')
+            testing_ghcr = ghcr_tag_snapshot(cfg.get('ghcr_package'), 'testing')
+            if stable_ghcr and stable_ghcr.get('seen_at'):
+                stable_seen_at = stable_ghcr['seen_at']
+            if testing_ghcr and testing_ghcr.get('seen_at'):
+                testing_seen_at = testing_ghcr['seen_at']
             stable_dt = parse_iso(stable_seen_at)
             testing_dt = parse_iso(testing_seen_at)
 
@@ -193,12 +254,12 @@ def main():
                 'releases_api': f"https://api.github.com/repos/{repo}/releases",
                 'stable_seen_at': stable_seen_at,
                 'stable_age_days': max(0, int((now_dt - stable_dt).total_seconds() // 86400)) if stable_dt else None,
-                'stable_tag': stable_rel.get('tag_name') if stable_rel else None,
-                'stable_source_url': stable_rel.get('html_url') if stable_rel else None,
+                'stable_tag': (stable_ghcr.get('tag') if stable_ghcr else None) or (stable_rel.get('tag_name') if stable_rel else None) or (stable_fallback.get('run_id') if stable_fallback else None),
+                'stable_source_url': (stable_ghcr.get('source_url') if stable_ghcr else None) or (stable_rel.get('html_url') if stable_rel else None) or (stable_fallback.get('run_url') if stable_fallback else None),
                 'testing_seen_at': testing_seen_at,
                 'testing_age_days': max(0, int((now_dt - testing_dt).total_seconds() // 86400)) if testing_dt else None,
-                'testing_tag': testing_rel.get('tag_name') if testing_rel else None,
-                'testing_source_url': testing_rel.get('html_url') if testing_rel else None,
+                'testing_tag': (testing_ghcr.get('tag') if testing_ghcr else None) or (testing_rel.get('tag_name') if testing_rel else None) or (testing_fallback.get('run_id') if testing_fallback else None),
+                'testing_source_url': (testing_ghcr.get('source_url') if testing_ghcr else None) or (testing_rel.get('html_url') if testing_rel else None) or (testing_fallback.get('run_url') if testing_fallback else None),
             }
         return summary
 
@@ -420,7 +481,7 @@ def main():
         cluster.setdefault('nodes', [])
 
     factory = stats.setdefault('factory', {})
-    factory['images'] = summarize_image_status()
+    factory['images'] = summarize_image_status(stats.get('recent_runs', []))
 
     meta = stats.setdefault('_meta', {})
     data_points = [x for x in [newest_live_ts, newest_result_ts, meta.get('generated')] if x]

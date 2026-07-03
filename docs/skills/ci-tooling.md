@@ -39,11 +39,13 @@ metadata:
 7. For dashboard data jobs, confirm the producer workflow published every generated JSON artifact the UI depends on before declaring a section broken; missing data should render an explicit unavailable state rather than disappearing.
 8. For browser-side `fetch`, avoid custom request headers that force CORS preflight against GitHub APIs (for example `Cache-Control` request headers).
 9. After push, validate production Pages with a real browser render (not raw HTML fetch only): confirm no loading placeholders and key sections render.
-10. Any image freshness/status numbers shown in the dashboard must come from GitHub Releases API (`/repos/{owner}/{repo}/releases`) metadata only (`published_at`, `tag_name`, `html_url`). Do not infer release age from Argo run labels or workflow names.
-11. For every dashboard number that is not self-evident from local files, publish explicit source lineage (source URL + derivation input) or hide the number as unavailable.
-12. For page-owned dashboard JSON (`docs/data/*-status.json`, `*-matrix.json`), keep row-oriented contracts stable: every summary metric and every row gets `source_url`, `collected_at`, `derivation`, plus explicit `state`/`state_reason` fields so later collectors can fill values without redesigning the shape.
-13. Extract large inline scripts (especially Python/bash blocks over ~10-15 lines) from GHA YAML workflow files into standalone executable scripts under `scripts/`. This enables independent local execution, linting, testing, and modular maintenance.
-14. Configure explicit GHA concurrency limits (`concurrency:`) on any automated workflow that commits/pushes files back to git. Use a unique group name (e.g. `group: update-test-results`) and set `cancel-in-progress: true` to prevent race conditions and rebase conflicts when multiple runs trigger in rapid succession.
+10. Any image freshness/status numbers shown in the dashboard must come from source-of-truth publish metadata: prefer GHCR package tag timestamps (`/orgs/{org}/packages/container/{name}/versions`) for `stable`/`testing` lane recency, then fallback to GitHub Releases metadata (`published_at`, `tag_name`, `html_url`) when package tags are not available.
+11. Do not infer image freshness from Argo workflow names, run labels, or generic CI success events. Those are execution signals, not publish timestamps.
+12. For every dashboard number that is not self-evident from local files, publish explicit source lineage (source URL + derivation input) or hide the number as unavailable.
+13. For page-owned dashboard JSON (`docs/data/*-status.json`, `*-matrix.json`), keep row-oriented contracts stable: every summary metric and every row gets `source_url`, `collected_at`, `derivation`, plus explicit `state`/`state_reason` fields so later collectors can fill values without redesigning the shape.
+14. Extract large inline scripts (especially Python/bash blocks over ~10-15 lines) from GHA YAML workflow files into standalone executable scripts under `scripts/`. This enables independent local execution, linting, testing, and modular maintenance.
+15. Configure explicit GHA concurrency limits (`concurrency:`) on any automated workflow that commits/pushes files back to git. Use a unique group name (e.g. `group: update-test-results`) and set `cancel-in-progress: true` to prevent race conditions and rebase conflicts when multiple runs trigger in rapid succession.
+16. After changing collector logic (`scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py`), run the same local refresh sequence as CI (`refresh_factory_stats.py` → `generate_page_datasets.py` → `npm run build`) before handoff.
 
 ## Common Rationalizations
 
@@ -61,7 +63,7 @@ metadata:
 - Generated dashboard sections disappear because their JSON artifact was not published
 - Browser console logs CORS preflight failures to GitHub API endpoints
 - CI changes are declared fixed without checking production Pages render
-- Image-status ages are derived from workflow/run activity instead of release metadata.
+- Image-status ages are derived from workflow/run activity instead of GHCR package tags or release metadata.
 - A dashboard card shows a numeric value without a traceable source URL/evidence path.
 - A page-level JSON contract omits row-level provenance or hides missing values by dropping rows.
 - Large inline Python or bash blocks (exceeding ~15 lines) are nested in workflow YAML, making testing and linting painful.
@@ -76,7 +78,7 @@ metadata:
 - [ ] Browser fetch code avoids unnecessary custom headers that trigger preflight
 - [ ] Production `https://factory.projectbluefin.io/` renders with real table/cluster content (no loading placeholders)
 - [ ] Render validation includes a real browser run (headless is fine) and captures evidence
-- [ ] Image-status cards derive age from GitHub Releases `published_at` and link to the exact release page (`html_url`).
+- [ ] Image-status cards derive age from GHCR package tag publish/update timestamps when available, otherwise release `published_at`, and link to exact evidence URLs.
 - [ ] Unsupported metrics (no source-of-truth feed) are hidden or explicitly unavailable, never synthesized.
 - [ ] Page-level dashboard JSON keeps stable row keys plus row-level provenance/state fields so collector-only follow-up work can populate data without changing the contract.
 - [ ] Inline Python/bash blocks over 15 lines are extracted to standalone script files under `scripts/`.

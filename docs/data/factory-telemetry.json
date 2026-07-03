@@ -6,8 +6,8 @@
       "type": "rolling",
       "hours": 24
     },
-    "state": "fresh",
-    "age_minutes": 3,
+    "state": "degraded",
+    "age_minutes": 5877,
     "threshold_minutes": 180
   },
   "lineage": {
@@ -96,7 +96,7 @@
       "formula": "passed_suite_runs / completed_suite_runs * 100",
       "window_hours": 24,
       "confidence": "high",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
@@ -114,7 +114,7 @@
       "formula": "(scenarios_total - scenarios_failed) / scenarios_total * 100",
       "window_hours": 24,
       "confidence": "medium",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
@@ -132,7 +132,7 @@
       "formula": "count(runs where overall=running)",
       "window_hours": 1,
       "confidence": "high",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
@@ -141,5 +141,11 @@
       ]
     }
   ],
-  "errors": []
+  "errors": [
+    {
+      "source": "live_cluster_snapshot",
+      "reason": "private endpoint unavailable or incomplete from GitHub-hosted runner",
+      "effect": "public telemetry downgraded to unknown/degraded"
+    }
+  ]
 }

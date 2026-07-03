@@ -52,7 +52,8 @@ const bluefinDefaultApps = [
     version: '135.0',
     architectures: 'x86_64, aarch64',
     license: 'MPL-2.0',
-    runtime: 'org.freedesktop.Platform'
+    runtime: 'org.freedesktop.Platform',
+    permissions: ['network', 'pulseaudio', 'gpu', 'wayland', 'x11', 'file-access:downloads']
   },
   {
     id: 'ptyxis',
@@ -68,7 +69,8 @@ const bluefinDefaultApps = [
     version: '46.0',
     architectures: 'x86_64, aarch64',
     license: 'GPL-3.0-or-later',
-    runtime: 'org.gnome.Platform'
+    runtime: 'org.gnome.Platform',
+    permissions: ['host-filesystem', 'host-os-integration', 'wayland', 'x11', 'gpu']
   },
   {
     id: 'podman-desktop',
@@ -84,7 +86,8 @@ const bluefinDefaultApps = [
     version: '1.10.0',
     architectures: 'x86_64, aarch64',
     license: 'Apache-2.0',
-    runtime: 'org.freedesktop.Platform'
+    runtime: 'org.freedesktop.Platform',
+    permissions: ['host-os-integration', 'network', 'wayland', 'x11', 'ipc']
   },
   {
     id: 'bazaar',
@@ -100,7 +103,8 @@ const bluefinDefaultApps = [
     version: '46.1',
     architectures: 'x86_64, aarch64',
     license: 'GPL-2.0-or-later',
-    runtime: 'org.gnome.Platform'
+    runtime: 'org.gnome.Platform',
+    permissions: ['system-bus', 'network', 'wayland', 'x11', 'package-updates']
   },
   {
     id: 'vscode',
@@ -116,7 +120,8 @@ const bluefinDefaultApps = [
     version: '1.95.0',
     architectures: 'x86_64, aarch64',
     license: 'Proprietary / MIT (Codium)',
-    runtime: 'org.freedesktop.Sdk'
+    runtime: 'org.freedesktop.Sdk',
+    permissions: ['host-filesystem', 'host-os-integration', 'network', 'wayland', 'x11', 'gpu']
   }
 ];
 
@@ -178,19 +183,24 @@ const autoDiscoveredApps = unmappedFeatures.map((path) => {
   // Choose standard generic icons based on folder/tag
   let iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Software.png'; // default
   let scope = `Auto-Discovered Test Suite · ${folder.toUpperCase()}`;
+  let permissions: string[] = ['testsuite-access'];
   
   if (path.includes('bazzite')) {
     iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Games.png';
     scope = 'Bazzite Shell & Extensions · Game Mode';
+    permissions = ['sandbox-verify', 'steam-deck-compat', 'x11', 'wayland'];
   } else if (path.includes('flatcar')) {
     iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.SystemMonitor.png';
     scope = 'Flatcar Linux Substrate · Systemd';
+    permissions = ['ssh-connectivity', 'systemd-dbus', 'network'];
   } else if (path.includes('hardware')) {
     iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Settings.png';
     scope = 'Hardware Compatibility · Kernel';
+    permissions = ['kernel-logs', 'gpu-access', 'host-device'];
   } else if (path.includes('security')) {
     iconUrl = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Settings.png';
     scope = 'Security Policies · Sandboxing';
+    permissions = ['selinux-verify', 'composefs-integrity', 'readonly-usr'];
   }
 
   return {
@@ -207,7 +217,8 @@ const autoDiscoveredApps = unmappedFeatures.map((path) => {
     version: '1.0.0 (testsuite)',
     architectures: 'x86_64, aarch64',
     license: 'Apache-2.0',
-    runtime: 'behave / qecore'
+    runtime: 'behave / qecore',
+    permissions: permissions
   };
 });
 
@@ -635,9 +646,14 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
           <div class="app-horizontal-info">
             <h3>{app.display_name}</h3>
             <p>{app.description}</p>
-            <div class="terminal-block">
+            <div class="terminal-block" style="margin-top: 0.75rem; margin-bottom: 0.35rem;">
               <span class="terminal-prompt">$</span> <code>{app.command}</code>
             </div>
+            {!app.app_id.includes('testsuite') && (
+              <div class="terminal-block" style="margin-top: 0; margin-bottom: 0.5rem; color: #10b981; border-color: rgba(16,185,129,0.15) !important;">
+                <span class="terminal-prompt">$</span> <code>flatpak install flathub {app.app_id}</code>
+              </div>
+            )}
           </div>
 
           <!-- Metadata Grid (Flathub, versions, architectures, etc) -->
@@ -662,6 +678,18 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
               <span>Flatpak SDK Runtime</span>
               <p style="font-family: monospace; font-size: 0.78rem;">{app.runtime}</p>
             </div>
+            {app.permissions && (
+              <div class="app-meta-item" style="grid-column: 1 / -1; margin-top: 0.25rem;">
+                <span>Sandbox Permissions</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem;">
+                  {app.permissions.map((perm) => (
+                    <span class="pill pill--gap" style="font-size: 0.68rem; border: 1px solid rgba(255,255,255,0.08); padding: 0.1rem 0.45rem; border-radius: 6px; font-weight: 500; text-transform: none; letter-spacing: normal;">
+                      {perm}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <!-- Status & Verification -->

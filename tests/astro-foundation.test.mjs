@@ -22,7 +22,6 @@ test('Astro build emits multipage factory routes into docs', () => {
     'docs/images/index.html',
     'docs/tests/index.html',
     'docs/applications/index.html',
-    'docs/homebrew/index.html',
     'docs/adoption/index.html',
     'docs/userspace/index.html',
     'docs/about/index.html',
@@ -42,18 +41,20 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav shows Overview tab');
   assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+" data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
   assert.match(html('docs/images/index.html'), /src="\/_astro\/upstream-page\.[^"]+" data-cfasync="false"/, 'images page keeps Cloudflare-safe chart script');
-  assert.match(html('docs/homebrew/index.html'), /data-cfasync="false"/, 'homebrew page keeps Cloudflare-safe chart script');
-  assert.match(html('docs/adoption/index.html'), /data-cfasync="false"/, 'adoption page keeps Cloudflare-safe chart script');
+  const adoptionPage = html('docs/adoption/index.html');
+  assert.match(adoptionPage, /data-cfasync="false"/, 'adoption page keeps Cloudflare-safe chart script');
   assert.match(html('docs/images/index.html'), /Image status/, 'images page renders');
   assert.match(html('docs/tests/index.html'), /Tests/, 'tests page renders');
   assert.match(html('docs/applications/index.html'), /Applications/, 'applications page renders');
-  assert.match(html('docs/homebrew/index.html'), /Homebrew/, 'homebrew page renders');
-  assert.match(html('docs/adoption/index.html'), /Adoption/, 'adoption page renders');
+  assert.match(adoptionPage, /Homebrew/, 'adoption page renders integrated Homebrew content');
+  assert.match(adoptionPage, /Adoption/, 'adoption page renders');
   assert.match(html('docs/about/index.html'), /Bluefin QA — Methodology/i, 'about page renders methodology');
   assert.match(html('docs/applications/index.html'), /Bazaar/, 'applications page calls out Bazaar scope');
-  assert.match(html('docs/index.html'), /href="\/homebrew\/"/, 'overview links to homebrew at domain root');
   assert.match(html('docs/index.html'), /href="\/adoption\/"/, 'overview links to adoption at domain root');
   assert.match(html('docs/index.html'), /href="\/userspace\/"/, 'overview links to userspace at domain root');
+  assert.match(html('docs/index.html'), /Ryzen AI MAX\+/i, 'overview renders control-plane Ryzen AI specs');
+  assert.match(html('docs/index.html'), /Zot OCI Registry Cache & Heat/i, 'overview renders Zot OCI cache section');
+  assert.match(html('docs/index.html'), /:30501/i, 'overview renders zot-cache port details');
   assert.match(html('docs/images/index.html'), /Unavailable|pending|coming soon/i, 'subpages show explicit unavailable state');
 });
 
@@ -79,6 +80,8 @@ test('tests page renders matrix views, chart mounts, evidence links, and unavail
   assert.match(testsPage, /progress-bar/i, 'tests page renders inline progress bars for pass rates');
   assert.match(testsPage, /Data Integrity Posture/i, 'tests page renders Data Integrity Posture section');
   assert.match(testsPage, /Evidence-backed authenticity/i, 'tests page renders evidence-backed authenticity disclosure');
+  assert.match(testsPage, /Triage & Local Execution Runbook/i, 'tests page renders triage runbook section');
+  assert.match(testsPage, /Permission denied \(publickey\) at SSH wait/i, 'tests page runbook lists common publickey log symptom');
 });
 
 test('images page renders grouped views, chart mounts, evidence links, and unavailable states', () => {
@@ -94,12 +97,12 @@ test('images page renders grouped views, chart mounts, evidence links, and unava
   assert.match(imagesPage, /Release freshness by stream/i, 'images page shows freshness chart section');
   assert.match(imagesPage, /Release timeline/i, 'images page shows release timeline chart section');
   assert.match(imagesPage, /Dakota testing/i, 'images page includes projectbluefin streams');
-  assert.match(imagesPage, /https:\/\/github\.com\/projectbluefin\/dakota\/releases/i, 'images page links projectbluefin evidence');
+  assert.match(imagesPage, /https:\/\/github\.com\/(orgs\/projectbluefin\/packages\/container\/dakota|projectbluefin\/dakota\/releases)/i, 'images page links projectbluefin evidence');
   assert.match(imagesPage, /No published release timestamp is present in docs\/data\/factory-stats\.json for this stream\./i, 'images page keeps unavailable reason explicit');
   assert.match(imagesPage, /https:\/\/github\.com\/ublue-os\/aurora\/releases/i, 'images page links non-bluefin evidence');
   assert.match(imagesPage, /Fedora Silverblue|Fedora Kinoite/i, 'images page references Silverblue and Kinoite upstream parent OSes');
   assert.match(imagesPage, /https:\/\/fedoraproject\.org\/silverblue\/|https:\/\/fedoraproject\.org\/kinoite\//i, 'images page links upstream Silverblue and Kinoite homepages');
-  assert.match(imagesPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart/, 'images page renders chart containers');
+  assert.match(imagesPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart|upstream-distribution-chart|upstream-brackets-chart/, 'images page renders chart containers');
 });
 
 test('userspace page renders FSDK containers, registry metadata, and charts', () => {

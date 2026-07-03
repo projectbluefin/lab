@@ -17,7 +17,7 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
     encoding: 'utf8',
   });
 
-  const homebrewPage = html('docs/homebrew/index.html');
+  const homebrewPage = html('docs/adoption/index.html');
 
   assert.match(
     homebrewPage,
@@ -57,7 +57,7 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
 
   assert.match(
     homebrewPage,
-    /homebrew-page-data/,
+    /adoption-page-data/,
     'homebrew page serializes client chart data',
   );
 
@@ -117,7 +117,7 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
 });
 
 test('homebrew data tables span the full grid width and stay scrollable when squeezed', () => {
-  const homebrewPage = html('docs/homebrew/index.html');
+  const homebrewPage = html('docs/adoption/index.html');
 
   const cssHref = homebrewPage.match(/href="(\/_astro\/SiteLayout\.[A-Za-z0-9_]+\.css)"/);
   assert.ok(cssHref, 'homebrew page links a compiled SiteLayout stylesheet');
@@ -142,7 +142,7 @@ test('homebrew data tables span the full grid width and stay scrollable when squ
 });
 
 test('homebrew page renders migrated tap coverage instead of the starter empty state', () => {
-  const homebrewPage = html('docs/homebrew/index.html');
+  const homebrewPage = html('docs/adoption/index.html');
   assert.match(homebrewPage, /Homebrew data is partially available/i);
   assert.match(homebrewPage, /bluefin\/brewfile/i);
   assert.doesNotMatch(homebrewPage, /No Homebrew analytics data is published for any tracked lane/i);

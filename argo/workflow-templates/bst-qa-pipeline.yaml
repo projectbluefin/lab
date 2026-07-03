@@ -52,7 +52,7 @@ spec:
         - name: workdir
           emptyDir: {}
       script:
-        image: cgr.dev/chainguard/python:latest-dev
+        image: 192.168.1.102:30500/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d
         command: [bash]
         resources:
           requests:
@@ -77,11 +77,6 @@ spec:
             value: "{{inputs.parameters.artifact-server}}"
         source: |
           set -euo pipefail
-
-          export PATH="${HOME}/.local/bin:${PATH}"
-
-          echo "=== Installing BuildStream 2.2.x ==="
-          pip install --no-cache-dir buildstream==2.2.*
 
           echo "=== Staging ${PROJECT_SUBDIR} from ${REPO}@${REF} ==="
           cd /work

@@ -53,7 +53,7 @@ interface ContainerMetadata {
 
 const getContainerMetadata = (repoName: string): ContainerMetadata => {
   try {
-    const raw = execSync(`skopeo inspect --tls-verify=false docker://192.168.1.102:30500/${repoName}:latest`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+    const raw = execSync(`skopeo inspect --tls-verify=false docker://192.168.1.102:30500/${repoName}:latest`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
     const data = JSON.parse(raw);
     const sizeBytes = data.LayersData?.reduce((sum: number, layer: any) => sum + (layer.Size || 0), 0) || 0;
     const sizeMb = sizeBytes > 0 ? (sizeBytes / (1024 * 1024)).toFixed(1) + ' MB' : 'unknown';

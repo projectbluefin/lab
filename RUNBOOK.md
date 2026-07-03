@@ -107,6 +107,8 @@ Golden disks can be rotated via the `build-containerdisk` template.
 | Flatcar runner: `pip3: command not found` | Fedora minimal lacks standalone `pip3` | Use `python3 -m pip install` in runner pods |
 | Flatcar runner: exit code 64 | Template has `outputs.artifacts` but Argo artifact storage is not configured | Remove artifact `outputs:` from the template |
 | Flatcar test: `ctr version` fails as `core` | containerd socket requires root | Use `sudo ctr version` (core has passwordless sudo) |
+| Pods on worker nodes get `no route to host` or `connection refused` to ClusterIP / control-plane (`10.43.0.1`) | Flannel `--flannel-iface=thunderbolt0` is configured but physical USB4 link is `none` (unestablished), causing routing isolation | Ensure physical USB4 cable is in Slot 1/4 on both AMD Framework nodes, and reboots or physical power cycles restore physical link. |
+| `ucsi_acpi GET_CABLE_PROPERTY failed (-5)` or `spurious native interrupt!` kernel spam on PCIe bridge `0000:00:08.3` | PCIe runtime power management (ASPM) or a volatile EC state suspends the USB4 controllers under the bridge | Force power control of bridge `0000:00:08.3` and controllers `c5:00.5`/`c5:00.6` to `on` via sysfs on both nodes. |
 
 ## Historical notes
 

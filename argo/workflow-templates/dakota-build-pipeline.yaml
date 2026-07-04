@@ -6,8 +6,8 @@ metadata:
   annotations:
     description: |
       Parallel dakota BST build pipeline. Builds bluefin and bluefin-nvidia OCI variants
-      with local BuildStream cache in each workflow pod (no remote CAS/RE dependency),
-      and publishes resulting OCI artifacts to local Zot.
+      using local worker resources and persistent hostPath cache, routing artifact cache
+      push/pulls to the in-cluster bst-artifact-server (:9092 gRPC) for hot builds.
       Triggered by push to dakota:testing via dakota-commit-poller CronWorkflow.
       On success, exports to local Zot (:30500).
       Uses bst-build PriorityClass — preemptable by lab-test-vm pods.
@@ -155,6 +155,17 @@ spec:
           echo "source:" >> /tmp/buildstream-cluster.conf
           echo "  fetch-timeout: 300" >> /tmp/buildstream-cluster.conf
 
+          # Enforce hot builds: point to in-cluster credential-free bst-artifact-server
+          # to pull/push precompiled FSDK elements and other SDK objects.
+          echo "artifacts:" >> /tmp/buildstream-cluster.conf
+          echo "  override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "  servers:" >> /tmp/buildstream-cluster.conf
+          echo "  - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "    push: true" >> /tmp/buildstream-cluster.conf
+          echo "source-caches:" >> /tmp/buildstream-cluster.conf
+          echo "  override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "  servers: []" >> /tmp/buildstream-cluster.conf
+
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"
           TAG="{{inputs.parameters.tag}}"
@@ -165,7 +176,18 @@ spec:
           git clone --depth=1 --branch "${REF}" "${REPO}" /src
           cd /src
 
-          # ponytail: Dakota lane uses pod-local cache only; no remote cache overrides needed.
+          # Inject project-level cache overrides matching top-level config for the primary project name.
+          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
+          echo "projects:" >> /tmp/buildstream-cluster.conf
+          echo "  ${PROJECT_NAME}:" >> /tmp/buildstream-cluster.conf
+          echo "    artifacts:" >> /tmp/buildstream-cluster.conf
+          echo "      override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "      servers:" >> /tmp/buildstream-cluster.conf
+          echo "      - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "        push: true" >> /tmp/buildstream-cluster.conf
+          echo "    source-caches:" >> /tmp/buildstream-cluster.conf
+          echo "      override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "      servers: []" >> /tmp/buildstream-cluster.conf
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

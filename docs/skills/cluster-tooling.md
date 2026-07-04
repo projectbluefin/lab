@@ -251,11 +251,10 @@ This is why **dakota builds on GitHub Actions are unreliable but the in-cluster
 `dakota-commit-poller` build (this repo) works**: the GH Actions workflow's
 `project.conf` points artifacts/source-caches at the remote Hetzner box
 (`cache.projectbluefin.io`), which is degraded. The in-cluster BST build
-(`dakota-build-pipeline`/`bst-qa-pipeline`) never talks to that host at all — it
-points `artifacts.servers` at the local `bst-artifact-server:9092` (bazel-remote,
-same cluster, sub-second round trip) and builds cold, so it's insulated from the
-Hetzner CAS's degraded performance entirely (at the cost of no shared upstream
-cache history).
+(`dakota-build-pipeline`/`bst-qa-pipeline`) is configured local-first and
+credential-free: it writes to `bst-artifact-server:9092` and explicitly overrides
+project cache remotes (`override-project-caches: true`) so no push path depends
+on external cache keys.
 
 The dakota CI workflow (`.github/workflows/build.yml`) already documents related
 CAS incidents inline: enabling `remote-execution` with a top-level
@@ -270,4 +269,3 @@ multi-minute stalls in build logs, not connectivity.** Filed as a human-priority
 gap: see `projectbluefin/lab` issue tracker (CAS latency root cause — box
 resourcing vs. network path — needs Hetzner-side investigation, not something
 fixable from the k3s cluster).
-

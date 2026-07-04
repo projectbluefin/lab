@@ -517,7 +517,7 @@ KUBECONFIG=~/.kube/bluespeed.yaml kubectl delete node <hostname>
 sudo /var/usrlocal/bin/k3s-agent-uninstall.sh
 ```
 
-### Key facts for immutable Linux nodes
+### Key facts for image-based, atomic OS nodes
 
 - **Binary path:** `/var/usrlocal/bin/k3s` — always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`
 - **Flannel backend:** `host-gw` — pure L2 routes, no VXLAN/WireGuard kernel modules needed

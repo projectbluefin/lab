@@ -179,7 +179,7 @@ Purpose: executive-readable adoption view for the `/adoption` page. Covers image
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Stable lane id (`bluefin-testing`, `bazzite-stable`) |
+| `id` | Stable lane id (`bluefin-testing`, `bluefin-lts-stable`) |
 | `variant` | Image variant name |
 | `branch` | Stream/tag |
 | `pull_count` | Registry pull count from container registry API (e.g., GHCR package statistics), or `null` when unavailable |

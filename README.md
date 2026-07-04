@@ -39,7 +39,6 @@ The lab continuously validates the core operating system family across multiple 
 | `ghcr.io/projectbluefin/bluefin` | `testing`, `stable` | Nightly 02:00 UTC + on every OCI digest change | Primary standard GNOME image (full suite) |
 | `ghcr.io/projectbluefin/bluefin-lts` | `testing`, `stable` | Nightly 02:30 UTC + on every OCI digest change | Long-term support GNOME enterprise target |
 | `ghcr.io/ublue-os/aurora` | `testing`, `stable` | Hourly OCI digest poll on upstream change | KDE variant validation (system suite) |
-| `ghcr.io/ublue-os/bazzite` | `testing`, `stable` | Hourly OCI digest poll on upstream change | Steam/gaming variant validation (system suite) |
 | `ghcr.io/projectbluefin/dakota` | `latest` | Nightly 03:00 UTC + on every BST build trigger | BuildStream (BST) flatcar-substrate variant |
 
 **Image-poll trigger:** hourly CronWorkflows check the OCI registry digests against a stored
@@ -287,7 +286,6 @@ just run-tests
 |---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | Ryzen AI MAX+ 395, 16c/32t, 64GB RAM |
 | exo-1 | k3s worker (workflow pods only) | — |
-| bazzite | k3s worker | Gaming machine — fully schedulable (no taint); k3s-agent enabled at boot |
 
 **Namespaces:**
 

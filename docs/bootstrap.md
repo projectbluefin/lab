@@ -12,7 +12,7 @@ safely.
 |---|---|
 | x86_64 bare metal | Minimum 16GB RAM, 256GB NVMe, btrfs root or separate btrfs volume for `/var/tmp` |
 | Fedora / Bluefin host OS | Tested on Bluefin (bootc, atomic). Any systemd-based distro works. |
-| `k3s` installed | See [k3s.io/docs](https://docs.k3s.io/quick-start) — single node or multi-node. **On immutable Linux (Bluefin/Dakota/Bazzite):** always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin` |
+| `k3s` installed | See [k3s.io/docs](https://docs.k3s.io/quick-start) — single node or multi-node. **On image-based, atomic systems (Bluefin/Dakota):** always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin` |
 | ArgoCD installed | `kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml` in `argocd` namespace |
 | Argo Workflows installed | See [argo-workflows install](https://argoproj.github.io/argo-workflows/installation/) |
 | `kubectl`, `argo`, `argocd`, `just` CLIs | On workstation or admin pod |

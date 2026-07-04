@@ -9,9 +9,31 @@ metadata:
     - /project-zot/zot
     - /external-secrets/external-secrets
     - /k8sgpt-ai/k8sgpt
+    - /apache/buildstream
 ---
 
 # Cluster Tooling — lab
+
+## When to Use
+
+- Managing cluster state, infra add-ons, registry/cache services, or k8s ops runbooks.
+- Debugging BuildStream cache behavior for Dakota/Cosmic/BST workflow lanes.
+
+## When NOT to Use
+
+- Argo WorkflowTemplate authoring details (`docs/skills/argo-workflows.md`).
+- KubeVirt VM provisioning/test authoring workflows (`docs/skills/kubevirt-vms.md`, `docs/skills/test-authoring.md`).
+
+## Core Process
+
+1. Resolve tool/library docs in Context7 first (kubectl/k3s/K8sGPT/BuildStream as needed).
+2. Prefer `just` recipes, then `kubectl`/`argo`, then host SSH only when k8s API cannot do it.
+3. For BST lanes, enforce local-only cache path in workflow configs:
+   - set `override-project-caches: true` for `artifacts` and `source-caches`
+   - pin artifact server to in-cluster `bst-artifact-server`
+   - set `source-caches.servers: []` to remove external source cache remotes.
+4. Validate workflow YAML with `just lint` before push.
+5. Confirm live behavior from workflow logs/config output, not assumptions.
 
 ## Mandatory first step
 
@@ -269,3 +291,22 @@ multi-minute stalls in build logs, not connectivity.** Filed as a human-priority
 gap: see `projectbluefin/lab` issue tracker (CAS latency root cause — box
 resourcing vs. network path — needs Hetzner-side investigation, not something
 fixable from the k3s cluster).
+
+## Common Rationalizations
+
+- "It only touches cache config, no lint needed." → Wrong; run `just lint` for every workflow YAML change.
+- "Project defaults are fine." → Wrong for this lab; project-defined remotes can re-enable external cache push paths.
+- "Port 443 refused means cache host down." → Wrong; validate actual BST ports (`11001`/`11002`) and latency behavior.
+
+## Red Flags
+
+- BuildStream configs missing `override-project-caches: true`.
+- Any BST lane includes external cache host URLs in generated config.
+- Docs describe local-first but YAML still allows project cache remotes.
+
+## Verification
+
+- [ ] Workflow templates set local-only cache overrides (`artifacts` + `source-caches`).
+- [ ] No external cache host appears in relevant workflow YAML/scripts.
+- [ ] `just lint` passes after edits.
+- [ ] Skill content reflects current local-only cache policy.

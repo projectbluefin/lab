@@ -170,6 +170,16 @@ spec:
           echo "scheduler:" >> /tmp/buildstream-cluster.conf
           echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
           echo "  fetchers: 1" >> /tmp/buildstream-cluster.conf
+          # Force all projects/junctions to stay local-only; project-level overrides
+          # alone are insufficient when dependencies define their own cache remotes.
+          echo "artifacts:" >> /tmp/buildstream-cluster.conf
+          echo "  override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "  servers:" >> /tmp/buildstream-cluster.conf
+          echo "  - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "    push: true" >> /tmp/buildstream-cluster.conf
+          echo "source-caches:" >> /tmp/buildstream-cluster.conf
+          echo "  override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "  servers: []" >> /tmp/buildstream-cluster.conf
 
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"

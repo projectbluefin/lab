@@ -96,6 +96,14 @@ spec:
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           mkdir -p "${HOME}/.config"
           {
+            echo "artifacts:"
+            echo "  override-project-caches: true"
+            echo "  servers:"
+            echo "  - url: ${ARTIFACT_SERVER}"
+            echo "    push: true"
+            echo "source-caches:"
+            echo "  override-project-caches: true"
+            echo "  servers: []"
             echo "projects:"
             echo "  ${PROJECT_NAME}:"
             echo "    artifacts:"

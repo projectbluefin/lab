@@ -283,6 +283,9 @@ all elements in the build graph.
 
 ### 6. Buildbarn gRPC message size floor for BuildStream CAS uploads
 
+**Note:** Dakota testing lane is now pod-local-cache-only (as of 2026-07-04) and does not use Buildbarn CAS.
+This section applies to remaining remote-CAS lanes: **Cosmic** and **BST-QA** pipelines only.
+
 BuildStream can emit large `BatchUpdateBlobs` requests while importing bootstrap
 seed artifacts. Buildbarn's gRPC message cap must be high enough for those uploads.
 
@@ -292,7 +295,7 @@ Desired state in `manifests/buildbarn-config.yaml`:
 maximumMessageSizeBytes: 64 * 1024 * 1024
 ```
 
-If this is too low, Dakota/Cosmic lanes can fail during fetch/capture with errors
+If this is too low, Cosmic/BST-QA lanes can fail during fetch/capture with errors
 like `Unable to upload <N> blobs to remote CAS`.
 
 When `buildbarn-config` changes, also bump `buildbarn-config-revision` pod-template

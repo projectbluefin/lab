@@ -277,6 +277,21 @@ argo-mcp-get_workflow_template name=<template> namespace=argo
 If you report a fix is deployed without verifying the live template, you will waste the
 next run on the same bug. Verification is not optional.
 
+#### BuildStream RE `No workers exist` means queue-key mismatch first, not worker outage
+
+When BuildStream logs show:
+
+`FAILED_PRECONDITION: No workers exist ... platform {"properties":[{"name":"ISA","value":"x86-64"},{"name":"OSFamily","value":"linux"}]}`
+
+check Buildbarn worker platform registration before changing workflow behavior:
+
+1. Confirm workers are actually running (`kubectl get pods -n buildbarn`).
+2. Check `manifests/buildbarn-config.yaml` `worker.jsonnet` runner `platform.properties`.
+3. Ensure worker properties match BuildStream action properties (`ISA=x86-64`, `OSFamily=linux`).
+4. Keep `remote-execution` enabled in pipeline templates once queue keys match.
+
+Disabling `remote-execution` to bypass this error is a fallback, not the primary fix.
+
 ```bash
 # Lint workflow-templates (offline, cross-file refs resolve)
 argo lint --offline argo/workflow-templates/

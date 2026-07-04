@@ -5,6 +5,8 @@
   - [bluefin-qa-pipeline](#bluefin-qa-pipeline)
   - [dakota-qa-pipeline](#dakota-qa-pipeline)
   - [dakota-build-pipeline](#dakota-build-pipeline)
+  - [cosmic-build-pipeline](#cosmic-build-pipeline)
+  - [bluefin-server-build-pipeline](#bluefin-server-build-pipeline)
   - [bst-qa-pipeline](#bst-qa-pipeline)
   - [knuckle-qa-pipeline](#knuckle-qa-pipeline)
 - [Supporting Templates](#supporting-templates)
@@ -59,6 +61,29 @@
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
   [Cache Warming](#cache-warming-pollers)).
+
+### cosmic-build-pipeline
+- **Purpose:** BuildStream compile pipeline for COSMIC variants
+  (`oci/cosmic/image.bst`, `oci/cosmic-nvidia/image.bst`) and push to local Zot.
+- **Safety guards (aligned with dakota):**
+  `activeDeadlineSeconds: 14400` (workflow), `activeDeadlineSeconds: 5400` (step),
+  `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
+  `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
+  `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
+- **Cache policy:** local-only cluster CAS (`bst-artifact-server`), with
+  `override-project-caches: true` and empty source-caches.
+
+### bluefin-server-build-pipeline
+- **Purpose:** BuildStream compile pipeline for Bluefin Server elements
+  (`oci/bluefin-server-ddi.bst`, `oci/bluefin-server-installer.bst`) and push to local Zot.
+- **Safety guards (aligned with dakota/cosmic):**
+  `activeDeadlineSeconds: 14400` (workflow), `activeDeadlineSeconds: 5400` (step),
+  `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
+  `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
+  `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
+- **Cache policy:** generated config now starts with `cache.storage-service` to
+  `bst-artifact-server:9092` plus connection-config retries/timeouts, then enforces
+  local-only artifact/source cache overrides for project and junction remotes.
 
 ### bst-qa-pipeline
 - **Purpose:** Smoke-tests the Buildbarn distributed remote-execution grid itself
@@ -127,7 +152,7 @@ Buildbarn's runner deliberately does not grant.
 | `flatcar-kernel-poller` | 10 min | `flatcar-kernel-build` when kernel.org's latest stable version changes | Flatcar kernel build cache |
 | `flatcar-kernel-gate` | 30 min | (gate/promotion check, see `docs/skills/flatcar-node-onboarding.md`) | N/A |
 
-Dakota/Cosmic/BST lanes now enforce local-only cache policy: workflows override
+Dakota/Cosmic/Bluefin Server/BST lanes now enforce local-only cache policy: workflows override
 project cache remotes and do not push to external caches. Cold runs may fetch
 from upstream source origins, but cache writes stay in-cluster (`bst-artifact-server`).
 
@@ -193,6 +218,8 @@ Pod resource requests/limits used by workflow steps:
 | `wait-for-vm-ready` | 100m / 500m | 128Mi / 256Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
 | `dakota-build-pipeline/bst-build` | 4 / 8 | 14Gi / 28Gi |
+| `cosmic-build-pipeline/bst-build` | 4 / 8 | 14Gi / 28Gi |
+| `bluefin-server-build-pipeline/bst-build` | 6 / 10 | 16Gi / 30Gi |
 | `knuckle build-installer` | 4 / 4 | 8Gi / 8Gi |
 | `knuckle write-ignition` | 100m / 500m | 128Mi / 256Mi |
 | `knuckle boot-installer` | 1 / 2 | 1Gi / 2Gi |

@@ -71,6 +71,10 @@ spec:
 
     - name: bst-build
       priorityClassName: bst-build   # preemptable by lab-test-vm pods (4h build)
+      activeDeadlineSeconds: 5400
+      retryStrategy:
+        limit: "2"
+        retryPolicy: "Always"
       inputs:
         parameters:
           - name: element
@@ -104,6 +108,10 @@ spec:
               secretKeyRef:
                 name: github-token
                 key: token
+          - name: GRPC_POLL_STRATEGY
+            value: poll
+          - name: GRPC_ENABLE_FORK_SUPPORT
+            value: "1"
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse
@@ -123,7 +131,18 @@ spec:
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
 
           # Local-only cache policy for all projects and junctions.
-          echo "artifacts:" > /tmp/buildstream-cluster.conf
+          echo "cache:" > /tmp/buildstream-cluster.conf
+          echo "  storage-service:" >> /tmp/buildstream-cluster.conf
+          echo "    url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "    push: true" >> /tmp/buildstream-cluster.conf
+          echo "    connection-config:" >> /tmp/buildstream-cluster.conf
+          echo "      request-timeout: 900" >> /tmp/buildstream-cluster.conf
+          echo "      retry-limit: 4" >> /tmp/buildstream-cluster.conf
+          echo "      retry-delay: 1000" >> /tmp/buildstream-cluster.conf
+          echo "scheduler:" >> /tmp/buildstream-cluster.conf
+          echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
+          echo "  fetchers: 1" >> /tmp/buildstream-cluster.conf
+          echo "artifacts:" >> /tmp/buildstream-cluster.conf
           echo "  override-project-caches: true" >> /tmp/buildstream-cluster.conf
           echo "  servers:" >> /tmp/buildstream-cluster.conf
           echo "  - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf

@@ -11,7 +11,12 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
   replicas: 2
+  revisionHistoryLimit: 10
   serviceName: storage
   selector:
     matchLabels:
@@ -33,6 +38,7 @@ spec:
       initContainers:
         - name: volume-init
           image: cgr.dev/chainguard/wolfi-base:latest
+          imagePullPolicy: Always
           command:
             - sh
             - -c
@@ -45,6 +51,7 @@ spec:
       containers:
         - name: storage
           image: ghcr.io/buildbarn/bb-storage:20260609T094425Z-10acc76
+          imagePullPolicy: IfNotPresent
           args:
             - /config/storage.jsonnet
           ports:
@@ -75,6 +82,10 @@ spec:
                 path: common.libsonnet
               - key: storage.jsonnet
                 path: storage.jsonnet
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
   volumeClaimTemplates:
     - metadata:
         name: cas

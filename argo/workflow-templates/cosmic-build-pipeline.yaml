@@ -16,7 +16,7 @@ metadata:
 spec:
   serviceAccountName: argo
   # BST build concurrency managed by k8s scheduler via pod resource requests.
-  activeDeadlineSeconds: 7200
+  activeDeadlineSeconds: 14400
 
   arguments:
     parameters:
@@ -73,11 +73,11 @@ spec:
 
     - name: bst-build
       priorityClassName: bst-build
-      # Bound a single attempt well below the workflow's 7200s deadline so a
+      # Bound a single attempt well below the workflow's 14400s deadline so a
       # wedged gRPC/source fetch (observed: connection stays ESTABLISHED with
       # zero throughput, no error, no timeout) gets killed and retried with a
-      # fresh pod/connection instead of silently burning the whole 2h budget.
-      activeDeadlineSeconds: 2700
+      # fresh pod/connection instead of silently burning the whole 4h budget.
+      activeDeadlineSeconds: 5400
       retryStrategy:
         limit: "2"
         retryPolicy: "Always"
@@ -101,6 +101,11 @@ spec:
           privileged: true
           seLinuxOptions:
             type: spc_t
+        env:
+          - name: GRPC_POLL_STRATEGY
+            value: poll
+          - name: GRPC_ENABLE_FORK_SUPPORT
+            value: "1"
         resources:
           requests:
             cpu: "4"
@@ -124,7 +129,7 @@ spec:
           echo "    url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
           echo "    push: true" >> /tmp/buildstream-cluster.conf
           echo "    connection-config:" >> /tmp/buildstream-cluster.conf
-          echo "      request-timeout: 300" >> /tmp/buildstream-cluster.conf
+          echo "      request-timeout: 900" >> /tmp/buildstream-cluster.conf
           echo "      retry-limit: 4" >> /tmp/buildstream-cluster.conf
           echo "      retry-delay: 1000" >> /tmp/buildstream-cluster.conf
           # Observed reproducible hang checking out the gnome-build-meta junction

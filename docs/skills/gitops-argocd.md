@@ -40,6 +40,10 @@ Both use `automated: { prune: true, selfHeal: true }` — per
 **`prune: true`** — resources removed from git are deleted from the cluster.
 **`selfHeal: true`** — manual cluster changes are reverted within ~3 minutes.
 
+`lab-infra` excludes `manifests/flatcar-update-*.yaml`; those resources are owned by the
+separate `flatcar-update` Application. Keep that split to avoid duplicate ownership and
+persistent `OutOfSync` drift from overlapping Namespace/ConfigMap management.
+
 ### 2. The three-path decision tree
 
 ```

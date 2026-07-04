@@ -211,12 +211,14 @@ data:
         runners: [{
           endpoint: { address: 'unix:///worker/runner' },
           concurrency: 4,
-          // Empty platform properties: BuildStream's REAPI client does not
-          // declare per-action platform properties by default, so the
-          // worker must advertise an empty platform to match the scheduler's
-          // action-derived queue key. Verify with a live build; if
-          // BuildStream starts sending properties, mirror them here.
-          platform: { properties: [] },
+          // Match BuildStream REAPI action platform properties so workers
+          // register into the same scheduler queue key.
+          platform: {
+            properties: [
+              { name: 'ISA', value: 'x86-64' },
+              { name: 'OSFamily', value: 'linux' },
+            ],
+          },
           workerId: {
             pod: std.extVar('POD_NAME'),
             node: std.extVar('NODE_NAME'),

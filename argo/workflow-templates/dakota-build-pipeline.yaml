@@ -101,7 +101,9 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          emptyDir: {}
+          hostPath:
+            path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
+            type: DirectoryOrCreate
       script:
         image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
         command: [bash]

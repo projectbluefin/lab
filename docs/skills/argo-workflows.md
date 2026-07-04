@@ -310,6 +310,7 @@ Operational rule:
    - `scheduler.network-retries: 8` (vs 4) to handle transient GitHub source fetch timeouts
    - `source.fetch-timeout: 300` (5m, vs BuildStream default 30s) to allow slow fetches on high-latency networks
    - **CPU and Memory Scaling:** Pods must request `8` CPUs (`limits: 12`) and `12Gi` Memory (`limits: 16Gi`) to fully saturate physical worker node cores and avoid thread throttling under heavy BuildStream compilation.
+   - **Persistent Local Caching:** Rather than using an ephemeral `emptyDir: {}` for `bst-cache` which gets completely cleared on pod teardown, use a persistent `hostPath` under `/var/tmp/bst-cache/{{inputs.parameters.tag}}` with `type: DirectoryOrCreate`. This ensures that consecutive builds immediately find a warm BuildStream cache (containing compiled compilers, dependencies, and base SDK objects) on the worker node, while partitioning by `{{inputs.parameters.tag}}` completely avoids lock conflicts between the standard and nvidia parallel build steps.
 4. Re-run a fresh Dakota workflow; stale submissions snapshot old template values at submit time.
 
 ```bash

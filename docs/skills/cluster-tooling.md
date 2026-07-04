@@ -28,11 +28,11 @@ metadata:
 
 1. Resolve tool/library docs in Context7 first (kubectl/k3s/K8sGPT/BuildStream as needed).
 2. Prefer `just` recipes, then `kubectl`/`argo`, then host SSH only when k8s API cannot do it.
-3. For BST lanes, enforce local-only cache path in workflow configs:
+3. For BST lanes, configure local and upstream cache fallback in workflow configs:
    - never configure external cache credentials/keys in cluster workflows
-   - set `override-project-caches: true` for `artifacts` and `source-caches`
-   - pin artifact server to in-cluster `bst-artifact-server`
-   - set `source-caches.servers: []` to remove external source cache remotes.
+   - set `override-project-caches: false` to allow falling back to upstream caches (like Freedesktop SDK and GNOME OS), preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
+   - pin artifact server to in-cluster `bst-artifact-server` so that local additions are cached.
+   - set `source-caches.servers: []` to keep source-cache configuration minimal.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
 
@@ -266,29 +266,26 @@ When generating `buildstream.conf` dynamically inside an Argo YAML script block:
 - **Avoid multiline heredocs (`cat << EOF`)**: Indented heredocs preserve spaces unless processed carefully, while non-indented lines violate YAML script structure.
 - **Prefer explicit sequential writes**: Use `echo "..." > file` and `echo "..." >> file` for structured text generation. This completely eliminates YAML indentation parse bugs and is 100% robust.
 
-### 5. Local-only BuildStream cache policy (credential-free)
+### 5. BuildStream cache policy with Upstream Cache Fallbacks
 
-In-cluster BST lanes must never depend on external cache credentials.
+In-cluster BST lanes must never depend on external cache credentials, but they should allow falling back to upstream project caches (like Freedesktop SDK and GNOME OS public caches) to enable hot builds of basic bootstrap layers.
 
 Required generated `buildstream.conf` policy:
 
 ```yaml
 artifacts:
-  override-project-caches: true
+  override-project-caches: false
   servers:
   - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092
     push: true
 source-caches:
-  override-project-caches: true
+  override-project-caches: false
   servers: []
 ```
 
-`projects.<name>.artifacts/source-caches` should also repeat the same override to
-keep top-level and project-level behavior aligned.
+`projects.<name>.artifacts/source-caches` should also repeat the same override (`false`) to keep top-level and project-level behavior aligned.
 
-Why both layers: `projects.<name>` alone can miss junction/subproject cache remotes.
-Top-level override guarantees external project-recommended caches stay disabled for
-all elements in the build graph.
+Why this works: Setting `override-project-caches: false` tells BuildStream to check project-recommended upstream caches (like `cache.freedesktop-sdk.io` and `gbm.gnome.org`) for precompiled objects first. If a hit is found, it pulls the artifact instead of building it. Our in-cluster `bst-artifact-server` is still queried and pushed to, ensuring local-only additions (like Dakota's customization layers) are cached locally.
 
 ### 6. Buildbarn gRPC message size floor for BuildStream CAS uploads
 
@@ -324,13 +321,13 @@ This forces a rollout so Buildbarn processes actually reload the new config.
 
 ## Red Flags
 
-- BuildStream configs missing `override-project-caches: true`.
+- BuildStream configs setting `override-project-caches: true` for pipelines that depend on upstream bootstrap artifacts (like Freedesktop SDK and GNOME OS meta), causing extremely slow and completely cold builds of the entire OS.
 - Any BST lane includes external cache host URLs in generated config.
 - Docs describe local-first but YAML still allows project cache remotes.
 
 ## Verification
 
-- [ ] Workflow templates set local-only cache overrides (`artifacts` + `source-caches`).
+- [ ] Workflow templates align `override-project-caches` to `false` for base fallback coverage.
 - [ ] No external cache host appears in relevant workflow YAML/scripts.
 - [ ] `just lint` passes after edits.
 - [ ] Skill content reflects current local-only cache policy.

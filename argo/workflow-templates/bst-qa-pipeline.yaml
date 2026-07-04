@@ -29,8 +29,6 @@ spec:
         value: "bst-prototype"
       - name: element
         value: "hello.bst"
-      - name: artifact-server
-        value: "grpc://bst-artifact-server:9092"
       - name: remote-execution-service
         value: "http://frontend.buildbarn.svc.cluster.local:8980"
 
@@ -49,8 +47,6 @@ spec:
             value: "{{workflow.parameters.project-subdir}}"
           - name: element
             value: "{{workflow.parameters.element}}"
-          - name: artifact-server
-            value: "{{workflow.parameters.artifact-server}}"
           - name: remote-execution-service
             value: "{{workflow.parameters.remote-execution-service}}"
       volumes:
@@ -78,8 +74,6 @@ spec:
             value: "{{inputs.parameters.project-subdir}}"
           - name: ELEMENT
             value: "{{inputs.parameters.element}}"
-          - name: ARTIFACT_SERVER
-            value: "{{inputs.parameters.artifact-server}}"
           - name: REMOTE_EXECUTION_SERVICE
             value: "{{inputs.parameters.remote-execution-service}}"
         source: |
@@ -92,14 +86,15 @@ spec:
           git sparse-checkout set "${PROJECT_SUBDIR}"
           cd "${PROJECT_SUBDIR}"
 
-          echo "=== Configuring .config/buildstream.conf (artifact cache: ${ARTIFACT_SERVER}, remote-execution: ${REMOTE_EXECUTION_SERVICE}) ==="
+          LOCAL_ARTIFACT_SERVER="grpc://bst-artifact-server.argo.svc.cluster.local:9092"
+          echo "=== Configuring .config/buildstream.conf (artifact cache: ${LOCAL_ARTIFACT_SERVER}, remote-execution: ${REMOTE_EXECUTION_SERVICE}) ==="
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           mkdir -p "${HOME}/.config"
           {
             echo "artifacts:"
             echo "  override-project-caches: false"
             echo "  servers:"
-            echo "  - url: ${ARTIFACT_SERVER}"
+            echo "  - url: ${LOCAL_ARTIFACT_SERVER}"
             echo "    push: true"
             echo "  - url: https://cache.projectbluefin.io:11001"
             echo "    push: false"
@@ -121,7 +116,7 @@ spec:
             echo "    artifacts:"
             echo "      override-project-caches: false"
             echo "      servers:"
-            echo "      - url: ${ARTIFACT_SERVER}"
+            echo "      - url: ${LOCAL_ARTIFACT_SERVER}"
             echo "        push: true"
             echo "      - url: https://cache.projectbluefin.io:11001"
             echo "        push: false"

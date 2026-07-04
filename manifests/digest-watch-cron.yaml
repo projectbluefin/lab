@@ -1,4 +1,4 @@
-# CronWorkflow: watches GHCR digests for bluefin and bluefin-lts every 5 minutes.
+# CronWorkflow: watches GHCR digests for bluefin and bluefin-lts every 15 minutes.
 # Submits a build-containerdisk Workflow (force=true) when the upstream digest changes.
 # Decouples slow BIB builds from the test pipeline — bluefin-qa-pipeline uses assert-cd
 # to fail fast if the containerdisk is missing rather than triggering a build inline.
@@ -15,7 +15,7 @@ metadata:
     app.kubernetes.io/part-of: lab
 spec:
   schedules:
-    - "*/5 * * * *"
+    - "*/15 * * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 60

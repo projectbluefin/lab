@@ -68,6 +68,7 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 - Use `k8sgpt analyze --explain` for broad triage.
 - Narrow with `--filter=Pod`, `--filter=Deployment`, or `--namespace=<ns>`.
 - For assistant integration, prefer the MCP server mode (`k8sgpt serve --mcp`) and register it in Copilot/Claude-style MCP configs.
+- For this repo's `k8sgpt-on-demand` Argo template, keep intentionally-idle services in `ignored-services` (for example `llm-d/llm-d-modelserver` while `replicas: 0`) to avoid known false-positive "Service has no endpoints" noise during stabilization.
 - Verified source: `/k8sgpt-ai/k8sgpt`
 
 ## NVMe and PCIe Power Management Quirks on Strix Halo (e.g., exo-0)

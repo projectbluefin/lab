@@ -7,8 +7,10 @@ metadata:
     description: |
       Parallel dakota BST build pipeline. Builds bluefin and bluefin-nvidia OCI variants
       in parallel against the in-cluster bst-artifact-server CAS service (bazel-remote,
-      argo namespace, :9092 gRPC). Triggered by push to dakota:testing via
-      dakota-commit-poller CronWorkflow. On success, exports to local Zot (:30500).
+      argo namespace, :9092 gRPC) plus distributed remote-execution via the Buildbarn
+      frontend (buildbarn/frontend:8980, workers on ghost+exo-0, XFS-backed storage).
+      Triggered by push to dakota:testing via dakota-commit-poller CronWorkflow.
+      On success, exports to local Zot (:30500).
       Uses bst-build PriorityClass — preemptable by lab-test-vm pods.
   labels:
     app.kubernetes.io/component: dakota-build
@@ -16,7 +18,10 @@ metadata:
 spec:
   serviceAccountName: argo
   # BST build concurrency managed by k8s scheduler via pod resource requests.
-  activeDeadlineSeconds: 7200
+  # Raised from 7200s alongside the per-step activeDeadlineSeconds bump (5400s):
+  # with retryStrategy.limit=2, worst case is 3 attempts, so the workflow
+  # ceiling must comfortably exceed one step deadline plus retries.
+  activeDeadlineSeconds: 14400
 
   arguments:
     parameters:
@@ -77,7 +82,12 @@ spec:
       # wedged gRPC/source fetch (observed: connection stays ESTABLISHED with
       # zero throughput, no error, no timeout) gets killed and retried with a
       # fresh pod/connection instead of silently burning the whole 2h budget.
-      activeDeadlineSeconds: 2700
+      # Raised from 2700s: a cold XFS-backed Buildbarn cache (post-migration,
+      # 2026-07-03) legitimately takes >45m to bootstrap freedesktop-sdk from
+      # upstream on first run — the old deadline killed a healthy, progressing
+      # build (see dakota-build-pipeline-x2mln, exit 143 at 42m with steady
+      # fetch/pull progress, no stall).
+      activeDeadlineSeconds: 5400
       retryStrategy:
         limit: "2"
         retryPolicy: "Always"
@@ -132,6 +142,10 @@ spec:
           # Write in-cluster BST config — plain gRPC to in-cluster bazel-remote CAS, no TLS.
           # connection-config bounds gRPC calls so a stalled/wedged connection to our
           # own CAS fails fast and gets retried instead of hanging indefinitely.
+          # remote-execution-service points at the Buildbarn frontend (CAS+AC+Execute
+          # forwarding on one port), distributed across ghost+exo-0 worker pods, now
+          # backed by XFS storage on both nodes (migrated off root btrfs 2026-07-03).
+          # This is what makes the build actually distributed instead of purely local.
           echo "cache:" > /tmp/buildstream-cluster.conf
           echo "  storage-service:" >> /tmp/buildstream-cluster.conf
           echo "    url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
@@ -140,6 +154,13 @@ spec:
           echo "      request-timeout: 300" >> /tmp/buildstream-cluster.conf
           echo "      retry-limit: 4" >> /tmp/buildstream-cluster.conf
           echo "      retry-delay: 1000" >> /tmp/buildstream-cluster.conf
+          echo "remote-execution:" >> /tmp/buildstream-cluster.conf
+          echo "  execution-service:" >> /tmp/buildstream-cluster.conf
+          echo "    url: http://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
+          echo "  storage-service:" >> /tmp/buildstream-cluster.conf
+          echo "    url: http://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
+          echo "  action-cache-service:" >> /tmp/buildstream-cluster.conf
+          echo "    url: http://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
           # Observed reproducible hang checking out the gnome-build-meta junction
           # (worker process blocked reading an IPC pipe with no writer, zero CPU,
           # across multiple pods/nodes) — matches known BuildStream multiprocessing

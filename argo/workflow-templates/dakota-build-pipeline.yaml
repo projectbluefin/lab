@@ -151,7 +151,9 @@ spec:
           echo "    url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
           echo "    push: true" >> /tmp/buildstream-cluster.conf
           echo "    connection-config:" >> /tmp/buildstream-cluster.conf
-          echo "      request-timeout: 300" >> /tmp/buildstream-cluster.conf
+          # 300s is too low for some large BatchUpdateBlobs uploads and can leave
+          # BuildStream wedged after repeated DeadlineExceeded retries.
+          echo "      request-timeout: 900" >> /tmp/buildstream-cluster.conf
           echo "      retry-limit: 4" >> /tmp/buildstream-cluster.conf
           echo "      retry-delay: 1000" >> /tmp/buildstream-cluster.conf
           echo "remote-execution:" >> /tmp/buildstream-cluster.conf

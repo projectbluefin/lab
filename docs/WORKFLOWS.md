@@ -49,14 +49,12 @@
 - **Distribution:** No `nodeSelector` pin — the k8s scheduler naturally spreads
   the two variant builds across ghost and exo-0 in parallel (confirmed live:
   one variant per node, both `Running` simultaneously).
-- **Cache:** Uses `bst-artifact-server` (bazel-remote, gRPC `:9092`, `argo` namespace)
-  as the BuildStream artifact cache — **not** Buildbarn, and **not**
-  `buildbox-casd` (that was an unused, disconnected CAS daemon, deleted).
+- **Cache:** Uses Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`)
+  for BuildStream CAS/AC plus remote execution through `buildbox-casd`.
+  This avoids bazel-remote's default gRPC server message-size ceiling that can
+  reject large BuildStream `BatchUpdateBlobs` uploads during bootstrap fetch.
   Project-defined cache remotes are overridden so Dakota stays local-only in
-  cluster (`override-project-caches: true`, artifact server pinned to
-  `bst-artifact-server`, `source-caches.servers: []`).
-  Requires privileged FUSE/mount-namespace access for real bootc OCI builds, so it
-  cannot run through Buildbarn's chroot-only remote-execution workers.
+  cluster (`override-project-caches: true`, source-caches disabled).
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see

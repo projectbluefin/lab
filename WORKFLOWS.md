@@ -148,7 +148,8 @@ the pipeline templates — always runs regardless of pipeline outcome.
 
 ### `dakota-build-pipeline`
 
-Builds Dakota BuildStream OCI artifacts in-cluster using `buildbox-casd` service.
+Builds Dakota BuildStream OCI artifacts in-cluster using Buildbarn frontend for
+remote CAS/AC/execution (`frontend.buildbarn:8980` via `buildbox-casd`).
 `build-bluefin` and `build-bluefin-nvidia` run in parallel and push to local Zot.
 
 | Parameter | Default | Notes |

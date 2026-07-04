@@ -48,6 +48,8 @@ metadata:
 16. After changing collector logic (`scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py`), run the same local refresh sequence as CI (`refresh_factory_stats.py` → `generate_page_datasets.py` → `npm run build`) before handoff.
 17. **Network timeouts are mandatory for any cluster-facing call in CI**: every `execSync`, `fetch`, `curl`, `skopeo`, or similar command that reaches `192.168.1.x` or any private endpoint must have an explicit timeout (e.g. `timeout: 2000` for Node.js, `--max-time` for curl, or socket timeout). Without timeouts, a single unreachable endpoint will hang the entire GitHub-hosted runner indefinitely, starving the concurrency group and blocking all downstream runs.
 18. **Build-time assertions must handle environment drift**: if a test asserts presence of specific live data (e.g. `:30501` registry port), but the build environment differs from the test environment (GitHub runners → no homelab network access), the assertion will always fail. Instead: allow the code to handle missing data gracefully (e.g. fallback rendering), and update the assertion to accept both the live path and the fallback path. This prevents false CI failures that don't reflect real code bugs.
+19. **Prefer the Kubernetes API server's service/pod proxy subresource over new NodePorts/manifests** when a collector needs to reach a ClusterIP-only service or a pod's non-Service-exposed diagnostics port: `kubectl get --raw "/api/v1/namespaces/<ns>/services/<svc>:<port>/proxy/<path>"` or `.../pods/<pod>:<port>/proxy/<path>`. This routes through the API server the runner already reaches (the same reachability `kubectl get nodes` relies on), so no cluster manifest changes are needed to expose a new metrics/status endpoint.
+20. When a data source has no direct "value used" gauge (e.g. Buildbarn's block-device-backed storage, which preallocates fixed-size blocks on disk regardless of logical fill), derive an estimate from available counters (e.g. `allocations_total - releases_total` × known block size) and say so explicitly in the row's `derivation` field. Never silently report a physical-allocation number as if it were logical usage.
 
 ## Common Rationalizations
 
@@ -72,6 +74,8 @@ metadata:
 - Automated workflows that commit/push back to the git repository lack a concurrency limit block, causing push race conditions.
 - **A single CI run hangs indefinitely on a private-network call; the concurrency group is starved** — missing timeout on an unreachable endpoint.
 - **Tests fail in CI but pass locally** — the test environment diverges from runner environment (e.g. expects homelab LAN data that GitHub runners cannot reach). Without fallback handling and environment-aware assertions, this creates phantom CI failures that don't reflect real bugs.
+- A new NodePort or Ingress manifest is proposed just to let a collector reach a service/pod that already has a ClusterIP or a diagnostics port — the API server proxy subresource reaches it without new cluster state.
+- A dashboard row reports "bytes used" for storage that is actually a fixed-size preallocated block device, without noting the value is a derived estimate.
 
 ## Verification
 
@@ -90,3 +94,5 @@ metadata:
 - [ ] Page-level dashboard JSON keeps stable row keys plus row-level provenance/state fields so collector-only follow-up work can populate data without changing the contract.
 - [ ] Inline Python/bash blocks over 15 lines are extracted to standalone script files under `scripts/`.
 - [ ] Concurrency blocks are added to git-mutating workflows to secure the git-push transaction.
+- [ ] Collectors reaching ClusterIP-only services or pod-only diagnostics ports use `kubectl get --raw .../proxy/...` instead of adding new NodePorts/manifests.
+- [ ] Derived/estimated usage numbers (no direct source gauge) state the derivation formula and inputs in the row's `derivation` field.

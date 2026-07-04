@@ -7,8 +7,8 @@ metadata:
     description: |
       BuildStream QA pipeline for the bst-prototype project.
       Installs buildstream via pip in a chainguard/python container, stages
-      bst-prototype/ from this repo, configures the in-cluster artifact
-      cache (bst-artifact-server:9092 via gRPC) for push/pull, points
+      bst-prototype/ from this repo, configures local in-cluster writeback cache
+      plus read-only upstream mirrors, points
       remote-execution at the in-cluster Buildbarn frontend
       (buildbarn/frontend:8980, distributed across ghost+exo-0 workers),
       and builds hello.bst.
@@ -97,23 +97,47 @@ spec:
           mkdir -p "${HOME}/.config"
           {
             echo "artifacts:"
-            echo "  override-project-caches: true"
+            echo "  override-project-caches: false"
             echo "  servers:"
             echo "  - url: ${ARTIFACT_SERVER}"
             echo "    push: true"
+            echo "  - url: https://cache.projectbluefin.io:11001"
+            echo "    push: false"
+            echo "  - url: https://cache.freedesktop-sdk.io:11001"
+            echo "    push: false"
+            echo "  - url: https://gbm.gnome.org:11003"
+            echo "    push: false"
             echo "source-caches:"
-            echo "  override-project-caches: true"
-            echo "  servers: []"
+            echo "  override-project-caches: false"
+            echo "  servers:"
+            echo "  - url: https://cache.projectbluefin.io:11001"
+            echo "    push: false"
+            echo "  - url: https://cache.freedesktop-sdk.io:11001"
+            echo "    push: false"
+            echo "  - url: https://gbm.gnome.org:11003"
+            echo "    push: false"
             echo "projects:"
             echo "  ${PROJECT_NAME}:"
             echo "    artifacts:"
-            echo "      override-project-caches: true"
+            echo "      override-project-caches: false"
             echo "      servers:"
             echo "      - url: ${ARTIFACT_SERVER}"
             echo "        push: true"
+            echo "      - url: https://cache.projectbluefin.io:11001"
+            echo "        push: false"
+            echo "      - url: https://cache.freedesktop-sdk.io:11001"
+            echo "        push: false"
+            echo "      - url: https://gbm.gnome.org:11003"
+            echo "        push: false"
             echo "    source-caches:"
-            echo "      override-project-caches: true"
-            echo "      servers: []"
+            echo "      override-project-caches: false"
+            echo "      servers:"
+            echo "      - url: https://cache.projectbluefin.io:11001"
+            echo "        push: false"
+            echo "      - url: https://cache.freedesktop-sdk.io:11001"
+            echo "        push: false"
+            echo "      - url: https://gbm.gnome.org:11003"
+            echo "        push: false"
             # Buildbarn frontend serves CAS+AC+Execute-forwarding on a single
             # port; storage-service and action-cache-service both point at it.
             echo "remote-execution:"

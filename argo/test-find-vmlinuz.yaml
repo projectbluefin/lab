@@ -42,9 +42,28 @@ spec:
         source: |
           set -euo pipefail
 
-          # Setup basic BuildStream config
+          # Use local writeback cache plus read-only mirrors to avoid needless recompiles.
           cat > /tmp/buildstream.conf << 'BSTCONF'
-          # Local cache only
+          artifacts:
+            override-project-caches: false
+            servers:
+            - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092
+              push: true
+            - url: https://cache.projectbluefin.io:11001
+              push: false
+            - url: https://cache.freedesktop-sdk.io:11001
+              push: false
+            - url: https://gbm.gnome.org:11003
+              push: false
+          source-caches:
+            override-project-caches: false
+            servers:
+            - url: https://cache.projectbluefin.io:11001
+              push: false
+            - url: https://cache.freedesktop-sdk.io:11001
+              push: false
+            - url: https://gbm.gnome.org:11003
+              push: false
           BSTCONF
 
           git clone --depth=1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/server.git" /src

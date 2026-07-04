@@ -153,16 +153,28 @@ spec:
           echo "  network-retries: 8" >> /tmp/buildstream-cluster.conf
           echo "  fetchers: 1" >> /tmp/buildstream-cluster.conf
 
-          # Enforce hot builds: point to in-cluster credential-free bst-artifact-server
-          # to pull/push precompiled FSDK elements and other SDK objects.
+          # Enforce hot builds: use local in-cluster cache for writeback and
+          # upstream mirrors as read-only fallbacks to minimize recompilation.
           echo "artifacts:" >> /tmp/buildstream-cluster.conf
           echo "  override-project-caches: false" >> /tmp/buildstream-cluster.conf
           echo "  servers:" >> /tmp/buildstream-cluster.conf
           echo "  - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
           echo "    push: true" >> /tmp/buildstream-cluster.conf
+          echo "  - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "    push: false" >> /tmp/buildstream-cluster.conf
+          echo "  - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "    push: false" >> /tmp/buildstream-cluster.conf
+          echo "  - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
+          echo "    push: false" >> /tmp/buildstream-cluster.conf
           echo "source-caches:" >> /tmp/buildstream-cluster.conf
           echo "  override-project-caches: false" >> /tmp/buildstream-cluster.conf
-          echo "  servers: []" >> /tmp/buildstream-cluster.conf
+          echo "  servers:" >> /tmp/buildstream-cluster.conf
+          echo "  - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "    push: false" >> /tmp/buildstream-cluster.conf
+          echo "  - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "    push: false" >> /tmp/buildstream-cluster.conf
+          echo "  - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
+          echo "    push: false" >> /tmp/buildstream-cluster.conf
 
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"
@@ -183,9 +195,21 @@ spec:
           echo "      servers:" >> /tmp/buildstream-cluster.conf
           echo "      - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
           echo "        push: true" >> /tmp/buildstream-cluster.conf
+          echo "      - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "        push: false" >> /tmp/buildstream-cluster.conf
+          echo "      - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "        push: false" >> /tmp/buildstream-cluster.conf
+          echo "      - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
+          echo "        push: false" >> /tmp/buildstream-cluster.conf
           echo "    source-caches:" >> /tmp/buildstream-cluster.conf
           echo "      override-project-caches: false" >> /tmp/buildstream-cluster.conf
-          echo "      servers: []" >> /tmp/buildstream-cluster.conf
+          echo "      servers:" >> /tmp/buildstream-cluster.conf
+          echo "      - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "        push: false" >> /tmp/buildstream-cluster.conf
+          echo "      - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
+          echo "        push: false" >> /tmp/buildstream-cluster.conf
+          echo "      - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
+          echo "        push: false" >> /tmp/buildstream-cluster.conf
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

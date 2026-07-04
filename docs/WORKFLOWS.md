@@ -213,7 +213,7 @@ Pod resource requests/limits used by workflow steps:
 | `build-containerdisk/convert-and-push` | 2 / 4 | 4Gi / 8Gi |
 | `wait-for-vm-ready` | 100m / 500m | 128Mi / 256Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
-| `dakota-build-pipeline/bst-build` | 4 / 8 | 14Gi / 28Gi |
+| `dakota-build-pipeline/bst-build` | 8 / 12 | 14Gi / 28Gi |
 | `cosmic-build-pipeline/bst-build` | 4 / 8 | 14Gi / 28Gi |
 | `bluefin-server-build-pipeline/bst-build` | 6 / 10 | 16Gi / 30Gi |
 | `knuckle build-installer` | 4 / 4 | 8Gi / 8Gi |

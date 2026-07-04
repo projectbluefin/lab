@@ -23,10 +23,12 @@ This instance runs as the CI infrastructure for Project Bluefin — every image
 publication triggers a fully automated test run with zero human intervention, from
 digest detection to screenshot in the release notes. This is Bluefin Server's first usecase. 
 
-**No persistent VMs. No manual `kubectl`. No SSH to the cluster host.**
-
 See [docs/bluefin-integration.md](docs/bluefin-integration.md) for the full
 image-poll → test → screenshot → release pipeline.
+
+> The C and C Music Factory is mastery and full of jams that has to be
+>
+> -- Freedom Williams
 
 ---
 

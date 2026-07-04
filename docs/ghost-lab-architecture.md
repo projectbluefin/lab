@@ -14,7 +14,7 @@
 | `ghost` | k3s control-plane + KubeVirt compute | Existing workstation |
 | `exo-0` | k3s worker | Framework Desktop |
 
-Other opt-in workers (`exo-1`, `exo-2`, `hamilton`, `bazzite`) join the cluster over
+Other opt-in workers (`exo-1`, `exo-2`, `hamilton`) join the cluster over
 standard Ethernet only — none currently have a physical USB4/Thunderbolt link to `ghost`.
 
 ---

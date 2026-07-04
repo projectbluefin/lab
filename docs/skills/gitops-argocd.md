@@ -161,9 +161,8 @@ controllerServiceAccount:
   name: arc-systems-gha-rs-controller
 ```
 
-**bazzite scheduling** — bazzite is fully schedulable (no taint); k3s-agent is enabled at boot.
-When bazzite is online it can accept workflow pods. If a pod lands on bazzite and fails,
-delete it — it will reschedule to ghost automatically.
+**worker scheduling** — workflow pods may land on any online worker. If a pod lands on
+an unhealthy worker and fails, delete it so Kubernetes can reschedule it to a healthy node.
 
 ### 9. Suspending a broken CronWorkflow permanently
 

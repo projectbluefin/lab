@@ -190,7 +190,7 @@ The key is visible to sshd within seconds of the QEMU guest agent starting.
 var/ writes may not survive qemu-img sparse conversion.
 
 **qemu-guest-agent variant gap:** `bluefin:testing` has `qemu-guest-agent.service` enabled by
-default. `bluefin-lts:testing`, `aurora:testing`, and `bazzite:testing` do NOT. Without the
+default. `bluefin-lts:testing` and `aurora:testing` do NOT. Without the
 guest agent the `AccessCredentialsSynchronized` condition never becomes True and `wait-for-vm`
 times out. `build-containerdisk.yaml` works around this by explicitly symlinking the service
 into `multi-user.target.wants` during the build's post-install phase — this is already done
@@ -275,10 +275,10 @@ Persist this in `manifests/` so ArgoCD maintains it.
 
 **containerDisk VMs** (Bluefin test VMs) do NOT need to be pinned to ghost. They use
 OCI images from the local Zot registry and have no hostPath dependency. They can run on
-any KubeVirt-capable node (ghost or bazzite).
+any KubeVirt-capable node.
 
 ```yaml
-# containerDisk VM — no nodeSelector needed; floats to ghost or bazzite
+# containerDisk VM — no nodeSelector needed; floats to any KubeVirt-capable node
 spec:
   domain:
     devices:
@@ -297,12 +297,10 @@ spec:
 
 **nodeSelector and hostNetwork are NOT required for SSH/kubectl workflow steps.** Pod IPs are routable across nodes via flannel. `kubectl exec` goes through the API server. Only steps that mount hostPath volumes need a nodeSelector matching the node where those files exist.
 
-KubeVirt nodes: `ghost` (control-plane, primary compute, 32 CPU, 64 GB RAM) and
-`bazzite` (permanent full-time worker, 12 CPU, 30 GB RAM, k3s-agent enabled at boot).
-Both have `kubevirt.io/schedulable: "true"` and virt-handler running.
+KubeVirt capacity is whatever nodes are currently online with
+`kubevirt.io/schedulable: "true"` and `virt-handler` running.
 No Argo global parallelism cap — Kubernetes pod scheduling (8 Gi/VM request) is the
-real backpressure. ghost + bazzite fit ~11 concurrent 8 Gi VM pods before the scheduler
-queues naturally.
+real backpressure, so pods queue naturally when node RAM is exhausted.
 
 **VM memory by image type:**
 - bluefin `:testing` → 8 Gi (full GNOME + Wayland + AT-SPI + dogtail)

@@ -9,8 +9,8 @@
 #
 #   parallelism / namespaceParallelism — soft ceiling, set high so Argo is not
 #     the bottleneck. Real backpressure comes from Kubernetes pod scheduling:
-#     each VM pod requests 8 Gi RAM; ghost (64 GB) + bazzite (30 GB) = ~94 GB,
-#     so the scheduler naturally queues pods beyond ~11 concurrent VM runs.
+#     each VM pod requests 8 Gi RAM; with ghost as primary compute plus any
+#     online workers, the scheduler naturally queues pods once node RAM fills.
 #     The Argo cap is a last-resort anti-spam guard against runaway agents, not
 #     a capacity knob. 50 is unreachable in practice given node RAM limits.
 #

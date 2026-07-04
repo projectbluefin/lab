@@ -24,7 +24,6 @@ All pipelines use ephemeral VMs — every run provisions a fresh VM and tears it
 |---|---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | 192.168.1.102 | Runs VM workloads and Argo control-plane services |
 | exo-1 | k3s worker | 192.168.1.239 | Workflow pods only |
-| bazzite | k3s worker | 192.168.1.223 | Gaming machine — fully schedulable; k3s-agent enabled at boot |
 | Argo UI | external entrypoint | http://192.168.1.102:32746 | Host-local service also exposed on port 2746 |
 | Loki | log aggregation | http://192.168.1.102:30100 | Captures workflow pod logs |
 | ArgoCD | GitOps controller | https://192.168.1.102 | Reconciles this repo into the cluster |
@@ -34,7 +33,7 @@ ArgoCD intentionally scales `argocd-applicationset-controller`, `argocd-dex-serv
 no-endpoint findings; that is expected, not drift.
 
 HostDisk VMs (Flatcar, Knuckle, GnomeOS) must pin to ghost — their disk files live on ghost's local storage.
-ContainerDisk VMs (Bluefin test VMs) float freely and can schedule on ghost or bazzite.
+ContainerDisk VMs (Bluefin test VMs) float freely and can schedule on any KubeVirt-capable node.
 
 ## GitOps ownership
 
@@ -93,7 +92,7 @@ Golden disks can be rotated via the `build-containerdisk` template.
 | `AccessCredentialsSynchronized` never becomes True; `wait-for-vm` times out | `qemu-guest-agent.service` not enabled in VM image | `build-containerdisk` symlinks it; check post-install step was preserved |
 | `force=true` rebuild workflow stalls with only 2 nodes (DAG + Skipped check) | Downstream `when` references a Skipped task's outputs (resolves to empty string); Argo v4 does not schedule the task | Let `check` always run; handle `force=true` bypass inside the script body (see `argo-workflows.md` §18) |
 | dakota builds accumulate, hold `ghost-heavy-compute` mutex, starve other rebuilds | `image-poll-dakota` CronWorkflow not suspended; dakota pipeline permanently blocked (composefs, no UKI) | `image-poll-dakota` has `spec.suspend: true` in git; if builds appear, stop them immediately |
-| Cross-node SSH from workflow pods to VM fails (bazzite VM, ghost pod) | firewalld on node blocks flannel/pod-to-pod traffic | `k3s-firewalld-config` DaemonSet disables firewalld on all nodes; if re-enabled, rollout restart the DaemonSet |
+| Cross-node SSH from workflow pods to VM fails (VM and workflow pod on different nodes) | firewalld on node blocks flannel/pod-to-pod traffic | `k3s-firewalld-config` DaemonSet disables firewalld on all nodes; if re-enabled, rollout restart the DaemonSet |
 | Workflow hangs before GUI steps start | VM boot or SSH readiness never completed | Inspect VMI readiness and runner logs, then re-run the appropriate recovery path |
 | K8sGPT reports no-endpoint Services for `argocd-applicationset-controller`, `argocd-dex-server`, `argocd-notifications-controller-metrics`, or `virt-exportproxy` | These are documented control-plane exceptions in this cluster shape | Ignore those specific findings; they are intentional |
 | `TypeError` involving `requireResult` | Stale dogtail step pattern | Replace with `findChildren(...)` or `findChild(..., retry=False)` |

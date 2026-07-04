@@ -77,16 +77,15 @@ spec:
 
     - name: bst-build
       priorityClassName: bst-build
-      # Bound a single attempt well below the workflow's 7200s deadline so a
-      # wedged gRPC/source fetch (observed: connection stays ESTABLISHED with
-      # zero throughput, no error, no timeout) gets killed and retried with a
-      # fresh pod/connection instead of silently burning the whole 2h budget.
-      # Raised from 2700s: a cold XFS-backed Buildbarn cache (post-migration,
-      # 2026-07-03) legitimately takes >45m to bootstrap freedesktop-sdk from
-      # upstream on first run — the old deadline killed a healthy, progressing
-      # build (see dakota-build-pipeline-x2mln, exit 143 at 42m with steady
-      # fetch/pull progress, no stall).
-      activeDeadlineSeconds: 5400
+      # Pod-local cache (no remote CAS) requires full bootstrap (gcc-stage1 → 100+ packages)
+      # plus source fetch with network retry overhead. Observed pod-local build at 90min
+      # with fetch timeouts causing deadline exceeded on 90min limit. With 2x retry limit,
+      # worst case is 3 attempts * 2 hours per attempt = 6h workflow budget (accommodated by
+      # workflow activeDeadlineSeconds: 14400). Allow 2h per step to support:
+      # - ~60 min cold bootstrap (freedesktop-sdk gcc-stage1, musl, glibc, full SDK)
+      # - ~30 min source fetch with GitHub retries + network latency
+      # - ~30 min buffer for compiler caching / cache writes.
+      activeDeadlineSeconds: 7200
       retryStrategy:
         limit: "2"
         retryPolicy: "Always"
@@ -149,8 +148,10 @@ spec:
           # build concurrency (scheduler.builders / build.max-jobs) at defaults so
           # actual compilation isn't slowed down.
           echo "scheduler:" >> /tmp/buildstream-cluster.conf
-          echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
+          echo "  network-retries: 8" >> /tmp/buildstream-cluster.conf
           echo "  fetchers: 1" >> /tmp/buildstream-cluster.conf
+          echo "source:" >> /tmp/buildstream-cluster.conf
+          echo "  fetch-timeout: 300" >> /tmp/buildstream-cluster.conf
 
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"

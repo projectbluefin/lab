@@ -146,6 +146,19 @@ spec:
           echo "=== Cloning cosmic-build-meta @ ${REF} ==="
           git clone --depth=1 --branch "${REF}" "${REPO}" /src
           cd /src
+          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
+
+          # Enforce local-only cache writes/reads. Ignore any project-defined external remotes.
+          echo "projects:" >> /tmp/buildstream-cluster.conf
+          echo "  ${PROJECT_NAME}:" >> /tmp/buildstream-cluster.conf
+          echo "    artifacts:" >> /tmp/buildstream-cluster.conf
+          echo "      override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "      servers:" >> /tmp/buildstream-cluster.conf
+          echo "      - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "        push: true" >> /tmp/buildstream-cluster.conf
+          echo "    source-caches:" >> /tmp/buildstream-cluster.conf
+          echo "      override-project-caches: true" >> /tmp/buildstream-cluster.conf
+          echo "      servers: []" >> /tmp/buildstream-cluster.conf
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

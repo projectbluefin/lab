@@ -50,6 +50,9 @@
 - **Cache:** Uses `bst-artifact-server` (bazel-remote, gRPC `:9092`, `argo` namespace)
   as the BuildStream artifact cache — **not** Buildbarn, and **not**
   `buildbox-casd` (that was an unused, disconnected CAS daemon, deleted).
+  Project-defined cache remotes are overridden so Dakota stays local-only in
+  cluster (`override-project-caches: true`, artifact server pinned to
+  `bst-artifact-server`, `source-caches.servers: []`).
   Requires privileged FUSE/mount-namespace access for real bootc OCI builds, so it
   cannot run through Buildbarn's chroot-only remote-execution workers.
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
@@ -61,6 +64,8 @@
 - **Purpose:** Smoke-tests the Buildbarn distributed remote-execution grid itself
   by running a trivial BuildStream element through it.
 - **Cache + RE wiring:** artifact cache via `bst-artifact-server:9092` (gRPC);
+  project cache remotes overridden to local-only (`override-project-caches: true`,
+  empty source-caches);
   remote-execution via the in-cluster Buildbarn frontend
   (`frontend.buildbarn.svc.cluster.local:8980`), distributed across ghost+exo-0
   workers. See [Distributed Build/RE Grid](#distributed-buildre-grid).
@@ -122,10 +127,9 @@ Buildbarn's runner deliberately does not grant.
 | `flatcar-kernel-poller` | 10 min | `flatcar-kernel-build` when kernel.org's latest stable version changes | Flatcar kernel build cache |
 | `flatcar-kernel-gate` | 30 min | (gate/promotion check, see `docs/skills/flatcar-node-onboarding.md`) | N/A |
 
-**freedesktop-sdk's own public cache** (`cache.freedesktop-sdk.io:11001`) is an
-upstream, always-warm cache entirely outside our control — it serves the
-SDK/bootstrap layer that dakota/bluefin depend on, independent of our local
-`bst-artifact-server`.
+Dakota/Cosmic/BST lanes now enforce local-only cache policy: workflows override
+project cache remotes and do not push to external caches. Cold runs may fetch
+from upstream source origins, but cache writes stay in-cluster (`bst-artifact-server`).
 
 **`bluefin-server-build-pipeline` has no poller at all** — manual-trigger only,
 and deliberately local-cache-only (commit `22c7d2ad`, "use local-cache path... for

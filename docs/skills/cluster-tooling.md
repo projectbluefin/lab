@@ -251,10 +251,10 @@ This is why **dakota builds on GitHub Actions are unreliable but the in-cluster
 `dakota-commit-poller` build (this repo) works**: the GH Actions workflow's
 `project.conf` points artifacts/source-caches at the remote Hetzner box
 (`cache.projectbluefin.io`), which is degraded. The in-cluster BST build
-(`dakota-build-pipeline`/`bst-qa-pipeline`) is configured local-first and
-credential-free: it writes to `bst-artifact-server:9092` and explicitly overrides
-project cache remotes (`override-project-caches: true`) so no push path depends
-on external cache keys.
+(`dakota-build-pipeline`/`bst-qa-pipeline`/`cosmic-build-pipeline`) is configured
+local-only and credential-free: it writes to `bst-artifact-server:9092` and
+explicitly overrides project cache remotes (`override-project-caches: true`,
+`source-caches.servers: []`) so no external cache push path exists.
 
 The dakota CI workflow (`.github/workflows/build.yml`) already documents related
 CAS incidents inline: enabling `remote-execution` with a top-level

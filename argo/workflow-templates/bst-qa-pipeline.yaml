@@ -99,9 +99,13 @@ spec:
             echo "projects:"
             echo "  ${PROJECT_NAME}:"
             echo "    artifacts:"
+            echo "      override-project-caches: true"
             echo "      servers:"
             echo "      - url: ${ARTIFACT_SERVER}"
             echo "        push: true"
+            echo "    source-caches:"
+            echo "      override-project-caches: true"
+            echo "      servers: []"
             # Buildbarn frontend serves CAS+AC+Execute-forwarding on a single
             # port; storage-service and action-cache-service both point at it.
             echo "remote-execution:"

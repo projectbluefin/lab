@@ -127,8 +127,15 @@ spec:
           echo "      request-timeout: 300" >> /tmp/buildstream-cluster.conf
           echo "      retry-limit: 4" >> /tmp/buildstream-cluster.conf
           echo "      retry-delay: 1000" >> /tmp/buildstream-cluster.conf
+          # Observed reproducible hang checking out the gnome-build-meta junction
+          # (worker process blocked reading an IPC pipe with no writer, zero CPU,
+          # across multiple pods/nodes) — matches known BuildStream multiprocessing
+          # deadlocks under parallel source fetches. Serialize fetchers only; leave
+          # build concurrency (scheduler.builders / build.max-jobs) at defaults so
+          # actual compilation isn't slowed down.
           echo "scheduler:" >> /tmp/buildstream-cluster.conf
           echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
+          echo "  fetchers: 1" >> /tmp/buildstream-cluster.conf
 
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"

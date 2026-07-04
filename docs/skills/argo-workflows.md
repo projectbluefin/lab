@@ -292,17 +292,24 @@ check Buildbarn worker platform registration before changing workflow behavior:
 
 #### BuildStream CAS upload failures: keep Dakota lane local-only
 
-If Dakota logs show:
+**Symptom:** Dakota logs show `Unable to upload N blobs to remote CAS` during bootstrap fetch/checkouts,
+usually at 15-30+ minute mark when very large trees (gcc-stage1, freedesktop-sdk) trigger multi-thousand-blob
+batches that exceed gRPC message size limits (default 4 MiB in bazel-remote).
 
-`Unable to upload N blobs to remote CAS` during bootstrap fetch/checkouts,
+**Root cause:** buildbox-casd batches BuildStream digests into remote CAS `BatchUpdateBlobs` gRPC calls.
+Very large staged trees (freedesktop-sdk bootstrap) generate 37K+ digests in a single call, exceeding
+the server's `MaxRecvMsgSize` ceiling. Neither bazel-remote nor Buildbarn frontend expose CLI flags to override this.
 
-if Dakota still hits large-tree upload failures (`Unable to upload <N> blobs`), run Dakota
-with pod-local cache only (no remote `cache.storage-service` / `artifacts.servers` overrides).
+**Fix: Run Dakota with pod-local cache only** (no remote `cache.storage-service` / `artifacts.servers` overrides).
 
 Operational rule:
 1. Remove remote cache server blocks from Dakota config generation (`cache.storage-service`, `artifacts`, project cache overrides).
 2. Keep execution local in workflow pods (no `remote-execution` block).
-3. Re-run a fresh Dakota workflow; stale submissions snapshot old template values.
+3. **Pod-local builds are slower and require extended deadlines:**
+   - `activeDeadlineSeconds: 7200` (2h per step, vs prior 5400s) for full bootstrap + source fetch with retries + buffer
+   - `scheduler.network-retries: 8` (vs 4) to handle transient GitHub source fetch timeouts
+   - `source.fetch-timeout: 300` (5m, vs BuildStream default 30s) to allow slow fetches on high-latency networks
+4. Re-run a fresh Dakota workflow; stale submissions snapshot old template values at submit time.
 
 ```bash
 # Lint workflow-templates (offline, cross-file refs resolve)

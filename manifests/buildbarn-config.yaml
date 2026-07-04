@@ -51,7 +51,9 @@ data:
           },
         },
       },
-      maximumMessageSizeBytes: 2 * 1024 * 1024,
+      # Large BuildStream BatchUpdateBlobs uploads (e.g. bootstrap seed imports)
+      # exceed tiny gRPC caps and fail with CAS upload errors. Keep this high.
+      maximumMessageSizeBytes: 64 * 1024 * 1024,
       global: {
         diagnosticsHttpServer: {
           httpServers: [{

@@ -281,6 +281,29 @@ Why both layers: `projects.<name>` alone can miss junction/subproject cache remo
 Top-level override guarantees external project-recommended caches stay disabled for
 all elements in the build graph.
 
+### 6. Buildbarn gRPC message size floor for BuildStream CAS uploads
+
+BuildStream can emit large `BatchUpdateBlobs` requests while importing bootstrap
+seed artifacts. Buildbarn's gRPC message cap must be high enough for those uploads.
+
+Desired state in `manifests/buildbarn-config.yaml`:
+
+```jsonnet
+maximumMessageSizeBytes: 64 * 1024 * 1024
+```
+
+If this is too low, Dakota/Cosmic lanes can fail during fetch/capture with errors
+like `Unable to upload <N> blobs to remote CAS`.
+
+When `buildbarn-config` changes, also bump `buildbarn-config-revision` pod-template
+annotations in:
+- `manifests/buildbarn-frontend.yaml`
+- `manifests/buildbarn-scheduler.yaml`
+- `manifests/buildbarn-storage.yaml`
+- `manifests/buildbarn-worker.yaml`
+
+This forces a rollout so Buildbarn processes actually reload the new config.
+
 ## Common Rationalizations
 
 - "It only touches cache config, no lint needed." → Wrong; run `just lint` for every workflow YAML change.

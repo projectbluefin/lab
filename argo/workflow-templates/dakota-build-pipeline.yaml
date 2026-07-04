@@ -73,6 +73,14 @@ spec:
 
     - name: bst-build
       priorityClassName: bst-build
+      # Bound a single attempt well below the workflow's 7200s deadline so a
+      # wedged gRPC/source fetch (observed: connection stays ESTABLISHED with
+      # zero throughput, no error, no timeout) gets killed and retried with a
+      # fresh pod/connection instead of silently burning the whole 2h budget.
+      activeDeadlineSeconds: 2700
+      retryStrategy:
+        limit: "2"
+        retryPolicy: "Always"
       inputs:
         parameters:
           - name: element
@@ -108,11 +116,19 @@ spec:
         source: |
           set -euo pipefail
 
-          # Write in-cluster BST config — plain gRPC to in-cluster bazel-remote CAS, no TLS
+          # Write in-cluster BST config — plain gRPC to in-cluster bazel-remote CAS, no TLS.
+          # connection-config bounds gRPC calls so a stalled/wedged connection to our
+          # own CAS fails fast and gets retried instead of hanging indefinitely.
           echo "cache:" > /tmp/buildstream-cluster.conf
           echo "  storage-service:" >> /tmp/buildstream-cluster.conf
           echo "    url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
           echo "    push: true" >> /tmp/buildstream-cluster.conf
+          echo "    connection-config:" >> /tmp/buildstream-cluster.conf
+          echo "      request-timeout: 300" >> /tmp/buildstream-cluster.conf
+          echo "      retry-limit: 4" >> /tmp/buildstream-cluster.conf
+          echo "      retry-delay: 1000" >> /tmp/buildstream-cluster.conf
+          echo "scheduler:" >> /tmp/buildstream-cluster.conf
+          echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
 
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"

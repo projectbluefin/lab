@@ -50,7 +50,7 @@
   the two variant builds across ghost and exo-0 in parallel (confirmed live:
   one variant per node, both `Running` simultaneously).
 - **Cache:** Uses Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`)
-  for BuildStream CAS/AC plus remote execution through `buildbox-casd`.
+  for BuildStream CAS/AC only; Dakota execution remains local in workflow pods.
   This avoids bazel-remote's default gRPC server message-size ceiling that can
   reject large BuildStream `BatchUpdateBlobs` uploads during bootstrap fetch.
   Project-defined cache remotes are overridden so Dakota stays local-only in

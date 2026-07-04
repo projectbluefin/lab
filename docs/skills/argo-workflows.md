@@ -288,9 +288,22 @@ check Buildbarn worker platform registration before changing workflow behavior:
 1. Confirm workers are actually running (`kubectl get pods -n buildbarn`).
 2. Check `manifests/buildbarn-config.yaml` `worker.jsonnet` runner `platform.properties`.
 3. Ensure worker properties match BuildStream action properties (`ISA=x86-64`, `OSFamily=linux`).
-4. Keep `remote-execution` enabled in pipeline templates once queue keys match.
+4. Keep `remote-execution` setting independent from this fix; solve queue-key mismatch first.
 
-Disabling `remote-execution` to bypass this error is a fallback, not the primary fix.
+#### BuildStream CAS upload failures: use Buildbarn frontend CAS for Dakota
+
+If Dakota logs show:
+
+`Unable to upload N blobs to remote CAS` during bootstrap fetch/checkouts,
+
+keep Dakota on Buildbarn frontend CAS/AC (`http://frontend.buildbarn.svc.cluster.local:8980`)
+instead of `bst-artifact-server:9092` for the workflow cache servers.
+
+Operational rule:
+1. Verify live template uses frontend endpoint in `cache.storage-service`, `artifacts.servers`, and project override servers.
+2. Keep `connection-config` retries/timeouts in place (`request-timeout: 900`, retry limit/delay).
+3. For Dakota, keep execution local in workflow pods (no `remote-execution` block) while using frontend CAS/AC for cache.
+4. Re-run a fresh Dakota workflow; stale submissions snapshot old template values.
 
 ```bash
 # Lint workflow-templates (offline, cross-file refs resolve)

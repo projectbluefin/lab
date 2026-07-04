@@ -6,9 +6,10 @@ metadata:
   annotations:
     description: |
       Parallel dakota BST build pipeline. Builds bluefin and bluefin-nvidia OCI variants
-      in parallel against Buildbarn frontend CAS/AC (buildbarn/frontend:8980, workers on
-      ghost+exo-0, XFS-backed storage). Avoids bazel-remote's default gRPC server message
-      cap that can reject large BuildStream BatchUpdateBlobs uploads during bootstrap fetch.
+      in parallel against Buildbarn frontend CAS/AC (buildbarn/frontend:8980) for remote
+      cache only, with execution staying local in each workflow pod.
+      Avoids bazel-remote's default gRPC server message cap that can reject large
+      BuildStream BatchUpdateBlobs uploads during bootstrap fetch.
       Triggered by push to dakota:testing via dakota-commit-poller CronWorkflow.
       On success, exports to local Zot (:30500).
       Uses bst-build PriorityClass — preemptable by lab-test-vm pods.
@@ -142,10 +143,7 @@ spec:
           # Write in-cluster BST config — plain gRPC to Buildbarn frontend CAS/AC, no TLS.
           # connection-config bounds gRPC calls so a stalled/wedged connection to our
           # own CAS fails fast and gets retried instead of hanging indefinitely.
-          # remote-execution-service points at the Buildbarn frontend (CAS+AC+Execute
-          # forwarding on one port), distributed across ghost+exo-0 worker pods, now
-          # backed by XFS storage on both nodes (migrated off root btrfs 2026-07-03).
-          # This is what makes the build actually distributed instead of purely local.
+          # Keep execution local to workflow pods; use frontend CAS/AC only.
           echo "cache:" > /tmp/buildstream-cluster.conf
           echo "  storage-service:" >> /tmp/buildstream-cluster.conf
           echo "    url: http://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
@@ -156,13 +154,6 @@ spec:
           echo "      request-timeout: 900" >> /tmp/buildstream-cluster.conf
           echo "      retry-limit: 4" >> /tmp/buildstream-cluster.conf
           echo "      retry-delay: 1000" >> /tmp/buildstream-cluster.conf
-          echo "remote-execution:" >> /tmp/buildstream-cluster.conf
-          echo "  execution-service:" >> /tmp/buildstream-cluster.conf
-          echo "    url: http://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
-          echo "  storage-service:" >> /tmp/buildstream-cluster.conf
-          echo "    url: http://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
-          echo "  action-cache-service:" >> /tmp/buildstream-cluster.conf
-          echo "    url: http://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
           # Observed reproducible hang checking out the gnome-build-meta junction
           # (worker process blocked reading an IPC pipe with no writer, zero CPU,
           # across multiple pods/nodes) — matches known BuildStream multiprocessing

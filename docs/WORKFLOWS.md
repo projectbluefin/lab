@@ -49,10 +49,8 @@
 - **Distribution:** No `nodeSelector` pin — the k8s scheduler naturally spreads
   the two variant builds across ghost and exo-0 in parallel (confirmed live:
   one variant per node, both `Running` simultaneously).
-- **Cache:** Uses Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`)
-  for BuildStream CAS/AC only; Dakota execution remains local in workflow pods.
-  This avoids bazel-remote's default gRPC server message-size ceiling that can
-  reject large BuildStream `BatchUpdateBlobs` uploads during bootstrap fetch.
+- **Cache:** Uses pod-local BuildStream cache only (no remote CAS/AC/RE in Dakota lane).
+  This avoids remote CAS upload failures on very large staged trees during bootstrap fetch.
   Project-defined cache remotes are overridden so Dakota stays local-only in
   cluster (`override-project-caches: true`, source-caches disabled).
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`

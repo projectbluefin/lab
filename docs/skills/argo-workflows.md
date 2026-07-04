@@ -290,20 +290,19 @@ check Buildbarn worker platform registration before changing workflow behavior:
 3. Ensure worker properties match BuildStream action properties (`ISA=x86-64`, `OSFamily=linux`).
 4. Keep `remote-execution` setting independent from this fix; solve queue-key mismatch first.
 
-#### BuildStream CAS upload failures: use Buildbarn frontend CAS for Dakota
+#### BuildStream CAS upload failures: keep Dakota lane local-only
 
 If Dakota logs show:
 
 `Unable to upload N blobs to remote CAS` during bootstrap fetch/checkouts,
 
-keep Dakota on Buildbarn frontend CAS/AC (`http://frontend.buildbarn.svc.cluster.local:8980`)
-instead of `bst-artifact-server:9092` for the workflow cache servers.
+if Dakota still hits large-tree upload failures (`Unable to upload <N> blobs`), run Dakota
+with pod-local cache only (no remote `cache.storage-service` / `artifacts.servers` overrides).
 
 Operational rule:
-1. Verify live template uses frontend endpoint in `cache.storage-service`, `artifacts.servers`, and project override servers.
-2. Keep `connection-config` retries/timeouts in place (`request-timeout: 900`, retry limit/delay).
-3. For Dakota, keep execution local in workflow pods (no `remote-execution` block) while using frontend CAS/AC for cache.
-4. Re-run a fresh Dakota workflow; stale submissions snapshot old template values.
+1. Remove remote cache server blocks from Dakota config generation (`cache.storage-service`, `artifacts`, project cache overrides).
+2. Keep execution local in workflow pods (no `remote-execution` block).
+3. Re-run a fresh Dakota workflow; stale submissions snapshot old template values.
 
 ```bash
 # Lint workflow-templates (offline, cross-file refs resolve)

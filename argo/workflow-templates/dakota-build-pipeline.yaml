@@ -101,6 +101,19 @@ spec:
           privileged: true
           seLinuxOptions:
             type: spc_t
+        # gRPC is not fork-safe: BuildStream's fetch workers are forked while the
+        # parent process may hold a live gRPC channel (CASD/remote cache), which can
+        # deadlock a forked worker on an inherited IPC pipe (observed hang: worker
+        # blocked in anon_pipe_read, parent idle in ep_poll, zero CPU). These env
+        # vars are the upstream-documented mitigation (grpc/grpc#16037,
+        # grpc.io/blog/fork-support): poll strategy avoids epoll's background
+        # thread/pipe that breaks across fork, and fork-support enables gRPC's
+        # partial fork-safety path.
+        env:
+          - name: GRPC_POLL_STRATEGY
+            value: poll
+          - name: GRPC_ENABLE_FORK_SUPPORT
+            value: "1"
         resources:
           requests:
             cpu: "4"

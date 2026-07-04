@@ -123,7 +123,7 @@ Every pipeline (Bluefin, Bluefin-LTS, Dakota, Knuckle) provisions a fresh VM on 
 | hamilton | k3s worker (opt-in) | 192.168.1.225 | Bluefin workstation — 16c/31.2Gi; `just k8s-on/off` to join/leave |
 | Argo UI | — | http://192.168.1.102:32746 | NodePort; also http://192.168.1.102:2746 on host |
 | ArgoCD | GitOps controller | https://192.168.1.102 (argocd NS) | Two Applications: `lab` + `lab-infra` |
-| llm-d | LLM inference (hive node) | http://192.168.1.102:30800 | OpenAI-compatible API; model: Qwen/Qwen3.6-35B-A3B; namespace: `llm-d` |
+| llm-d | LLM inference (hive node, disabled by default) | http://192.168.1.102:30800 | Namespace exists in GitOps, deployment defaults to `replicas: 0` |
 
 **No hostDisk VMs remain.** All VM types use containerDisk or PVC:
 - **ContainerDisk VMs** (Bluefin, GnomeOS, Dakota, Flatcar): float freely to any KubeVirt-capable node (ghost when bazzite is offline).
@@ -354,7 +354,7 @@ Workflow pod logs are accessible via `argo logs`, the Argo UI, and `argo-mcp-log
 | bluefin-lts-test | lts variant test VMs |
 | flatcar-test | Flatcar test VMs |
 | gnomeos-test | GNOME OS test VMs |
-| llm-d | LLM inference hive node (Qwen3.6-35B-A3B Q4_K_M GGUF via llama.cpp on ROCm) |
+| llm-d | LLM inference hive namespace (disabled by default; no running pod unless scaled up) |
 | local-registry | OCI registry: writable Zot (port 30500), unified pull-through cache — zot-cache (30501, all upstreams) |
 | arc-systems | ARC controller + listener pods |
 | arc-runners | ARC ephemeral runner pods — **empty when no jobs queued; that is correct** |
@@ -405,8 +405,7 @@ removed — the registry-mirror-config DaemonSet writes hosts.toml for
 
 ## Hive Contributor
 
-Ghost's local llama.cpp model (`Qwen/Qwen3.6-35B-A3B` at `http://192.168.1.102:30800`) can
-contribute to the projectbluefin hive swarm as an autonomous agent.
+Ghost's local llm-d modelserver is disabled by default (`replicas: 0` in GitOps). Scale it up only when intentionally contributing to the projectbluefin hive swarm as an autonomous agent.
 
 **Start:** `./scripts/hive-contribute.sh`
 

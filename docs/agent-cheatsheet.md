@@ -360,23 +360,25 @@ installed on the `projectbluefin` org. Credentials in `arc-github-secret`
 
 ---
 
-## 13. llm-d hive node — local model inference
+## 13. llm-d hive node — disabled by default
 
-Ghost runs an OpenAI-compatible inference server at **`http://192.168.1.102:30800`**.
-Model: `Qwen/Qwen3.6-35B-A3B` Q4_K_M GGUF via `ghcr.io/ggml-org/llama.cpp:server-rocm` (~60 tok/s, gfx1151).
-Namespace: `llm-d`. Managed by GitOps (`lab-infra` ArgoCD app).
+`llm-d` is kept **off by default** in GitOps (`manifests/llm-d.yaml` sets `replicas: 0`).
+Namespace remains managed by `lab-infra`; no pod should run unless explicitly enabled.
 
-**Check status:**
+**Check status (expected default):**
 ```bash
-kubectl get pods -n llm-d
+kubectl -n llm-d get deploy llm-d-modelserver -o jsonpath='{.spec.replicas}{"\n"}'   # expect 0
+kubectl get pods -n llm-d                                                             # expect none
 ```
 
-**Test the API:**
+**Temporarily enable for local use:**
 ```bash
-curl http://192.168.1.102:30800/v1/models
-curl http://192.168.1.102:30800/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"Qwen/Qwen3.6-35B-A3B","messages":[{"role":"user","content":"hello"}]}'
+kubectl -n llm-d scale deploy/llm-d-modelserver --replicas=1
+```
+
+**Disable again (restore desired default):**
+```bash
+kubectl -n llm-d scale deploy/llm-d-modelserver --replicas=0
 ```
 
 **If pod is stuck Pending:** Check two things:

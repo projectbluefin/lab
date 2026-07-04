@@ -299,7 +299,7 @@ just run-tests
 | `bluefin-lts-test` | `lts` test VMs |
 | `flatcar-test` | Flatcar test VMs |
 | `gnomeos-test` | GNOME OS test VMs |
-| `llm-d` | Qwen3.6-35B-A3B on ROCm (hive swarm node) |
+| `llm-d` | Local inference namespace (disabled by default; scale deployment up only when needed) |
 | `local-registry` | Zot writable registry (30500) + pull-through cache (30501) |
 | `arc-systems` | ARC controller + listener pods |
 | `arc-runners` | ARC ephemeral runner pods (empty when no jobs queued) |

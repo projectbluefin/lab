@@ -409,7 +409,7 @@ If the file is missing, delete the pod and let the init container re-download it
 
 ## 14. Node onboarding — adding a worker to the cluster
 
-All nodes in this cluster run immutable Linux (Bluefin, Dakota, Bazzite — ostree-based).
+All nodes in this cluster run image-based, atomic operating systems (Bluefin, Dakota, Bazzite — ostree-based).
 `/usr/local/bin` is a symlink to `/var/usrlocal/bin` (the writable overlay). The k3s install
 script must be told to use this path or it fails on a fresh system.
 
@@ -422,7 +422,7 @@ ssh jorge@192.168.1.102 "sudo cat /var/lib/rancher/k3s/server/node-token"
 ### Bootstrap a new worker node (run ON the new node, with sudo)
 
 ```bash
-# 1. Ensure writable bin directory exists (required on ostree/immutable Linux)
+# 1. Ensure writable bin directory exists (required on ostree image-based systems)
 sudo mkdir -p /var/usrlocal/bin
 
 # 2. Install k3s agent — joins the cluster immediately

@@ -32,10 +32,10 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
               memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
           source: |
             set -uo pipefail
 
@@ -87,8 +87,15 @@ spec:
             done < <(kubectl get pods -A \
               -l 'workflows.argoproj.io/workflow' \
               --no-headers \
+              --field-selector=status.phase=Running \
               -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,WF:.metadata.labels.workflows\.argoproj\.io/workflow' \
-              2>/dev/null | grep -E "Running|Pending" 2>/dev/null || true)
+              2>/dev/null || true
+              kubectl get pods -A \
+                -l 'workflows.argoproj.io/workflow' \
+                --no-headers \
+                --field-selector=status.phase=Pending \
+                -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,WF:.metadata.labels.workflows\.argoproj\.io/workflow' \
+                2>/dev/null || true)
             echo "Deleted ${DELETED_ORPHAN_RUNNING} running/pending orphan pods"
 
             echo "=== gc complete ==="

@@ -571,12 +571,12 @@ kubectl logs -n argo -l app=workflow-controller --since=2m 2>/dev/null \
 kubectl patch workflow <name> -n argo -p '{"spec":{"shutdown":"Stop"}}' --type=merge
 ```
 
-**Dakota builds and the mutex:** `dakota-qa-pipeline` is permanently blocked (composefs image
-without UKI — `bootc install to-disk` fails). The `image-poll-dakota` CronWorkflow is
-suspended in `manifests/image-poll-dakota.yaml` (`spec.suspend: true`). **Never un-suspend
-it** until upstream ships a UKI or the pipeline switches to a golden-disk approach.
-If dakota builds appear again, stop them immediately — each one holds the mutex for its
-`activeDeadlineSeconds` and starves LTS/aurora/bazzite rebuilds.
+**Dakota lanes and the mutex:** keep the lanes separate.
+- `dakota-commit-poller` → `dakota-build-pipeline` (BuildStream publish lane) is expected to run.
+- `image-poll-dakota` → `dakota-qa-pipeline` (VM QA lane) stays suspended while that lane still
+  requires `bootc install to-disk` on images without UKI support.
+If mutex contention appears, stop stale failed workflows holding `ghost-heavy-compute`; do not
+blanket-stop all Dakota build-publish runs.
 
 
 ### 20. Per-workflow ephemeral storage — volumeClaimTemplates
@@ -771,7 +771,9 @@ every containerDisk tag immediately afterward — don't assume the poller will s
 - A downstream `when` condition that references `{{tasks.X.outputs.result}}` where task X has its own `when` guard — if X is Skipped its output is undefined and the downstream task silently skips too. Fix: let X always run; handle the bypass inside the script (see §18).
 - A `force=true` rebuild workflow where only 1–2 nodes appear (DAG + a Skipped check) and no build step ever runs — this is the §18 `when`/Skipped output bug, not a semaphore or mutex issue
 - Post-processing K8sGPT JSON with `for item in data.get("results", [])` or `len(data["results"])` without normalizing first — namespace-scoped empty scans can emit `"results": null`, which crashes the script and then triggers a second Argo missing-output-path error. Normalize with `results = data.get("results") or []` before iterating or counting.
-- Dakota builds (`build-cd-sync-dakota-latest-*`) running at all — dakota pipeline is permanently blocked; these builds always fail and hold the `ghost-heavy-compute` mutex, starving LTS/aurora/bazzite rebuilds. `image-poll-dakota` must remain suspended in git.
+- Unsuspending `image-poll-dakota` while `dakota-qa-pipeline` still depends on `bootc install to-disk` for images without UKI support.
+- Any Argo CronWorkflow script template in `argo` namespace without explicit `resources.requests` and `resources.limits` — the `argo-quota` admission check rejects pod creation.
+- `orphan-pod-gc` memory capped too low (128Mi) — large pod inventories can OOM the cleanup step (`exit code 137`) and silently skip GC.
 - An image poller that writes the new digest to `image-polling-digests` before the downstream QA pipeline succeeds — failures under cluster pressure then drop work permanently (digest is marked seen, no retry on next poll). Persist digest only after `run-pipeline.Succeeded`.
 - Aurora/Bazzite digest pollers running full GNOME suite sets (`smoke,common,developer,software,system`) even though these variants are KDE-focused — this creates 5x VM pressure per trigger and overloads scheduling. Keep Aurora/Bazzite pollers on `suites: system`.
 - K8sGPT finding no-endpoint Services for `argocd-applicationset-controller`, `argocd-dex-server`, `argocd-notifications-controller-metrics`, or `kubevirt/virt-exportproxy` — these are documented control-plane exceptions in this cluster shape.

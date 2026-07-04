@@ -182,9 +182,9 @@ Commit and push. ArgoCD sets the CronWorkflow's suspend flag and stops schedulin
 
 **Suspend vs delete:** temporarily broken → suspend. Permanently abandoned → delete the file; ArgoCD prune removes the CronWorkflow.
 
-**Currently suspended:** `image-poll-dakota` — dakota composefs image ships no UKI;
-`bootc install to-disk` always fails. Do not un-suspend until upstream ships a UKI or
-the pipeline switches to golden-disk.
+**Currently suspended:** `image-poll-dakota` (the QA poller that triggers
+`dakota-qa-pipeline`). Keep this suspended while the QA lane still requires
+`bootc install to-disk` on a dakota image without UKI support.
 
 ### 10. Reconciling orphan templates (cluster-only → git)
 

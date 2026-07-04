@@ -305,10 +305,11 @@ the server's `MaxRecvMsgSize` ceiling. Neither bazel-remote nor Buildbarn fronte
 Operational rule:
 1. Remove remote cache server blocks from Dakota config generation (`cache.storage-service`, `artifacts`, project cache overrides).
 2. Keep execution local in workflow pods (no `remote-execution` block).
-3. **Pod-local builds are slower and require extended deadlines:**
+3. **Pod-local builds are slower, require extended deadlines, and require scaled CPU requests/limits to saturate physical worker cores:**
    - `activeDeadlineSeconds: 7200` (2h per step, vs prior 5400s) for full bootstrap + source fetch with retries + buffer
    - `scheduler.network-retries: 8` (vs 4) to handle transient GitHub source fetch timeouts
    - `source.fetch-timeout: 300` (5m, vs BuildStream default 30s) to allow slow fetches on high-latency networks
+   - **CPU and Memory Scaling:** Pods must request `8` CPUs (`limits: 12`) and `12Gi` Memory (`limits: 16Gi`) to fully saturate physical worker node cores and avoid thread throttling under heavy BuildStream compilation.
 4. Re-run a fresh Dakota workflow; stale submissions snapshot old template values at submit time.
 
 ```bash

@@ -9,6 +9,7 @@ import copy from '../../docs/data/factory-copy.json';
 import stats from '../../docs/data/factory-stats.json';
 import telemetry from '../../docs/data/factory-telemetry.json';
 import upstreamStatus from '../../docs/data/upstream-status.json';
+import bstCache from '../../docs/data/bst-cache.json';
 
 const baseUrl = import.meta.env.BASE_URL;
 
@@ -225,6 +226,22 @@ const registryChartPayload = {
 };
 
 const serializedRegistryChartData = serializeJsonScript(registryChartPayload);
+
+// BuildStream / remote-execution cache usage across both cache drives
+const bstCacheRows = Array.isArray(bstCache?.rows) ? bstCache.rows : [];
+const bstCacheGeneratedAt = bstCache?._meta?.generated_at || null;
+const bstDrives = ['ghost', 'exo-0'];
+const bstCells = bstDrives.map((node) => ['bazel-remote:cas', 'buildbarn:cas', 'buildbarn:ac'].map((key) => {
+  const [backend, storageType] = key.split(':');
+  const row = bstCacheRows.find((r) => r.node === node && r.cache_backend === backend && r.storage_type === storageType);
+  return row || { node, cache_backend: backend, storage_type: storageType, state: 'unavailable', state_reason: 'no cache instance scheduled on this node', percent: null, used_bytes: null, capacity_bytes: null };
+}));
+const bstChartPayload = {
+  drives: bstDrives,
+  caches: ['bazel-remote CAS', 'Buildbarn CAS', 'Buildbarn AC'],
+  cells: bstCells,
+};
+const serializedBstChartData = serializeJsonScript(bstChartPayload);
 ---
 
 <SiteLayout
@@ -887,7 +904,29 @@ const serializedRegistryChartData = serializeJsonScript(registryChartPayload);
       </article>
     </div>
 
-
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  BST CACHE UTILIZATION ACROSS BOTH DRIVES                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">BuildStream Cache Utilization</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Remote-execution cache fill across both cache drives: ghost (bazel-remote + Buildbarn shard) and exo-0 (Buildbarn shard).
+    </p>
+    <div class="nodes-grid">
+      <article class="node-card" style="grid-column: 1 / -1; background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);">
+        <header style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <h3>bst Cache Heat Map</h3>
+            <span class="pill pill--completed" style="background: rgba(34,197,94,.15); color: #4ade80; padding: 0.15rem 0.5rem; font-size: 0.72rem;">live</span>
+          </div>
+          <span style="font-size: 0.75rem; color: #64748b;">Collected: {bstCacheGeneratedAt ? formatUtc(bstCacheGeneratedAt) : 'unavailable'}</span>
+        </header>
+        <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.6; margin: 0 0 1rem 0;">
+          bazel-remote is nodeSelector-pinned to ghost; Buildbarn's 2-shard CAS/AC is scheduled across ghost and exo-0 via podAntiAffinity.
+          Buildbarn's block-device-backed storage is preallocated on disk, so its cell values are a derived estimate of logical fill (allocator counters × known block size), not raw disk bytes.
+        </p>
+        <div id="bst-cache-chart" class="chart-box-custom" style="height: 220px; min-height: 220px;" role="img" aria-label="bst cache utilization heat map across ghost and exo-0"></div>
+      </article>
+    </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  DENSE RECENT RUNS & OPEN BUGS LISTS                         -->
@@ -955,15 +994,97 @@ const serializedRegistryChartData = serializeJsonScript(registryChartPayload);
   </div>
   <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
   <script id="registry-chart-payload" type="application/json" set:html={serializedRegistryChartData}></script>
+  <script id="bst-cache-chart-payload" type="application/json" set:html={serializedBstChartData}></script>
   <script is:inline data-cfasync="false">
     function waitForCharts(attempt) {
       if (attempt === undefined) attempt = 0;
       if (window.echarts) {
         bootRegistryChart(window.echarts);
+        bootBstCacheChart(window.echarts);
         return;
       }
       if (attempt > 40) return;
       window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
+    }
+
+    function bootBstCacheChart(echarts) {
+      const payloadNode = document.getElementById('bst-cache-chart-payload');
+      if (!payloadNode) return;
+      const data = JSON.parse(payloadNode.textContent || '{}');
+      const chartEl = document.getElementById('bst-cache-chart');
+      if (!chartEl || !data.cells) return;
+
+      const heatData = [];
+      data.drives.forEach((drive, driveIdx) => {
+        data.caches.forEach((cacheLabel, cacheIdx) => {
+          const cell = data.cells[driveIdx][cacheIdx];
+          heatData.push([driveIdx, cacheIdx, cell.state === 'available' ? cell.percent : null, cell]);
+        });
+      });
+
+      const chart = echarts.init(chartEl);
+      chart.setOption({
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' },
+          formatter: function(params) {
+            const cell = params.data[3];
+            if (cell.state !== 'available') {
+              return `${data.caches[params.data[1]]} on ${data.drives[params.data[0]]}<br/>unavailable: ${cell.state_reason || 'no data'}`;
+            }
+            const usedMb = cell.used_bytes != null ? (cell.used_bytes / (1024 * 1024)).toFixed(2) : '?';
+            const capMb = cell.capacity_bytes != null ? (cell.capacity_bytes / (1024 * 1024)).toFixed(0) : '?';
+            return `${data.caches[params.data[1]]} on ${data.drives[params.data[0]]}<br/>${cell.percent}% used (${usedMb} MB / ${capMb} MB)`;
+          }
+        },
+        grid: { left: 90, right: 20, top: 20, bottom: 30 },
+        xAxis: {
+          type: 'category',
+          data: data.drives,
+          splitArea: { show: true },
+          axisLabel: { color: '#94a3b8', fontSize: 10, fontWeight: 'bold' }
+        },
+        yAxis: {
+          type: 'category',
+          data: data.caches,
+          splitArea: { show: true },
+          axisLabel: { color: '#94a3b8', fontSize: 10 }
+        },
+        visualMap: {
+          min: 0,
+          max: 100,
+          show: true,
+          orient: 'horizontal',
+          left: 'center',
+          bottom: -5,
+          textStyle: { color: '#94a3b8', fontSize: 9 },
+          inRange: { color: ['#1e293b', '#38bdf8', '#eab308', '#f97316', '#f43f5e'] }
+        },
+        series: [{
+          name: 'Cache utilization',
+          type: 'heatmap',
+          data: heatData,
+          label: {
+            show: true,
+            color: '#f1f5f9',
+            fontSize: 10,
+            fontWeight: 'bold',
+            formatter: function(params) {
+              const cell = params.data[3];
+              return cell.state === 'available' ? `${cell.percent}%` : 'N/A';
+            }
+          },
+          itemStyle: {
+            borderColor: 'rgba(15, 23, 42, 0.8)',
+            borderWidth: 2
+          }
+        }]
+      });
+
+      window.addEventListener('resize', function() {
+        chart.resize();
+      });
     }
 
     function bootRegistryChart(echarts) {

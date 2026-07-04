@@ -91,6 +91,9 @@ jobs:
           # Compute aggregate stats from result files + live cluster snapshots when reachable
           python3 scripts/refresh_factory_stats.py "$ISSUE_COUNT" "$PR_COUNT" "$MERGED_7D"
 
+      - name: Refresh bst cache utilization (live cluster snapshot when reachable)
+        run: python3 scripts/collect_bst_cache.py
+
       - name: Refresh page-owned datasets
         run: python3 scripts/generate_page_datasets.py --root .
 

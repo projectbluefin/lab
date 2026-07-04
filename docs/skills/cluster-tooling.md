@@ -252,6 +252,15 @@ projects:
         push: true
 ```
 
+#### BuildStream 2.x `buildstream.conf` Parser Constraints (CRITICAL):
+- **No Top-Level `source:` Key**: `buildstream.conf` does **not** support a top-level `source:` configuration block. Adding any unrecognized top-level key like `source:` (e.g. to set a `fetch-timeout` or similar) causes the BuildStream parser to crash immediately with **exit code 255** (Parse Error: Top-level config key 'source' is not supported).
+- **Nested under `scheduler`**: Configuration options controlling fetching concurrency, timeouts, and network retries must be nested under the `scheduler:` dictionary:
+  ```yaml
+  scheduler:
+    fetchers: 10
+    pushers: 4
+  ```
+
 ### 4. YAML Scripting and Indentation Safety
 When generating `buildstream.conf` dynamically inside an Argo YAML script block:
 - **Avoid multiline heredocs (`cat << EOF`)**: Indented heredocs preserve spaces unless processed carefully, while non-indented lines violate YAML script structure.

@@ -1,0 +1,231 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: provision-cosmic-vm
+  namespace: argo
+  annotations:
+    description: |
+      Provisions a COSMIC test VM using a containerDisk image from the local Zot registry.
+      No reflink, no hostDisk, no golden disk required.
+      Schedulable on any kubevirt-capable node.
+spec:
+  serviceAccountName: argo
+  arguments: {}
+  templates:
+    - name: provision-vm
+      metadata: {}
+      inputs:
+        parameters:
+          - name: image-tag
+            value: "latest"
+          - name: vm-name
+          - name: namespace
+            value: "bluefin-test"
+          - name: vm-memory
+            value: "8Gi"
+      outputs:
+        parameters:
+          - name: vm-ip
+            valueFrom:
+              parameter: '{{steps.wait-for-vm.outputs.result}}'
+      steps:
+        - - name: create-vm
+            template: create-vm
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: '{{inputs.parameters.image-tag}}'
+                - name: vm-name
+                  value: '{{inputs.parameters.vm-name}}'
+                - name: namespace
+                  value: '{{inputs.parameters.namespace}}'
+                - name: vm-memory
+                  value: '{{inputs.parameters.vm-memory}}'
+        - - name: wait-for-vm
+            template: wait-for-vm-ready
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: '{{inputs.parameters.image-tag}}'
+                - name: vm-name
+                  value: '{{inputs.parameters.vm-name}}'
+                - name: namespace
+                  value: '{{inputs.parameters.namespace}}'
+
+    - name: create-vm
+      metadata:
+        labels:
+          cosmic.io/step: create-vm
+          cosmic.io/variant: "{{inputs.parameters.image-tag}}"
+      inputs:
+        parameters:
+          - name: image-tag
+          - name: vm-name
+          - name: namespace
+          - name: vm-memory
+      outputs: {}
+      resource:
+         action: apply
+         manifest: |
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: "{{inputs.parameters.vm-name}}"
+            namespace: "{{inputs.parameters.namespace}}"
+            labels:
+              app: cosmic-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Always
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
+              spec:
+                # Preempts bst-build pods on resource contention
+                priorityClassName: lab-test-vm
+                # Inject SSH public key at runtime via QEMU guest agent.
+                accessCredentials:
+                  - sshPublicKey:
+                      source:
+                        secret:
+                          secretName: bluefin-test-ssh-pubkey
+                      propagationMethod:
+                        qemuGuestAgent:
+                          users:
+                            - root
+                domain:
+                  cpu:
+                    cores: 4
+                  memory:
+                    guest: "{{inputs.parameters.vm-memory}}"
+                  features:
+                    acpi: {}
+                    smm:
+                      enabled: true
+                  firmware:
+                    bootloader:
+                      efi:
+                        secureBoot: false
+                  devices:
+                    blockMultiQueue: true
+                    rng: {}
+                    disks:
+                      - name: rootdisk
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                  resources:
+                    requests:
+                      ephemeral-storage: "30Gi"
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: rootdisk
+                    containerDisk:
+                      image: "192.168.1.102:30500/cosmic-containerdisk:{{inputs.parameters.image-tag}}"
+                      imagePullPolicy: Always
+
+    - name: wait-for-vm-ready
+      metadata:
+        labels:
+          cosmic.io/step: wait-for-vm
+          cosmic.io/variant: "{{inputs.parameters.image-tag}}"
+      inputs:
+        parameters:
+          - name: image-tag
+          - name: vm-name
+          - name: namespace
+      outputs: {}
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command:
+          - bash
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        source: |
+          set -e
+          NS="{{inputs.parameters.namespace}}"
+          VM="{{inputs.parameters.vm-name}}"
+          LABEL="kubevirt.io/vm=${VM}"
+
+          echo "Waiting for VMI ${VM} Ready..." >&2
+          DEADLINE=$(($(date +%s) + 300))
+          while true; do
+            READY=$(kubectl get vmi -n "${NS}" "${VM}" \
+              -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+            if [ "${READY}" = "True" ]; then
+              break
+            fi
+
+            VIRT_POD_WAIT=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            if [ -n "${VIRT_POD_WAIT}" ]; then
+              WAIT_REASON=$(kubectl get pod -n "${NS}" "${VIRT_POD_WAIT}" \
+                -o jsonpath='{.status.initContainerStatuses[*].state.waiting.reason} {.status.containerStatuses[*].state.waiting.reason}' \
+                2>/dev/null || true)
+              case "${WAIT_REASON}" in
+                *ImagePullBackOff*|*ErrImagePull*)
+                  echo "Container disk pull failed (${WAIT_REASON}); deleting VM ${VM}" >&2
+                  kubectl delete vm -n "${NS}" "${VM}" --ignore-not-found >&2 || true
+                  exit 1
+                  ;;
+              esac
+            fi
+
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+              echo "Timed out waiting for VMI ${VM} to become Ready; deleting VM" >&2
+              kubectl delete vm -n "${NS}" "${VM}" --ignore-not-found >&2 || true
+              exit 1
+            fi
+            sleep 5
+          done
+
+          # Start sshd.socket via QEMU guest agent.
+          VIRT_POD=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "Starting sshd.socket in ${VM} via guest agent..." >&2
+          kubectl exec -n "${NS}" "${VIRT_POD}" -c compute -- \
+            virsh qemu-agent-command 1 \
+            '{"execute":"guest-exec","arguments":{"path":"systemctl","arg":["start","sshd.socket"],"capture-output":false}}' \
+            >&2 || echo "WARNING: guest-exec for sshd.socket failed, SSH poll will be the arbiter" >&2
+
+          # Wait for SSH key injection (qemuGuestAgent propagation).
+          echo "Waiting for AccessCredentialsSynchronized=True (guest agent must come online)..." >&2
+          DEADLINE=$(($(date +%s) + 300))
+          until [ "$(kubectl get vmi -n "${NS}" "${VM}" \
+            -o jsonpath='{.status.conditions[?(@.type=="AccessCredentialsSynchronized")].status}' \
+            2>/dev/null)" = "True" ]; do
+            if [ "$(date +%s)" -ge "${DEADLINE}" ]; then
+              echo "WARNING: AccessCredentialsSynchronized never became True after 300s, proceeding anyway" >&2
+              break
+            fi
+            sleep 5
+          done
+
+          # Retry sshd.socket now that guest agent is confirmed up.
+          VIRT_POD2=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+            -o jsonpath='{.items[0].metadata.name}')
+          echo "Retrying sshd.socket start via guest agent (agent now online)..." >&2
+          kubectl exec -n "${NS}" "${VIRT_POD2}" -c compute -- \
+            virsh qemu-agent-command 1 \
+            '{"execute":"guest-exec","arguments":{"path":"systemctl","arg":["start","sshd.socket"],"capture-output":false}}' \
+            >&2 || echo "WARNING: sshd.socket retry failed, SSH poll will be the arbiter" >&2
+
+          POD_IP=$(kubectl get pod -n "${NS}" -l "${LABEL}" \
+            -o jsonpath='{.items[0].status.podIP}')
+
+          echo "Waiting for SSH on ${POD_IP}..." >&2
+          timeout 300 bash -c \
+            "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
+
+          echo "${POD_IP}"

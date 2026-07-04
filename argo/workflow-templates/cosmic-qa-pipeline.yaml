@@ -1,0 +1,201 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: cosmic-qa-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      End-to-end COSMIC QA pipeline: assert containerDisk exists in Zot, then run
+      parallel test lanes (smoke, developer, system). Each lane provisions a
+      fresh KubeVirt VM, runs the behave/qecore suite via SSH, and tears down
+      the VM on completion. On PR runs, posts a GitHub commit status on exit.
+  labels:
+    app.kubernetes.io/component: qa-pipeline
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  # VM concurrency is managed by k8s scheduler via virt-launcher pod memory requests (8Gi/VM).
+  activeDeadlineSeconds: 3600
+  entrypoint: pipeline
+  onExit: cleanup-and-report
+
+  arguments:
+    parameters:
+    - name: image
+      value: "ghcr.io/razorfinos-org/cosmic-build-meta"
+    - name: image-tag
+      value: "latest"
+    - name: namespace
+      value: "bluefin-test"
+    - name: suites
+      value: "smoke"
+    - name: variant
+      value: "cosmic"
+    - name: ssh-key-secret
+      value: "bluefin-test-ssh-key"
+    - name: containerdisk-tag
+      value: "cosmic-latest"
+    - name: branch
+      value: "main"
+    - name: pr-number
+      value: ""
+    - name: sha
+      value: ""
+    - name: repo
+      value: ""
+    - name: vm-memory
+      value: "8Gi"
+
+  templates:
+
+  - name: pipeline
+    dag:
+      tasks:
+          # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.
+      - name: assert-cd
+        template: assert-cd
+        arguments:
+          parameters:
+          - name: containerdisk-tag
+            value: "{{workflow.parameters.containerdisk-tag}}"
+
+          # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down
+      - name: test-lane
+        depends: "assert-cd.Succeeded"
+        withItems:
+        - smoke
+        when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
+        template: lane
+        arguments:
+          parameters:
+          - name: suite
+            value: "{{item}}"
+          - name: vm-name
+            value: "{{workflow.name}}-{{item}}"
+          - name: image-tag
+            value: "{{workflow.parameters.image-tag}}"
+          - name: containerdisk-tag
+            value: "{{workflow.parameters.containerdisk-tag}}"
+          - name: namespace
+            value: "{{workflow.parameters.namespace}}"
+          - name: variant
+            value: "{{workflow.parameters.variant}}"
+          - name: ssh-key-secret
+            value: "{{workflow.parameters.ssh-key-secret}}"
+          - name: branch
+            value: "{{workflow.parameters.branch}}"
+          - name: vm-memory
+            value: "{{workflow.parameters.vm-memory}}"
+
+    # ── assert-cd: fail fast if containerDisk is missing from Zot ───────────
+  - name: assert-cd
+    inputs:
+      parameters:
+      - name: containerdisk-tag
+    script:
+      image: quay.io/skopeo/stable:latest
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      source: |
+        set -eu
+        TAG="{{inputs.parameters.containerdisk-tag}}"
+        CD_IMAGE="192.168.1.102:30500/cosmic-containerdisk:${TAG}"
+        DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
+          "docker://${CD_IMAGE}" 2>/dev/null || echo "")
+        if [ -n "${DIGEST}" ]; then
+          echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
+        else
+          echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
+          exit 1
+        fi
+
+    # ── lane: provision VM → run suite → teardown (per-suite) ────────────────
+  - name: lane
+    inputs:
+      parameters:
+      - name: suite
+      - name: vm-name
+      - name: image-tag
+      - name: containerdisk-tag
+      - name: namespace
+      - name: variant
+      - name: ssh-key-secret
+      - name: branch
+      - name: vm-memory
+    steps:
+    - - name: provision
+        templateRef:
+          name: provision-cosmic-vm
+          template: provision-vm
+        arguments:
+          parameters:
+          - name: image-tag
+            value: "{{inputs.parameters.containerdisk-tag}}"
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+          - name: vm-memory
+            value: "{{inputs.parameters.vm-memory}}"
+    - - name: run-tests
+        templateRef:
+          name: run-gnome-tests
+          template: run-gnome-tests
+        arguments:
+          parameters:
+          - name: vm-ip
+            value: "{{steps.provision.outputs.parameters.vm-ip}}"
+          - name: suite
+            value: "{{inputs.parameters.suite}}"
+          - name: variant
+            value: "{{inputs.parameters.variant}}"
+          - name: ssh-key-secret
+            value: "{{inputs.parameters.ssh-key-secret}}"
+          - name: branch
+            value: "{{inputs.parameters.branch}}"
+          - name: containerdisk-tag
+            value: "{{inputs.parameters.containerdisk-tag}}"
+    - - name: teardown
+        templateRef:
+          name: teardown-bluefin-vm
+          template: teardown-vm
+        arguments:
+          parameters:
+          - name: vm-name
+            value: "{{inputs.parameters.vm-name}}"
+          - name: namespace
+            value: "{{inputs.parameters.namespace}}"
+        continueOn:
+          failed: true
+
+    # ── onExit handler: optional GitHub commit status post ───────────────────
+  - name: cleanup-and-report
+    dag:
+      tasks:
+      - name: cleanup-vms
+        template: cleanup-orphan-vms
+
+  - name: cleanup-orphan-vms
+    script:
+      image: cgr.dev/chainguard/kubectl:latest-dev
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |
+        NS="{{workflow.parameters.namespace}}"
+        WF="{{workflow.name}}"
+        for SUITE in smoke developer software system; do
+          kubectl delete vm -n "${NS}" "${WF}-${SUITE}" --ignore-not-found 2>/dev/null \
+            && echo "Cleaned ${WF}-${SUITE}" || true
+        done

@@ -61,6 +61,27 @@ argo submit --from workflowtemplate/knuckle-qa-pipeline \
   -p branch=main -p suite=smoke --wait
 ```
 
+### `cosmic-qa-pipeline`
+
+End-to-end COSMIC QA pipeline: assert cosmic-containerdisk exists in Zot, then run the parallel smoke test lane. Provisions a fresh KubeVirt VM, runs tests via SSH, and tears down the VM on completion.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `image` | `ghcr.io/razorfinos-org/cosmic-build-meta` | Source image repo. |
+| `image-tag` | `latest` | Image tag under test. |
+| `namespace` | `bluefin-test` | Namespace to run VM testing. |
+| `suites` | `smoke` | Test suite to execute. |
+| `variant` | `cosmic` | Set to `cosmic` for the COSMIC desktop environment. |
+| `ssh-key-secret` | `bluefin-test-ssh-key` | Secret with test suite SSH private key. |
+| `containerdisk-tag` | `cosmic-latest` | Tag of the KubeVirt containerDisk to boot. |
+
+Wall-clock: ~5 min (warm, containerDisk cached).
+
+```
+argo submit --from workflowtemplate/cosmic-qa-pipeline \
+  -p image-tag=latest -p suites=smoke --wait
+```
+
 ---
 
 ## Supporting templates (called via `templateRef`)
@@ -96,6 +117,11 @@ waits for the VMI to be Ready and SSH to become reachable, emits `vm-ip`.
 
 Same shape for Flatcar — accepts an `ssh-pubkey` parameter directly instead
 of relying on the bluefin-test secret for cloud-init injection.
+
+### `provision-cosmic-vm` (template: `provision-vm`)
+
+Creates a KubeVirt VM using the `cosmic-containerdisk` from the local Zot registry,
+waits for the VMI to be Ready and SSH to become reachable, emits `vm-ip`.
 
 ### `run-gnome-tests` (template: `run-gnome-tests`)
 
@@ -135,6 +161,20 @@ Builds Dakota BuildStream OCI artifacts in-cluster using `buildbox-casd` service
 just run-bst-build                    # testing branch, default repo
 just run-bst-build main               # build from main
 ```
+
+---
+
+## COSMIC BST builds
+
+### `cosmic-build-pipeline`
+
+Builds COSMIC BuildStream OCI artifacts in-cluster. `build-cosmic` and `build-cosmic-nvidia` run in parallel and push to local Zot.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `ref` | `main` | COSMIC git branch/ref to clone |
+| `repo` | `https://github.com/RazorfinOS-org/cosmic-build-meta.git` | COSMIC build meta git repo |
+| `registry` | `192.168.1.102:30500` | Registry endpoint for builder image + pushed artifacts |
 
 ---
 

@@ -175,9 +175,6 @@ spec:
     - name: run-udev
       hostPath:
         path: /run/udev
-    - name: staging
-      persistentVolumeClaim:
-        claimName: staging
     script:
       image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
       command: [bash]
@@ -417,10 +414,6 @@ spec:
       - name: image-tag
       - name: containerdisk-tag
       - name: disk-size
-    volumes:
-    - name: staging
-      persistentVolumeClaim:
-        claimName: staging
     script:
       image: quay.io/fedora/fedora:latest
       command: [sh]

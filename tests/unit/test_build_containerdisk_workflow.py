@@ -50,3 +50,13 @@ def test_build_containerdisk_uses_unverified_registry_transport_for_local_bootab
     assert 'mkdir -p /etc/containers/registries.conf.d' in workflow
     assert 'location = "192.168.1.102:30500"' in workflow
     assert 'insecure = true' in workflow
+
+
+def test_build_containerdisk_uses_workflow_level_volume_claim_template_for_staging():
+    workflow = (ROOT / "argo/workflow-templates/build-containerdisk.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "volumeClaimTemplates:" in workflow
+    assert "name: staging" in workflow
+    assert "claimName: staging" not in workflow

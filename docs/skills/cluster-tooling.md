@@ -31,7 +31,7 @@ metadata:
 3. For BST lanes, configure local and upstream cache fallback in workflow configs:
    - never configure external cache credentials/keys in cluster workflows
    - set `override-project-caches: false` to allow falling back to upstream caches (like Freedesktop SDK and GNOME OS), preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
-   - pin artifact server to in-cluster `bst-artifact-server` so that local additions are cached.
+   - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`) so local additions are cached across the cluster.
    - set `source-caches.servers: []` to keep source-cache configuration minimal.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
@@ -135,10 +135,7 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 ### 1. Migrating `exo-0` (Ephemeral Cache Storage)
 `exo-0` contains transient REAPI cache items under `/var/mnt/ghost-data`.
 
-1. **Scale down cache pod**:
-   ```bash
-   kubectl scale deployment bst-artifact-server -n argo --replicas=0
-   ```
+1. **Scale down any legacy artifact-server deployment** if one still exists; current BuildStream lanes use the shared Buildbarn frontend and workers rather than a single `bst-artifact-server` pod.
 2. **Stop and unmount unit on `exo-0`**:
    ```bash
    ssh core@192.168.1.170 "sudo systemctl stop 'var-mnt-ghost\x2ddata.mount'"
@@ -164,10 +161,7 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
    ```bash
    ssh core@192.168.1.170 "sudo mkdir -p /var/mnt/ghost-data/ac.v2 /var/mnt/ghost-data/cas.v2 /var/mnt/ghost-data/raw.v2 && sudo chmod -R 777 /var/mnt/ghost-data"
    ```
-7. **Scale up deployment**:
-   ```bash
-   kubectl scale deployment bst-artifact-server -n argo --replicas=1
-   ```
+7. **Re-enable shared Buildbarn workloads** after the filesystem migration: confirm the Buildbarn frontend/scheduler/storage/worker pods are healthy before resuming heavy BST traffic.
 
 ### 2. Migrating `ghost` (Stateful Control Plane Storage)
 `ghost` holds persistent states like OCI cache layers in `zot-local` and persistent volume data in `local-path`. This data must be preserved.
@@ -229,89 +223,68 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 
 ## BuildStream 2.x Distributed Builds and Caching
 
-BuildStream 2.x has migrated to standard Remote Execution API (REAPI) Content Addressable Storage (CAS) protocols, replacing legacy python-based daemons with lightweight, high-performance, single-binary REAPI caching servers (e.g. `bazel-remote`).
+BuildStream 2.x uses the cluster's shared Buildbarn deployment for artifact cache writeback and remote execution. The current design is a two-layer cache: a pod-local hostPath cache under `/root/.cache/buildstream` for fast per-pod state, and a shared Buildbarn frontend for cluster-wide artifact sharing.
 
-### 1. REAPI CAS Backend (`bazel-remote`)
-- **Image**: `quay.io/bazel-remote/bazel-remote`
-- **Deployment**: Pinned to the high-speed Btrfs storage node (`exo-0` via `/var/mnt/ghost-data`).
-- **Configuration**: Exposes gRPC on port `9092` and HTTP/1.1 on port `8080`.
+### 1. Shared Buildbarn frontend
+- **Endpoint**: `grpc://frontend.buildbarn.svc.cluster.local:8980`
+- **Role**: CAS/AC artifact writes and reads; execute-forwarding for BuildStream actions that use the in-cluster execution grid
+- **Deployment**: Frontend, scheduler, storage shards, and workers are defined under `manifests/buildbarn-*.yaml` and run in the `buildbarn` namespace
 
-### 2. Client-Side `buildbox-casd` Mandate
-- BuildStream 2.x **cannot** initialize any remote cache (gRPC or HTTP) unless `buildbox-casd` is installed and available in the client's `PATH`. Standard python/pip container environments will fail with connection or type errors.
-- Always use the mirrored `bst2` image (`192.168.1.102:30500/bst2:<tag>`) as the build-container runner, which includes both `buildbox-casd` and BuildStream 2.7.0.
-
-### 3. Client-Side Configuration Layout
-In `buildstream.conf`, project-specific remote caches must be nested within the project dictionary under the `servers:` list. Using an incorrect structure causes configuration type errors:
-
+### 2. BuildStream client config
+  The build pods should generate a deterministic `buildstream.conf` that keeps upstream project caches as read-only fallbacks and pushes artifacts to the shared Buildbarn frontend first. For memory-constrained homelab lanes, keep scheduler concurrency intentionally low (`fetchers: 1`, `builders: 1`, `pushers: 1`) and set `build.max-jobs: 1` so one pod does not blow through the node memory budget while uploading or compiling large bootstrap trees:
+ 
 ```yaml
-projects:
-  bst-prototype:
-    artifacts:
-      servers:
-      - url: grpc://bst-artifact-server:9092
-        push: true
-```
-
-#### BuildStream 2.x `buildstream.conf` Parser Constraints (CRITICAL):
-- **No Top-Level `source:` Key**: `buildstream.conf` does **not** support a top-level `source:` configuration block. Adding any unrecognized top-level key like `source:` (e.g. to set a `fetch-timeout` or similar) causes the BuildStream parser to crash immediately with **exit code 255** (Parse Error: Top-level config key 'source' is not supported).
-- **Nested under `scheduler`**: Configuration options controlling fetching concurrency, timeouts, and network retries must be nested under the `scheduler:` dictionary:
-  ```yaml
-  scheduler:
-    fetchers: 10
-    pushers: 4
-  ```
-
-### 4. YAML Scripting and Indentation Safety
-When generating `buildstream.conf` dynamically inside an Argo YAML script block:
-- **Avoid multiline heredocs (`cat << EOF`)**: Indented heredocs preserve spaces unless processed carefully, while non-indented lines violate YAML script structure.
-- **Prefer explicit sequential writes**: Use `echo "..." > file` and `echo "..." >> file` for structured text generation. This completely eliminates YAML indentation parse bugs and is 100% robust.
-
-### 5. BuildStream cache policy with Upstream Cache Fallbacks
-
-In-cluster BST lanes must never depend on external cache credentials, but they should allow falling back to upstream project caches (like Freedesktop SDK and GNOME OS public caches) to enable hot builds of basic bootstrap layers.
-
-Required generated `buildstream.conf` policy:
-
-```yaml
-artifacts:
-  override-project-caches: false
+scheduler:
+  network-retries: 8
+  fetchers: 1
+  builders: 1
+  pushers: 1
+build:
+  max-jobs: 1
+artifacts:  override-project-caches: false
   servers:
-  - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092
+  - url: grpc://frontend.buildbarn.svc.cluster.local:8980
     push: true
+  - url: https://cache.projectbluefin.io:11001
+    push: false
+  - url: https://cache.freedesktop-sdk.io:11001
+    push: false
+  - url: https://gbm.gnome.org:11003
+    push: false
 source-caches:
   override-project-caches: false
-  servers: []
+  servers:
+  - url: https://cache.projectbluefin.io:11001
+    push: false
+  - url: https://cache.freedesktop-sdk.io:11001
+    push: false
+  - url: https://gbm.gnome.org:11003
+    push: false
 ```
 
-`projects.<name>.artifacts/source-caches` should also repeat the same override (`false`) to keep top-level and project-level behavior aligned.
+Repeat the same override and server ordering at the project level so the primary project uses the same cache policy as the top-level config.
 
-Why this works: Setting `override-project-caches: false` tells BuildStream to check project-recommended upstream caches (like `cache.freedesktop-sdk.io` and `gbm.gnome.org`) for precompiled objects first. If a hit is found, it pulls the artifact instead of building it. Our in-cluster `bst-artifact-server` is still queried and pushed to, ensuring local-only additions (like Dakota's customization layers) are cached locally.
+### 3. BuildStream parser constraints
+- **No top-level `source:` key**: `buildstream.conf` does not support a top-level `source:` block.
+- **Nested under `scheduler`**: fetch / retry / network settings belong under `scheduler:`.
+- **Sequence writes in Argo scripts**: prefer `echo "..." >> file` over multiline heredocs when generating config in YAML script blocks.
 
-### 6. Buildbarn gRPC message size floor for BuildStream CAS uploads
+### 4. Persistent pod-local cache
+Each BuildStream pod should keep a persistent hostPath cache at `/root/.cache/buildstream` (for example `/var/tmp/bst-cache/<tag>`). This keeps the pod-local cache warm across retries and avoids losing the local work state between attempts while still allowing the shared Buildbarn frontend to serve cluster-wide artifact reuse.
 
-**Note:** Dakota testing lane is now pod-local-cache-only (as of 2026-07-04) and does not use Buildbarn CAS.
-This section applies to remaining remote-CAS lanes: **Cosmic** and **BST-QA** pipelines only.
-
-BuildStream can emit large `BatchUpdateBlobs` requests while importing bootstrap
-seed artifacts. Buildbarn's gRPC message cap must be high enough for those uploads.
-
-Desired state in `manifests/buildbarn-config.yaml`:
+### 5. Buildbarn message-size floor
+BuildStream can issue large CAS upload batches while importing bootstrap seed artifacts. Keep the Buildbarn config's gRPC message size high enough for those uploads:
 
 ```jsonnet
 maximumMessageSizeBytes: 64 * 1024 * 1024
 ```
 
-If this is too low, Cosmic/BST-QA lanes can fail during fetch/capture with errors
-like `Unable to upload <N> blobs to remote CAS`.
-
-When `buildbarn-config` changes, also bump `buildbarn-config-revision` pod-template
-annotations in:
+If the value is too low, BuildStream lanes can fail with `Unable to upload <N> blobs to remote CAS`.
+When `buildbarn-config` changes, also bump the `buildbarn-config-revision` pod-template annotations in:
 - `manifests/buildbarn-frontend.yaml`
 - `manifests/buildbarn-scheduler.yaml`
 - `manifests/buildbarn-storage.yaml`
 - `manifests/buildbarn-worker.yaml`
-
-This forces a rollout so Buildbarn processes actually reload the new config.
 
 ## Common Rationalizations
 
@@ -330,4 +303,4 @@ This forces a rollout so Buildbarn processes actually reload the new config.
 - [ ] Workflow templates align `override-project-caches` to `false` for base fallback coverage.
 - [ ] No external cache host appears in relevant workflow YAML/scripts.
 - [ ] `just lint` passes after edits.
-- [ ] Skill content reflects current local-only cache policy.
+- [ ] Skill content reflects the current shared Buildbarn cache policy.

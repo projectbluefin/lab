@@ -7,10 +7,10 @@ metadata:
     description: |
       Parallel dakota BST build pipeline. Builds bluefin and bluefin-nvidia OCI variants
       using local worker resources and persistent hostPath cache, routing artifact cache
-      push/pulls to the in-cluster bst-artifact-server (:9092 gRPC) for hot builds.
+      push/pulls to the shared Buildbarn frontend (:8980 gRPC) for hot builds.
       Triggered by push to dakota:testing via dakota-commit-poller CronWorkflow.
       On success, exports to local Zot (:30500).
-      Uses bst-build PriorityClass — preemptable by lab-test-vm pods.
+      Uses bst-build PriorityClass — higher priority than lab-test-vm so BST cache-seeding work wins scheduling disputes.
   labels:
     app.kubernetes.io/component: dakota-build
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -126,11 +126,11 @@ spec:
             value: "1"
         resources:
           requests:
-            cpu: "8"
-            memory: 14Gi
+            cpu: "16"
+            memory: 24Gi
           limits:
-            cpu: "12"
-            memory: 28Gi
+            cpu: "28"
+            memory: 48Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse
@@ -146,19 +146,23 @@ spec:
           # Observed reproducible hang checking out the gnome-build-meta junction
           # (worker process blocked reading an IPC pipe with no writer, zero CPU,
           # across multiple pods/nodes) — matches known BuildStream multiprocessing
-          # deadlocks under parallel source fetches. Serialize fetchers only; leave
-          # build concurrency (scheduler.builders / build.max-jobs) at defaults so
-          # actual compilation isn't slowed down.
+          # deadlocks under parallel source fetches. Keep fetch/build upload
+          # concurrency deliberately low for this homelab lane so the pod stays
+          # within the memory budget and the shared Buildbarn cache remains stable.
           echo "scheduler:" >> /tmp/buildstream-cluster.conf
           echo "  network-retries: 8" >> /tmp/buildstream-cluster.conf
           echo "  fetchers: 1" >> /tmp/buildstream-cluster.conf
+          echo "  builders: 1" >> /tmp/buildstream-cluster.conf
+          echo "  pushers: 1" >> /tmp/buildstream-cluster.conf
+          echo "build:" >> /tmp/buildstream-cluster.conf
+          echo "  max-jobs: 1" >> /tmp/buildstream-cluster.conf
 
-          # Enforce hot builds: use local in-cluster cache for writeback and
-          # upstream mirrors as read-only fallbacks to minimize recompilation.
+          # Enforce hot builds: use the shared Buildbarn frontend for writeback
+          # and upstream mirrors as read-only fallbacks to minimize recompilation.
           echo "artifacts:" >> /tmp/buildstream-cluster.conf
           echo "  override-project-caches: false" >> /tmp/buildstream-cluster.conf
           echo "  servers:" >> /tmp/buildstream-cluster.conf
-          echo "  - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "  - url: grpc://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
           echo "    push: true" >> /tmp/buildstream-cluster.conf
           echo "  - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
           echo "    push: false" >> /tmp/buildstream-cluster.conf
@@ -193,7 +197,7 @@ spec:
           echo "    artifacts:" >> /tmp/buildstream-cluster.conf
           echo "      override-project-caches: false" >> /tmp/buildstream-cluster.conf
           echo "      servers:" >> /tmp/buildstream-cluster.conf
-          echo "      - url: grpc://bst-artifact-server.argo.svc.cluster.local:9092" >> /tmp/buildstream-cluster.conf
+          echo "      - url: grpc://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
           echo "        push: true" >> /tmp/buildstream-cluster.conf
           echo "      - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
           echo "        push: false" >> /tmp/buildstream-cluster.conf

@@ -193,19 +193,44 @@ spec:
           EOF
           fi
 
-          if ! grep -q '^shell:' project.conf 2>/dev/null; then
-            cat >> project.conf <<'EOF'
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('project.conf')
+          text = path.read_text()
+          if 'freedesktop-sdk-stripper' in text and 'host-files:' in text:
+              raise SystemExit(0)
 
-          shell:
-            host-files:
-              - host_path: /usr/bin/freedesktop-sdk-stripper
-                path: /usr/bin/freedesktop-sdk-stripper
-                optional: true
-              - host_path: /usr/local/bin/freedesktop-sdk-stripper
-                path: /usr/local/bin/freedesktop-sdk-stripper
-                optional: true
-          EOF
-          fi
+          shell_block = 'shell:'
+          if shell_block in text:
+              lines = text.splitlines()
+              shell_idx = next(i for i, line in enumerate(lines) if line.strip() == shell_block)
+              end_idx = len(lines)
+              for idx in range(shell_idx + 1, len(lines)):
+                  if lines[idx].strip() and not lines[idx].startswith((' ', '\t', '#')):
+                      end_idx = idx
+                      break
+              inject = [
+                  '  host-files:',
+                  '    - host_path: /usr/bin/freedesktop-sdk-stripper',
+                  '      path: /usr/bin/freedesktop-sdk-stripper',
+                  '      optional: true',
+                  '    - host_path: /usr/local/bin/freedesktop-sdk-stripper',
+                  '      path: /usr/local/bin/freedesktop-sdk-stripper',
+                  '      optional: true',
+              ]
+              updated = lines[:shell_idx + 1] + inject + lines[end_idx:]
+              path.write_text('\n'.join(updated) + '\n')
+          else:
+              with path.open('a') as handle:
+                  handle.write('\n\nshell:\n')
+                  handle.write('  host-files:\n')
+                  handle.write('    - host_path: /usr/bin/freedesktop-sdk-stripper\n')
+                  handle.write('      path: /usr/bin/freedesktop-sdk-stripper\n')
+                  handle.write('      optional: true\n')
+                  handle.write('    - host_path: /usr/local/bin/freedesktop-sdk-stripper\n')
+                  handle.write('      path: /usr/local/bin/freedesktop-sdk-stripper\n')
+                  handle.write('      optional: true\n')
+          PY
 
           # Inject project-level cache overrides matching top-level config for the primary project name.
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')

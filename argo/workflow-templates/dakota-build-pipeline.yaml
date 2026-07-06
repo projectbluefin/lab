@@ -5,9 +5,10 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Parallel dakota BST build pipeline. Builds bluefin and bluefin-nvidia OCI variants
-      using local worker resources and persistent hostPath cache, routing artifact cache
-      push/pulls to the shared Buildbarn frontend (:8980 gRPC) for hot builds.
+      Additive dakota BST build pipeline. Builds the bluefin OCI variant first, then
+      runs the bluefin-nvidia OCI variant as a follow-on build using the same local
+      worker resources and persistent hostPath cache, routing artifact cache push/pulls
+      to the shared Buildbarn frontend (:8980 gRPC) for hot builds.
       Triggered by push to dakota:testing via dakota-commit-poller CronWorkflow.
       On success, exports to local Zot (:30500).
       Uses bst-build PriorityClass — higher priority than lab-test-vm so BST cache-seeding work wins scheduling disputes.
@@ -74,6 +75,7 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
+            dependencies: [build-bluefin]
 
     - name: bst-build
       priorityClassName: bst-build

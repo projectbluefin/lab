@@ -88,7 +88,7 @@ data:
             currentBlocks: 24,
             newBlocks: 3,
             blocksOnBlockDevice: {
-              source: { file: { path: '/storage-cas/blocks', sizeBytes: 20 * 1024 * 1024 * 1024 } },
+              source: { file: { path: '/storage-cas/blocks', sizeBytes: 50 * 1024 * 1024 * 1024 } },
               spareBlocks: 3,
             },
             persistent: {
@@ -113,7 +113,7 @@ data:
             currentBlocks: 24,
             newBlocks: 1,
             blocksOnBlockDevice: {
-              source: { file: { path: '/storage-ac/blocks', sizeBytes: 20 * 1024 * 1024 } },
+              source: { file: { path: '/storage-ac/blocks', sizeBytes: 512 * 1024 * 1024 } },
               spareBlocks: 3,
             },
             persistent: {
@@ -205,12 +205,12 @@ data:
           buildDirectoryPath: '/worker/build',
           cacheDirectoryPath: '/worker/cache',
           maximumCacheFileCount: 10000,
-          maximumCacheSizeBytes: 1024 * 1024 * 1024,
+          maximumCacheSizeBytes: 8 * 1024 * 1024 * 1024,
           cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
         },
         runners: [{
           endpoint: { address: 'unix:///worker/runner' },
-          concurrency: 4,
+          concurrency: 2,
           // Match BuildStream REAPI action platform properties so workers
           // register into the same scheduler queue key.
           platform: {
@@ -225,11 +225,11 @@ data:
           },
         }],
       }],
-      inputDownloadConcurrency: 10,
-      outputUploadConcurrency: 11,
+      inputDownloadConcurrency: 4,
+      outputUploadConcurrency: 4,
       directoryCache: {
-        maximumCount: 1000,
-        maximumSizeBytes: 1000 * 1024,
+        maximumCount: 10000,
+        maximumSizeBytes: 64 * 1024 * 1024,
         cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
       },
     }

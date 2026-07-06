@@ -79,9 +79,10 @@ spec:
 
     - name: bst-build
       priorityClassName: bst-build
-      # Pod-local cache (no remote CAS) requires a full bootstrap (gcc-stage1 → 100+ packages)
-      # plus source fetch with network retry overhead. The prior 6h step deadline was repeatedly
-      # exceeded during cold bootstrap and compilation, so allow 12h per pod to finish a full
+      # The build uses a persistent hostPath cache for retry acceleration plus a checked-in
+      # BuildStream config that points the build at the shared Buildbarn frontend for remote
+      # cache/writeback and upstream fallback caches. Cold bootstrap and source fetch work can
+      # still exceed the prior 6h step deadline, so allow 12h per pod to finish a full
       # build/export cycle before the workflow retries.
       activeDeadlineSeconds: 43200
       retryStrategy:
@@ -102,6 +103,12 @@ spec:
           hostPath:
             path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
             type: DirectoryOrCreate
+        - name: buildstream-config
+          configMap:
+            name: buildstream-remote-cache
+            items:
+              - key: dakota-buildstream.conf
+                path: buildstream.conf
       script:
         image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
         command: [bash]
@@ -134,48 +141,16 @@ spec:
             mountPath: /dev/fuse
           - name: bst-cache
             mountPath: /root/.cache/buildstream
+          - name: buildstream-config
+            mountPath: /etc/buildstream
+            readOnly: true
         source: |
           set -euo pipefail
 
-          # Write minimal in-cluster BST config for deterministic local execution.
-          # Remote CAS uploads of very large staged trees can fail with
-          # "Unable to upload <N> blobs to remote CAS"; keep Dakota lane local-only.
-          : > /tmp/buildstream-cluster.conf
-          # Keep the known gRPC fork-safety mitigations, but raise scheduler
-          # concurrency to the documented BuildStream defaults for this cluster.
-          # The prior 1/1/1/1 profile throttled the pod too aggressively on
-          # modern hardware and left the shared Buildbarn cache underutilized.
-          echo "scheduler:" >> /tmp/buildstream-cluster.conf
-          echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
-          echo "  fetchers: 12" >> /tmp/buildstream-cluster.conf
-          echo "  builders: 12" >> /tmp/buildstream-cluster.conf
-          echo "  pushers: 12" >> /tmp/buildstream-cluster.conf
-          echo "build:" >> /tmp/buildstream-cluster.conf
-          echo "  max-jobs: 12" >> /tmp/buildstream-cluster.conf
-
-          # Enforce hot builds: use the shared Buildbarn frontend for writeback
-          # and upstream mirrors as read-only fallbacks to minimize recompilation.
-          echo "artifacts:" >> /tmp/buildstream-cluster.conf
-          echo "  override-project-caches: false" >> /tmp/buildstream-cluster.conf
-          echo "  servers:" >> /tmp/buildstream-cluster.conf
-          echo "  - url: grpc://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
-          echo "    push: true" >> /tmp/buildstream-cluster.conf
-          echo "  - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "    push: false" >> /tmp/buildstream-cluster.conf
-          echo "  - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "    push: false" >> /tmp/buildstream-cluster.conf
-          echo "  - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
-          echo "    push: false" >> /tmp/buildstream-cluster.conf
-          echo "source-caches:" >> /tmp/buildstream-cluster.conf
-          echo "  override-project-caches: false" >> /tmp/buildstream-cluster.conf
-          echo "  servers:" >> /tmp/buildstream-cluster.conf
-          echo "  - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "    push: false" >> /tmp/buildstream-cluster.conf
-          echo "  - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "    push: false" >> /tmp/buildstream-cluster.conf
-          echo "  - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
-          echo "    push: false" >> /tmp/buildstream-cluster.conf
-
+          # Start from the checked-in BuildStream remote-cache config and add only
+          # the project-specific override needed for this checkout. This keeps the
+          # build path remote-cache-first and friendly to upstream BuildStream usage.
+          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"
           TAG="{{inputs.parameters.tag}}"
@@ -186,175 +161,33 @@ spec:
           git clone --depth=1 --branch "${REF}" "${REPO}" /src
           cd /src
 
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('elements/oci/layers/bluefin-layer-marker.bst')
-          if path.exists():
-              text = path.read_text()
-              if 'variables:' not in text:
-                  text = text.replace('kind: manual\n', 'kind: manual\n\nvariables:\n  strip-binaries: ""\n', 1)
-              elif 'strip-binaries:' not in text:
-                  text = text.replace('variables:\n', 'variables:\n  strip-binaries: ""\n', 1)
-              path.write_text(text)
-          PY
-
-          if ! grep -q 'strip-binaries: "/bin/true"' project.conf; then
-            sed -i '/^variables:/a\  strip-binaries: "/bin/true"' project.conf
-          fi
-          if ! grep -q '^shell:' project.conf; then
-            cat >> project.conf <<'EOF'
-
-          shell:
-            host-files:
-              - host_path: /usr/bin/freedesktop-sdk-stripper
-                path: /usr/bin/freedesktop-sdk-stripper
-                optional: true
-              - host_path: /usr/local/bin/freedesktop-sdk-stripper
-                path: /usr/local/bin/freedesktop-sdk-stripper
-                optional: true
-          EOF
-          fi
-          echo "=== bluefin-layer-marker.bst after override ==="
-          sed -n '1,40p' elements/oci/layers/bluefin-layer-marker.bst
-          echo "=== project.conf after shim injection ==="
-          sed -n '1,180p' project.conf
-
-          mkdir -p patches/freedesktop-sdk
-          rm -f patches/freedesktop-sdk/0012-strip-binaries-noop.patch
-          echo "Skipping freedesktop-sdk patch queue; the lab lane uses shimmed host-files and project.conf overrides instead."
-
-          if ! grep -q '^environment:' project.conf 2>/dev/null; then
-            cat >> project.conf <<'EOF'
-
-          environment:
-            PATH: /buildstream-install/usr/local/bin:/buildstream-install/usr/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
-            SHELL: /bin/sh
-          EOF
-          else
-            sed -i 's#^\s*PATH:.*$#  PATH: /buildstream-install/usr/local/bin:/buildstream-install/usr/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin#' project.conf
-          fi
-
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('project.conf')
-          text = path.read_text()
-
-          if 'strip-binaries: "/bin/true"' not in text:
-              if 'variables:' in text:
-                  text = text.replace('variables:\n', 'variables:\n  strip-binaries: "/bin/true"\n', 1)
-              else:
-                  text += '\nvariables:\n  strip-binaries: "/bin/true"\n'
-
-          if 'host-files:' not in text:
-              if 'shell:' in text:
-                  text = text.replace('shell:\n', 'shell:\n  host-files:\n    - host_path: /usr/bin/freedesktop-sdk-stripper\n      path: /usr/bin/freedesktop-sdk-stripper\n      optional: true\n    - host_path: /usr/local/bin/freedesktop-sdk-stripper\n      path: /usr/local/bin/freedesktop-sdk-stripper\n      optional: true\n    - host_path: /buildstream-install\n      path: /buildstream-install\n      optional: true\n', 1)
-              else:
-                  text += '\n\nshell:\n  host-files:\n    - host_path: /usr/bin/freedesktop-sdk-stripper\n      path: /usr/bin/freedesktop-sdk-stripper\n      optional: true\n    - host_path: /usr/local/bin/freedesktop-sdk-stripper\n      path: /usr/local/bin/freedesktop-sdk-stripper\n      optional: true\n    - host_path: /buildstream-install\n      path: /buildstream-install\n      optional: true\n'
-
-          path.write_text(text)
-          PY
-
-          cat > /usr/bin/freedesktop-sdk-stripper <<'EOF'
-          #!/bin/sh
-          set -eu
-
-          # Compatibility shim for bst2 images that do not ship the FSDK stripper helper.
-          # Returning success keeps the lab lane moving even when stripping is not essential.
-          for arg in "$@"; do
-            case "$arg" in
-              -*) ;;
-              *)
-                if [ -d "$arg" ]; then
-                  find "$arg" -type f 2>/dev/null | while read -r path; do
-                    file "$path" 2>/dev/null | grep -q 'ELF' && strip --strip-unneeded "$path" 2>/dev/null || true
-                  done
-                elif [ -f "$arg" ]; then
-                  file "$arg" 2>/dev/null | grep -q 'ELF' && strip --strip-unneeded "$arg" 2>/dev/null || true
-                fi
-                ;;
-            esac
-          done
-          exit 0
-          EOF
-          chmod 0755 /usr/bin/freedesktop-sdk-stripper
-          if [ -d /usr/local/bin ]; then
-            cp /usr/bin/freedesktop-sdk-stripper /usr/local/bin/freedesktop-sdk-stripper
-            chmod 0755 /usr/local/bin/freedesktop-sdk-stripper
-          fi
-
-          rm -f /buildstream-install
-          mkdir -p /buildstream-install/usr/bin /buildstream-install/usr/local/bin
-          cat > /buildstream-install/usr/bin/buildstream-install <<'EOF'
-          #!/bin/sh
-          set -eu
-          # Compatibility shim for BuildStream install helpers that are absent from the bst2 sandbox.
-          # The lab lane only needs the command to exist; the actual artifact staging is not essential here.
-          exit 0
-          EOF
-          chmod 0755 /buildstream-install/usr/bin/buildstream-install
-          ln -sf /buildstream-install/usr/bin/buildstream-install /usr/bin/buildstream-install 2>/dev/null || true
-          ln -sf /buildstream-install/usr/bin/buildstream-install /usr/local/bin/buildstream-install 2>/dev/null || true
-          cp /usr/bin/freedesktop-sdk-stripper /buildstream-install/usr/bin/freedesktop-sdk-stripper
-          cp /usr/bin/freedesktop-sdk-stripper /buildstream-install/usr/local/bin/freedesktop-sdk-stripper
-          chmod 0755 /buildstream-install/usr/bin/freedesktop-sdk-stripper
-          chmod 0755 /buildstream-install/usr/local/bin/freedesktop-sdk-stripper
-          echo "=== project.conf after shim injection ==="
-          sed -n '1,120p' project.conf
-
-          # Inject project-level cache overrides matching top-level config for the primary project name.
+          # Use the checkout's project.conf to scope the remote-cache override to the
+          # active project name while leaving the checked-in config as the shared baseline.
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
-          echo "projects:" >> /tmp/buildstream-cluster.conf
-          echo "  ${PROJECT_NAME}:" >> /tmp/buildstream-cluster.conf
-          echo "    artifacts:" >> /tmp/buildstream-cluster.conf
-          echo "      override-project-caches: false" >> /tmp/buildstream-cluster.conf
-          echo "      servers:" >> /tmp/buildstream-cluster.conf
-          echo "      - url: grpc://frontend.buildbarn.svc.cluster.local:8980" >> /tmp/buildstream-cluster.conf
-          echo "        push: true" >> /tmp/buildstream-cluster.conf
-          echo "      - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "        push: false" >> /tmp/buildstream-cluster.conf
-          echo "      - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "        push: false" >> /tmp/buildstream-cluster.conf
-          echo "      - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
-          echo "        push: false" >> /tmp/buildstream-cluster.conf
-          echo "    source-caches:" >> /tmp/buildstream-cluster.conf
-          echo "      override-project-caches: false" >> /tmp/buildstream-cluster.conf
-          echo "      servers:" >> /tmp/buildstream-cluster.conf
-          echo "      - url: https://cache.projectbluefin.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "        push: false" >> /tmp/buildstream-cluster.conf
-          echo "      - url: https://cache.freedesktop-sdk.io:11001" >> /tmp/buildstream-cluster.conf
-          echo "        push: false" >> /tmp/buildstream-cluster.conf
-          echo "      - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
-          echo "        push: false" >> /tmp/buildstream-cluster.conf
-
-          mkdir -p /usr/local/bin
-          for binpath in /usr/local/bin /usr/bin; do
-           mkdir -p "${binpath}"
-           cat > "${binpath}/freedesktop-sdk-stripper" <<'EOF'
-          #!/bin/sh
-          set -eu
-
-          # Compatibility shim for bst2 images that do not ship the FSDK stripper helper.
-          # The build only needs the command to exist; stripping debug symbols is optional
-          # for the lab lane, and returning success keeps the build moving.
-          for arg in "$@"; do
-           case "$arg" in
-             -*) ;;
-             *)
-               if [ -d "$arg" ]; then
-                 find "$arg" -type f 2>/dev/null | while read -r path; do
-                   file "$path" 2>/dev/null | grep -q 'ELF' && strip --strip-unneeded "$path" 2>/dev/null || true
-                 done
-               elif [ -f "$arg" ]; then
-                 file "$arg" 2>/dev/null | grep -q 'ELF' && strip --strip-unneeded "$arg" 2>/dev/null || true
-               fi
-               ;;
-           esac
-          done
-          exit 0
+          cat >> /tmp/buildstream-cluster.conf <<EOF
+          projects:
+            ${PROJECT_NAME}:
+              artifacts:
+                override-project-caches: false
+                servers:
+                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  push: true
+                - url: https://cache.projectbluefin.io:11001
+                  push: false
+                - url: https://cache.freedesktop-sdk.io:11001
+                  push: false
+                - url: https://gbm.gnome.org:11003
+                  push: false
+              source-caches:
+                override-project-caches: false
+                servers:
+                - url: https://cache.projectbluefin.io:11001
+                  push: false
+                - url: https://cache.freedesktop-sdk.io:11001
+                  push: false
+                - url: https://gbm.gnome.org:11003
+                  push: false
           EOF
-           chmod 0755 "${binpath}/freedesktop-sdk-stripper"
-          done
-          export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

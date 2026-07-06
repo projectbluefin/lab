@@ -122,11 +122,11 @@ spec:
             value: "1"
         resources:
           requests:
-            cpu: "6"
-            memory: 16Gi
-          limits:
             cpu: "12"
-            memory: 32Gi
+            memory: 24Gi
+          limits:
+            cpu: "24"
+            memory: 48Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse
@@ -145,11 +145,11 @@ spec:
           # modern hardware and left the shared Buildbarn cache underutilized.
           echo "scheduler:" >> /tmp/buildstream-cluster.conf
           echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
-          echo "  fetchers: 8" >> /tmp/buildstream-cluster.conf
-          echo "  builders: 8" >> /tmp/buildstream-cluster.conf
-          echo "  pushers: 8" >> /tmp/buildstream-cluster.conf
+          echo "  fetchers: 12" >> /tmp/buildstream-cluster.conf
+          echo "  builders: 12" >> /tmp/buildstream-cluster.conf
+          echo "  pushers: 12" >> /tmp/buildstream-cluster.conf
           echo "build:" >> /tmp/buildstream-cluster.conf
-          echo "  max-jobs: 8" >> /tmp/buildstream-cluster.conf
+          echo "  max-jobs: 12" >> /tmp/buildstream-cluster.conf
 
           # Enforce hot builds: use the shared Buildbarn frontend for writeback
           # and upstream mirrors as read-only fallbacks to minimize recompilation.

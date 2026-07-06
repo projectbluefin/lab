@@ -3,7 +3,7 @@
   "_meta": {
     "page": "builds",
     "description": "Collector-derived contract for the OS image Builds page.",
-    "generated_at": "2026-07-06T19:47:47Z",
+    "generated_at": "2026-07-06T20:32:05Z",
     "starter_artifact": false,
     "status": "ready"
   },
@@ -16,7 +16,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/scripts/generate_page_datasets.py",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Count entries in BUILD_PIPELINE_CATALOG."
     },
     {
@@ -27,7 +27,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/factory-stats.json",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Count rows whose factory-stats.json image_builds entry is non-empty."
     },
     {
@@ -38,7 +38,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/factory-stats.json",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Sum of history_points length across all rows (capped at 20 runs per pipeline)."
     }
   ],
@@ -245,7 +245,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/bluefin/blob/main/.github/workflows/build-image-testing.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-stable'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin."
     },
     {
@@ -450,7 +450,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/bluefin/blob/main/.github/workflows/build-image-testing.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-testing'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin."
     },
     {
@@ -484,7 +484,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/bluefin/blob/main/.github/workflows/build-image-next.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-next'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin."
     },
     {
@@ -689,7 +689,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-regular.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-stable'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
     },
     {
@@ -894,7 +894,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-regular.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-testing'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
     },
     {
@@ -1099,7 +1099,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-regular-hwe.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-hwe'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
     },
     {
@@ -1304,7 +1304,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-nvidia.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-nvidia'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
     },
     {
@@ -1313,10 +1313,10 @@
       "description": "Dakota bootc image build (x86_64), published to ghcr.io/projectbluefin/dakota.",
       "last_run": {
         "id": "28817431410",
-        "overall": "running",
+        "overall": "fail",
         "started_at": "2026-07-06T19:24:49Z",
-        "finished_at": null,
-        "duration_min": null,
+        "finished_at": "2026-07-06T20:10:17Z",
+        "duration_min": 45,
         "run_url": "https://github.com/projectbluefin/dakota/actions/runs/28817431410",
         "branch": "testing"
       },
@@ -1494,22 +1494,22 @@
         },
         {
           "id": "28817431410",
-          "overall": "running",
+          "overall": "fail",
           "started_at": "2026-07-06T19:24:49Z",
-          "finished_at": null,
-          "duration_min": null,
+          "finished_at": "2026-07-06T20:10:17Z",
+          "duration_min": 45,
           "run_url": "https://github.com/projectbluefin/dakota/actions/runs/28817431410",
           "branch": "testing"
         }
       ],
       "success_rate": 0.0,
-      "avg_duration_min": 135.5,
+      "avg_duration_min": 117.4,
       "runs_tracked": 20,
       "ci_url": "https://github.com/projectbluefin/dakota/actions/runs/28817431410",
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/dakota/blob/main/.github/workflows/build.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['dakota'], populated by a live GitHub Actions workflow-runs query against projectbluefin/dakota."
     },
     {
@@ -1517,24 +1517,15 @@
       "display_name": "Dakota (aarch64)",
       "description": "Dakota bootc image build for the aarch64 architecture.",
       "last_run": {
-        "id": "28817257514",
+        "id": "28820045425",
         "overall": "pending",
-        "started_at": "2026-07-06T19:21:52Z",
-        "finished_at": "2026-07-06T19:23:55Z",
-        "duration_min": 2,
-        "run_url": "https://github.com/projectbluefin/dakota/actions/runs/28817257514",
+        "started_at": "2026-07-06T20:10:23Z",
+        "finished_at": "2026-07-06T20:10:24Z",
+        "duration_min": 0,
+        "run_url": "https://github.com/projectbluefin/dakota/actions/runs/28820045425",
         "branch": "testing"
       },
       "history_points": [
-        {
-          "id": "28561265600",
-          "overall": "pending",
-          "started_at": "2026-07-02T02:32:47Z",
-          "finished_at": "2026-07-02T02:32:48Z",
-          "duration_min": 0,
-          "run_url": "https://github.com/projectbluefin/dakota/actions/runs/28561265600",
-          "branch": "testing"
-        },
         {
           "id": "28599427526",
           "overall": "pending",
@@ -1705,16 +1696,25 @@
           "duration_min": 2,
           "run_url": "https://github.com/projectbluefin/dakota/actions/runs/28817257514",
           "branch": "testing"
+        },
+        {
+          "id": "28820045425",
+          "overall": "pending",
+          "started_at": "2026-07-06T20:10:23Z",
+          "finished_at": "2026-07-06T20:10:24Z",
+          "duration_min": 0,
+          "run_url": "https://github.com/projectbluefin/dakota/actions/runs/28820045425",
+          "branch": "testing"
         }
       ],
       "success_rate": null,
       "avg_duration_min": null,
       "runs_tracked": 20,
-      "ci_url": "https://github.com/projectbluefin/dakota/actions/runs/28817257514",
+      "ci_url": "https://github.com/projectbluefin/dakota/actions/runs/28820045425",
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/dakota/blob/main/.github/workflows/build-aarch64.yml",
-      "collected_at": "2026-07-06T19:47:47Z",
+      "collected_at": "2026-07-06T20:32:05Z",
       "derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['dakota-aarch64'], populated by a live GitHub Actions workflow-runs query against projectbluefin/dakota."
     }
   ]

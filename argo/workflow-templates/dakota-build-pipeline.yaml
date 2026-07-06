@@ -235,10 +235,7 @@ spec:
           elif 'variables:' in text:
               lines = text.splitlines()
               variables_idx = next(i for i, line in enumerate(lines) if line.strip() == 'variables:')
-              insert_idx = variables_idx + 1
-              while insert_idx < len(lines) and (lines[insert_idx].startswith(' ') or lines[insert_idx].startswith('\t')):
-                  insert_idx += 1
-              lines = lines[:insert_idx] + ['  strip-binaries: "/bin/true"'] + lines[insert_idx:]
+              lines = lines[:variables_idx + 1] + ['  strip-binaries: "/bin/true"'] + lines[variables_idx + 1:]
               text = '\n'.join(lines) + '\n'
           else:
               text += '\nvariables:\n  strip-binaries: "/bin/true"\n'

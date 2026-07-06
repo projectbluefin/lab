@@ -307,16 +307,22 @@ spec:
             chmod 0755 /usr/local/bin/freedesktop-sdk-stripper
           fi
 
-          cat > /buildstream-install <<'EOF'
+          rm -f /buildstream-install
+          mkdir -p /buildstream-install/usr/bin /buildstream-install/usr/local/bin
+          cat > /buildstream-install/usr/bin/buildstream-install <<'EOF'
           #!/bin/sh
           set -eu
           # Compatibility shim for BuildStream install helpers that are absent from the bst2 sandbox.
           # The lab lane only needs the command to exist; the actual artifact staging is not essential here.
           exit 0
           EOF
-          chmod 0755 /buildstream-install
-          ln -sf /buildstream-install /usr/bin/buildstream-install 2>/dev/null || true
-          ln -sf /buildstream-install /usr/local/bin/buildstream-install 2>/dev/null || true
+          chmod 0755 /buildstream-install/usr/bin/buildstream-install
+          ln -sf /buildstream-install/usr/bin/buildstream-install /usr/bin/buildstream-install 2>/dev/null || true
+          ln -sf /buildstream-install/usr/bin/buildstream-install /usr/local/bin/buildstream-install 2>/dev/null || true
+          cp /usr/bin/freedesktop-sdk-stripper /buildstream-install/usr/bin/freedesktop-sdk-stripper
+          cp /usr/bin/freedesktop-sdk-stripper /buildstream-install/usr/local/bin/freedesktop-sdk-stripper
+          chmod 0755 /buildstream-install/usr/bin/freedesktop-sdk-stripper
+          chmod 0755 /buildstream-install/usr/local/bin/freedesktop-sdk-stripper
           echo "=== project.conf after shim injection ==="
           sed -n '1,120p' project.conf
 

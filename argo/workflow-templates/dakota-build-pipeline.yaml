@@ -200,17 +200,17 @@ spec:
           text = path.read_text()
 
           if re.search(r'(?m)^\s*strip-binaries:\s*.*$', text):
-              text = re.sub(r'(?m)^(\s*)strip-binaries:\s*.*$', r'\1strip-binaries: /bin/true', text, count=1)
+              text = re.sub(r'(?m)^(\s*)strip-binaries:\s*.*$', r'\1strip-binaries: "/bin/true"', text, count=1)
           elif 'variables:' in text:
               lines = text.splitlines()
               variables_idx = next(i for i, line in enumerate(lines) if line.strip() == 'variables:')
               insert_idx = variables_idx + 1
               while insert_idx < len(lines) and (lines[insert_idx].startswith(' ') or lines[insert_idx].startswith('\t')):
                   insert_idx += 1
-              lines = lines[:insert_idx] + ['  strip-binaries: /bin/true'] + lines[insert_idx:]
+              lines = lines[:insert_idx] + ['  strip-binaries: "/bin/true"'] + lines[insert_idx:]
               text = '\n'.join(lines) + '\n'
           else:
-              text += '\nvariables:\n  strip-binaries: /bin/true\n'
+              text += '\nvariables:\n  strip-binaries: "/bin/true"\n'
 
           if 'host_path: /usr/bin/freedesktop-sdk-stripper' in text and 'host-files:' in text:
               pass

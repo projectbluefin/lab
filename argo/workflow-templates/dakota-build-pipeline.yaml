@@ -16,11 +16,11 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  # BST build concurrency managed by k8s scheduler via pod resource requests.
-  # Raised from 7200s alongside the per-step activeDeadlineSeconds bump (5400s):
-  # with retryStrategy.limit=2, worst case is 3 attempts, so the workflow
-  # ceiling must comfortably exceed one step deadline plus retries.
-  activeDeadlineSeconds: 14400
+  # BST build concurrency is handled by the scheduler via pod resource requests.
+  # Cold bootstrap + source fetch + package compilation can exceed the prior 6h
+  # per-pod deadline, so allow a full 12h per build pod and a 24h workflow
+  # ceiling to cover one complete build/export path without killing it mid-run.
+  activeDeadlineSeconds: 86400
 
   arguments:
     parameters:
@@ -77,15 +77,11 @@ spec:
 
     - name: bst-build
       priorityClassName: bst-build
-      # Pod-local cache (no remote CAS) requires full bootstrap (gcc-stage1 → 100+ packages)
-      # plus source fetch with network retry overhead. Observed pod-local build at 90min
-      # with fetch timeouts causing deadline exceeded on 90min limit. With 2x retry limit,
-      # worst case is 3 attempts * 2 hours per attempt = 6h workflow budget (accommodated by
-      # workflow activeDeadlineSeconds: 14400). Allow 2h per step to support:
-      # - ~60 min cold bootstrap (freedesktop-sdk gcc-stage1, musl, glibc, full SDK)
-      # - ~30 min source fetch with GitHub retries + network latency
-      # - ~30 min buffer for compiler caching / cache writes.
-      activeDeadlineSeconds: 7200
+      # Pod-local cache (no remote CAS) requires a full bootstrap (gcc-stage1 → 100+ packages)
+      # plus source fetch with network retry overhead. The prior 6h step deadline was repeatedly
+      # exceeded during cold bootstrap and compilation, so allow 12h per pod to finish a full
+      # build/export cycle before the workflow retries.
+      activeDeadlineSeconds: 43200
       retryStrategy:
         limit: "2"
         retryPolicy: "Always"

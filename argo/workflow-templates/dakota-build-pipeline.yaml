@@ -150,6 +150,8 @@ spec:
           echo "  pushers: 4" >> /tmp/buildstream-cluster.conf
           echo "build:" >> /tmp/buildstream-cluster.conf
           echo "  max-jobs: 4" >> /tmp/buildstream-cluster.conf
+          echo "environment:" >> /tmp/buildstream-cluster.conf
+          echo "  PATH: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" >> /tmp/buildstream-cluster.conf
 
           # Enforce hot builds: use the shared Buildbarn frontend for writeback
           # and upstream mirrors as read-only fallbacks to minimize recompilation.
@@ -209,7 +211,8 @@ spec:
           echo "      - url: https://gbm.gnome.org:11003" >> /tmp/buildstream-cluster.conf
           echo "        push: false" >> /tmp/buildstream-cluster.conf
 
-          cat > /usr/bin/freedesktop-sdk-stripper <<'EOF'
+          mkdir -p /usr/local/bin
+          cat > /usr/local/bin/freedesktop-sdk-stripper <<'EOF'
           #!/bin/sh
           set -eu
 
@@ -232,7 +235,8 @@ spec:
           done
           exit 0
           EOF
-          chmod 0755 /usr/bin/freedesktop-sdk-stripper
+          chmod 0755 /usr/local/bin/freedesktop-sdk-stripper
+          export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

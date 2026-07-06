@@ -184,6 +184,39 @@ spec:
           git clone --depth=1 --branch "${REF}" "${REPO}" /src
           cd /src
 
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('elements/oci/layers/bluefin-layer-marker.bst')
+          if path.exists():
+              text = path.read_text()
+              if 'variables:' not in text:
+                  text = text.replace('kind: manual\n', 'kind: manual\n\nvariables:\n  strip-binaries: ""\n', 1)
+              elif 'strip-binaries:' not in text:
+                  text = text.replace('variables:\n', 'variables:\n  strip-binaries: ""\n', 1)
+              path.write_text(text)
+          PY
+
+          if ! grep -q 'strip-binaries: "/bin/true"' project.conf; then
+            sed -i '/^variables:/a\  strip-binaries: "/bin/true"' project.conf
+          fi
+          if ! grep -q '^shell:' project.conf; then
+            cat >> project.conf <<'EOF'
+
+          shell:
+            host-files:
+              - host_path: /usr/bin/freedesktop-sdk-stripper
+                path: /usr/bin/freedesktop-sdk-stripper
+                optional: true
+              - host_path: /usr/local/bin/freedesktop-sdk-stripper
+                path: /usr/local/bin/freedesktop-sdk-stripper
+                optional: true
+          EOF
+          fi
+          echo "=== bluefin-layer-marker.bst after override ==="
+          sed -n '1,40p' elements/oci/layers/bluefin-layer-marker.bst
+          echo "=== project.conf after shim injection ==="
+          sed -n '1,180p' project.conf
+
           mkdir -p patches/freedesktop-sdk
           cat > patches/freedesktop-sdk/0012-strip-binaries-noop.patch <<'EOF'
           diff --git a/include/strip.yml b/include/strip.yml
@@ -219,59 +252,30 @@ spec:
             cat >> project.conf <<'EOF'
 
           environment:
-            PATH: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+            PATH: /buildstream-install/usr/local/bin:/buildstream-install/usr/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
             SHELL: /bin/sh
           EOF
+          else
+            sed -i 's#^\s*PATH:.*$#  PATH: /buildstream-install/usr/local/bin:/buildstream-install/usr/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin#' project.conf
           fi
 
           python3 - <<'PY'
-          import re
           from pathlib import Path
           path = Path('project.conf')
           text = path.read_text()
 
-          if re.search(r'(?m)^\s*strip-binaries:\s*.*$', text):
-              text = re.sub(r'(?m)^(\s*)strip-binaries:\s*.*$', r'\1strip-binaries: "/bin/true"', text, count=1)
-          elif 'variables:' in text:
-              lines = text.splitlines()
-              variables_idx = next(i for i, line in enumerate(lines) if line.strip() == 'variables:')
-              lines = lines[:variables_idx + 1] + ['  strip-binaries: "/bin/true"'] + lines[variables_idx + 1:]
-              text = '\n'.join(lines) + '\n'
-          else:
-              text += '\nvariables:\n  strip-binaries: "/bin/true"\n'
-
-          if 'host_path: /usr/bin/freedesktop-sdk-stripper' in text and 'host-files:' in text:
-              pass
-          else:
-              shell_block = 'shell:'
-              if shell_block in text:
-                  lines = text.splitlines()
-                  shell_idx = next(i for i, line in enumerate(lines) if line.strip() == shell_block)
-                  end_idx = len(lines)
-                  for idx in range(shell_idx + 1, len(lines)):
-                      if lines[idx].strip() and not lines[idx].startswith((' ', '\t', '#')):
-                          end_idx = idx
-                          break
-                  inject = [
-                      '  host-files:',
-                      '    - host_path: /usr/bin/freedesktop-sdk-stripper',
-                      '      path: /usr/bin/freedesktop-sdk-stripper',
-                      '      optional: true',
-                      '    - host_path: /usr/local/bin/freedesktop-sdk-stripper',
-                      '      path: /usr/local/bin/freedesktop-sdk-stripper',
-                      '      optional: true',
-                  ]
-                  updated = lines[:shell_idx + 1] + inject + lines[end_idx:]
-                  text = '\n'.join(updated) + '\n'
+          if 'strip-binaries: "/bin/true"' not in text:
+              if 'variables:' in text:
+                  text = text.replace('variables:\n', 'variables:\n  strip-binaries: "/bin/true"\n', 1)
               else:
-                  text += '\n\nshell:\n'
-                  text += '  host-files:\n'
-                  text += '    - host_path: /usr/bin/freedesktop-sdk-stripper\n'
-                  text += '      path: /usr/bin/freedesktop-sdk-stripper\n'
-                  text += '      optional: true\n'
-                  text += '    - host_path: /usr/local/bin/freedesktop-sdk-stripper\n'
-                  text += '      path: /usr/local/bin/freedesktop-sdk-stripper\n'
-                  text += '      optional: true\n'
+                  text += '\nvariables:\n  strip-binaries: "/bin/true"\n'
+
+          if 'host-files:' not in text:
+              if 'shell:' in text:
+                  text = text.replace('shell:\n', 'shell:\n  host-files:\n    - host_path: /usr/bin/freedesktop-sdk-stripper\n      path: /usr/bin/freedesktop-sdk-stripper\n      optional: true\n    - host_path: /usr/local/bin/freedesktop-sdk-stripper\n      path: /usr/local/bin/freedesktop-sdk-stripper\n      optional: true\n', 1)
+              else:
+                  text += '\n\nshell:\n  host-files:\n    - host_path: /usr/bin/freedesktop-sdk-stripper\n      path: /usr/bin/freedesktop-sdk-stripper\n      optional: true\n    - host_path: /usr/local/bin/freedesktop-sdk-stripper\n      path: /usr/local/bin/freedesktop-sdk-stripper\n      optional: true\n'
+
           path.write_text(text)
           PY
 
@@ -302,6 +306,10 @@ spec:
             cp /usr/bin/freedesktop-sdk-stripper /usr/local/bin/freedesktop-sdk-stripper
             chmod 0755 /usr/local/bin/freedesktop-sdk-stripper
           fi
+          mkdir -p /buildstream-install/usr/bin /buildstream-install/usr/local/bin
+          cp /usr/bin/freedesktop-sdk-stripper /buildstream-install/usr/bin/freedesktop-sdk-stripper
+          cp /usr/bin/freedesktop-sdk-stripper /buildstream-install/usr/local/bin/freedesktop-sdk-stripper
+          chmod 0755 /buildstream-install/usr/bin/freedesktop-sdk-stripper /buildstream-install/usr/local/bin/freedesktop-sdk-stripper
           echo "=== project.conf after shim injection ==="
           sed -n '1,120p' project.conf
 

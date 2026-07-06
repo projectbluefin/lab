@@ -193,6 +193,20 @@ spec:
           EOF
           fi
 
+          if ! grep -q '^shell:' project.conf 2>/dev/null; then
+            cat >> project.conf <<'EOF'
+
+          shell:
+            host-files:
+              - host_path: /usr/bin/freedesktop-sdk-stripper
+                path: /usr/bin/freedesktop-sdk-stripper
+                optional: true
+              - host_path: /usr/local/bin/freedesktop-sdk-stripper
+                path: /usr/local/bin/freedesktop-sdk-stripper
+                optional: true
+          EOF
+          fi
+
           # Inject project-level cache overrides matching top-level config for the primary project name.
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           echo "projects:" >> /tmp/buildstream-cluster.conf

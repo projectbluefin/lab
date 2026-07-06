@@ -218,35 +218,8 @@ spec:
           sed -n '1,180p' project.conf
 
           mkdir -p patches/freedesktop-sdk
-          cat > patches/freedesktop-sdk/0012-strip-binaries-noop.patch <<'EOF'
-          diff --git a/include/strip.yml b/include/strip.yml
-          index 6e91d34..a538fe2 100644
-          --- a/include/strip.yml
-          +++ b/include/strip.yml
-          @@ -11,21 +11,4 @@ variables:
-          -    /usr
-          -    %{prefix}
-          -
-          -  strip-binaries: |
-          -    OPTS=()
-          -    if ! "%{optimize-debug}"; then
-          -      OPTS+=("-n")
-          -    fi
-          -    if ! "%{compress-debug}"; then
-          -      OPTS+=("-p")
-          -    fi
-          -    for p in %{toolchain-prefixes}; do
-          -      OPTS+=("-t" "${p}")
-          -    done
-          -    freedesktop-sdk-stripper \
-          -        "${OPTS[@]}" \
-          -        "%{build-root}" \
-          -        "%{sourcedir}/%{stripdir-suffix}" \
-          -        "%{debugdatadir}/dwz/%{stripdir-suffix}" \
-          -        "%{debugdir}" \
-          -        "%{install-root}"
-          +  strip-binaries: "/bin/true"
-          EOF
+          rm -f patches/freedesktop-sdk/0012-strip-binaries-noop.patch
+          echo "Skipping freedesktop-sdk patch queue; the lab lane uses shimmed host-files and project.conf overrides instead."
 
           if ! grep -q '^environment:' project.conf 2>/dev/null; then
             cat >> project.conf <<'EOF'

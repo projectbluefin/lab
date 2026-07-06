@@ -75,6 +75,7 @@ Run `just logs` first. Then match a row:
 | Kernel poller keeps retriggering wrong versions | Check state: `kubectl get configmap flatcar-kernel-polling-state -n argo -o yaml` and verify CronWorkflow policy is `Forbid`: `kubectl get cronworkflow flatcar-kernel-poller -n argo -o jsonpath='{.spec.concurrencyPolicy}{"\n"}'` |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
 | Workflow stuck `Pending` | Run §3 |
+| Workflow stuck on a `NotReady` node / pod never progresses | `kubectl get nodes`; if the worker is `NotReady`, `argo stop -n argo <workflow>` and submit a fresh run so the scheduler can place it on a healthy node (often `ghost`) |
 | Template change did not take effect | Run §4 |
 
 If no row matches:

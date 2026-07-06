@@ -58,6 +58,17 @@ spec:
 - `namespace: argo` always
 - `description:` annotation on every template — one paragraph saying what it does
 
+### 1b. Debugging a workflow stuck on a dead node
+
+If a workflow step never progresses and the pod stays Pending/Terminating on a worker that is `NotReady`, stop the workflow and resubmit it rather than waiting for the stuck pod to recover:
+
+1. `kubectl get nodes` — identify any `NotReady` worker.
+2. `argo stop -n argo <workflow>` — stop the stuck workflow and let Argo clear the pod.
+3. `argo submit ...` — submit a fresh workflow; the scheduler will place it on a healthy node such as `ghost`.
+4. Verify with `kubectl get pods -n argo -l workflows.argoproj.io/workflow=<name> -o wide` and confirm the new pod lands on a `Ready` node.
+
+This is especially relevant for cache-heavy BST builds because the workflow uses hostPath cache mounts and a fresh run on a healthy node can reuse the same cache directory.
+
 ### 2. Parameter passing — always explicit
 
 Sub-templates never inherit parameters from the caller scope. Pass every parameter explicitly:

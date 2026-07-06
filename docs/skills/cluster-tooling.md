@@ -286,6 +286,23 @@ When `buildbarn-config` changes, also bump the `buildbarn-config-revision` pod-t
 - `manifests/buildbarn-storage.yaml`
 - `manifests/buildbarn-worker.yaml`
 
+## Fedora CoreOS 44 (FCOS) Container Memory Limits and systemd-cgroup v2 Overhead
+
+On Fedora CoreOS, containers scheduled using unified cgroups v2 and the `systemd` cgroup driver undergo scope registration via dbus. This triggers kernel memory allocations, systemd-user accounting, and auditing, which requires a baseline overhead of 12-20 MiB of memory before any user workload even executes.
+
+### 1. Diagnosis
+If containers or shims crash instantly during initialization with exit code `128`, check `kubectl describe pod` for:
+`failed to create containerd task: ... OCI runtime create failed: container init was OOM-killed (memory limit too low?)`
+
+### 2. Remediation
+Always configure container memory limits well above this threshold for nodes running CoreOS.
+- **Standard pause/sleep containers**: minimum `32Mi` memory limits (such as in `k3s-firewalld-config`, `mask-sleep-targets`, `registry-mirror-config`, and `inotify-tuning`).
+- **Shell-based or kubectl utility containers**: minimum `64Mi` memory limits (such as in `virtio-console-module`).
+
+### 3. SELinux Key Injection Warning
+When running privileged pods that mount the host root `/` (`hostPath: /`) and write or create files (like writing public keys to `/home/core/.ssh/authorized_keys`), containerd applies container-specific SELinux labels (`container_file_t` or `home_root_t`). This prevents `sshd` from reading the keys on the host, resulting in `Permission denied (publickey)`.
+- **Fix**: Run `nsenter -t 1 -m -u -i -n restorecon -R -v /home/core/.ssh` on the host OS from a privileged container to restore the correct `ssh_home_t` contexts.
+
 ## Common Rationalizations
 
 - "It only touches cache config, no lint needed." → Wrong; run `just lint` for every workflow YAML change.

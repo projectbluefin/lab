@@ -150,8 +150,6 @@ spec:
           echo "  pushers: 4" >> /tmp/buildstream-cluster.conf
           echo "build:" >> /tmp/buildstream-cluster.conf
           echo "  max-jobs: 4" >> /tmp/buildstream-cluster.conf
-          echo "environment:" >> /tmp/buildstream-cluster.conf
-          echo "  PATH: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" >> /tmp/buildstream-cluster.conf
 
           # Enforce hot builds: use the shared Buildbarn frontend for writeback
           # and upstream mirrors as read-only fallbacks to minimize recompilation.
@@ -186,6 +184,15 @@ spec:
           git clone --depth=1 --branch "${REF}" "${REPO}" /src
           cd /src
 
+          if ! grep -q '^environment:' project.conf 2>/dev/null; then
+            cat >> project.conf <<'EOF'
+
+          environment:
+            PATH: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+            SHELL: /bin/sh
+          EOF
+          fi
+
           # Inject project-level cache overrides matching top-level config for the primary project name.
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           echo "projects:" >> /tmp/buildstream-cluster.conf
@@ -212,7 +219,9 @@ spec:
           echo "        push: false" >> /tmp/buildstream-cluster.conf
 
           mkdir -p /usr/local/bin
-          cat > /usr/local/bin/freedesktop-sdk-stripper <<'EOF'
+          for binpath in /usr/local/bin /usr/bin; do
+           mkdir -p "${binpath}"
+           cat > "${binpath}/freedesktop-sdk-stripper" <<'EOF'
           #!/bin/sh
           set -eu
 
@@ -235,7 +244,8 @@ spec:
           done
           exit 0
           EOF
-          chmod 0755 /usr/local/bin/freedesktop-sdk-stripper
+           chmod 0755 "${binpath}/freedesktop-sdk-stripper"
+          done
           export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
           echo "=== Building ${ELEMENT} ==="

@@ -122,11 +122,11 @@ spec:
             value: "1"
         resources:
           requests:
-            cpu: "16"
-            memory: 24Gi
+            cpu: "6"
+            memory: 16Gi
           limits:
-            cpu: "28"
-            memory: 48Gi
+            cpu: "12"
+            memory: 32Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse
@@ -139,19 +139,17 @@ spec:
           # Remote CAS uploads of very large staged trees can fail with
           # "Unable to upload <N> blobs to remote CAS"; keep Dakota lane local-only.
           : > /tmp/buildstream-cluster.conf
-          # Observed reproducible hang checking out the gnome-build-meta junction
-          # (worker process blocked reading an IPC pipe with no writer, zero CPU,
-          # across multiple pods/nodes) — matches known BuildStream multiprocessing
-          # deadlocks under parallel source fetches. Keep fetch/build upload
-          # concurrency deliberately low for this homelab lane so the pod stays
-          # within the memory budget and the shared Buildbarn cache remains stable.
+          # Keep the known gRPC fork-safety mitigations, but raise scheduler
+          # concurrency to the documented BuildStream defaults for this cluster.
+          # The prior 1/1/1/1 profile throttled the pod too aggressively on
+          # modern hardware and left the shared Buildbarn cache underutilized.
           echo "scheduler:" >> /tmp/buildstream-cluster.conf
-          echo "  network-retries: 8" >> /tmp/buildstream-cluster.conf
-          echo "  fetchers: 1" >> /tmp/buildstream-cluster.conf
-          echo "  builders: 1" >> /tmp/buildstream-cluster.conf
-          echo "  pushers: 1" >> /tmp/buildstream-cluster.conf
+          echo "  network-retries: 4" >> /tmp/buildstream-cluster.conf
+          echo "  fetchers: 4" >> /tmp/buildstream-cluster.conf
+          echo "  builders: 4" >> /tmp/buildstream-cluster.conf
+          echo "  pushers: 4" >> /tmp/buildstream-cluster.conf
           echo "build:" >> /tmp/buildstream-cluster.conf
-          echo "  max-jobs: 1" >> /tmp/buildstream-cluster.conf
+          echo "  max-jobs: 4" >> /tmp/buildstream-cluster.conf
 
           # Enforce hot builds: use the shared Buildbarn frontend for writeback
           # and upstream mirrors as read-only fallbacks to minimize recompilation.

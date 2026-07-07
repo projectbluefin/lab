@@ -189,6 +189,12 @@ def main():
                 'stable_selector': {'tag_regex': r'^[0-9]'},
                 'testing_selector': {'tag_regex': r'^testing-'},
             },
+            'snosi': {
+                'repo': 'frostyard/snow',
+                'stable_selector': {'tag_regex': r'^stable-'},
+                'testing_selector': {'tag_regex': r'^latest-'},
+                'ghcr_package': 'snow',
+            },
         }
 
         now_dt = datetime.datetime.now(datetime.timezone.utc)
@@ -455,6 +461,11 @@ def main():
         {'id': 'bluefin-lts-nvidia', 'repo': 'projectbluefin/bluefin-lts', 'workflow': 'build-nvidia.yml', 'branch': None},
         {'id': 'dakota', 'repo': 'projectbluefin/dakota', 'workflow': 'build.yml', 'branch': 'testing'},
         {'id': 'dakota-aarch64', 'repo': 'projectbluefin/dakota', 'workflow': 'build-aarch64.yml', 'branch': 'testing'},
+        {'id': 'snosi-latest', 'repo': 'frostyard/snow', 'workflow': 'build.yml', 'branch': 'latest'},
+        {'id': 'aurora-stable', 'repo': 'ublue-os/aurora', 'workflow': 'build_ublue.yml', 'branch': 'main'},
+        {'id': 'aurora-testing', 'repo': 'ublue-os/aurora', 'workflow': 'build_ublue.yml', 'branch': 'testing'},
+        {'id': 'bazzite-stable', 'repo': 'ublue-os/bazzite', 'workflow': 'build_ublue.yml', 'branch': 'main'},
+        {'id': 'bazzite-testing', 'repo': 'ublue-os/bazzite', 'workflow': 'build_ublue.yml', 'branch': 'testing'},
     ]
 
     def gh_run_to_overall(run):

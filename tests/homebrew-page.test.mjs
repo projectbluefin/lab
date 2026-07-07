@@ -156,7 +156,7 @@ test('homebrew-ecosystem.json contract satisfies the page model contract', () =>
   assert.ok(Array.isArray(dataset.taps), 'taps is an array');
   assert.ok(Array.isArray(dataset.rows), 'rows is an array');
 
-  assert.equal(dataset.rows.length, 12, 'homebrew dataset has 12 lane rows (one per variant-branch)');
+  assert.equal(dataset.rows.length, 13, 'homebrew dataset has 13 lane rows (one per variant-branch)');
 
   const trackedMetric = dataset.summary_metrics.find((m) => m.id === 'tracked_image_lanes');
   const withDataMetric = dataset.summary_metrics.find((m) => m.id === 'lanes_with_brew_data');

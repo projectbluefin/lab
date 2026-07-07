@@ -3,7 +3,7 @@
   "_meta": {
     "page": "tests",
     "description": "Collector-derived contract for the multipage tests matrix view.",
-    "generated_at": "2026-07-07T21:50:03Z",
+    "generated_at": "2026-07-07T21:58:00Z",
     "starter_artifact": false,
     "status": "partial"
   },
@@ -11,12 +11,12 @@
     {
       "id": "published_matrix_rows",
       "label": "Published matrix rows",
-      "value": 14,
+      "value": 19,
       "unit": "count",
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/test-surface.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Count rows in docs/data/test-surface.json surface[]."
     },
     {
@@ -27,29 +27,33 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Count matrix rows whose joined docs/results/*.json file has last_run set."
     },
     {
       "id": "rows_waiting_for_results",
       "label": "Rows waiting for results",
-      "value": 7,
+      "value": 12,
       "unit": "count",
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/test-surface.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Count matrix rows still marked unavailable after joining published results."
     }
   ],
   "dimensions": {
     "variants": [
+      "aurora",
+      "bazzite",
       "bluefin",
       "bluefin-lts",
       "dakota",
-      "flatcar"
+      "flatcar",
+      "snosi"
     ],
     "branches": [
+      "latest",
       "testing"
     ],
     "suites": [
@@ -80,7 +84,7 @@
       "state": "unavailable",
       "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-developer.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-lts-testing-developer.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -101,7 +105,7 @@
       "state": "unavailable",
       "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-smoke.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-lts-testing-smoke.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -122,7 +126,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-software.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-lts-testing-software.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -143,7 +147,7 @@
       "state": "unavailable",
       "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-system.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-lts-testing-system.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -164,7 +168,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-common.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-common.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -185,7 +189,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-developer.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-developer.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -206,7 +210,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-smoke.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-smoke.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -227,7 +231,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-software.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-software.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -248,7 +252,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-system.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-system.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -269,7 +273,7 @@
       "state": "unavailable",
       "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-developer.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/dakota-testing-developer.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -290,7 +294,7 @@
       "state": "unavailable",
       "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-smoke.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/dakota-testing-smoke.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -311,7 +315,7 @@
       "state": "available",
       "state_reason": null,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-software.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/dakota-testing-software.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -332,7 +336,7 @@
       "state": "unavailable",
       "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-system.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/dakota-testing-system.json; compute pass_rate when scenarios_total > 0."
     },
     {
@@ -353,8 +357,113 @@
       "state": "unavailable",
       "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/flatcar-testing-flatcar.json",
-      "collected_at": "2026-07-07T21:50:03Z",
+      "collected_at": "2026-07-07T21:58:00Z",
       "derivation": "Join docs/data/test-surface.json row with docs/results/flatcar-testing-flatcar.json; compute pass_rate when scenarios_total > 0."
+    },
+    {
+      "id": "snosi-latest-smoke",
+      "variant": "snosi",
+      "branch": "latest",
+      "suite": "smoke",
+      "result_status": "missing",
+      "last_run": null,
+      "workflow_name": null,
+      "scenarios_total": 0,
+      "scenarios_failed": 0,
+      "pass_rate": null,
+      "history_points": 0,
+      "results_path": "results/snosi-latest-smoke.json",
+      "screenshot_path": null,
+      "screenshot_url": null,
+      "state": "unavailable",
+      "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
+      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/snosi-latest-smoke.json",
+      "collected_at": "2026-07-07T21:58:00Z",
+      "derivation": "Join docs/data/test-surface.json row with docs/results/snosi-latest-smoke.json; compute pass_rate when scenarios_total > 0."
+    },
+    {
+      "id": "snosi-latest-developer",
+      "variant": "snosi",
+      "branch": "latest",
+      "suite": "developer",
+      "result_status": "missing",
+      "last_run": null,
+      "workflow_name": null,
+      "scenarios_total": 0,
+      "scenarios_failed": 0,
+      "pass_rate": null,
+      "history_points": 0,
+      "results_path": "results/snosi-latest-developer.json",
+      "screenshot_path": null,
+      "screenshot_url": null,
+      "state": "unavailable",
+      "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
+      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/snosi-latest-developer.json",
+      "collected_at": "2026-07-07T21:58:00Z",
+      "derivation": "Join docs/data/test-surface.json row with docs/results/snosi-latest-developer.json; compute pass_rate when scenarios_total > 0."
+    },
+    {
+      "id": "snosi-latest-system",
+      "variant": "snosi",
+      "branch": "latest",
+      "suite": "system",
+      "result_status": "missing",
+      "last_run": null,
+      "workflow_name": null,
+      "scenarios_total": 0,
+      "scenarios_failed": 0,
+      "pass_rate": null,
+      "history_points": 0,
+      "results_path": "results/snosi-latest-system.json",
+      "screenshot_path": null,
+      "screenshot_url": null,
+      "state": "unavailable",
+      "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
+      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/snosi-latest-system.json",
+      "collected_at": "2026-07-07T21:58:00Z",
+      "derivation": "Join docs/data/test-surface.json row with docs/results/snosi-latest-system.json; compute pass_rate when scenarios_total > 0."
+    },
+    {
+      "id": "aurora-testing-smoke",
+      "variant": "aurora",
+      "branch": "testing",
+      "suite": "smoke",
+      "result_status": "missing",
+      "last_run": null,
+      "workflow_name": null,
+      "scenarios_total": 0,
+      "scenarios_failed": 0,
+      "pass_rate": null,
+      "history_points": 0,
+      "results_path": "results/aurora-testing-smoke.json",
+      "screenshot_path": null,
+      "screenshot_url": null,
+      "state": "unavailable",
+      "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
+      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/aurora-testing-smoke.json",
+      "collected_at": "2026-07-07T21:58:00Z",
+      "derivation": "Join docs/data/test-surface.json row with docs/results/aurora-testing-smoke.json; compute pass_rate when scenarios_total > 0."
+    },
+    {
+      "id": "bazzite-testing-smoke",
+      "variant": "bazzite",
+      "branch": "testing",
+      "suite": "smoke",
+      "result_status": "missing",
+      "last_run": null,
+      "workflow_name": null,
+      "scenarios_total": 0,
+      "scenarios_failed": 0,
+      "pass_rate": null,
+      "history_points": 0,
+      "results_path": "results/bazzite-testing-smoke.json",
+      "screenshot_path": null,
+      "screenshot_url": null,
+      "state": "unavailable",
+      "state_reason": "Result file exists, but no completed run is published for this matrix cell yet.",
+      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bazzite-testing-smoke.json",
+      "collected_at": "2026-07-07T21:58:00Z",
+      "derivation": "Join docs/data/test-surface.json row with docs/results/bazzite-testing-smoke.json; compute pass_rate when scenarios_total > 0."
     }
   ]
 }

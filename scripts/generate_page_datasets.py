@@ -1027,6 +1027,41 @@ BUILD_PIPELINE_CATALOG = [
         'source': 'argo',
         'argo_pipeline_key': 'cosmic-qa-pipeline',
     },
+    {
+        'id': 'snosi-latest',
+        'display_name': 'Snosi — latest',
+        'description': 'Snosi (Snow OS) image build on the latest branch, published to ghcr.io/frostyard/snow.',
+        'repo': 'frostyard/snow',
+        'workflow_path': '.github/workflows/build.yml',
+    },
+    {
+        'id': 'aurora-stable',
+        'display_name': 'Aurora — stable',
+        'description': 'Aurora main-branch image build (published as the :stable tag).',
+        'repo': 'ublue-os/aurora',
+        'workflow_path': '.github/workflows/build_ublue.yml',
+    },
+    {
+        'id': 'aurora-testing',
+        'display_name': 'Aurora — testing',
+        'description': 'Aurora testing-branch image build (published as the :testing tag).',
+        'repo': 'ublue-os/aurora',
+        'workflow_path': '.github/workflows/build_ublue.yml',
+    },
+    {
+        'id': 'bazzite-stable',
+        'display_name': 'Bazzite — stable',
+        'description': 'Bazzite main-branch image build (published as the stable release tag).',
+        'repo': 'ublue-os/bazzite',
+        'workflow_path': '.github/workflows/build_ublue.yml',
+    },
+    {
+        'id': 'bazzite-testing',
+        'display_name': 'Bazzite — testing',
+        'description': 'Bazzite testing-branch image build (published as the :testing tag).',
+        'repo': 'ublue-os/bazzite',
+        'workflow_path': '.github/workflows/build_ublue.yml',
+    },
 ]
 
 

@@ -147,11 +147,12 @@ spec:
 
     # ─── watch-variant ────────────────────────────────────────────────────────
     # Fetches the live GHCR digest via skopeo (authenticated — works for both
-    # projectbluefin and ublue-os images).
-    # Compares against stored digest in ConfigMap containerdisk-source-digests.
-    # On mismatch: patches ConfigMap + submits build-containerdisk with force=true.
-    # Uses quay.io/skopeo/stable:latest (has skopeo + curl) and calls k8s API
-    # directly (in-cluster SA token) to avoid needing a separate kubectl image.
+    # projectbluefin and ublue-os images), then checks whether the local Zot
+    # containerdisk artifact exists. Rebuilds when the source digest changed or
+    # the destination artifact is missing, so downstream QA pipelines don't fail
+    # on an out-of-band registry loss or stale artifact. Uses quay.io/skopeo/
+    # stable:latest (has skopeo + curl) and calls k8s API directly (in-cluster
+    # SA token) to avoid needing a separate kubectl image.
 
     - name: watch-variant
       inputs:
@@ -220,12 +221,31 @@ spec:
             2>/dev/null || true)
           echo "Stored digest for ${CD_TAG}: ${STORED_DIGEST:-<none>}"
 
-          if [[ "${LIVE_DIGEST}" == "${STORED_DIGEST}" ]]; then
-            echo "Digest unchanged — containerdisk ${CD_TAG} is current, skipping build"
+          # Probe the local Zot artifact directly; digest-watch must also recover
+          # from missing or wiped containerdisks even when the upstream source digest
+          # didn't change.
+          CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${CD_TAG}"
+          CD_DIGEST=""
+          if skopeo inspect --tls-verify=false --format '{{.Digest}}' "docker://${CD_IMAGE}" 2>/dev/null; then
+            CD_DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' "docker://${CD_IMAGE}" 2>/dev/null || true)
+          fi
+          echo "Local containerdisk ${CD_IMAGE}: ${CD_DIGEST:-<missing>}"
+
+          SHOULD_REBUILD=false
+          if [[ -z "${CD_DIGEST}" ]]; then
+            echo "Containerdisk artifact missing — rebuilding"
+            SHOULD_REBUILD=true
+          elif [[ "${LIVE_DIGEST}" != "${STORED_DIGEST}" ]]; then
+            echo "Digest changed — rebuilding"
+            SHOULD_REBUILD=true
+          fi
+
+          if [[ "${SHOULD_REBUILD}" != "true" ]]; then
+            echo "Digest unchanged and containerdisk exists — skipping build"
             exit 0
           fi
 
-          echo "Digest changed — updating ConfigMap and triggering rebuild"
+          echo "Updating ConfigMap and triggering rebuild"
 
           # Upsert ConfigMap key via k8s API (patch; create if 404)
           # Write http_code to a tmpfile to avoid stdout contamination from || fallback
@@ -269,7 +289,7 @@ spec:
                   {\"name\": \"containerdisk-tag\", \"value\": \"${CD_TAG}\"},
                   {\"name\": \"disk-size\", \"value\": \"{{inputs.parameters.disk-size}}\"},
                   {\"name\": \"filesystem\", \"value\": \"{{inputs.parameters.filesystem}}\"},
-                  {\"name\": \"force\", \"value\": \"false\"}
+                  {\"name\": \"force\", \"value\": \"true\"}
                 ]}
               }
             }" > /dev/null

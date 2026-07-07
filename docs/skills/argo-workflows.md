@@ -776,11 +776,11 @@ spec:
 EOF
 ```
 
-**Durable fix (not yet implemented):** digest-comparison pollers that gate a downstream
-`assert-cd`-style check should also probe the destination registry for artifact existence
-(same skopeo pattern `assert-cd` already uses), not just compare source digests. Any disk
-wipe, registry migration, or manual Zot cleanup should trigger a manual force-rebuild of
-every containerDisk tag immediately afterward — don't assume the poller will self-heal.
+**Implemented:** digest-comparison pollers that gate a downstream `assert-cd`-style check
+now probe the destination registry for artifact existence and force-rebuild the containerDisk
+when the artifact is missing or when the upstream source digest changed. This covers disk
+wipes, registry migration, and manual Zot cleanup without waiting for a separate recovery
+step.
 
 ## Common Rationalizations
 

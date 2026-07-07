@@ -31,6 +31,7 @@
 | Run on-demand K8sGPT cluster triage | `just run-k8sgpt` |
 | Check exo-0 kernel canary status (7.1 target) | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` |
 | Submit Dakota BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
+| Trigger the Dakota PR batch workflow | `argo submit -n argo --from workflowtemplate/dakota-pr-batch-pipeline -p pr-numbers=<number> --wait` |
 | Tail the most recent workflow's logs | `just logs` |
 | List workflows / VMs | `just list-workflows` · `just list-vms` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |
@@ -243,6 +244,20 @@ SSH key rotation now has two parts:
 qemuGuestAgent accessCredentials, not baked into the disk image.
 
 ---
+
+## 6.5. Dakota PR batch workflow
+
+Use the Dakota PR batch workflow when you want to validate a Dakota PR branch without switching to the full VM QA lane. It sits alongside the existing Dakota entry points:
+- `just run-bst-build` — the BuildStream artifact build lane.
+- `just run-dakota-qa` — the full VM-based Dakota QA lane.
+
+Trigger it with:
+
+```bash
+argo submit -n argo --from workflowtemplate/dakota-pr-batch-pipeline \
+  -p pr-numbers=<number> \
+  --wait
+```
 
 ## 7. PR queue mode — Vanguard Lab Strike Report
 

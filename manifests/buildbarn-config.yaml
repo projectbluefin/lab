@@ -204,6 +204,10 @@ data:
           },
         },
       },
+      // BuildStream pushes remote assets through the Remote Asset API. Keep the
+      // fetcher available for any non-pushed assets that need to be resolved from
+      // an external URI while still allowing updates for BuildStream's pushed
+      // assets through the indexed instance.
       fetcher: {
         http: {},
       },
@@ -211,6 +215,7 @@ data:
         listenAddresses: [':8984'],
         authenticationPolicy: { allow: {} },
       }],
+      allowUpdatesForInstances: [''],
       maximumMessageSizeBytes: 64 * 1024 * 1024,
       fetchAuthorizer: { allow: {} },
       pushAuthorizer: { allow: {} },

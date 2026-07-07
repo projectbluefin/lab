@@ -12,6 +12,7 @@ passing runs appear automatically in Bluefin GitHub Releases.
 |---|---|---|---|
 | `ghcr.io/projectbluefin/bluefin` | `testing` | `bluefin-test` | Nightly 02:00 UTC + digest change |
 | `ghcr.io/projectbluefin/bluefin-lts` | `testing` | `bluefin-lts-test` | Nightly 02:30 UTC + digest change |
+| `ghcr.io/frostyard/snow` | `latest` | `snosi-test` | Every 3 hours + digest change |
 | `ghcr.io/projectbluefin/dakota` | latest BST build | `bluefin-test` | Nightly 03:00 UTC + BST build |
 
 `:testing` is the only production branch tested continuously. `:stable` runs are

@@ -19,9 +19,6 @@ spec:
       resources:
         requests:
           storage: 100Gi
-  synchronization:
-    mutexes:
-    - name: build-containerdisk-global
   entrypoint: build-containerdisk
   arguments:
     parameters:
@@ -155,6 +152,7 @@ spec:
     # container to detect its source image and root filesystem correctly.
 
   - name: install-to-disk
+    activeDeadlineSeconds: 14400  # 4h; bootc install-to-disk can exceed the earlier 2h limit for large images.
     inputs:
       parameters:
       - name: image

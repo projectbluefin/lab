@@ -50,10 +50,10 @@
   the two variant builds across ghost and exo-0 in parallel (confirmed live:
   one variant per node, both `Running` simultaneously).
 - **Cache:** Uses the shared Buildbarn cache/execution path for artifact writes,
-  remote execution, and cache reuse, with a pod-local BuildStream cache kept for
-  fast per-pod retry state. The workflow still uses a checked-in BuildStream
-  config and a warm-cache pre-step so the shared object and action caches are
-  primed before the main build.
+  remote execution, and cache reuse only, with a pod-local BuildStream cache kept
+  for fast per-pod retry state. The workflow uses a checked-in BuildStream config
+  and a warm-cache pre-step so the shared object, action, and remote-asset caches
+  are primed before the main build.
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
@@ -69,7 +69,7 @@
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
 - **Cache policy:** uses the same shared Buildbarn remote cache/execution path as
   Dakota, via the checked-in `buildstream-remote-cache` config, with
-  `override-project-caches: false` and upstream fallback remotes preserved.
+  `override-project-caches: false` and no upstream fallback remotes.
 
 ### bluefin-server-build-pipeline
 - **Purpose:** BuildStream compile pipeline for Bluefin Server elements
@@ -81,16 +81,16 @@
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
 - **Cache policy:** uses the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`) and the shared Buildbarn remote-asset endpoint (`bb-remote-asset.buildbarn.svc.cluster.local:8984`) for BuildStream remote asset fetches
   via the checked-in `buildstream-remote-cache` config, with project cache
-  overrides left disabled and upstream fallback remotes preserved.
+  overrides left disabled and no upstream fallback remotes.
 
 ### bst-qa-pipeline
 - **Purpose:** Smoke-tests the Buildbarn distributed remote-execution grid itself
   by running a trivial BuildStream element through it.
-- **Cache + RE wiring:** artifact cache writes and remote execution both flow
-  through the shared Buildbarn frontend
-  (`frontend.buildbarn.svc.cluster.local:8980`), while the project cache remotes
-  keep the same upstream fallback mirrors and only change the write target to the
-  distributed Buildbarn service. See [Distributed Build/RE Grid](#distributed-buildre-grid).
+- **Cache + RE wiring:** artifact cache writes, remote execution, and remote asset
+  fetches all flow through the shared Buildbarn frontend and remote-asset service
+  (`frontend.buildbarn.svc.cluster.local:8980` and
+  `bb-remote-asset.buildbarn.svc.cluster.local:8984`). The project cache remotes
+  are Buildbarn-only. See [Distributed Build/RE Grid](#distributed-buildre-grid).
 - **Known limitation:** the current test element (`hello.bst`, an `import` kind)
   proves config wiring (BuildStream connects to the frontend with no errors) but
   never actually dispatches an action through the scheduler to a worker — verified
@@ -146,6 +146,7 @@ Buildbarn's runner deliberately does not grant.
 | `digest-watch` | 5 min | `build-containerdisk` (force rebuild) when `bluefin`/`bluefin-lts` GHCR digest changes | The containerDisk that `bluefin-qa-pipeline`'s `assert-cd` depends on |
 | `dakota-commit-poller` | 5 min | `dakota-build-pipeline` when `dakota:testing` gets a new commit digest | the shared Buildbarn cache/execution path for the Dakota BuildStream layer |
 | `image-poll-bluefin-{testing,stable}` / `image-poll-lts-{testing,stable}` | 10 min | `bluefin-qa-pipeline` when the respective GHCR tag digest changes | Test coverage freshness (not a build cache) |
+| `image-poll-snosi-latest` | 30 min past every 3 hours | `bluefin-qa-pipeline` when `ghcr.io/frostyard/snow:latest` changes | Snosi GNOME desktop image coverage |
 | `flatcar-kernel-poller` | 10 min | `flatcar-kernel-build` when kernel.org's latest stable version changes | Flatcar kernel build cache |
 | `flatcar-kernel-gate` | 30 min | (gate/promotion check, see `docs/skills/flatcar-node-onboarding.md`) | N/A |
 

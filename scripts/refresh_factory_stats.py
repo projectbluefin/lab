@@ -68,6 +68,8 @@ def main():
         'flatcar-kernel-build',
         'bluefin-server-build-pipeline',
         'dakota-build-pipeline',
+        'cosmic-build-pipeline',
+        'cosmic-qa-pipeline',
     )
 
     def pipeline_base_name(name):

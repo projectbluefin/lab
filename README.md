@@ -41,6 +41,7 @@ The lab continuously validates the core operating system family across multiple 
 | `ghcr.io/projectbluefin/bluefin` | `testing`, `stable` | Nightly 02:00 UTC + on every OCI digest change | Primary standard GNOME image (full suite) |
 | `ghcr.io/projectbluefin/bluefin-lts` | `testing`, `stable` | Nightly 02:30 UTC + on every OCI digest change | Long-term support GNOME enterprise target |
 | `ghcr.io/ublue-os/aurora` | `testing`, `stable` | Hourly OCI digest poll on upstream change | KDE variant validation (system suite) |
+| `ghcr.io/frostyard/snow` | `latest` | Every 3 hours + on every OCI digest change | Snosi GNOME desktop profile (smoke/developer/system suites) |
 | `ghcr.io/projectbluefin/dakota` | `latest` | Nightly 03:00 UTC + on every BST build trigger | BuildStream (BST) flatcar-substrate variant |
 
 **Image-poll trigger:** hourly CronWorkflows check the OCI registry digests against a stored
@@ -178,6 +179,7 @@ lab/
 │   ├── image-poll-bluefin-stable.yaml    CronWorkflow: poll bluefin:stable digest
 │   ├── image-poll-lts-testing.yaml       CronWorkflow: poll bluefin-lts:testing digest
 │   ├── image-poll-lts-stable.yaml        CronWorkflow: poll bluefin-lts:stable digest
+│   ├── image-poll-snosi-latest.yaml      CronWorkflow: poll snosi snow:latest digest
 │   ├── image-poll-common.yaml            CronWorkflow: poll common image digest
 │   ├── image-polling-state.yaml          ConfigMap: last-seen digest state for pollers
 │   ├── pr-label-poller.yaml              CronWorkflow: poll PR labels for CI gate

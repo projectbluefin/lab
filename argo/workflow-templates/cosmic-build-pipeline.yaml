@@ -94,7 +94,9 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          emptyDir: {}
+          hostPath:
+            path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
+            type: DirectoryOrCreate
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache
@@ -134,6 +136,7 @@ spec:
           cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
           BST_CONF=/tmp/buildstream-cluster.conf
           REMOTE_EXECUTION_SERVICE="grpc://frontend.buildbarn.svc.cluster.local:8980"
+          REMOTE_ASSET_SERVICE="bb-remote-asset.buildbarn.svc.cluster.local:8984"
           ELEMENT="{{inputs.parameters.element}}"
           TAG="{{inputs.parameters.tag}}"
           REF="{{inputs.parameters.ref}}"
@@ -152,22 +155,10 @@ spec:
                 servers:
                 - url: grpc://frontend.buildbarn.svc.cluster.local:8980
                   push: true
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-                - url: https://gbm.gnome.org:11003
-                  push: false
               source-caches:
                 override-project-caches: false
                 servers:
                 - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-                - url: https://gbm.gnome.org:11003
                   push: false
               remote-execution:
                 execution-service:
@@ -176,6 +167,10 @@ spec:
                   url: ${REMOTE_EXECUTION_SERVICE}
                 action-cache-service:
                   url: ${REMOTE_EXECUTION_SERVICE}
+              remoteasset:
+                enable: true
+                remote_asset_service:
+                  address: ${REMOTE_ASSET_SERVICE}
           EOF
 
           echo "=== Building ${ELEMENT} ==="

@@ -136,14 +136,22 @@ def build_upstream_status(root: Path, collected_at: str) -> dict:
             'collected_at': collected_at,
             'derivation': 'Derived from variant publisher mapping already published in docs/data.',
         },
+        {
+            'id': 'cosmic',
+            'label': 'COSMIC desktop',
+            'description': 'COSMIC desktop OCI images built in-cluster via the cosmic-build-pipeline Argo WorkflowTemplate.',
+            'source_url': repo_blob_url('argo/workflow-templates/cosmic-build-pipeline.yaml'),
+            'collected_at': collected_at,
+            'derivation': 'Known in-cluster build scope from the cosmic-build-pipeline WorkflowTemplate tracked in git.',
+        },
     ]
 
     rows = []
     for variant, details in (publishers.get('variants') or {}).items():
         org = details.get('org')
-        if org not in {'projectbluefin', 'ublue-os'}:
+        if org not in {'projectbluefin', 'ublue-os', 'razorfinos'}:
             continue
-        group = 'projectbluefin' if org == 'projectbluefin' else 'ublue'
+        group = 'projectbluefin' if org == 'projectbluefin' else ('cosmic' if org == 'razorfinos' else 'ublue')
         repo = details.get('publisher_repo')
         releases_url = f'https://github.com/{repo}/releases' if repo else repo_blob_url('docs/data/variant-publishers.json')
         image_summary = images.get(variant, {})
@@ -152,7 +160,13 @@ def build_upstream_status(root: Path, collected_at: str) -> dict:
             published_at = image_summary.get(f'{branch}_seen_at')
             freshness_age_days = image_summary.get(f'{branch}_age_days')
             state = 'available' if published_at else 'unavailable'
-            state_reason = None if published_at else 'No published release timestamp is present in docs/data/factory-stats.json for this lane.'
+            if org == 'razorfinos':
+                state_reason = None if published_at else (
+                    'COSMIC image is built in-cluster via the cosmic-build-pipeline Argo WorkflowTemplate '
+                    'and exported to the local Zot registry — no external GitHub release timestamp is collected yet.'
+                )
+            else:
+                state_reason = None if published_at else 'No published release timestamp is present in docs/data/factory-stats.json for this lane.'
             rows.append(
                 {
                     'id': row_id,
@@ -986,6 +1000,33 @@ BUILD_PIPELINE_CATALOG = [
         'repo': 'projectbluefin/dakota',
         'workflow_path': '.github/workflows/build-aarch64.yml',
     },
+    {
+        'id': 'cosmic-stable',
+        'display_name': 'COSMIC — stable',
+        'description': 'COSMIC desktop OCI image built in-cluster via the cosmic-build-pipeline Argo WorkflowTemplate (BST build, exported to local Zot :30500).',
+        'repo': 'RazorfinOS-org/cosmic-build-meta',
+        'workflow_path': 'argo/workflow-templates/cosmic-build-pipeline.yaml',
+        'source': 'argo',
+        'argo_pipeline_key': 'cosmic-build-pipeline',
+    },
+    {
+        'id': 'cosmic-nvidia',
+        'display_name': 'COSMIC — Nvidia',
+        'description': 'COSMIC desktop OCI image with proprietary Nvidia driver layering, built in parallel with cosmic-stable by the cosmic-build-pipeline.',
+        'repo': 'RazorfinOS-org/cosmic-build-meta',
+        'workflow_path': 'argo/workflow-templates/cosmic-build-pipeline.yaml',
+        'source': 'argo',
+        'argo_pipeline_key': 'cosmic-build-pipeline',
+    },
+    {
+        'id': 'cosmic-qa',
+        'display_name': 'COSMIC — QA pipeline',
+        'description': 'End-to-end COSMIC QA pipeline: smoke, developer, and system suites run against a KubeVirt VM provisioned from the local Zot containerDisk.',
+        'repo': 'RazorfinOS-org/cosmic-build-meta',
+        'workflow_path': 'argo/workflow-templates/cosmic-qa-pipeline.yaml',
+        'source': 'argo',
+        'argo_pipeline_key': 'cosmic-qa-pipeline',
+    },
 ]
 
 
@@ -993,10 +1034,16 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
     factory_stats_path = root / 'docs/data/factory-stats.json'
     factory_stats = load_json(factory_stats_path) if factory_stats_path.exists() else {}
     image_builds = factory_stats.get('image_builds') or {}
+    build_history = factory_stats.get('build_history') or {}
 
     rows = []
     for entry in BUILD_PIPELINE_CATALOG:
-        history = image_builds.get(entry['id']) or []
+        is_argo = entry.get('source') == 'argo'
+        if is_argo:
+            argo_key = entry.get('argo_pipeline_key') or entry['id']
+            history = build_history.get(argo_key) or []
+        else:
+            history = image_builds.get(entry['id']) or []
         history_points = [
             {
                 'id': run.get('id'),
@@ -1021,9 +1068,32 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
             state_reason = None
         else:
             state = 'unavailable'
-            state_reason = (
-                'No GitHub Actions run has been published yet for this workflow/branch '
-                'combination, or the GitHub API request failed on the last collector run.'
+            if is_argo:
+                state_reason = (
+                    'No completed Argo workflow run has been published yet for this pipeline, '
+                    'or the cluster API was unreachable on the last collector run.'
+                )
+            else:
+                state_reason = (
+                    'No GitHub Actions run has been published yet for this workflow/branch '
+                    'combination, or the GitHub API request failed on the last collector run.'
+                )
+
+        if is_argo:
+            ci_url = last_run.get('run_url') if last_run else 'http://192.168.1.102:32746/workflows/argo'
+            source_url = repo_blob_url(entry['workflow_path'])
+            derivation = (
+                f"Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json "
+                f"build_history['{entry.get('argo_pipeline_key', entry['id'])}'], "
+                f"populated by live Argo workflow scraping against the cluster."
+            )
+        else:
+            ci_url = last_run.get('run_url') if last_run else f"https://github.com/{entry['repo']}/actions/workflows/{Path(entry['workflow_path']).name}"
+            source_url = f"https://github.com/{entry['repo']}/blob/main/{entry['workflow_path']}"
+            derivation = (
+                "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json "
+                f"image_builds['{entry['id']}'], populated by a live GitHub Actions "
+                f"workflow-runs query against {entry['repo']}."
             )
 
         rows.append(
@@ -1031,21 +1101,18 @@ def build_builds_matrix(root: Path, collected_at: str) -> dict:
                 'id': entry['id'],
                 'display_name': entry['display_name'],
                 'description': entry['description'],
+                'source': entry.get('source', 'github-actions'),
                 'last_run': last_run,
                 'history_points': history_points,
                 'success_rate': success_rate,
                 'avg_duration_min': avg_duration_min,
                 'runs_tracked': len(history_points),
-                'ci_url': last_run.get('run_url') if last_run else f"https://github.com/{entry['repo']}/actions/workflows/{Path(entry['workflow_path']).name}",
+                'ci_url': ci_url,
                 'state': state,
                 'state_reason': state_reason,
-                'source_url': f"https://github.com/{entry['repo']}/blob/main/{entry['workflow_path']}",
+                'source_url': source_url,
                 'collected_at': collected_at,
-                'derivation': (
-                    "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json "
-                    f"image_builds['{entry['id']}'], populated by a live GitHub Actions "
-                    f"workflow-runs query against {entry['repo']}."
-                ),
+                'derivation': derivation,
             }
         )
 

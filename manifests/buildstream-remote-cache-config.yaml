@@ -22,20 +22,19 @@ data:
       servers:
       - url: grpc://frontend.buildbarn.svc.cluster.local:8980
         push: true
-      - url: https://cache.projectbluefin.io:11001
-        push: false
-      - url: https://cache.freedesktop-sdk.io:11001
-        push: false
-      - url: https://gbm.gnome.org:11003
-        push: false
     source-caches:
       override-project-caches: false
       servers:
       - url: grpc://frontend.buildbarn.svc.cluster.local:8980
         push: false
-      - url: https://cache.projectbluefin.io:11001
-        push: false
-      - url: https://cache.freedesktop-sdk.io:11001
-        push: false
-      - url: https://gbm.gnome.org:11003
-        push: false
+    remote-execution:
+      execution-service:
+        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+      storage-service:
+        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+      action-cache-service:
+        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+    remoteasset:
+      enable: true
+      remote_asset_service:
+        address: bb-remote-asset.buildbarn.svc.cluster.local:8984

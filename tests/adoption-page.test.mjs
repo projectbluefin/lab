@@ -123,14 +123,14 @@ test('adoption page renders summary metrics, lane details, trust cards, chart co
   );
 
   // Partial coverage — transplanted data
-  assert.match(adoptionPage, /Adoption data available for 6 of 10 lanes/i, 'adoption hero reflects partial coverage');
+  assert.match(adoptionPage, /Adoption data available for 6 of 12 lanes/i, 'adoption hero reflects partial coverage');
   assert.match(adoptionPage, /No registry pull-count data/i, 'adoption page keeps pull-count gaps explicit');
   assert.match(adoptionPage, /3502|2,527|71,550/i, 'adoption page renders migrated countme values');
 });
 
 test('adoption page renders partial countme coverage while keeping pull gaps explicit', () => {
   const adoptionPage = html('docs/adoption/index.html');
-  assert.match(adoptionPage, /Adoption data available for 6 of 10 lanes/i);
+  assert.match(adoptionPage, /Adoption data available for 6 of 12 lanes/i);
   assert.match(adoptionPage, /71,550|71550/i);
   assert.match(adoptionPage, /No registry pull-count data/i);
   assert.doesNotMatch(adoptionPage, /Adoption signals are pending collection/i);
@@ -144,8 +144,8 @@ test('adoption-metrics.json contract satisfies the page model contract', () => {
   assert.ok(Array.isArray(dataset.trust_cards), 'trust_cards is an array');
   assert.ok(Array.isArray(dataset.rows), 'rows is an array');
 
-  assert.equal(dataset.rows.length, 10, 'adoption dataset has 10 lane rows');
-  assert.equal(dataset.trust_cards.length, 6, 'adoption dataset has 6 trust cards');
+  assert.equal(dataset.rows.length, 12, 'adoption dataset has 12 lane rows');
+  assert.equal(dataset.trust_cards.length, 7, 'adoption dataset has 7 trust cards');
 
   // All rows carry a valid state enum value; every unavailable row carries an explicit non-empty
   // state_reason. This is a permanent behavioral contract — it holds whether 0 or all lanes

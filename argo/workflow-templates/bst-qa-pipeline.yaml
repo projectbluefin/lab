@@ -52,6 +52,10 @@ spec:
       volumes:
         - name: workdir
           emptyDir: {}
+        - name: bst-cache
+          hostPath:
+            path: /var/tmp/bst-cache/bst-qa
+            type: DirectoryOrCreate
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache
@@ -71,6 +75,8 @@ spec:
         volumeMounts:
           - name: workdir
             mountPath: /work
+          - name: bst-cache
+            mountPath: /root/.cache/buildstream
           - name: buildstream-config
             mountPath: /etc/buildstream
             readOnly: true
@@ -98,6 +104,7 @@ spec:
           cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
           BST_CONF=/tmp/buildstream-cluster.conf
           REMOTE_EXECUTION_SERVICE="{{inputs.parameters.remote-execution-service}}"
+          REMOTE_ASSET_SERVICE="bb-remote-asset.buildbarn.svc.cluster.local:8984"
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           cat >> /tmp/buildstream-cluster.conf <<EOF
           projects:
@@ -107,22 +114,10 @@ spec:
                 servers:
                 - url: grpc://frontend.buildbarn.svc.cluster.local:8980
                   push: true
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-                - url: https://gbm.gnome.org:11003
-                  push: false
               source-caches:
                 override-project-caches: false
                 servers:
                 - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-                - url: https://gbm.gnome.org:11003
                   push: false
               remote-execution:
                 execution-service:
@@ -131,6 +126,10 @@ spec:
                   url: ${REMOTE_EXECUTION_SERVICE}
                 action-cache-service:
                   url: ${REMOTE_EXECUTION_SERVICE}
+              remoteasset:
+                enable: true
+                remote_asset_service:
+                  address: ${REMOTE_ASSET_SERVICE}
           EOF
 
           echo "=== Building ${ELEMENT} ==="

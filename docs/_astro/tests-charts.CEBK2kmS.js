@@ -158,25 +158,35 @@ renderChart(
 
 const suites = Array.isArray(payload.suites) ? payload.suites : [];
 const variants = Array.isArray(payload.variants) ? payload.variants : [];
-const heatmapData = rows.map((row) => ({
-  value: [
-    suites.indexOf(row.suite),
-    variants.indexOf(row.variant),
-    row.state === 'available' && typeof row.pass_rate === 'number' ? row.pass_rate : -1,
-  ],
-  rowId: row.id,
-  state: row.state,
-  stateReason: row.state_reason,
-  scenariosTotal: row.scenarios_total,
-  scenariosFailed: row.scenarios_failed,
-}));
+
+// Separate available and unavailable heatmap points for distinct rendering
+const heatmapAvailable = [];
+const heatmapUnavailable = [];
+rows.forEach((row) => {
+  const xIdx = suites.indexOf(row.suite);
+  const yIdx = variants.indexOf(row.variant);
+  const point = {
+    value: [xIdx, yIdx, row.state === 'available' && typeof row.pass_rate === 'number' ? row.pass_rate : -1],
+    rowId: row.id,
+    state: row.state,
+    stateReason: row.state_reason,
+    scenariosTotal: row.scenarios_total,
+    scenariosFailed: row.scenarios_failed,
+  };
+  if (row.state === 'available') {
+    heatmapAvailable.push(point);
+  } else {
+    heatmapUnavailable.push(point);
+  }
+});
+const heatmapData = [...heatmapAvailable, ...heatmapUnavailable];
 
 renderChart(
   'tests-chart-heatmap',
   suites.length && variants.length
     ? {
         backgroundColor: 'transparent',
-        grid: { left: 84, right: 28, top: 24, bottom: 84 },
+        grid: { left: 84, right: 28, top: 24, bottom: 88 },
         tooltip: {
           backgroundColor: 'rgba(15, 23, 42, 0.95)',
           borderColor: 'rgba(125, 211, 252, 0.35)',
@@ -186,9 +196,11 @@ renderChart(
             const suite = suites[item.value[0]];
             const variant = variants[item.value[1]];
             if (item.value[2] < 0) {
-              return `<strong>${variant} / ${suite}</strong><br>Unavailable<br>${item.stateReason ?? 'No completed run published yet.'}`;
+              return `<strong>${variant} / ${suite}</strong><br><span style="color:#fb7185">◆ Awaiting Evidence</span><br><em style="color:#94a3b8;font-size:0.85em">${item.stateReason ?? 'No completed run published yet.'}</em>`;
             }
-            return `<strong>${variant} / ${suite}</strong><br>Pass rate: ${item.value[2]}%<br>Failed: ${item.scenariosFailed}/${item.scenariosTotal}`;
+            const rate = item.value[2];
+            const color = rate >= 90 ? '#4ade80' : rate >= 60 ? '#fbbf24' : '#f87171';
+            return `<strong>${variant} / ${suite}</strong><br>Pass rate: <span style="color:${color}">${rate}%</span><br>Failed: ${item.scenariosFailed}/${item.scenariosTotal}`;
           },
         },
         xAxis: {
@@ -209,21 +221,48 @@ renderChart(
           bottom: 24,
           textStyle: { color: '#cbd5e1' },
           pieces: [
-            { value: -1, label: 'Unavailable', color: '#334155' },
-            { gt: -1, lte: 60, label: '0-60%', color: '#7f1d1d' },
-            { gt: 60, lte: 90, label: '60-90%', color: '#c2410c' },
-            { gt: 90, lte: 100, label: '90-100%', color: '#15803d' },
+            { value: -1, label: 'Awaiting Evidence', color: '#1e2d4a' },
+            { gt: -1, lte: 60, label: '0–60%', color: '#7f1d1d' },
+            { gt: 60, lte: 90, label: '60–90%', color: '#c2410c' },
+            { gt: 90, lte: 100, label: '90–100%', color: '#15803d' },
           ],
         },
         series: [
           {
+            name: 'Pass rate',
             type: 'heatmap',
             label: {
               show: true,
               color: '#f8fafc',
-              formatter: (params) => (params.data.value[2] < 0 ? '—' : `${params.data.value[2]}%`),
+              formatter: (params) => (params.data.value[2] < 0 ? '◆' : `${params.data.value[2]}%`),
             },
-            data: heatmapData,
+            data: heatmapAvailable,
+            itemStyle: { borderColor: 'rgba(255,255,255,0.04)', borderWidth: 1 },
+            emphasis: { itemStyle: { borderColor: '#38bdf8', borderWidth: 2 } },
+          },
+          {
+            name: 'Awaiting Evidence',
+            type: 'scatter',
+            coordinateSystem: 'cartesian2d',
+            symbol: 'rect',
+            symbolSize: [
+              // fill the full cell — ECharts scatter on category axes needs explicit pixel size
+              44,
+              26,
+            ],
+            label: {
+              show: true,
+              color: '#fb7185',
+              fontSize: 14,
+              formatter: () => '◆',
+            },
+            data: heatmapUnavailable.map((d) => ({
+              ...d,
+              value: [d.value[0], d.value[1]],
+            })),
+            itemStyle: { color: '#1e2d4a', borderColor: 'rgba(251,113,133,0.25)', borderWidth: 1 },
+            emphasis: { itemStyle: { borderColor: '#fb7185', borderWidth: 2 } },
+            z: 2,
           },
         ],
       }

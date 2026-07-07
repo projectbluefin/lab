@@ -83,6 +83,16 @@ spec:
           WORK_ROOT="${PWD}/.dakota-pr-batch"
 
           mkdir -p "${WORK_ROOT}"
+          mkdir -p /etc/containers
+          cat > /etc/containers/storage.conf <<'EOF'
+[storage]
+driver = "vfs"
+
+[storage.options]
+mount_program = ""
+EOF
+          export BUILDAH_ISOLATION=chroot
+          export PODMAN_USERNS=host
           cleanup() {
             rm -rf "${WORK_ROOT}"
           }

@@ -6,18 +6,18 @@
       "type": "rolling",
       "hours": 24
     },
-    "state": "fresh",
-    "age_minutes": 0,
+    "state": "degraded",
+    "age_minutes": 12069,
     "threshold_minutes": 180
   },
   "lineage": {
     "collector": {
       "workflow": ".github/workflows/update-test-results.yml",
-      "run_id": null,
-      "run_url": "https://github.com/projectbluefin/lab/actions",
+      "run_id": "28902063811",
+      "run_url": "https://github.com/projectbluefin/lab/actions/runs/28902063811",
       "job": "update",
-      "commit_sha": "",
-      "commit_url": "https://github.com/projectbluefin/lab/commits/main"
+      "commit_sha": "4ec12107509c1c6e386630073f3422d3aa64b2de",
+      "commit_url": "https://github.com/projectbluefin/lab/commit/4ec12107509c1c6e386630073f3422d3aa64b2de"
     },
     "inputs_digest_sha256": "sha256:822a5869c86566bbca0fe020be2bb606bd4c50436e6fd2519e0b8569a9f6562c",
     "inputs": [
@@ -102,11 +102,15 @@
       "formula": "passed_suite_runs / completed_suite_runs * 100",
       "window_hours": 24,
       "confidence": "high",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
-          "url": "https://github.com/projectbluefin/lab/actions"
+          "url": "https://github.com/projectbluefin/lab/actions/runs/28902063811"
+        },
+        {
+          "kind": "commit",
+          "url": "https://github.com/projectbluefin/lab/commit/4ec12107509c1c6e386630073f3422d3aa64b2de"
         }
       ]
     },
@@ -120,11 +124,15 @@
       "formula": "(scenarios_total - scenarios_failed) / scenarios_total * 100",
       "window_hours": 24,
       "confidence": "medium",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
-          "url": "https://github.com/projectbluefin/lab/actions"
+          "url": "https://github.com/projectbluefin/lab/actions/runs/28902063811"
+        },
+        {
+          "kind": "commit",
+          "url": "https://github.com/projectbluefin/lab/commit/4ec12107509c1c6e386630073f3422d3aa64b2de"
         }
       ]
     },
@@ -138,14 +146,24 @@
       "formula": "count(runs where overall=running)",
       "window_hours": 1,
       "confidence": "high",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
-          "url": "https://github.com/projectbluefin/lab/actions"
+          "url": "https://github.com/projectbluefin/lab/actions/runs/28902063811"
+        },
+        {
+          "kind": "commit",
+          "url": "https://github.com/projectbluefin/lab/commit/4ec12107509c1c6e386630073f3422d3aa64b2de"
         }
       ]
     }
   ],
-  "errors": []
+  "errors": [
+    {
+      "source": "live_cluster_snapshot",
+      "reason": "private endpoint unavailable or incomplete from GitHub-hosted runner",
+      "effect": "public telemetry downgraded to unknown/degraded"
+    }
+  ]
 }

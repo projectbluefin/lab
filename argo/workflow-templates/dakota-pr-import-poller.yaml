@@ -96,9 +96,9 @@ spec:
                 - name: max-prs
                   value: "1"
                 - name: build-command
-                  value: "./ci/build.sh"
+                  value: "just validate && just build default"
                 - name: qa-command
-                  value: "./ci/qa.sh"
+                  value: "just lint"
           EOF
             echo "PR #${PR_NUM} ${REPO}: dispatched dakota-pr-batch-pipeline for ${HEAD_BRANCH}" >&2
             (( DISPATCHED++ )) || true

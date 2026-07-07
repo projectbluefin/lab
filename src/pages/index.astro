@@ -20,11 +20,45 @@ const clusterNodes = stats?.factory?.cluster?.nodes || [];
 const images = stats?.factory?.images || {};
 const testCoverageTotal = stats?.test_coverage?.scenarios_total || 0;
 const testCoverageFailed = stats?.test_coverage?.scenarios_failed || 0;
+// Canonical image-status contract: upstream-status.json drives ALL image cards
 const upstreamRows = Array.isArray(upstreamStatus?.rows) ? upstreamStatus.rows : [];
-const streamRows = upstreamRows.filter(
-  (row) => row && ['projectbluefin', 'ublue'].includes(row.group) && ['stable', 'testing'].includes(row.branch),
-);
-const streamByVariantBranch = new Map(streamRows.map((row) => [`${row.variant}:${row.branch}`, row]));
+
+// Human-readable display names per variant slug
+const variantDisplayNames: Record<string, string> = {
+  'bluefin':      'Bluefin',
+  'bluefin-lts':  'Bluefin LTS',
+  'aurora':       'Aurora',
+  'bazzite':      'Bazzite',
+  'dakota':       'Dakota',
+  'cosmic':       'COSMIC',
+  'gnomeos':      'GNOME OS',
+  'fedora-bootc': 'Fedora bootc',
+};
+
+// Group rows by variant; preserve insertion order from JSON for stable card ordering
+const variantMap = new Map<string, typeof upstreamRows>();
+for (const row of upstreamRows) {
+  if (!row?.variant) continue;
+  if (!variantMap.has(row.variant)) variantMap.set(row.variant, []);
+  variantMap.get(row.variant)!.push(row);
+}
+
+// Build one card per variant from the canonical upstream-status rows
+const imageCards = Array.from(variantMap.entries()).map(([variant, rows]) => {
+  const firstRow = rows[0];
+  const repo = firstRow?.publisher_repo ?? (images as Record<string, { repo?: string }>)[variant]?.repo ?? null;
+  const displayName = variantDisplayNames[variant] ?? variant;
+  const branches = rows.map((row) => ({
+    branch:      row.branch as string,
+    state:       row.state as string,
+    stateReason: (row.state_reason as string | null) ?? null,
+    age:         (row.freshness_age_days as number | null) ?? null,
+    seenAt:      (row.published_at as string | null) ?? null,
+    sourceUrl:   (row.source_url as string | null) ?? null,
+  }));
+  return { variant, displayName, repo, branches };
+});
+
 const fabric = copy?.fabric || {};
 const fabricLinks = Array.isArray(fabric?.links) ? fabric.links.filter((link) => link?.from && link?.to) : [];
 const nodeLinksByName = new Map();
@@ -65,29 +99,6 @@ const getAgeTone = (days: number | null, limit: number) => {
   if (days === null) return 'pending';
   return days > limit ? 'failed' : 'passed';
 };
-
-const imageCards = Object.entries(images).map(([name, data]) => {
-  const stableRow = streamByVariantBranch.get(`${name}:stable`);
-  const testingRow = streamByVariantBranch.get(`${name}:testing`);
-  return {
-    name,
-    repo: data.repo,
-    stable: {
-      age: stableRow?.freshness_age_days ?? data.stable_age_days ?? null,
-      seenAt: stableRow?.published_at ?? data.stable_seen_at ?? null,
-      sourceUrl: stableRow?.source_url ?? data.stable_source_url ?? null,
-      tag: data.stable_tag ?? null,
-      stateReason: stableRow?.state_reason ?? null,
-    },
-    testing: {
-      age: testingRow?.freshness_age_days ?? data.testing_age_days ?? null,
-      seenAt: testingRow?.published_at ?? data.testing_seen_at ?? null,
-      sourceUrl: testingRow?.source_url ?? data.testing_source_url ?? null,
-      tag: data.testing_tag ?? null,
-      stateReason: testingRow?.state_reason ?? null,
-    },
-  };
-});
 
 const nodeSpecs: Record<string, { cpu: string; gpu: string; ip: string; details: string }> = {
   ghost: {
@@ -680,55 +691,48 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     </p>
     <div class="image-status-grid">
       {imageCards.map((card) => {
-        const stable = card.stable.age;
-        const testing = card.testing.age;
-        const stableTone = getAgeTone(stable, 14);
-        const testingTone = getAgeTone(testing, 7);
         const releasesUrl = card.repo ? `https://github.com/${card.repo}/releases` : '';
 
         return (
           <article class="image-status-card">
             <header style="display: flex; justify-content: space-between; align-items: center;">
-              <h3>{card.name}</h3>
+              <h3>{card.displayName}</h3>
               {releasesUrl && (
                 <a href={releasesUrl} target="_blank" rel="noreferrer" style="font-size: 0.8rem; color: #38bdf8; text-decoration: none;">
-                  Releases →
+                  Releases &rarr;
                 </a>
               )}
             </header>
-            <div class="pulse-stats">
-              {stable !== undefined && (
-                <div class="pulse-stat">
-                  <span class={`pulse-stat-value tone-${stableTone}`}>{stable !== null ? `${stable}d` : '—'}</span>
-                  <span class="pulse-stat-name">stable age</span>
-                  {card.stable.sourceUrl && (
-                    <a href={card.stable.sourceUrl} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
-                      {card.stable.tag || 'source'}
-                    </a>
-                  )}
-                  <span class="pulse-stat-detail">
-                    {card.stable.seenAt
-                      ? `Published ${formatUtc(card.stable.seenAt)}`
-                      : (card.stable.stateReason || 'No stable release timestamp')}
-                  </span>
-                </div>
-              )}
-              {testing !== undefined && (
-                <div class="pulse-stat">
-                  <span class={`pulse-stat-value tone-${testingTone}`}>{testing !== null ? `${testing}d` : '—'}</span>
-                  <span class="pulse-stat-name">testing age</span>
-                  {card.testing.sourceUrl && (
-                    <a href={card.testing.sourceUrl} target="_blank" rel="noreferrer" style="font-size: 0.65rem; color: #64748b; text-decoration: none;">
-                      {card.testing.tag || 'source'}
-                    </a>
-                  )}
-                  <span class="pulse-stat-detail">
-                    {card.testing.seenAt
-                      ? `Published ${formatUtc(card.testing.seenAt)}`
-                      : (card.testing.stateReason || 'No testing release timestamp')}
-                  </span>
-                </div>
-              )}
+            <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+              {card.branches.map((b, i) => {
+                const isAvailable = b.state === 'available';
+                const ageLimit = (b.branch === 'testing' || b.branch === 'nightly') ? 7 : 14;
+                const tone = isAvailable ? getAgeTone(b.age, ageLimit) : 'bad';
+                return (
+                  <div style={`display: flex; flex-direction: column; gap: 3px;${i > 0 ? ' border-top: 1px solid rgba(255,255,255,0.04); padding-top: 0.6rem;' : ''}`}>
+                    <div style="display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap;">
+                      <span class={`pulse-stat-value tone-${tone}`} style="font-size: 1.35rem;">
+                        {isAvailable && b.age !== null ? `${b.age}d` : '—'}
+                      </span>
+                      <span class="pulse-stat-name">{b.branch}</span>
+                      {!isAvailable && (
+                        <span style="font-size: 0.62rem; color: #fbbf24; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                          Awaiting Evidence
+                        </span>
+                      )}
+                    </div>
+                    <div class="pulse-stat-detail">
+                      {isAvailable && b.seenAt ? (
+                        b.sourceUrl ? (
+                          <a href={b.sourceUrl} target="_blank" rel="noreferrer" style="color: #64748b; text-decoration: none;">{`Published ${formatUtc(b.seenAt)}`}</a>
+                        ) : `Published ${formatUtc(b.seenAt)}`
+                      ) : (
+                        b.stateReason || 'No release timestamp'
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </article>
         );

@@ -192,20 +192,28 @@ data:
 
   remote-asset.jsonnet: |
     {
-      grpcServers: {
-        asset: {
-          listenAddress: ':8984',
-          authenticationPolicy: 'allow',
-        },
-      },
       contentAddressableStorage: {
         grpc: {
           address: 'storage.buildbarn.svc.cluster.local:8981',
         },
       },
+      assetCache: {
+        actionCache: {
+          grpc: {
+            address: 'storage.buildbarn.svc.cluster.local:8981',
+          },
+        },
+      },
       fetcher: {
         http: {},
       },
+      grpcServers: [{
+        listenAddresses: [':8984'],
+        authenticationPolicy: { allow: {} },
+      }],
+      maximumMessageSizeBytes: 64 * 1024 * 1024,
+      fetchAuthorizer: { allow: {} },
+      pushAuthorizer: { allow: {} },
     }
 
   worker.jsonnet: |

@@ -192,7 +192,7 @@ spec:
               continue
             fi
 
-            if ! git merge --no-ff --no-edit "pr-${PR_NUM}" > "${PR_DIR}/merge.log" 2>&1; then
+            if ! git merge --no-ff --no-edit --allow-unrelated-histories "pr-${PR_NUM}" > "${PR_DIR}/merge.log" 2>&1; then
               echo "PR #${PR_NUM} could not create an ephemeral merge candidate" >&2
               cat "${PR_DIR}/merge.log" >&2
               failures=$((failures + 1))

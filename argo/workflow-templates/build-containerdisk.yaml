@@ -222,13 +222,14 @@ spec:
 
         echo "[BUILD] start: $(date -u) image=${IMAGE} disk-size={{inputs.parameters.disk-size}}"
         mkdir -p "${CACHE_ROOT}" "${RUN_ROOT}"
-        cat > /tmp/storage.conf <<EOF
+        STORAGE_CONF="${STAGING}/storage.conf"
+        cat > "${STORAGE_CONF}" <<EOF
         [storage]
         driver = "overlay"
         graphroot = "${CACHE_ROOT}"
         runroot = "${RUN_ROOT}"
         EOF
-        export CONTAINERS_STORAGE_CONF=/tmp/storage.conf
+        export CONTAINERS_STORAGE_CONF="${STORAGE_CONF}"
         echo "[BUILD] containers storage graphroot=${CACHE_ROOT}"
 
         if [[ -f "${DISK}" ]]; then
@@ -251,6 +252,8 @@ spec:
 
         # fsetxattr EINVAL fix
         if which gcc &>/dev/null; then
+          FSETXATTR_WRAP="${STAGING}/fsetxattr_wrap.c"
+          FSETXATTR_WRAPPER="${STAGING}/fsetxattr_wrapper.so"
           printf '%s\n' \
             '#define _GNU_SOURCE' \
             '#include <dlfcn.h>' \
@@ -264,9 +267,9 @@ spec:
             '  int r=real(fd,n,v,s,f);' \
             '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,"security.",9)==0){errno=0;return 0;}' \
             '  return r;}' \
-            > /tmp/fsetxattr_wrap.c
-          gcc -shared -fPIC -o /tmp/fsetxattr_wrapper.so /tmp/fsetxattr_wrap.c -ldl
-          export LD_PRELOAD=/tmp/fsetxattr_wrapper.so
+            > "${FSETXATTR_WRAP}"
+          gcc -shared -fPIC -o "${FSETXATTR_WRAPPER}" "${FSETXATTR_WRAP}" -ldl
+          export LD_PRELOAD="${FSETXATTR_WRAPPER}"
           echo '[INNER] fsetxattr wrapper compiled and loaded'
         fi
 

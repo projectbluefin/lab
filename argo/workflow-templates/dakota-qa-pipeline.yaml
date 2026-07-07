@@ -113,11 +113,6 @@ spec:
       source: |
         set -eu
         IMAGE="{{inputs.parameters.image}}"
-        if echo "${IMAGE}" | grep -Eq '^ghcr\.io/projectbluefin/dakota(:|$)'; then
-          echo "disabled"
-          echo "Dakota QA is currently disabled because the bootc containerdisk build path is blocked by the upstream composefs/UKI issue." >&2
-          exit 0
-        fi
         TAG="{{inputs.parameters.containerdisk-tag}}"
         CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
         DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \

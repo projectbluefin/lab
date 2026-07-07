@@ -16,7 +16,7 @@ metadata:
 spec:
   serviceAccountName: argo
   podGC:
-    strategy: Never
+    strategy: OnWorkflowCompletion
   ttlStrategy:
     secondsAfterSuccess: 3600
     secondsAfterFailure: 86400
@@ -50,9 +50,16 @@ spec:
         labels:
           app.kubernetes.io/part-of: bluefin-test-suite
           bluefin.io/step: dakota-pr-batch
+      volumes:
+        - name: dev-fuse
+          hostPath:
+            path: /dev/fuse
+            type: CharDevice
       script:
         image: cgr.dev/chainguard/wolfi-base:latest
         command: [sh]
+        securityContext:
+          privileged: true
         resources:
           requests:
             cpu: 100m
@@ -66,6 +73,9 @@ spec:
               secretKeyRef:
                 name: github-token
                 key: token
+        volumeMounts:
+          - name: dev-fuse
+            mountPath: /dev/fuse
         source: |
           apk add --no-cache bash curl jq git python3 just podman fuse-overlayfs >/dev/null 2>&1
           exec bash <<'SCRIPT_EOF'
@@ -85,12 +95,12 @@ spec:
           mkdir -p "${WORK_ROOT}"
           mkdir -p /etc/containers
           cat > /etc/containers/storage.conf <<'EOF'
-[storage]
-driver = "vfs"
+          [storage]
+          driver = "vfs"
 
-[storage.options]
-mount_program = ""
-EOF
+          [storage.options]
+          mount_program = ""
+          EOF
           export BUILDAH_ISOLATION=chroot
           export PODMAN_USERNS=host
           cleanup() {

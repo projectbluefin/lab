@@ -1,23 +1,23 @@
 {
   "schema_version": "v2",
   "snapshot": {
-    "generated_at": "2026-07-07T21:45:19Z",
+    "generated_at": "2026-07-03T03:00:25Z",
     "window": {
       "type": "rolling",
       "hours": 24
     },
-    "state": "fresh",
-    "age_minutes": 0,
+    "state": "degraded",
+    "age_minutes": 12039,
     "threshold_minutes": 180
   },
   "lineage": {
     "collector": {
       "workflow": ".github/workflows/update-test-results.yml",
-      "run_id": null,
-      "run_url": "https://github.com/projectbluefin/lab/actions",
+      "run_id": "28900489249",
+      "run_url": "https://github.com/projectbluefin/lab/actions/runs/28900489249",
       "job": "update",
-      "commit_sha": "",
-      "commit_url": "https://github.com/projectbluefin/lab/commits/main"
+      "commit_sha": "b83920c5d92f0be6c03e58938f39ad4af2771411",
+      "commit_url": "https://github.com/projectbluefin/lab/commit/b83920c5d92f0be6c03e58938f39ad4af2771411"
     },
     "inputs_digest_sha256": "sha256:822a5869c86566bbca0fe020be2bb606bd4c50436e6fd2519e0b8569a9f6562c",
     "inputs": [
@@ -89,18 +89,22 @@
     {
       "id": "suite_pass_rate_24h",
       "label": "Suite pass rate (24h)",
-      "value": 22.22,
+      "value": 28.0,
       "unit": "percent",
-      "numerator": 2,
-      "denominator": 9,
+      "numerator": 7,
+      "denominator": 25,
       "formula": "passed_suite_runs / completed_suite_runs * 100",
       "window_hours": 24,
       "confidence": "high",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
-          "url": "https://github.com/projectbluefin/lab/actions"
+          "url": "https://github.com/projectbluefin/lab/actions/runs/28900489249"
+        },
+        {
+          "kind": "commit",
+          "url": "https://github.com/projectbluefin/lab/commit/b83920c5d92f0be6c03e58938f39ad4af2771411"
         }
       ]
     },
@@ -114,32 +118,46 @@
       "formula": "(scenarios_total - scenarios_failed) / scenarios_total * 100",
       "window_hours": 24,
       "confidence": "medium",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
-          "url": "https://github.com/projectbluefin/lab/actions"
+          "url": "https://github.com/projectbluefin/lab/actions/runs/28900489249"
+        },
+        {
+          "kind": "commit",
+          "url": "https://github.com/projectbluefin/lab/commit/b83920c5d92f0be6c03e58938f39ad4af2771411"
         }
       ]
     },
     {
       "id": "queue_pressure_now",
       "label": "Queue pressure (now)",
-      "value": 16,
+      "value": 0,
       "unit": "count",
-      "numerator": 16,
+      "numerator": 0,
       "denominator": 25,
       "formula": "count(runs where overall=running)",
       "window_hours": 1,
       "confidence": "high",
-      "state": "fresh",
+      "state": "degraded",
       "evidence": [
         {
           "kind": "collector-run",
-          "url": "https://github.com/projectbluefin/lab/actions"
+          "url": "https://github.com/projectbluefin/lab/actions/runs/28900489249"
+        },
+        {
+          "kind": "commit",
+          "url": "https://github.com/projectbluefin/lab/commit/b83920c5d92f0be6c03e58938f39ad4af2771411"
         }
       ]
     }
   ],
-  "errors": []
+  "errors": [
+    {
+      "source": "live_cluster_snapshot",
+      "reason": "private endpoint unavailable or incomplete from GitHub-hosted runner",
+      "effect": "public telemetry downgraded to unknown/degraded"
+    }
+  ]
 }

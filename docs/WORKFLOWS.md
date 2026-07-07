@@ -49,10 +49,11 @@
 - **Distribution:** No `nodeSelector` pin — the k8s scheduler naturally spreads
   the two variant builds across ghost and exo-0 in parallel (confirmed live:
   one variant per node, both `Running` simultaneously).
-- **Cache:** Uses pod-local BuildStream cache only (no remote CAS/AC/RE in Dakota lane).
-  This avoids remote CAS upload failures on very large staged trees during bootstrap fetch.
-  Project-defined cache remotes are overridden so Dakota stays local-only in
-  cluster (`override-project-caches: true`, source-caches disabled).
+- **Cache:** Uses the shared Buildbarn cache/execution path for artifact writes,
+  remote execution, and cache reuse, with a pod-local BuildStream cache kept for
+  fast per-pod retry state. The workflow still uses a checked-in BuildStream
+  config and a warm-cache pre-step so the shared object and action caches are
+  primed before the main build.
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
@@ -66,8 +67,8 @@
   `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
   `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
-- **Cache policy:** local-only cluster CAS (`bst-artifact-server`), with
-  `override-project-caches: true` and empty source-caches.
+- **Cache policy:** warm-cache-first shared Buildbarn remote cache for Dakota,
+  with `override-project-caches: false` and upstream fallback remotes preserved.
 
 ### bluefin-server-build-pipeline
 - **Purpose:** BuildStream compile pipeline for Bluefin Server elements

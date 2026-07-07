@@ -148,8 +148,11 @@ the pipeline templates — always runs regardless of pipeline outcome.
 
 ### `dakota-build-pipeline`
 
-Builds Dakota BuildStream OCI artifacts in-cluster using pod-local BuildStream
-cache and local execution in workflow pods (no remote CAS/AC/RE dependency).
+Builds Dakota BuildStream OCI artifacts in-cluster using the shared Buildbarn
+remote-execution fabric and a checked-in BuildStream config. The build pod still
+owns the high-level BuildStream process, but it now routes artifact writes,
+source-fetch activity, and remote execution through the in-cluster Buildbarn
+frontend so the shared cache and worker pool can accelerate the full build path.
 `build-bluefin` and `build-bluefin-nvidia` run in parallel and push to local Zot.
 
 | Parameter | Default | Notes |
@@ -161,6 +164,28 @@ cache and local execution in workflow pods (no remote CAS/AC/RE dependency).
 ```
 just run-bst-build                    # testing branch, default repo
 just run-bst-build main               # build from main
+```
+
+### `dakota-buildstream-warm-cache`
+
+Runs a single BuildStream build against the Dakota checkout to warm the shared
+Buildbarn remote cache before the main Dakota build pipeline starts. It reuses
+`buildstream-remote-cache`'s checked-in config, mounts a pod-local BuildStream
+cache, and exits after the warm-up build completes so it stays lightweight and
+safe. This is the pre-seeding step that makes later full builds more likely to
+hit the shared object and action cache instead of falling back to expensive cold
+fetches.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `ref` | `testing` | Dakota git branch/ref to clone |
+| `repo` | `https://github.com/projectbluefin/dakota.git` | Dakota git repo |
+| `element` | `oci/bluefin.bst` | BuildStream element to warm the cache for |
+| `registry` | `192.168.1.102:30500` | Registry endpoint for the builder image |
+
+```
+argo submit --from workflowtemplate/dakota-buildstream-warm-cache \
+  -p ref=testing -p element=oci/bluefin.bst --wait
 ```
 
 ---

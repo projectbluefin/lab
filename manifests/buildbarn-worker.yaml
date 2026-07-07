@@ -24,7 +24,7 @@ spec:
       labels:
         app: worker
       annotations:
-        buildbarn-config-revision: "2026-07-06-1"
+        buildbarn-config-revision: "2026-07-06-3"
     spec:
       initContainers:
         - name: bb-runner-installer
@@ -44,6 +44,7 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/buildbarn/bb-worker:20260527T162223Z-c48dcda
+          command: [/bb/wait-wrapper]
           args:
             - /config/worker.jsonnet
           env:
@@ -68,6 +69,8 @@ spec:
               readOnly: true
             - mountPath: /worker
               name: worker
+            - mountPath: /bb
+              name: bb-runner-bin
         - name: runner
           image: cgr.dev/chainguard/wolfi-base:latest
           command: [/bb/bb_runner, /config/runner.jsonnet]
@@ -79,11 +82,11 @@ spec:
               add: [SYS_CHROOT]
           resources:
             requests:
-              cpu: 1
-              memory: 1Gi
+              cpu: 2
+              memory: 2Gi
             limits:
-              cpu: "4"
-              memory: 8Gi
+              cpu: "6"
+              memory: 12Gi
           volumeMounts:
             - mountPath: /config/
               name: configs
@@ -92,7 +95,6 @@ spec:
               name: worker
             - mountPath: /bb
               name: bb-runner-bin
-              readOnly: true
       volumes:
         - name: bb-runner-bin
           emptyDir: {}

@@ -187,6 +187,28 @@ spec:
                   push: false
                 - url: https://gbm.gnome.org:11003
                   push: false
+              remote-execution:
+                execution-service:
+                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  connection-config:
+                    keepalive-time: 60
+                    retry-limit: 8
+                    retry-delay: 1000
+                    request-timeout: 1800
+                storage-service:
+                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  connection-config:
+                    keepalive-time: 60
+                    retry-limit: 8
+                    retry-delay: 1000
+                    request-timeout: 1800
+                action-cache-service:
+                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  connection-config:
+                    keepalive-time: 60
+                    retry-limit: 8
+                    retry-delay: 1000
+                    request-timeout: 1800
           EOF
 
           echo "=== Building ${ELEMENT} ==="

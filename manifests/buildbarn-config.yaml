@@ -12,20 +12,20 @@ metadata:
     app.kubernetes.io/part-of: lab
 data:
   common.libsonnet: |
-    // Two CAS/AC shards, one per node (storage-0 on ghost, storage-1 on
-    // exo-0 — see buildbarn-storage.yaml podAntiAffinity). This is real
-    // 2-node distributed storage, not a single shared cache.
+    // Two CAS/AC shards remain configured, but the clients now use the
+    // headless storage service so they keep working during storage rollouts
+    // and pod churn instead of depending on a single pod DNS name.
     {
       blobstore: {
         contentAddressableStorage: {
           sharding: {
             shards: {
               "0": {
-                backend: { grpc: { client: { address: 'storage-0.storage.buildbarn:8981' } } },
+                backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
                 weight: 1,
               },
               "1": {
-                backend: { grpc: { client: { address: 'storage-1.storage.buildbarn:8981' } } },
+                backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
                 weight: 1,
               },
             },
@@ -37,11 +37,11 @@ data:
               sharding: {
                 shards: {
                   "0": {
-                    backend: { grpc: { client: { address: 'storage-0.storage.buildbarn:8981' } } },
+                    backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
                     weight: 1,
                   },
                   "1": {
-                    backend: { grpc: { client: { address: 'storage-1.storage.buildbarn:8981' } } },
+                    backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
                     weight: 1,
                   },
                 },
@@ -190,6 +190,24 @@ data:
       executeAuthorizer: { allow: {} },
     }
 
+  remote-asset.jsonnet: |
+    {
+      grpcServers: {
+        asset: {
+          listenAddress: ':8984',
+          authenticationPolicy: 'allow',
+        },
+      },
+      contentAddressableStorage: {
+        grpc: {
+          address: 'storage.buildbarn.svc.cluster.local:8981',
+        },
+      },
+      fetcher: {
+        http: {},
+      },
+    }
+
   worker.jsonnet: |
     local common = import 'common.libsonnet';
 
@@ -204,13 +222,13 @@ data:
         native: {
           buildDirectoryPath: '/worker/build',
           cacheDirectoryPath: '/worker/cache',
-          maximumCacheFileCount: 10000,
-          maximumCacheSizeBytes: 8 * 1024 * 1024 * 1024,
+          maximumCacheFileCount: 20000,
+          maximumCacheSizeBytes: 16 * 1024 * 1024 * 1024,
           cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
         },
         runners: [{
           endpoint: { address: 'unix:///worker/runner' },
-          concurrency: 2,
+          concurrency: 6,
           // Match BuildStream REAPI action platform properties so workers
           // register into the same scheduler queue key.
           platform: {
@@ -225,11 +243,11 @@ data:
           },
         }],
       }],
-      inputDownloadConcurrency: 4,
-      outputUploadConcurrency: 4,
+      inputDownloadConcurrency: 6,
+      outputUploadConcurrency: 6,
       directoryCache: {
-        maximumCount: 10000,
-        maximumSizeBytes: 64 * 1024 * 1024,
+        maximumCount: 20000,
+        maximumSizeBytes: 128 * 1024 * 1024,
         cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
       },
     }

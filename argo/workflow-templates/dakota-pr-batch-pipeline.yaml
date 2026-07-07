@@ -79,7 +79,7 @@ spec:
         source: |
           apk add --no-cache bash curl jq git python3 just podman fuse-overlayfs >/dev/null 2>&1
           exec bash <<'SCRIPT_EOF'
-          set -euo pipefail
+          set -euxo pipefail
 
           REPO_SLUG="{{workflow.parameters.repo-slug}}"
           REPO_URL="{{workflow.parameters.repo-url}}"
@@ -92,6 +92,8 @@ spec:
           APPROVAL_AUTHOR_ASSOCIATIONS="{{workflow.parameters.approval-author-associations}}"
           WORK_ROOT="${PWD}/.dakota-pr-batch"
 
+          echo "Running as $(whoami)"
+          echo "Podman version: $(podman --version 2>/dev/null || true)"
           mkdir -p "${WORK_ROOT}"
           mkdir -p /etc/containers
           cat > /etc/containers/storage.conf <<'EOF'

@@ -30,7 +30,7 @@ spec:
       - name: element
         value: "hello.bst"
       - name: remote-execution-service
-        value: "http://frontend.buildbarn.svc.cluster.local:8980"
+        value: "grpc://frontend.buildbarn.svc.cluster.local:8980"
 
   entrypoint: build
 
@@ -52,6 +52,12 @@ spec:
       volumes:
         - name: workdir
           emptyDir: {}
+        - name: buildstream-config
+          configMap:
+            name: buildstream-remote-cache
+            items:
+              - key: dakota-buildstream.conf
+                path: buildstream.conf
       script:
         image: 192.168.1.102:30500/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d
         command: [bash]
@@ -65,6 +71,9 @@ spec:
         volumeMounts:
           - name: workdir
             mountPath: /work
+          - name: buildstream-config
+            mountPath: /etc/buildstream
+            readOnly: true
         env:
           - name: REPO
             value: "{{inputs.parameters.repo}}"
@@ -86,68 +95,46 @@ spec:
           git sparse-checkout set "${PROJECT_SUBDIR}"
           cd "${PROJECT_SUBDIR}"
 
-          LOCAL_ARTIFACT_SERVER="grpc://bst-artifact-server.argo.svc.cluster.local:9092"
-          echo "=== Configuring .config/buildstream.conf (artifact cache: ${LOCAL_ARTIFACT_SERVER}, remote-execution: ${REMOTE_EXECUTION_SERVICE}) ==="
+          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
+          BST_CONF=/tmp/buildstream-cluster.conf
+          REMOTE_EXECUTION_SERVICE="{{inputs.parameters.remote-execution-service}}"
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
-          mkdir -p "${HOME}/.config"
-          {
-            echo "artifacts:"
-            echo "  override-project-caches: false"
-            echo "  servers:"
-            echo "  - url: ${LOCAL_ARTIFACT_SERVER}"
-            echo "    push: true"
-            echo "  - url: https://cache.projectbluefin.io:11001"
-            echo "    push: false"
-            echo "  - url: https://cache.freedesktop-sdk.io:11001"
-            echo "    push: false"
-            echo "  - url: https://gbm.gnome.org:11003"
-            echo "    push: false"
-            echo "source-caches:"
-            echo "  override-project-caches: false"
-            echo "  servers:"
-            echo "  - url: https://cache.projectbluefin.io:11001"
-            echo "    push: false"
-            echo "  - url: https://cache.freedesktop-sdk.io:11001"
-            echo "    push: false"
-            echo "  - url: https://gbm.gnome.org:11003"
-            echo "    push: false"
-            echo "projects:"
-            echo "  ${PROJECT_NAME}:"
-            echo "    artifacts:"
-            echo "      override-project-caches: false"
-            echo "      servers:"
-            echo "      - url: ${LOCAL_ARTIFACT_SERVER}"
-            echo "        push: true"
-            echo "      - url: https://cache.projectbluefin.io:11001"
-            echo "        push: false"
-            echo "      - url: https://cache.freedesktop-sdk.io:11001"
-            echo "        push: false"
-            echo "      - url: https://gbm.gnome.org:11003"
-            echo "        push: false"
-            echo "    source-caches:"
-            echo "      override-project-caches: false"
-            echo "      servers:"
-            echo "      - url: https://cache.projectbluefin.io:11001"
-            echo "        push: false"
-            echo "      - url: https://cache.freedesktop-sdk.io:11001"
-            echo "        push: false"
-            echo "      - url: https://gbm.gnome.org:11003"
-            echo "        push: false"
-            # Buildbarn frontend serves CAS+AC+Execute-forwarding on a single
-            # port; storage-service and action-cache-service both point at it.
-            echo "remote-execution:"
-            echo "  execution-service:"
-            echo "    url: ${REMOTE_EXECUTION_SERVICE}"
-            echo "  storage-service:"
-            echo "    url: ${REMOTE_EXECUTION_SERVICE}"
-            echo "  action-cache-service:"
-            echo "    url: ${REMOTE_EXECUTION_SERVICE}"
-          } > "${HOME}/.config/buildstream.conf"
+          cat >> /tmp/buildstream-cluster.conf <<EOF
+          projects:
+            ${PROJECT_NAME}:
+              artifacts:
+                override-project-caches: false
+                servers:
+                - url: ${REMOTE_EXECUTION_SERVICE}
+                  push: true
+                - url: https://cache.projectbluefin.io:11001
+                  push: false
+                - url: https://cache.freedesktop-sdk.io:11001
+                  push: false
+                - url: https://gbm.gnome.org:11003
+                  push: false
+              source-caches:
+                override-project-caches: false
+                servers:
+                - url: https://cache.projectbluefin.io:11001
+                  push: false
+                - url: https://cache.freedesktop-sdk.io:11001
+                  push: false
+                - url: https://gbm.gnome.org:11003
+                  push: false
+              remote-execution:
+                execution-service:
+                  url: ${REMOTE_EXECUTION_SERVICE}
+                storage-service:
+                  url: ${REMOTE_EXECUTION_SERVICE}
+                action-cache-service:
+                  url: ${REMOTE_EXECUTION_SERVICE}
+          EOF
 
           echo "=== Building ${ELEMENT} ==="
-          bst --no-interactive build "${ELEMENT}"
+          bst --config "${BST_CONF}" --no-interactive build "${ELEMENT}"
 
           echo "=== Verifying build result ==="
-          bst --no-interactive show --format '%{state}' "${ELEMENT}" | grep -qx cached \
+          bst --config "${BST_CONF}" --no-interactive show --format '%{state}' "${ELEMENT}" | grep -qx cached \
             && echo "✔ ${ELEMENT} built and cached successfully" \
             || (echo "✘ ${ELEMENT} did not reach cached state" >&2; exit 1)

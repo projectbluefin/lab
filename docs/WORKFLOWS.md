@@ -67,8 +67,9 @@
   `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
   `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
-- **Cache policy:** warm-cache-first shared Buildbarn remote cache for Dakota,
-  with `override-project-caches: false` and upstream fallback remotes preserved.
+- **Cache policy:** uses the same shared Buildbarn remote cache/execution path as
+  Dakota, via the checked-in `buildstream-remote-cache` config, with
+  `override-project-caches: false` and upstream fallback remotes preserved.
 
 ### bluefin-server-build-pipeline
 - **Purpose:** BuildStream compile pipeline for Bluefin Server elements
@@ -78,19 +79,18 @@
   `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
   `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
-- **Cache policy:** generated config now starts with `cache.storage-service` to
-  `bst-artifact-server:9092` plus connection-config retries/timeouts, then enforces
-  local-only artifact/source cache overrides for project and junction remotes.
+- **Cache policy:** uses the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`) and the shared Buildbarn remote-asset endpoint (`bb-remote-asset.buildbarn.svc.cluster.local:8984`) for BuildStream remote asset fetches
+  via the checked-in `buildstream-remote-cache` config, with project cache
+  overrides left disabled and upstream fallback remotes preserved.
 
 ### bst-qa-pipeline
 - **Purpose:** Smoke-tests the Buildbarn distributed remote-execution grid itself
   by running a trivial BuildStream element through it.
-- **Cache + RE wiring:** artifact cache via `bst-artifact-server:9092` (gRPC);
-  project cache remotes overridden to local-only (`override-project-caches: true`,
-  empty source-caches);
-  remote-execution via the in-cluster Buildbarn frontend
-  (`frontend.buildbarn.svc.cluster.local:8980`), distributed across ghost+exo-0
-  workers. See [Distributed Build/RE Grid](#distributed-buildre-grid).
+- **Cache + RE wiring:** artifact cache writes and remote execution both flow
+  through the shared Buildbarn frontend
+  (`frontend.buildbarn.svc.cluster.local:8980`), while the project cache remotes
+  keep the same upstream fallback mirrors and only change the write target to the
+  distributed Buildbarn service. See [Distributed Build/RE Grid](#distributed-buildre-grid).
 - **Known limitation:** the current test element (`hello.bst`, an `import` kind)
   proves config wiring (BuildStream connects to the frontend with no errors) but
   never actually dispatches an action through the scheduler to a worker — verified
@@ -131,7 +131,7 @@ different problems and do not overlap:
 | Mechanism | What it distributes | Used by |
 | --- | --- | --- |
 | k8s scheduler (no pin) | Full privileged bootc OCI builds (needs real FUSE/mount-namespace access) | `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
-| Buildbarn (`buildbarn` namespace) | Lightweight BuildStream remote-execution actions (chroot-only sandbox, `CAP_SYS_CHROOT`) | `bst-qa-pipeline` only |
+| Buildbarn (`buildbarn` namespace) | BuildStream cache writes and remote-execution actions (chroot-only sandbox, `CAP_SYS_CHROOT`) | `dakota-build-pipeline`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline` |
 
 Buildbarn topology (2 storage shards, 1 scheduler, 2 frontend replicas, 1
 worker+runner DaemonSet pair per node — one shard/worker pair pinned per node
@@ -144,14 +144,15 @@ Buildbarn's runner deliberately does not grant.
 | CronWorkflow | Interval | Triggers | Keeps warm |
 | --- | --- | --- | --- |
 | `digest-watch` | 5 min | `build-containerdisk` (force rebuild) when `bluefin`/`bluefin-lts` GHCR digest changes | The containerDisk that `bluefin-qa-pipeline`'s `assert-cd` depends on |
-| `dakota-commit-poller` | 5 min | `dakota-build-pipeline` when `dakota:testing` gets a new commit digest | `bst-artifact-server` cache for the dakota-specific BuildStream layer |
+| `dakota-commit-poller` | 5 min | `dakota-build-pipeline` when `dakota:testing` gets a new commit digest | the shared Buildbarn cache/execution path for the Dakota BuildStream layer |
 | `image-poll-bluefin-{testing,stable}` / `image-poll-lts-{testing,stable}` | 10 min | `bluefin-qa-pipeline` when the respective GHCR tag digest changes | Test coverage freshness (not a build cache) |
 | `flatcar-kernel-poller` | 10 min | `flatcar-kernel-build` when kernel.org's latest stable version changes | Flatcar kernel build cache |
 | `flatcar-kernel-gate` | 30 min | (gate/promotion check, see `docs/skills/flatcar-node-onboarding.md`) | N/A |
 
-Dakota/Cosmic/Bluefin Server/BST lanes now enforce local-only cache policy: workflows override
-project cache remotes and do not push to external caches. Cold runs may fetch
-from upstream source origins, but cache writes stay in-cluster (`bst-artifact-server`).
+Dakota/Cosmic/Bluefin Server/BST lanes now use the shared Buildbarn frontend for
+cache writes and remote execution while leaving upstream mirrors read-only. Cold
+runs may fetch from upstream source origins, but cache writes stay in-cluster via
+Buildbarn.
 
 **`bluefin-server-build-pipeline` has no poller at all** — manual-trigger only,
 and deliberately local-cache-only (commit `22c7d2ad`, "use local-cache path... for

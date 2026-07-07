@@ -241,6 +241,10 @@ Argo DAG semantics: a task with `depends: "X.Succeeded"` is **Omitted** (not an 
 
 This fires `run-system` whether `run-software` succeeded or was skipped by its own `when` condition.
 
+#### BuildStream workflows: use the shared remote-cache ConfigMap
+
+For Dakota/BST BuildStream lanes that target the distributed Buildbarn grid, mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block that points artifact writes, source-caches, and remote execution at `grpc://frontend.buildbarn.svc.cluster.local:8980` while also wiring the shared `bb-remote-asset` endpoint at `bb-remote-asset.buildbarn.svc.cluster.local:8984` for BuildStream's remote asset fetches. This is the pattern used by `dakota-build-pipeline`, `dakota-buildstream-warm-cache`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, and `bst-qa-pipeline`.
+
 ### 8. File names must match `metadata.name`
 
 WorkflowTemplate file names in `argo/workflow-templates/` must match the resource's `metadata.name`. Divergence (e.g. `provision-vm.yaml` containing `name: provision-bluefin-vm`) confuses ArgoCD tracking and grep-based navigation:

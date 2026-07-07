@@ -158,6 +158,7 @@ spec:
           REPO="{{inputs.parameters.repo}}"
 
           echo "=== Cloning dakota @ ${REF} ==="
+          rm -rf /src
           git clone --depth=1 --branch "${REF}" "${REPO}" /src
           cd /src
 

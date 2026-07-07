@@ -20,7 +20,7 @@ spec:
   ttlStrategy:
     secondsAfterSuccess: 3600
     secondsAfterFailure: 86400
-  activeDeadlineSeconds: 14400
+  activeDeadlineSeconds: 86400
   entrypoint: review-batch
 
   arguments:
@@ -46,6 +46,7 @@ spec:
 
   templates:
     - name: review-batch
+      priorityClassName: bst-build
       metadata:
         labels:
           app.kubernetes.io/part-of: bluefin-test-suite
@@ -62,11 +63,11 @@ spec:
           privileged: true
         resources:
           requests:
-            cpu: 100m
-            memory: 256Mi
+            cpu: "12"
+            memory: 24Gi
           limits:
-            cpu: 500m
-            memory: 512Mi
+            cpu: "24"
+            memory: 48Gi
         env:
           - name: GITHUB_TOKEN
             valueFrom:

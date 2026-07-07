@@ -59,6 +59,8 @@ spec:
         template: assert-cd
         arguments:
           parameters:
+          - name: image
+            value: "{{workflow.parameters.image}}"
           - name: containerdisk-tag
             value: "{{workflow.parameters.containerdisk-tag}}"
 
@@ -69,7 +71,7 @@ spec:
         - smoke
         - developer
         - system
-        when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
+        when: "'{{workflow.parameters.suites}}' =~ '{{item}}' && '{{tasks.assert-cd.outputs.result}}' == 'enabled'"
         template: lane
         arguments:
           parameters:
@@ -96,6 +98,7 @@ spec:
   - name: assert-cd
     inputs:
       parameters:
+      - name: image
       - name: containerdisk-tag
     script:
       image: quay.io/skopeo/stable:latest
@@ -109,13 +112,21 @@ spec:
           memory: 512Mi
       source: |
         set -eu
+        IMAGE="{{inputs.parameters.image}}"
+        if echo "${IMAGE}" | grep -Eq '^ghcr\.io/projectbluefin/dakota(:|$)'; then
+          echo "disabled"
+          echo "Dakota QA is currently disabled because the bootc containerdisk build path is blocked by the upstream composefs/UKI issue." >&2
+          exit 0
+        fi
         TAG="{{inputs.parameters.containerdisk-tag}}"
         CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
         DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
           "docker://${CD_IMAGE}" 2>/dev/null || echo "")
         if [ -n "${DIGEST}" ]; then
-          echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
+          echo "enabled"
+          echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}" >&2
         else
+          echo "missing"
           echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
           echo "The digest-watch CronWorkflow builds it when GHCR changes." >&2
           echo "Check: argo list -n argo --field-selector metadata.name=~build-cd-sync" >&2

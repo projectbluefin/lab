@@ -228,7 +228,40 @@ data:
     local common = import 'common.libsonnet';
 
     {
-      blobstore: common.blobstore,
+      // Ethernet-mode CAS: the ghost<->exo-0 USB4 data plane is down, so all
+      // cross-node CAS traffic rides 1GbE. Wrap the shared (source-of-truth)
+      // CAS in a readCaching layer with a node-local disk cache so hot blobs
+      // are served from the local hostPath instead of crossing the wire.
+      // Source: bb-storage pkg/proto/configuration/blobstore/blobstore.proto
+      // (ReadCachingBlobAccessConfiguration, BlobReplicatorConfiguration.local).
+      blobstore: common.blobstore {
+        contentAddressableStorage: {
+          readCaching: {
+            slow: common.blobstore.contentAddressableStorage,
+            fast: {
+              'local': {
+                keyLocationMapOnBlockDevice: {
+                  file: { path: '/local-cas/key_location_map', sizeBytes: 16 * 1024 * 1024 },
+                },
+                keyLocationMapMaximumGetAttempts: 16,
+                keyLocationMapMaximumPutAttempts: 64,
+                oldBlocks: 8,
+                currentBlocks: 24,
+                newBlocks: 3,
+                blocksOnBlockDevice: {
+                  source: { file: { path: '/local-cas/blocks', sizeBytes: 20 * 1024 * 1024 * 1024 } },
+                  spareBlocks: 3,
+                },
+                persistent: {
+                  stateDirectoryPath: '/local-cas/persistent_state',
+                  minimumEpochInterval: '300s',
+                },
+              },
+            },
+            replicator: { 'local': {} },
+          },
+        },
+      },
       maximumMessageSizeBytes: common.maximumMessageSizeBytes,
       scheduler: { address: 'scheduler:8983' },
       global: common.global {
@@ -244,7 +277,9 @@ data:
         },
         runners: [{
           endpoint: { address: 'unix:///worker/runner' },
-          concurrency: 1,
+          // Two 8-core/16Gi action slots per node: 4 concurrent dakota builds
+          // across ghost + exo-0 (runner container sized to 16 CPU / 32Gi).
+          concurrency: 2,
           // Match BuildStream REAPI action platform properties so workers
           // register into the same scheduler queue key.
           platform: {

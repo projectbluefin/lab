@@ -36,6 +36,29 @@ metadata:
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
 
+## Ethernet mode (USB4 data plane down)
+
+When the ghost<->exo-0 USB4 link is down (see RUNBOOK), all cross-node traffic
+rides 1GbE. The cluster stays good at ingesting BST builds via:
+
+- **Node-local CAS read cache**: `manifests/buildbarn-config.yaml` worker.jsonnet
+  wraps the shared sharded CAS in `readCaching` — `fast` = `local` disk cache on
+  hostPath `/var/tmp/bb-local-cas` (20GiB/node, persistent), `slow` = the shared
+  gRPC storage. Hot blobs are served locally; only cold misses and writes cross
+  the wire. Verified against bb-storage `blobstore.proto`
+  (`ReadCachingBlobAccessConfiguration`).
+- **4 concurrent build slots**: worker DaemonSet runner sized 16 CPU / 32Gi with
+  `concurrency: 2` → two 8-core/16Gi action slots per node, 4 across the cluster.
+- **Zot pull-through** on every node (`registry-mirror-config` DaemonSet) keeps
+  image pulls off the WAN and off cross-node paths.
+- **Per-node hostPath bst-cache** (`/var/tmp/bst-cache/<tag>`) still absorbs
+  BuildStream-level reuse before any network hop.
+
+Capacity guard: node memory *requests* must leave room for the 32Gi runner.
+Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check
+`kubectl describe node | grep -A8 "Allocated resources"` and delete VMs whose
+parent workflow is terminal.
+
 ## Mandatory first step
 
 Before any kubectl, k3s, or K8sGPT operation, look up the current API via Context7:

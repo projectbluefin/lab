@@ -24,7 +24,7 @@ spec:
       labels:
         app: worker
       annotations:
-        buildbarn-config-revision: "2026-07-07-1"
+        buildbarn-config-revision: "2026-07-08-1"
         prometheus.io/scrape: "true"
         prometheus.io/port: "9980"
     spec:
@@ -64,10 +64,10 @@ spec:
           resources:
             requests:
               cpu: 200m
-              memory: 256Mi
+              memory: 512Mi
             limits:
-              cpu: "1"
-              memory: 1Gi
+              cpu: "2"
+              memory: 2Gi
           volumeMounts:
             - mountPath: /config/
               name: configs
@@ -76,6 +76,8 @@ spec:
               name: worker
             - mountPath: /bb
               name: bb-runner-bin
+            - mountPath: /local-cas
+              name: local-cas
         - name: runner
           image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           command: [/bb/bb_runner, /config/runner.jsonnet]
@@ -86,12 +88,15 @@ spec:
               drop: [ALL]
               add: [SYS_CHROOT]
           resources:
+            # Two concurrent 8-core/16Gi action slots (worker.jsonnet
+            # concurrency: 2) -> 4 dakota builds across ghost + exo-0 while the
+            # USB4 data plane is down and all CAS traffic rides 1GbE.
             requests:
-              cpu: "8"
-              memory: 12Gi
+              cpu: "16"
+              memory: 32Gi
             limits:
-              cpu: "8"
-              memory: 12Gi
+              cpu: "16"
+              memory: 32Gi
           volumeMounts:
             - mountPath: /config/
               name: configs
@@ -115,4 +120,10 @@ spec:
                 path: worker.jsonnet
         - name: worker
           emptyDir:
-            sizeLimit: 16Gi
+            sizeLimit: 32Gi
+        # Node-local CAS read cache (worker.jsonnet readCaching fast backend).
+        # Survives pod restarts so the hot set persists across builds.
+        - name: local-cas
+          hostPath:
+            path: /var/tmp/bb-local-cas
+            type: DirectoryOrCreate

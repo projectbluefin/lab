@@ -79,7 +79,7 @@
   `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
   `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
-- **Cache policy:** uses the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`) and the shared Buildbarn remote-asset endpoint (`bb-remote-asset.buildbarn.svc.cluster.local:8984`) for BuildStream remote asset fetches
+- **Cache policy:** uses the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`) for artifact cache writes and remote execution; the current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it.
   via the checked-in `buildstream-remote-cache` config, with project cache
   overrides left disabled and no upstream fallback remotes.
 
@@ -216,7 +216,7 @@ Pod resource requests/limits used by workflow steps:
 | `build-containerdisk/convert-and-push` | 2 / 4 | 4Gi / 8Gi |
 | `wait-for-vm-ready` | 100m / 500m | 128Mi / 256Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
-| `dakota-build-pipeline/bst-build` | 8 / 12 | 14Gi / 28Gi |
+| `dakota-build-pipeline/bst-build` | 2 / 4 | 14Gi / 28Gi |
 | `cosmic-build-pipeline/bst-build` | 4 / 8 | 14Gi / 28Gi |
 | `bluefin-server-build-pipeline/bst-build` | 6 / 10 | 16Gi / 30Gi |
 | `knuckle build-installer` | 4 / 4 | 8Gi / 8Gi |

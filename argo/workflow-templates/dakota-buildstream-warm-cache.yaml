@@ -92,7 +92,6 @@ spec:
           ELEMENT="{{inputs.parameters.element}}"
           REF="{{inputs.parameters.ref}}"
           REPO="{{inputs.parameters.repo}}"
-          REMOTE_ASSET_SERVICE="bb-remote-asset.buildbarn.svc.cluster.local:8984"
 
           echo "=== Cloning dakota @ ${REF} ==="
           rm -rf /src
@@ -135,10 +134,6 @@ spec:
                     retry-limit: 8
                     retry-delay: 1000
                     request-timeout: 1800
-              remoteasset:
-                enable: true
-                remote_asset_service:
-                  address: ${REMOTE_ASSET_SERVICE}
           EOF
 
           echo "=== Warming BuildStream cache for ${ELEMENT} ==="

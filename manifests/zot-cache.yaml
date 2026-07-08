@@ -12,6 +12,10 @@
 # containerd on each node routes pulls through this via
 # manifests/registry-mirror-config.yaml (hosts.toml DaemonSet, no k3s restart needed)
 #
+# Zot acts as a pull-through cache. Containerd sends requests to the mirror
+# namespace and Zot fetches from the upstream registry on-demand on the first
+# pull, then serves the cached copy for later pulls.
+#
 # Storage: hostPath on ghost at /var/mnt/ghost-data/zot-cache/
 # ArgoCD: lab-infra syncs this
 ---

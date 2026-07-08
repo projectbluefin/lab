@@ -104,7 +104,6 @@ spec:
           cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
           BST_CONF=/tmp/buildstream-cluster.conf
           REMOTE_EXECUTION_SERVICE="{{inputs.parameters.remote-execution-service}}"
-          REMOTE_ASSET_SERVICE="bb-remote-asset.buildbarn.svc.cluster.local:8984"
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           cat >> /tmp/buildstream-cluster.conf <<EOF
           projects:
@@ -126,10 +125,6 @@ spec:
                   url: ${REMOTE_EXECUTION_SERVICE}
                 action-cache-service:
                   url: ${REMOTE_EXECUTION_SERVICE}
-              remoteasset:
-                enable: true
-                remote_asset_service:
-                  address: ${REMOTE_ASSET_SERVICE}
           EOF
 
           echo "=== Building ${ELEMENT} ==="

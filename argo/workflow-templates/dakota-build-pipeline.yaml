@@ -78,6 +78,13 @@ spec:
 
     - name: bst-build
       priorityClassName: bst-build
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  workflows.argoproj.io/workflow: "{{workflow.name}}"
       # The build uses a persistent hostPath cache for retry acceleration plus a checked-in
       # BuildStream config that points the build at the shared Buildbarn frontend for remote
       # cache/writeback and upstream fallback caches. Cold bootstrap and source fetch work can
@@ -130,11 +137,11 @@ spec:
             value: "1"
         resources:
           requests:
-            cpu: "12"
-            memory: 24Gi
+            cpu: "1"
+            memory: 7Gi
           limits:
-            cpu: "24"
-            memory: 48Gi
+            cpu: "2"
+            memory: 14Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse
@@ -155,8 +162,6 @@ spec:
           TAG="{{inputs.parameters.tag}}"
           REF="{{inputs.parameters.ref}}"
           REPO="{{inputs.parameters.repo}}"
-          REMOTE_ASSET_SERVICE="bb-remote-asset.buildbarn.svc.cluster.local:8984"
-
           echo "=== Cloning dakota @ ${REF} ==="
           rm -rf /src
           git clone --depth=1 --branch "${REF}" "${REPO}" /src
@@ -200,10 +205,6 @@ spec:
                     retry-limit: 8
                     retry-delay: 1000
                     request-timeout: 1800
-              remoteasset:
-                enable: true
-                remote_asset_service:
-                  address: ${REMOTE_ASSET_SERVICE}
           EOF
 
           echo "=== Building ${ELEMENT} ==="

@@ -69,6 +69,8 @@ If a workflow step never progresses and the pod stays Pending/Terminating on a w
 
 This is especially relevant for cache-heavy BST builds because the workflow uses hostPath cache mounts and a fresh run on a healthy node can reuse the same cache directory.
 
+For distributed BuildStream runs, fix the shared config or template first and then stop/re-submit the workflow once; do not let Argo keep retrying a pod that is failing for a known configuration reason. Repeated retries burn node CPU and memory, overfill the namespace queue, and make the cluster look resource-constrained even when the underlying config issue is trivial.
+
 ### 2. Parameter passing — always explicit
 
 Sub-templates never inherit parameters from the caller scope. Pass every parameter explicitly:
@@ -243,7 +245,7 @@ This fires `run-system` whether `run-software` succeeded or was skipped by its o
 
 #### BuildStream workflows: use the shared remote-cache ConfigMap
 
-For Dakota/BST BuildStream lanes that target the distributed Buildbarn grid, mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block that points artifact writes, source-caches, and remote execution at `grpc://frontend.buildbarn.svc.cluster.local:8980` while also wiring the shared `bb-remote-asset` endpoint at `bb-remote-asset.buildbarn.svc.cluster.local:8984` for BuildStream's remote asset fetches. This is the pattern used by `dakota-build-pipeline`, `dakota-buildstream-warm-cache`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, and `bst-qa-pipeline`.
+For Dakota/BST BuildStream lanes that target the distributed Buildbarn grid, mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block that points artifact writes, source-caches, and remote execution at `grpc://frontend.buildbarn.svc.cluster.local:8980`. The current BuildStream image used by these workflows does not accept the legacy `remoteasset:` block, so the override omits it. This is the pattern used by `dakota-build-pipeline`, `dakota-buildstream-warm-cache`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, and `bst-qa-pipeline`.
 
 ### 8. File names must match `metadata.name`
 

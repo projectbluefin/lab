@@ -31,20 +31,26 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 
 ### Data Plane — Point-to-Point USB4 Link (ghost <-> exo-0 only)
 
-> **STATUS (2026-07-08, re-verified): link still down.** `exo-0` still has no
+> **STATUS (2026-07-08, re-verified): link still down — NOT a cable problem.** Owner
+> confirmed the physical USB4 wire is fine on both nodes. `exo-0` still has no
 > `thunderbolt0` interface at all (`ip link show thunderbolt0` → "Device does not
-> exist"; `ip -br addr` shows only `enp191s0` + `cni0`; `/sys/bus/thunderbolt/devices/`
-> still shows only the local host routers `0-0`/`1-0`, with no remote device
-> enumerated). A direct ping from `exo-0` to `ghost`'s previously-observed USB4
-> link-local address (`169.254.79.234`) now fails 100%. This is still not the known
-> ASPM/power-suspend failure mode (RUNBOOK.md) — forcing `power/control=on` on PCIe
-> bridge `0000:00:08.3` and controllers `c5:00.5`/`c5:00.6` had already proven
-> ineffective. A read-only SSH probe to `ghost` now returns `Connection refused`, so
-> this session could not re-check the `ghost` side directly; the hard blocker remains
-> the same physical-layer problem on the cable/path itself, not a cluster-side routing
-> design gap. **Until both hosts re-enumerate the USB4 peer and point-to-point ping
-> succeeds again, treat this link as aspirational/blocked-on-hardware, not a currently
-> usable production data path.** All Buildbarn cross-node gRPC traffic
+> exist"; `ip -br addr` shows only `enp191s0` + `cni0`). `/sys/bus/thunderbolt/devices/`
+> shows `exo-0`'s own host router present and `authorized=1` (`c5:00.6`, driver
+> `thunderbolt`, normal `ACPI: USB4 _OSC` + `usb usb4` init lines in `journalctl -k`
+> at boot), but no downstream peer entry ever appears — `exo-0` never sees `ghost`
+> enumerate as a remote Thunderbolt/XDomain peer, cable or no cable. A direct ping
+> from `exo-0` to `ghost`'s previously-observed USB4 link-local address
+> (`169.254.79.234`) still fails 100%. This is still not the known ASPM/power-suspend
+> failure mode (RUNBOOK.md) — forcing `power/control=on` on PCIe bridge `0000:00:08.3`
+> and controllers `c5:00.5`/`c5:00.6` had already proven ineffective. Given the cable
+> itself is confirmed good, the remaining suspects are all on the **`ghost` side**:
+> wrong physical port (must be the certified USB4/TB4 port, not a plain USB-C port),
+> port not authorized, or BIOS/EC state disabling the controller on that host. A
+> read-only SSH probe to `ghost` still returns `Connection refused`, so this session
+> could not inspect `ghost`'s own thunderbolt kernel/dmesg state to confirm which of
+> these it is. **Until both hosts re-enumerate the USB4 peer and point-to-point ping
+> succeeds again, treat this link as aspirational/blocked-on-`ghost`-side-config, not
+> a currently usable production data path.** All Buildbarn cross-node gRPC traffic
 > (frontend↔worker, worker↔storage) currently rides the shared Ethernet LAN like
 > everything else; flannel is not pinned to `thunderbolt0` (see below), so no build
 > traffic is currently USB4-accelerated even when the link is physically up.

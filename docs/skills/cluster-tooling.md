@@ -108,7 +108,20 @@ Follow this precise order of operations to disable power management and reset th
 
 ### 3. Optimal Formatting and Mounting (Btrfs to XFS Migration)
 
-The 4TB local data NVMe drives (mounted at `/var/mnt/ghost-data` on `ghost` and `exo-0`) have been transitioned from Btrfs to XFS to optimize for container builds and BuildStream cache workloads.
+The 4TB local data NVMe drives are mounted at `/var/mnt/ghost-data` on `ghost` and
+`/var/mnt/exo0-data` on `exo-0` (node-specific names — do not reuse `ghost-data` as the
+mount point name on other hosts, it refers to a specific disk on a specific machine, not
+a cluster-wide convention). Both have been transitioned from Btrfs to XFS to optimize for
+container builds and BuildStream cache workloads.
+
+**Device path is not consistent across hosts by name alone — verify with `lsblk`/`blkid`
+before touching any device.** On `ghost`, the 4TB data drive is `/dev/nvme0n1` and the
+system disk is `/dev/nvme1n1`. On `exo-0`, the 4TB data drive is **also** `/dev/nvme0n1`
+and the system disk is `/dev/nvme1n1` — the naming convention happens to match today, but
+this has been a real source of error (see the corrected `exo-0` procedure below, which
+previously pointed `mkfs.xfs`/the mount unit at `/dev/nvme1n1` — `exo-0`'s live *system*
+disk — instead of `/dev/nvme0n1`, the actual 4TB drive). Never assume the device name;
+confirm the model/size with `lsblk -o NAME,SIZE,MODEL` first.
 
 XFS with `reflink=1` provides copy-on-write capability (e.g. `cp --reflink=auto`) identical to Btrfs, but without the high write metadata fragmentation and degradation under OverlayFS / loop-device pressure.
 
@@ -133,35 +146,71 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 ## 4TB SSD Migration Procedures (Btrfs to XFS)
 
 ### 1. Migrating `exo-0` (Ephemeral Cache Storage)
-`exo-0` contains transient REAPI cache items under `/var/mnt/ghost-data`.
+`exo-0`'s 4TB drive is `/dev/nvme0n1`, mounted at `/var/mnt/exo0-data`; it holds
+transient REAPI cache items and the BuildStream `bst-cache` hostPath used by build
+workflows. **`/dev/nvme1n1` on `exo-0` is the live system disk — never target it.**
 
-1. **Scale down any legacy artifact-server deployment** if one still exists; current BuildStream lanes use the shared Buildbarn frontend and workers rather than a single `bst-artifact-server` pod.
+1. **Scale down any legacy artifact-server deployment** if one still exists; current BuildStream lanes use the shared Buildbarn frontend and workers rather than a single `bst-artifact-server` pod (removed from `manifests/` — see git history if reviving).
 2. **Stop and unmount unit on `exo-0`**:
    ```bash
-   ssh core@192.168.1.170 "sudo systemctl stop 'var-mnt-ghost\x2ddata.mount'"
+   ssh core@192.168.1.170 "sudo systemctl stop 'var-mnt-exo0\x2ddata.mount'"
    ```
-3. **Format to XFS**:
+3. **Format to XFS** (only if not already XFS — check with `blkid` first, reformatting destroys data):
    ```bash
-   ssh core@192.168.1.170 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme1n1"
+   ssh core@192.168.1.170 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme0n1"
    ```
 4. **Update systemd mount file**:
-   Edit `/etc/systemd/system/var-mnt-ghost\x2ddata.mount` on `exo-0` to specify XFS:
+   Edit `/etc/systemd/system/var-mnt-exo0\x2ddata.mount` on `exo-0` to specify XFS:
    ```ini
    [Mount]
-   What=/dev/nvme1n1
-   Where=/var/mnt/ghost-data
+   What=/dev/nvme0n1
+   Where=/var/mnt/exo0-data
    Type=xfs
    Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
    ```
 5. **Reload systemd, mount, and enable**:
    ```bash
-   ssh core@192.168.1.170 "sudo systemctl daemon-reload && sudo systemctl start 'var-mnt-ghost\x2ddata.mount' && sudo systemctl enable 'var-mnt-ghost\x2ddata.mount'"
+   ssh core@192.168.1.170 "sudo systemctl daemon-reload && sudo systemctl start 'var-mnt-exo0\x2ddata.mount' && sudo systemctl enable 'var-mnt-exo0\x2ddata.mount'"
    ```
 6. **Recreate empty cache structure**:
    ```bash
-   ssh core@192.168.1.170 "sudo mkdir -p /var/mnt/ghost-data/ac.v2 /var/mnt/ghost-data/cas.v2 /var/mnt/ghost-data/raw.v2 && sudo chmod -R 777 /var/mnt/ghost-data"
+   ssh core@192.168.1.170 "sudo mkdir -p /var/mnt/exo0-data/ac.v2 /var/mnt/exo0-data/cas.v2 /var/mnt/exo0-data/raw.v2 /var/mnt/exo0-data/bst-cache /var/mnt/exo0-data/local-path && sudo chmod 777 /var/mnt/exo0-data/bst-cache && sudo chmod 700 /var/mnt/exo0-data/local-path"
    ```
-7. **Re-enable shared Buildbarn workloads** after the filesystem migration: confirm the Buildbarn frontend/scheduler/storage/worker pods are healthy before resuming heavy BST traffic.
+7. **Bind-mount `bst-cache` onto `/var/tmp/bst-cache`** so the workflow templates'
+   hardcoded `hostPath: /var/tmp/bst-cache/...` (used by `dakota-build-pipeline`,
+   `cosmic-build-pipeline`, `bluefin-server-build-pipeline`,
+   `dakota-buildstream-warm-cache`) transparently lands on the 4TB drive instead of the
+   small system disk, without any workflow YAML changes:
+   ```bash
+   ssh core@192.168.1.170 "sudo mkdir -p /var/tmp/bst-cache"
+   ```
+   Add a second mount unit, `var-tmp-bst\x2dcache.mount`:
+   ```ini
+   [Unit]
+   Description=Bind-mount BuildStream cache onto the 4TB data drive
+   After=var-mnt-exo0\x2ddata.mount
+   Requires=var-mnt-exo0\x2ddata.mount
+
+   [Mount]
+   What=/var/mnt/exo0-data/bst-cache
+   Where=/var/tmp/bst-cache
+   Type=none
+   Options=bind
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   Then `daemon-reload && systemctl enable --now var-tmp-bst\x2dcache.mount`. Apply the
+   same bind-mount pattern on `ghost` (`/var/mnt/ghost-data/bst-cache` → `/var/tmp/bst-cache`)
+   so both nodes keep BuildStream cache growth off their system disks.
+8. **Point `local-path-provisioner` at the 4TB drive for this node**: the cluster-wide
+   `local-path-config` ConfigMap in `kube-system` (a k3s-owned system resource, not
+   tracked under `manifests/`) must have an explicit `nodePathMap` entry for `exo-0`
+   pointing at `/var/mnt/exo0-data/local-path` — a single `DEFAULT_PATH_FOR_NON_LISTED_NODES`
+   entry using a `ghost-data`-named path will silently place `exo-0`'s local-path PVCs on
+   its system disk (the path is just a directory string; nothing stops it from being created
+   on whichever disk backs it on that particular node).
+9. **Re-enable shared Buildbarn workloads** after the filesystem migration: confirm the Buildbarn frontend/scheduler/storage/worker pods are healthy before resuming heavy BST traffic.
 
 ### 2. Migrating `ghost` (Stateful Control Plane Storage)
 `ghost` holds persistent states like OCI cache layers in `zot-local` and persistent volume data in `local-path`. This data must be preserved.
@@ -169,7 +218,7 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 1. **Verify destination space on `exo-0` XFS storage**:
    Make sure `exo-0` has sufficient disk space before starting the copy:
    ```bash
-   ssh core@192.168.1.170 "df -h /var/mnt/ghost-data"
+   ssh core@192.168.1.170 "df -h /var/mnt/exo0-data"
    ```
 2. **Stop dependent workloads**:
    Scale down all services writing to `/var/mnt/ghost-data` (Zot registries, persistent volume consumers):
@@ -185,7 +234,7 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 4. **Back up `/var/mnt/ghost-data` to `exo-0`**:
    Perform a root-elevated rsync using `sudo` and `--rsync-path="sudo rsync"` to preserve numeric UIDs, ACLs, and SELinux contexts over the 40G USB4 link:
    ```bash
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" /var/mnt/ghost-data/ core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/"
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" /var/mnt/ghost-data/ core@192.168.1.170:/var/mnt/exo0-data/ghost-backup-temp/"
    ```
 5. **Unmount on `ghost`**:
    Since K3s is stopped, the unmount will now succeed cleanly without "device is busy" failures:
@@ -209,7 +258,7 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 9. **Restore from backup**:
    Pull the backed-up directories back with precise attributes using root-elevated rsync:
    ```bash
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" core@192.168.1.170:/var/mnt/ghost-data/ghost-backup-temp/ /var/mnt/ghost-data/"
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" core@192.168.1.170:/var/mnt/exo0-data/ghost-backup-temp/ /var/mnt/ghost-data/"
    ```
 10. **Resume services**:
     Restart the K3s engine and scale up your workloads:
@@ -219,7 +268,16 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
     kubectl scale deployment zot-cache -n local-registry --replicas=1
     ```
 11. **Clean up backup**:
-    Once all pods are healthy and verified, clean up the backup folders on both hosts.
+    Once all pods are healthy and verified, clean up the backup folders on both hosts:
+    ```bash
+    ssh core@192.168.1.170 "rm -rf /var/mnt/exo0-data/ghost-backup-temp"
+    ```
+    **This step is easy to skip and has been skipped before** — a stale
+    `ghost-backup-temp/` directory was found still consuming ~286G on `exo-0`'s 4TB drive
+    well after the migration it supported had completed. Verify with
+    `ssh core@192.168.1.170 "du -sh /var/mnt/exo0-data/ghost-backup-temp"` before deleting,
+    but don't leave it indefinitely — it silently eats into the same 4TB drive that
+    `bst-cache` and `local-path` PVCs need.
 
 ## BuildStream 2.x Distributed Builds and Caching
 

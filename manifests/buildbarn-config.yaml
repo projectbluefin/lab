@@ -191,6 +191,8 @@ data:
     }
 
   remote-asset.jsonnet: |
+    local common = import 'common.libsonnet';
+
     {
       contentAddressableStorage: {
         grpc: {
@@ -215,6 +217,7 @@ data:
         listenAddresses: [':8984'],
         authenticationPolicy: { allow: {} },
       }],
+      global: common.global,
       allowUpdatesForInstances: [''],
       maximumMessageSizeBytes: 64 * 1024 * 1024,
       fetchAuthorizer: { allow: {} },

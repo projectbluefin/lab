@@ -18,7 +18,9 @@ spec:
       labels:
         app: bb-remote-asset
       annotations:
-        buildbarn-config-revision: "2026-07-07-1"
+        buildbarn-config-revision: "2026-07-08-1"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9980"
     spec:
       containers:
         - name: bb-remote-asset
@@ -28,6 +30,8 @@ spec:
           ports:
             - name: grpc
               containerPort: 8984
+            - name: metrics
+              containerPort: 9980
           resources:
             requests:
               cpu: 100m
@@ -63,3 +67,6 @@ spec:
     - name: grpc
       port: 8984
       targetPort: 8984
+    - name: metrics
+      port: 9980
+      targetPort: 9980

@@ -21,6 +21,8 @@ spec:
         app: frontend
       annotations:
         buildbarn-config-revision: "2026-07-06-2"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9980"
     spec:
       affinity:
         podAntiAffinity:
@@ -39,6 +41,8 @@ spec:
           ports:
             - name: grpc
               containerPort: 8980
+            - name: metrics
+              containerPort: 9980
           resources:
             requests:
               cpu: 100m
@@ -73,3 +77,5 @@ spec:
   ports:
     - name: grpc
       port: 8980
+    - name: metrics
+      port: 9980

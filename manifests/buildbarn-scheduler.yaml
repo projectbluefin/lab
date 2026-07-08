@@ -19,6 +19,8 @@ spec:
         app: scheduler
       annotations:
         buildbarn-config-revision: "2026-07-06-2"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9980"
     spec:
       containers:
         - name: scheduler
@@ -32,6 +34,8 @@ spec:
               containerPort: 8983
             - name: http
               containerPort: 7982
+            - name: metrics
+              containerPort: 9980
           resources:
             requests:
               cpu: 100m
@@ -70,3 +74,5 @@ spec:
       port: 8983
     - name: http
       port: 7982
+    - name: metrics
+      port: 9980

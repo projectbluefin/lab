@@ -25,6 +25,8 @@ spec:
         app: worker
       annotations:
         buildbarn-config-revision: "2026-07-07-1"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9980"
     spec:
       initContainers:
         - name: bb-runner-installer
@@ -56,6 +58,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+          ports:
+            - name: metrics
+              containerPort: 9980
           resources:
             requests:
               cpu: 200m

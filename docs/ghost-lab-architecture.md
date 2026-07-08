@@ -31,17 +31,39 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 
 ### Data Plane — Point-to-Point USB4 Link (ghost <-> exo-0 only)
 
+> **STATUS (2026-07-08): link currently down.** `exo-0`'s `thunderbolt0` interface does
+> not exist at all post-reboot (`ip link show thunderbolt0` → "Device does not exist";
+> `/sys/bus/thunderbolt/devices/` shows only the local host routers `0-0`/`1-0`, no
+> remote device enumerated). This is not the known ASPM/power-suspend failure mode
+> (RUNBOOK.md) — forcing `power/control=on` on PCIe bridge `0000:00:08.3` and
+> controllers `c5:00.5`/`c5:00.6` had no effect. This points to a physical-layer issue
+> (cable reseat needed) rather than a software/power-state issue. `ghost`'s side cannot
+> be checked — SSH to `ghost` is banned by repo policy — so this cannot be confirmed or
+> fixed remotely; it needs physical inspection by an operator with hands on both
+> machines. **Until reconfirmed live, treat this link as aspirational/blocked-on-hardware,
+> not a currently usable production data path.** All Buildbarn cross-node gRPC traffic
+> (frontend↔worker, worker↔storage) currently rides the shared Ethernet LAN like
+> everything else; flannel is not pinned to `thunderbolt0` (see below), so no build
+> traffic is currently USB4-accelerated even when the link is physically up.
+
 - `ghost`'s `thunderbolt0` (169.254.79.234/16) and `exo-0`'s `thunderbolt0`
-  (169.254.238.103/16) form a direct point-to-point USB4 link — confirmed via live ping,
-  not a switched/broadcast segment, and not shared with any other node
+  (169.254.238.103/16) formed a direct point-to-point USB4 link — confirmed via live ping
+  at an earlier date, not a switched/broadcast segment, and not shared with any other node
 - Intended for pod-to-pod (East-West) traffic between these two nodes specifically:
   build artifact transfer, cache I/O
 - Must be scoped per-node-pair (e.g. via node annotations), **not** via a cluster-wide
   `--flannel-iface=thunderbolt0` change — that setting previously broke connectivity for
   every node without a live physical USB4 link (see RUNBOOK.md:108-116)
+- **No such per-node-pair scoping has been implemented yet** — even when the physical
+  link is up, nothing in this repo currently routes Buildbarn or any other pod traffic
+  over it. The gap is real and unaddressed, not just currently broken.
 
 This separation means heavy East-West traffic between `ghost` and `exo-0` doesn't need to
-compete with control-plane/API traffic on the shared Ethernet LAN.
+compete with control-plane/API traffic on the shared Ethernet LAN — but only once both
+the physical link is restored and an actual traffic-steering mechanism (e.g. a dedicated
+CNI route entry, a NetworkAttachmentDefinition + Multus, or an /etc/hosts-style override
+pointing Buildbarn's frontend/worker Service traffic at the thunderbolt0 IPs) is built.
+Neither exists today.
 
 ---
 

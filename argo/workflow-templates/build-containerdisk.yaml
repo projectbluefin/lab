@@ -11,6 +11,10 @@ metadata:
       Build steps are unpinned; workflow-local PVC staging keeps install/convert data together.
 spec:
   serviceAccountName: argo
+  # Delete the 100Gi staging PVC on ANY terminal state — the default
+  # (OnWorkflowSuccess) stranded a PVC for every failed build.
+  volumeClaimGC:
+    strategy: OnWorkflowCompletion
   volumeClaimTemplates:
   - metadata:
       name: staging

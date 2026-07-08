@@ -271,6 +271,20 @@ spec:
             echo "Patched ConfigMap ${CD_TAG}=${LIVE_DIGEST} (http=${HTTP})" >&2
           fi
 
+          # Dedup: skip if a build for this tag is already queued or running —
+          # digest-watch fires every cycle while a slow build is in flight, and
+          # without this check each cycle stacked another build-cd-sync workflow
+          # (plus its 100Gi PVC) onto the cluster.
+          ACTIVE=$(curl -sf --cacert "${CACERT}" \
+            -H "Authorization: Bearer ${SA_TOKEN}" \
+            "${KS}/apis/argoproj.io/v1alpha1/namespaces/argo/workflows?labelSelector=bluefin.io/cd-tag%3D${CD_TAG}" \
+            | grep -o '"phase":"[A-Za-z]*"' | grep -cE '"(Running|Pending)"' || true)
+          ACTIVE="${ACTIVE:-0}"
+          if [[ "${ACTIVE}" -gt 0 ]]; then
+            echo "Build for ${CD_TAG} already active (${ACTIVE}) — skipping submit" >&2
+            exit 0
+          fi
+
           # Submit build-containerdisk workflow via Argo API
           curl -sf --cacert "${CACERT}" \
             -H "Authorization: Bearer ${SA_TOKEN}" \
@@ -280,7 +294,7 @@ spec:
             -d "{
               \"apiVersion\": \"argoproj.io/v1alpha1\",
               \"kind\": \"Workflow\",
-              \"metadata\": {\"generateName\": \"build-cd-sync-${CD_TAG}-\", \"namespace\": \"argo\"},
+              \"metadata\": {\"generateName\": \"build-cd-sync-${CD_TAG}-\", \"namespace\": \"argo\", \"labels\": {\"bluefin.io/cd-tag\": \"${CD_TAG}\"}},
               \"spec\": {
                 \"workflowTemplateRef\": {\"name\": \"build-containerdisk\"},
                 \"arguments\": {\"parameters\": [

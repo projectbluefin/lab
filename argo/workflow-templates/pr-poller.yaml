@@ -67,6 +67,21 @@ spec:
            REPO=$(echo "$PR" | jq -r '.base.repo.full_name')
            SHA=$(echo "$PR"  | jq -r '.head.sha')
            PR_NUM=$(echo "$PR" | jq -r '.number')
+
+           # Dedup: one workflow per PR head SHA — ever. Without this the
+           # poller re-dispatched every open PR on every cycle, flooding the
+           # cluster with duplicate runs. To force a re-test of the same SHA,
+           # delete the old workflow (kubectl delete wf -n argo -l
+           # bluefin.io/pr-sha=<sha12>) or push a new commit.
+           SHA12="${SHA:0:12}"
+           EXISTING=$(kubectl get workflows -n argo \
+             -l "bluefin.io/pr-number=${PR_NUM},bluefin.io/pr-sha=${SHA12}" \
+             --no-headers 2>/dev/null | wc -l)
+           if [[ "$EXISTING" -gt 0 ]]; then
+             echo "PR #${PR_NUM} ${REPO}: workflow for ${SHA12} already exists (${EXISTING}), skipping" >&2
+             return
+           fi
+
            HEAD_BRANCH=$(echo "$PR" | jq -r '.head.ref')
            # testsuite PRs: run-gnome-tests clones testsuite, so use the real PR
            # branch so the lab exercises the new/changed scenarios under review.
@@ -171,6 +186,7 @@ spec:
            labels:
              bluefin.io/trigger: pr-auto
              bluefin.io/pr-number: "${PR_NUM}"
+             bluefin.io/pr-sha: "${SHA12}"
           spec:
            workflowTemplateRef:
              name: ${TMPL}

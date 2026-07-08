@@ -34,9 +34,15 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 > **STATUS (2026-07-08): kernel modules loaded and active.** The `thunderbolt_net` driver
 > is successfully loaded and running on both `ghost` and `exo-0`. The PCIe runtime power
 > management settings for both hosts are forced to `on` (preventing automatic ASPM sleep
-> states). While the physical port link is currently reported as `none` (pending the next physical
-> cable re-seat or slot mapping cycle), the complete network design for East-West CNI route
-> separation is fully specified below.
+> states).
+>
+> While the physical port link is currently reported as `none` (pending physical cable re-seat
+> or slot mapping), we have confirmed that the Linux kernel only registers the `thunderbolt0`
+> network interface dynamically *after* a physical link handshake occurs.
+> 
+> **Important Hardware Slot Mapping**: On AMD Framework laptops (both 13 and 16), only **Slot 1 (back left)** and **Slot 4 (back right)** support USB4 / Thunderbolt 4. If the cable is plugged into Slot 2 or Slot 3, the link state will remain `none` indefinitely. Ensure the USB4 cable is connected strictly to Slot 1 or Slot 4 on both machines to bring the link up and initialize `thunderbolt0`.
+> 
+> The complete network design for East-West CNI route separation is fully specified below.
 
 - `ghost`'s `thunderbolt0` (static IP `192.168.4.1/30`) and `exo-0`'s `thunderbolt0`
   (static IP `192.168.4.2/30`) form a direct, switchless point-to-point USB4 link (40 Gbps).

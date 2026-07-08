@@ -53,6 +53,14 @@ spec:
     # ─── Top-level DAG ────────────────────────────────────────────────────────
 
   - name: build-containerdisk
+    # Max two containerdisk builds cluster-wide (one per node) — each is a
+    # hostPID bootc install with a 100Gi PVC. Template-level so digest-watch
+    # burst submissions queue instead of stacking install-to-disk pods.
+    synchronization:
+      semaphores:
+      - configMapKeyRef:
+          name: workflow-semaphores
+          key: containerdisk-build
     inputs:
       parameters:
       - name: image              # e.g. ghcr.io/projectbluefin/bluefin

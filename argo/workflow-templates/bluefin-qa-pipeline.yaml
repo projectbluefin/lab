@@ -16,12 +16,10 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  synchronization:
-    mutexes:
-    - name: bluefin-qa-global
   parallelism: 2
-  # Keep one QA workflow active at a time and cap in-workflow lane fan-out.
-  # This prevents digest poll bursts from exhausting KubeVirt memory.
+  # Queuing lives on the pipeline template (qa-vm-fleet semaphore), not here:
+  # workflow-level locks are bypassed when image-poller/digest-watch invoke
+  # this pipeline via templateRef. parallelism caps in-workflow lane fan-out.
   activeDeadlineSeconds: 3600
   # ── entrypoint ──────────────────────────────────────────────────────────────
   entrypoint: pipeline
@@ -70,6 +68,13 @@ spec:
   # ── pipeline DAG ─────────────────────────────────────────────────────────────
   templates:
   - name: pipeline
+    # One VM fleet cluster-wide. Template-level so every caller queues,
+    # including templateRef invocations from image-poller and PR pollers.
+    synchronization:
+      semaphores:
+      - configMapKeyRef:
+          name: workflow-semaphores
+          key: qa-vm-fleet
     dag:
       tasks:
           # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.

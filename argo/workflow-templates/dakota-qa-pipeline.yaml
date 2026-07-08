@@ -16,8 +16,8 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  # VM concurrency is managed by k8s scheduler via virt-launcher pod memory
-  # requests (8Gi/VM). Pending workflows queue as Pending VMIs — no semaphore needed.
+  # In-workflow lane fan-out is capped by k8s memory requests; cross-workflow
+  # queuing is the qa-vm-fleet semaphore on the pipeline template below.
   activeDeadlineSeconds: 3600
   entrypoint: pipeline
   onExit: cleanup-and-report
@@ -52,6 +52,13 @@ spec:
   templates:
 
   - name: pipeline
+    # One VM fleet cluster-wide (shared with bluefin-qa-pipeline). Template-level
+    # so templateRef callers (image-poller, dakota pollers) queue too.
+    synchronization:
+      semaphores:
+      - configMapKeyRef:
+          name: workflow-semaphores
+          key: qa-vm-fleet
     dag:
       tasks:
           # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.

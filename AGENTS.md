@@ -376,10 +376,25 @@ Workflow pod logs are accessible via `argo logs`, the Argo UI, and `argo-mcp-log
 - Include: current behavior, expected behavior, exact file:line if code issue, acceptance criteria.
 - For infra failures: include workflow name, pod name, and relevant log excerpt.
 
-## VM Concurrency — k8s Native Scheduling
+## VM Concurrency — Argo Semaphores + k8s Scheduling
 
-VM concurrency is managed by the k8s scheduler via **virt-launcher pod memory
-requests** (8Gi per VM). No Argo semaphores. No config to maintain.
+Cross-workflow admission is queued by **template-level Argo semaphores**
+(`workflow-semaphores` ConfigMap in `manifests/workflow-semaphores.yaml`):
+
+| Key | Limit | Applied to |
+|---|---|---|
+| `qa-vm-fleet` | 1 | `pipeline` template in bluefin-qa-pipeline and dakota-qa-pipeline |
+| `containerdisk-build` | 2 | `build-containerdisk` template |
+
+**Locks must be template-level, not workflow-level.** Workflow-level
+`synchronization` is bypassed when another workflow invokes the template via
+`templateRef` (image-poller, digest-watch, PR pollers all do this). The old
+workflow-level `bluefin-qa-global` mutex only queued direct submissions,
+letting poll bursts spawn unbounded VM fleets (2026-07-08 incident: 95%
+memory requested, buildbarn workers unschedulable, host daemons starved).
+
+Within an admitted fleet, VM packing is still k8s-native via **virt-launcher
+pod memory requests** (8Gi per VM).
 
 When a node has insufficient RAM, the virt-launcher pod stays Pending. When a
 running VM finishes, resources free up and the scheduler picks the next Pending

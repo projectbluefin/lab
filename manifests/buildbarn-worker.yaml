@@ -39,10 +39,12 @@ spec:
           command:
             - sh
             - -c
-            - mkdir -pm 0777 /worker/build && mkdir -pm 0700 /worker/cache && chmod 0777 /worker
+            - mkdir -pm 0777 /worker/build && mkdir -pm 0700 /worker/cache && chmod 0777 /worker && mkdir -p /local-cas/persistent_state && chmod -R 0777 /local-cas
           volumeMounts:
             - mountPath: /worker
               name: worker
+            - mountPath: /local-cas
+              name: local-cas
       containers:
         - name: worker
           image: ghcr.io/buildbarn/bb-worker:20260527T162223Z-c48dcda

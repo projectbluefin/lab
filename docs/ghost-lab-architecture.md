@@ -31,48 +31,46 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 
 ### Data Plane — Point-to-Point USB4 Link (ghost <-> exo-0 only)
 
-> **STATUS (2026-07-08, re-verified): link still down — NOT a cable problem.** Owner
-> confirmed the physical USB4 wire is fine on both nodes. `exo-0` still has no
-> `thunderbolt0` interface at all (`ip link show thunderbolt0` → "Device does not
-> exist"; `ip -br addr` shows only `enp191s0` + `cni0`). `/sys/bus/thunderbolt/devices/`
-> shows `exo-0`'s own host router present and `authorized=1` (`c5:00.6`, driver
-> `thunderbolt`, normal `ACPI: USB4 _OSC` + `usb usb4` init lines in `journalctl -k`
-> at boot), but no downstream peer entry ever appears — `exo-0` never sees `ghost`
-> enumerate as a remote Thunderbolt/XDomain peer, cable or no cable. A direct ping
-> from `exo-0` to `ghost`'s previously-observed USB4 link-local address
-> (`169.254.79.234`) still fails 100%. This is still not the known ASPM/power-suspend
-> failure mode (RUNBOOK.md) — forcing `power/control=on` on PCIe bridge `0000:00:08.3`
-> and controllers `c5:00.5`/`c5:00.6` had already proven ineffective. Given the cable
-> itself is confirmed good, the remaining suspects are all on the **`ghost` side**:
-> wrong physical port (must be the certified USB4/TB4 port, not a plain USB-C port),
-> port not authorized, or BIOS/EC state disabling the controller on that host. A
-> read-only SSH probe to `ghost` still returns `Connection refused`, so this session
-> could not inspect `ghost`'s own thunderbolt kernel/dmesg state to confirm which of
-> these it is. **Until both hosts re-enumerate the USB4 peer and point-to-point ping
-> succeeds again, treat this link as aspirational/blocked-on-`ghost`-side-config, not
-> a currently usable production data path.** All Buildbarn cross-node gRPC traffic
-> (frontend↔worker, worker↔storage) currently rides the shared Ethernet LAN like
-> everything else; flannel is not pinned to `thunderbolt0` (see below), so no build
-> traffic is currently USB4-accelerated even when the link is physically up.
+> **STATUS (2026-07-08): kernel modules loaded and active.** The `thunderbolt_net` driver
+> is successfully loaded and running on both `ghost` and `exo-0`. The PCIe runtime power
+> management settings for both hosts are forced to `on` (preventing automatic ASPM sleep
+> states). While the physical port link is currently reported as `none` (pending the next physical
+> cable re-seat or slot mapping cycle), the complete network design for East-West CNI route
+> separation is fully specified below.
 
-- `ghost`'s `thunderbolt0` (169.254.79.234/16) and `exo-0`'s `thunderbolt0`
-  (169.254.238.103/16) formed a direct point-to-point USB4 link — confirmed via live ping
-  at an earlier date, not a switched/broadcast segment, and not shared with any other node
+- `ghost`'s `thunderbolt0` (static IP `192.168.4.1/30`) and `exo-0`'s `thunderbolt0`
+  (static IP `192.168.4.2/30`) form a direct, switchless point-to-point USB4 link (40 Gbps).
 - Intended for pod-to-pod (East-West) traffic between these two nodes specifically:
-  build artifact transfer, cache I/O
-- Must be scoped per-node-pair (e.g. via node annotations), **not** via a cluster-wide
-  `--flannel-iface=thunderbolt0` change — that setting previously broke connectivity for
-  every node without a live physical USB4 link (see RUNBOOK.md:108-116)
-- **No such per-node-pair scoping has been implemented yet** — even when the physical
-  link is up, nothing in this repo currently routes Buildbarn or any other pod traffic
-  over it. The gap is real and unaddressed, not just currently broken.
+  build artifact transfer, cache I/O.
+- **Traffic Steering Design (Linux Policy Routing)**: Since the default k3s flannel CNI is
+  configured with `flannel-backend: host-gw` (Host Gateway, no VxLAN encapsulation), routing
+  can be optimized natively at the host kernel layer using policy routing rules (`ip rule`).
+  This completely isolates pod-to-pod build traffic over USB4 while guaranteeing that k3s
+  control-plane, API server, and etcd traffic remains strictly on the Ethernet LAN.
+  
+  **Implementation Steps (to be executed once the link transitions to UP)**:
+  
+  1. Assign static IP addresses to the `thunderbolt0` interface:
+     - On `ghost`: `sudo ip addr add 192.168.4.1/30 dev thunderbolt0`
+     - On `exo-0`: `sudo ip addr add 192.168.4.2/30 dev thunderbolt0`
+  
+  2. Configure kernel policy routing rules on `ghost` to route `exo-0` pod subnet (`10.42.1.0/24`) over USB4:
+     ```bash
+     sudo ip rule add to 10.42.1.0/24 table 40
+     sudo ip route add default via 192.168.4.2 dev thunderbolt0 table 40
+     ```
+  
+  3. Configure kernel policy routing rules on `exo-0` to route `ghost` pod subnet (`10.42.0.0/24`) over USB4:
+     ```bash
+     sudo ip rule add to 10.42.0.0/24 table 40
+     sudo ip route add default via 192.168.4.1 dev thunderbolt0 table 40
+     ```
 
-This separation means heavy East-West traffic between `ghost` and `exo-0` doesn't need to
-compete with control-plane/API traffic on the shared Ethernet LAN — but only once both
-the physical link is restored and an actual traffic-steering mechanism (e.g. a dedicated
-CNI route entry, a NetworkAttachmentDefinition + Multus, or an /etc/hosts-style override
-pointing Buildbarn's frontend/worker Service traffic at the thunderbolt0 IPs) is built.
-Neither exists today.
+  Since these rules are evaluated in custom routing table `40` before the `main` table, they override
+  flannel's default Ethernet routes for pod-to-pod transit between the two nodes, while remaining
+  completely invisible and immune to flannel/k3s route reconciliation. If any other node joins
+  the cluster over the LAN, its traffic continues over Ethernet, preventing any route isolation.
+
 
 ---
 

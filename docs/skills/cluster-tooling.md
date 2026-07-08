@@ -330,7 +330,149 @@ Repeat the same override and server ordering at the project level so the primary
 ### 4. Persistent pod-local cache
 Each BuildStream pod should keep a persistent hostPath cache at `/root/.cache/buildstream` (for example `/var/tmp/bst-cache/<tag>`). This keeps the pod-local cache warm across retries and avoids losing the local work state between attempts while still allowing the shared Buildbarn frontend to serve cluster-wide artifact reuse.
 
-### 5. Buildbarn message-size floor
+### 5. Buildbarn durable shard backup / restore
+
+#### What is durable vs. disposable
+- **Durable**: the `storage` StatefulSet's per-ordinal `local-path` PVCs. `manifests/buildbarn-storage.yaml` defines two replicas (`storage-0`, `storage-1`) with **required** podAntiAffinity, plus two PVCs per ordinal: `cas` mounted at `/storage-cas` and `ac` mounted at `/storage-ac`.
+- **Not replicas of the same bytes**: `manifests/buildbarn-config.yaml` shards both CAS and AC across two equally weighted shards (`"0"` and `"1"` with `weight: 1` each). That means `storage-0` and `storage-1` each own part of the keyspace. Losing one shard without a backup loses roughly half of the CAS blobs and AC entries permanently.
+- **Disposable**: BuildStream's client-side cache (`/var/tmp/bst-cache/<tag>` on the host, `/root/.cache/buildstream` in build pods). That cache is safe to wipe and rebuild. Do **not** treat it as a substitute for backing up Buildbarn storage PVCs.
+
+#### First inspect the live shard mapping
+Command patterns in this subsection were verified against current Kubernetes docs via Context7 (`/kubernetes/website`).
+
+Never assume yesterday's path layout is still true. Before any backup or restore, record the live PVC → PV → node → host-path mapping:
+
+```bash
+kubectl get configmap local-path-config -n kube-system -o jsonpath='{.data.config\.json}{"\n"}'
+
+for claim in cas-storage-0 ac-storage-0 cas-storage-1 ac-storage-1; do
+  pv=$(kubectl get pvc -n buildbarn "$claim" -o jsonpath='{.spec.volumeName}')
+  kubectl get pv "$pv" -o jsonpath="$claim"' node={.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0]} path={.spec.local.path}{"\n"}'
+done
+```
+
+As of **2026-07-08**, the live cluster still reports a single `DEFAULT_PATH_FOR_NON_LISTED_NODES=/var/mnt/ghost-data/local-path`, and the live Buildbarn PVs reflect that literally:
+- `storage-0` is on `exo-0`, but its PVs still live under `/var/mnt/ghost-data/local-path/...` on `exo-0`'s system disk.
+- `storage-1` is on `ghost`, under `/var/mnt/ghost-data/local-path/...` on `ghost`.
+
+If `local-path-config` is later corrected to use explicit per-node paths (for example `exo-0` → `/var/mnt/exo0-data/local-path`), trust the **live PV output above**, not stale docs.
+
+#### Why `rsync --sparse` is the right tool here
+This storage is **not** shaped like the old multi-million-file BuildStream cache. The live shard layout is sparse block-device files:
+- `/storage-cas`: `blocks`, `key_location_map`, `persistent_state/state`
+- `/storage-ac`: `blocks`, `key_location_map`, `persistent_state/state`
+
+On the live `storage-0` shard (`exo-0`) on 2026-07-08:
+- CAS used `41G` on disk but `51G` apparent size
+- AC used only `80K` on disk but `514M` apparent size
+
+Use `rsync` with `--sparse`; do **not** use a naive `tar | ssh | tar` pipe that inflates sparse files and gives poor restartability.
+
+#### Backup procedure
+1. **Quiesce writers first.** Do not back up while BST jobs are actively pushing new CAS/AC entries.
+   ```bash
+   kubectl get workflows -n argo
+   kubectl scale deployment/frontend deployment/scheduler deployment/bb-remote-asset -n buildbarn --replicas=0
+   kubectl scale statefulset/storage -n buildbarn --replicas=0
+   kubectl wait --for=delete pod -l app=storage -n buildbarn --timeout=180s
+   ```
+2. **Record the live PV paths** with the mapping commands above.
+3. **Create backup roots on the opposite host** so one node loss does not take the live shard and its backup together.
+   ```bash
+   STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+
+   ssh core@192.168.1.170 "sudo mkdir -p /var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas /var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac"
+   ssh jorge@192.168.1.102 "sudo mkdir -p /var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas /var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac"
+   ```
+4. **Back up `storage-1` (ghost) onto exo-0's 4TB drive.**
+   ```bash
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<cas-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas/"
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<ac-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac/"
+   ```
+5. **Back up `storage-0` (exo-0) onto ghost.**
+   ```bash
+   ssh core@192.168.1.170 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<cas-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas/"
+   ssh core@192.168.1.170 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<ac-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac/"
+   ```
+6. **Verify the copy before resuming traffic.**
+   ```bash
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<cas-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas/"
+   ssh jorge@192.168.1.102 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<ac-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac/"
+   ssh core@192.168.1.170 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<cas-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas/"
+   ssh core@192.168.1.170 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<ac-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac/"
+   ```
+   Then compare file lists and logical sizes on source vs. destination:
+   ```bash
+   sudo find <dir> -type f -printf '%P %s\n' | sort
+   sudo du -sh <dir>
+   sudo du -sh --apparent-size <dir>
+   ```
+   Expect the same three-file layout per volume (`blocks`, `key_location_map`, `persistent_state/state`) and matching apparent sizes.
+7. **Bring Buildbarn back.**
+   ```bash
+   kubectl scale statefulset/storage -n buildbarn --replicas=2
+   kubectl rollout status statefulset/storage -n buildbarn --timeout=180s
+   kubectl scale deployment/frontend deployment/scheduler deployment/bb-remote-asset -n buildbarn --replicas=1
+   kubectl rollout status deployment/frontend -n buildbarn --timeout=180s
+   kubectl rollout status deployment/scheduler -n buildbarn --timeout=180s
+   kubectl rollout status deployment/bb-remote-asset -n buildbarn --timeout=180s
+   ```
+
+#### Restore procedure
+1. **Quiesce Buildbarn** using the same scale-down sequence as the backup procedure.
+2. **Identify the failed ordinal and its old PVs.**
+   ```bash
+   kubectl get pvc -n buildbarn
+   kubectl get pv | grep 'buildbarn/.*storage-[01]'
+   ```
+3. **Decide where the replacement shard should live before recreating PVCs.**
+   - If you are restoring `storage-1` on `ghost`, the live path should stay under ghost's `local-path` base.
+   - If you are restoring `storage-0` onto `exo-0`'s 4TB drive, first fix `local-path-config` so `exo-0` maps to `/var/mnt/exo0-data/local-path`; otherwise a recreated PV will land back on `/var/mnt/ghost-data/local-path` on `exo-0`'s system disk.
+4. **Delete only the failed ordinal's retained PVCs/PVs** after confirming you have a good backup.
+   ```bash
+   kubectl delete pvc -n buildbarn cas-storage-0 ac-storage-0
+   kubectl delete pv <cas-storage-0-pv> <ac-storage-0-pv>
+   ```
+   Substitute ordinal `1` if the ghost shard failed.
+5. **Recreate fresh empty PVCs/PVs by scaling storage back up, then record the new host paths.**
+   ```bash
+   kubectl scale statefulset/storage -n buildbarn --replicas=2
+   kubectl get pvc -n buildbarn -w
+   ```
+   Once the new claims are bound, rerun the PVC → PV → node → path lookup and capture the new target directories.
+6. **Scale storage back down again before copying data into the fresh PV paths.**
+   ```bash
+   kubectl scale statefulset/storage -n buildbarn --replicas=0
+   kubectl wait --for=delete pod -l app=storage -n buildbarn --timeout=180s
+   ```
+7. **Restore the backed-up shard into the new host directories.**
+   ```bash
+   sudo rsync -aHAXSx --numeric-ids --delete --info=progress2 <backup-root>/cas/ <new-cas-pv-path>/
+   sudo rsync -aHAXSx --numeric-ids --delete --info=progress2 <backup-root>/ac/  <new-ac-pv-path>/
+   ```
+8. **Bring the storage shard back, then the clients.**
+   ```bash
+   kubectl scale statefulset/storage -n buildbarn --replicas=2
+   kubectl rollout status statefulset/storage -n buildbarn --timeout=180s
+   kubectl scale deployment/frontend deployment/scheduler deployment/bb-remote-asset -n buildbarn --replicas=1
+   kubectl rollout status deployment/frontend -n buildbarn --timeout=180s
+   kubectl rollout status deployment/scheduler -n buildbarn --timeout=180s
+   kubectl rollout status deployment/bb-remote-asset -n buildbarn --timeout=180s
+   kubectl get pods -n buildbarn -o wide
+   kubectl get endpointslice -n buildbarn -l kubernetes.io/service-name=storage
+   ```
+
+#### Post-restore verification
+- **Filesystem check**: rerun `find ... -printf '%P %s\n' | sort`, `du -sh`, and `du -sh --apparent-size` against the restored host paths and compare them with the backup copy.
+- **Pod readiness**: `storage-0` and `storage-1` must both be `Running`, and `kubectl rollout status statefulset/storage -n buildbarn` must succeed.
+- **Client reachability**: `frontend`, `scheduler`, and `bb-remote-asset` must be `Available`, and the `storage` headless Service must show endpoints for both storage pods.
+- **End-to-end smoke test**: run one lightweight BST workflow that exercises CAS/AC and remote execution:
+  ```bash
+  argo submit -n argo --from workflowtemplate/bst-qa-pipeline --watch
+  ```
+  Do not declare the restore complete until that workflow succeeds against the restored shard.
+
+### 6. Buildbarn message-size floor
 BuildStream can issue large CAS upload batches while importing bootstrap seed artifacts. Keep the Buildbarn config's gRPC message size high enough for those uploads:
 
 ```jsonnet

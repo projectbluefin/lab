@@ -120,7 +120,7 @@ const matrix = variantOrder.map((variant) => ({
 }));
 
 // Rows with screenshots for the visual gallery section
-const screenshotRows = availableRows.filter((row) => row.screenshot_url);
+const screenshotRows = rows.filter((row) => row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path)));
 
 const workflowHref = (workflowName: string | null) =>
   workflowName ? `http://192.168.1.102:32746/workflows/argo/${encodeURIComponent(workflowName)}` : null;
@@ -381,6 +381,64 @@ const chartPayload = {
       align-items: center;
       flex-wrap: wrap;
       gap: 0.35rem;
+    }
+
+    /* ── Educational 16:9 Screenshot Placeholder ── */
+    .screenshot-placeholder {
+      width: 100%;
+      max-width: 520px;
+      aspect-ratio: 16 / 9;
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border: 1px dashed rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      text-align: center;
+      box-sizing: border-box;
+      transition: all 0.2s ease-in-out;
+    }
+    .screenshot-placeholder:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.9) 100%);
+    }
+    .screenshot-placeholder__content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .placeholder-icon {
+      color: #64748b;
+      margin-bottom: 0.25rem;
+    }
+    .screenshot-placeholder h5 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+    .screenshot-placeholder p {
+      margin: 0;
+      font-size: 0.78rem;
+      color: #64748b;
+      line-height: 1.5;
+      max-width: 420px;
+    }
+    .placeholder-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      font-size: 0.72rem;
+      color: #475569;
+      margin-top: 0.5rem;
+    }
+    .placeholder-meta code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      color: #38bdf8;
     }
   </style>
 
@@ -667,9 +725,9 @@ const chartPayload = {
             </div>
 
             {/* ── Visual Evidence Gallery ── */}
-            {row.screenshot_url && row.state === 'available' && (
-              <div class="screenshot-gallery">
-                <h4>Visual Evidence</h4>
+            <div class="screenshot-gallery">
+              <h4>Visual Evidence</h4>
+              {row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path)) ? (
                 <div class="screenshot-card">
                   <a href={row.screenshot_url} target="_blank" rel="noreferrer" class="screenshot-link">
                     <img
@@ -686,12 +744,27 @@ const chartPayload = {
                   <div class="screenshot-caption">
                     <span class={`pill pill--${row.result_status}`}>{row.result_status}</span>
                     <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.5rem;">
-                      {row.suite} · {row.variant} · {row.last_run ? new Date(row.last_run).toLocaleDateString() : ''}
+                      {row.suite} · {row.variant} · {row.last_run ? new Date(row.last_run).toLocaleDateString() : 'Awaiting Run'}
                     </span>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div class="screenshot-placeholder">
+                  <div class="screenshot-placeholder__content">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="placeholder-icon"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                    <h5>No Screenshot Captured Yet</h5>
+                    <p>
+                      The <strong>{row.suite}</strong> suite runs automated BDD/dogtail tests in an ephemeral KubeVirt VM. 
+                      A screenshot of the desktop session is captured via Wayland and uploaded on successful execution.
+                    </p>
+                    <div class="placeholder-meta">
+                      <span>Target: {row.variant} ({row.branch})</span>
+                      <span>Run command: <code>just run-tests-tag {row.branch === 'testing' ? 'testing' : 'stable'}</code></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {row.state !== 'available' ? (
               <div class="detail-note detail-note--unavailable">

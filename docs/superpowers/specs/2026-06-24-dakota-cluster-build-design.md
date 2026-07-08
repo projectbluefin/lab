@@ -2,6 +2,16 @@
 
 Date: 2026-06-24
 
+> **SUPERSEDED (2026-07-08):** the single shared `buildbox-casd` Deployment design
+> described below was never the final deployed architecture. The cluster now runs a
+> Buildbarn REAPI grid (`frontend` + `scheduler` + `storage` StatefulSet + `worker`
+> DaemonSet + `bb-remote-asset`, all in the `buildbarn` namespace) as the canonical
+> shared build cache and remote-execution backend, distributing BST actions across the
+> `worker` DaemonSet pods on both `ghost` and `exo-0` rather than a single casd pod.
+> See the "Compute Model" section of `docs/ghost-lab-architecture.md` for the current
+> topology. This document is retained for historical context only — do not use it to
+> reason about the current system.
+
 ## Goal
 
 Run Dakota BST builds on the homelab k3s cluster as a parallel, resource-bounded capability

@@ -1,5 +1,11 @@
 # Dakota Cluster Build Pipeline — Implementation Plan
 
+> **SUPERSEDED (2026-07-08):** the single shared `buildbox-casd` Deployment architecture
+> described in this plan was superseded by the Buildbarn REAPI grid actually deployed to
+> the `buildbarn` namespace (frontend/scheduler/storage/worker/bb-remote-asset). See
+> `docs/ghost-lab-architecture.md` "Compute Model" for the current design. Retained for
+> historical context only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Run Dakota BST builds as parallel Argo Workflow pods on the homelab k8s cluster, sharing an in-cluster buildbox-casd CAS on ghost's NVMe, triggered by push to `dakota:testing`.

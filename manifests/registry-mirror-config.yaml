@@ -3,13 +3,16 @@
 # containerd v2.0 (k3s v1.32+) hot-reloads these — no k3s restart needed.
 #
 # All 6 registries mirror through a single zot-cache instance (NodePort 30501).
-# Zot stores each upstream under a subpath via sync destination prefix mapping:
-#   ghcr.io                    → ghost:30501/ghcr
-#   docker.io                  → ghost:30501/docker
-#   quay.io                    → ghost:30501/quay
-#   registry.fedoraproject.org → ghost:30501/fedora
-#   registry.k8s.io            → ghost:30501/k8s
-#   cgr.dev                    → ghost:30501/cgr
+# Zot stores each upstream under a repo prefix via sync destination mapping:
+#   ghcr.io                    → ghcr/<repo>
+#   docker.io                  → docker/<repo>
+#   quay.io                    → quay/<repo>
+#   registry.fedoraproject.org → fedora/<repo>
+#   registry.k8s.io            → k8s/<repo>
+#   cgr.dev                    → cgr/<repo>
+#
+# containerd should talk to the mirror root and use override_path to point the
+# request at the registry-specific Zot namespace for each upstream.
 #
 # To update mirrors: edit ConfigMap below, then:
 #   kubectl rollout restart daemonset/registry-mirror-config -n local-registry
@@ -25,33 +28,39 @@ data:
   ghcr.io.hosts.toml: |
     server = "https://ghcr.io"
 
-    [host."http://192.168.1.102:30501/ghcr"]
+    [host."http://192.168.1.102:30501/v2/ghcr"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   docker.io.hosts.toml: |
     server = "https://registry-1.docker.io"
 
-    [host."http://192.168.1.102:30501/docker"]
+    [host."http://192.168.1.102:30501/v2/docker"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   quay.io.hosts.toml: |
     server = "https://quay.io"
 
-    [host."http://192.168.1.102:30501/quay"]
+    [host."http://192.168.1.102:30501/v2/quay"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   registry.fedoraproject.org.hosts.toml: |
     server = "https://registry.fedoraproject.org"
 
-    [host."http://192.168.1.102:30501/fedora"]
+    [host."http://192.168.1.102:30501/v2/fedora"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   registry.k8s.io.hosts.toml: |
     server = "https://registry.k8s.io"
 
-    [host."http://192.168.1.102:30501/k8s"]
+    [host."http://192.168.1.102:30501/v2/k8s"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   cgr.dev.hosts.toml: |
     server = "https://cgr.dev"
 
-    [host."http://192.168.1.102:30501/cgr"]
+    [host."http://192.168.1.102:30501/v2/cgr"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   local-zot.hosts.toml: |
     server = "http://192.168.1.102:30500"
 

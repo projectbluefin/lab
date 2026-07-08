@@ -154,7 +154,7 @@ This keeps workflows self-contained while still exposing machine-readable output
 If a step needs shell features (`mkdir`, redirection, `jq`/`awk` parsing, heredocs), do **not** assume a vendor CLI image has `/bin/sh`. Third-party tool images are often distroless. Either:
 
 - run the binary directly with `container.command`/`args` and avoid shell syntax entirely, or
-- switch to a shell-capable base image (`cgr.dev/chainguard/wolfi-base:latest`, `cgr.dev/chainguard/kubectl:latest-dev`) and install/fetch the CLI inside the step.
+- switch to a shell-capable base image (`cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795`, `cgr.dev/chainguard/kubectl:latest-dev`) and install/fetch the CLI inside the step.
 
 A runtime `/bin/sh: not found` or missing-coreutils failure from a CLI image usually means the image is distroless, not that the WorkflowTemplate syntax is wrong.
 
@@ -385,7 +385,7 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
 ```
 
 **Rules:**
-- Digest watch uses `quay.io/skopeo/stable:latest` (has skopeo + curl, no kubectl needed):
+- Digest watch uses `quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615` (has skopeo + curl, no kubectl needed):
   ```bash
   # Authenticated digest fetch — works for all GHCR images (public + org-restricted)
   LIVE_DIGEST=$(skopeo inspect \
@@ -396,7 +396,7 @@ asserts the artifact exists and fails fast — it never triggers a rebuild.
   ```
   Anonymous GHCR token API returns a 60-char non-JWT token that produces 404 on manifest
   requests — do NOT use the anonymous token endpoint. Use PAT via `--creds "_token:PAT"`.
-- `quay.io/skopeo/stable:latest` does **not** include `python3` or `jq`. Keep digest comparison
+- `quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615` does **not** include `python3` or `jq`. Keep digest comparison
   shell-only (`tr`/`sed`) or install tooling explicitly; otherwise stored digest reads collapse to
   empty and every poll cycle submits duplicate `build-cd-sync-*` workflows.
 - Use in-cluster k8s API (SA token at `/var/run/secrets/kubernetes.io/serviceaccount/`)

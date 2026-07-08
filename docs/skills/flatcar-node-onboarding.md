@@ -168,10 +168,10 @@ EOF"
 - `privileged: true` in the container securityContext
 - `seccompProfile: { type: Unconfined }` — Chainguard wolfi-base's default seccomp blocks `nsenter`
 
-### Correct DaemonSet image: `cgr.dev/chainguard/wolfi-base:latest`
+### Correct DaemonSet image: `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795`
 
-- `cgr.dev/chainguard/wolfi-base:latest` — has `util-linux` (nsenter), `apk`, full tooling ✅
-- `cgr.dev/chainguard/wolfi-base:latest-dev` — **DOES NOT EXIST** (tag not published) ❌
+- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` — has `util-linux` (nsenter), `apk`, full tooling ✅
+- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795-dev` — **DOES NOT EXIST** (tag not published) ❌
 - `cgr.dev/chainguard/busybox` — no nsenter, restricted seccomp blocks namespace entry ❌
 
 ### update_engine does NOT need restart after update.conf change

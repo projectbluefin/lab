@@ -277,7 +277,7 @@ This protocol was established after multiple sessions where:
 - Bootstrap templates accidentally placed in `argo/workflow-templates/` (ArgoCD will prune them if removed from git)
 - Reporting a fix as deployed without verifying `argo-mcp-get_workflow_template` shows the new value live
 - Submitting a new workflow immediately after a push without waiting for ArgoCD sync confirmation
-- **Using `registry.access.redhat.com` (UBI) or `bitnami/*` images** — both banned in this cluster. Use `cgr.dev/chainguard/wolfi-base:latest` instead.
+- **Using `registry.access.redhat.com` (UBI) or `bitnami/*` images** — both banned in this cluster. Use `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` instead.
 - **Choosing a base image without checking the policy** — preference order is: `cgr.dev/chainguard/*` first, then ask. Fedora images are allowed when appropriate (not replaced with non-existent alternatives). docker.io is banned except `docker.io/rocm/k8s-device-plugin` (annotate `# registry-lint-ignore`).
 
 ## Image Policy
@@ -290,8 +290,8 @@ This protocol was established after multiple sessions where:
 4. Banned: `registry.access.redhat.com` (UBI), `bitnami/*`, `docker.io/*` (except `docker.io/rocm/k8s-device-plugin` with `# registry-lint-ignore`)
 
 **Critical Chainguard tag facts:**
-- `cgr.dev/chainguard/wolfi-base:latest` ✅ (has apk, nsenter, full tooling)
-- `cgr.dev/chainguard/wolfi-base:latest-dev` ❌ DOES NOT EXIST
+- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` ✅ (has apk, nsenter, full tooling)
+- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795-dev` ❌ DOES NOT EXIST
 - `cgr.dev/chainguard/kubectl:latest-dev` ✅ (has bash; `:latest` is distroless — no shell)
 - `cgr.dev/chainguard/kubectl:latest` ❌ no bash — use `latest-dev` for steps that need shell
 

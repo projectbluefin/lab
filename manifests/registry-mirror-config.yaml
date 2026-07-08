@@ -78,7 +78,7 @@ spec:
     spec:
       initContainers:
         - name: write-hosts
-          image: cgr.dev/chainguard/wolfi-base:latest
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           command:
             - sh
             - -c
@@ -108,7 +108,7 @@ spec:
         - name: pause
           # ponytail: sleep loop, this pod only exists to keep the DaemonSet alive
           # so that config is re-applied on pod restart / rollout restart
-          image: cgr.dev/chainguard/wolfi-base:latest
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           command: ["sh", "-c", "while true; do sleep 3600; done"]
           resources:
             requests: { cpu: "1m", memory: "4Mi" }

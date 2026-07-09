@@ -33,6 +33,7 @@ metadata:
    - set `override-project-caches: false` to allow the project's own upstream caches (for example Freedesktop SDK and GNOME OS) to be used as read-only fallbacks, preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
    - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`) while also listing the upstream artifact/source cache URLs as read-only fallback servers so BuildStream can pull prebuilt objects instead of recompiling bootstrap toolchains.
    - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
+   - when the checkout uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream remote caches instead of diverging on local patch-set differences.
    - keep BuildStream concurrency intentionally conservative for homelab lanes (`fetchers/builders/pushers: 1`, `build.max-jobs: 1`) so cache-backed builds finish without oversubscribing the cluster.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.

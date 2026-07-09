@@ -109,12 +109,16 @@ spec:
                   push: true
                 - url: https://gbm.gnome.org:11003
                   push: false
+                - url: https://cache.freedesktop-sdk.io:11001
+                  push: false
                 - url: https://cache.projectbluefin.io:11001
                   push: false
               source-caches:
                 override-project-caches: false
                 servers:
                 - url: https://gbm.gnome.org:11003
+                  push: false
+                - url: https://cache.freedesktop-sdk.io:11001
                   push: false
                 - url: https://cache.projectbluefin.io:11001
                   push: false
@@ -141,6 +145,32 @@ spec:
                     retry-delay: 1000
                     request-timeout: 1800
           EOF
+
+          echo "=== Synchronizing upstream patch queues for cache reuse ==="
+          rm -rf /tmp/upstream-patches
+          mkdir -p /tmp/upstream-patches
+          git clone --depth=1 https://gitlab.gnome.org/GNOME/gnome-build-meta.git /tmp/upstream-patches/gnome-build-meta >/dev/null 2>&1
+          (
+            cd /tmp/upstream-patches/gnome-build-meta
+            GNOME_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/gnome-build-meta.bst | tr -d '\r')
+            git fetch --depth=1 origin "${GNOME_REF}" >/dev/null 2>&1 || true
+            git checkout --detach "${GNOME_REF}" >/dev/null 2>&1 || git checkout --detach FETCH_HEAD >/dev/null 2>&1 || true
+            if [[ -d patches/gnome-build-meta ]]; then
+              rm -rf /src/patches/gnome-build-meta
+              cp -a patches/gnome-build-meta /src/patches/gnome-build-meta
+            fi
+          )
+          git clone --depth=1 https://gitlab.com/freedesktop-sdk/freedesktop-sdk.git /tmp/upstream-patches/freedesktop-sdk >/dev/null 2>&1
+          (
+            cd /tmp/upstream-patches/freedesktop-sdk
+            FDS_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/freedesktop-sdk.bst | tr -d '\r')
+            git fetch --depth=1 origin "${FDS_REF}" >/dev/null 2>&1 || true
+            git checkout --detach "${FDS_REF}" >/dev/null 2>&1 || git checkout --detach FETCH_HEAD >/dev/null 2>&1 || true
+            if [[ -d patches/freedesktop-sdk ]]; then
+              rm -rf /src/patches/freedesktop-sdk
+              cp -a patches/freedesktop-sdk /src/patches/freedesktop-sdk
+            fi
+          )
 
           echo "=== Warming BuildStream cache for ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

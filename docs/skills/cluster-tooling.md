@@ -329,6 +329,50 @@ workflows. **`/dev/nvme1n1` on `exo-0` is the live system disk — never target 
     but don't leave it indefinitely — it silently eats into the same 4TB drive that
     `bst-cache` and `local-path` PVCs need.
 
+### 3. Offloading Host User Caches and AI Datasets (ramalama, local buildstream, containers)
+
+To prevent the `ghost` system root disk from filling up and strictly enforce the "4TB NVMe SSD for all workloads, no exceptions" mandate, heavy host-level user directories under `/var/home/jorge/` are relocated to `/var/mnt/ghost-data/` and replaced with symbolic links.
+
+#### Target Paths on 4TB NVMe SSD:
+All folders are stored under `/var/mnt/ghost-data/` with exact ownership of `jorge:jorge` (`1000:1000`) and linked back transparently:
+- `/var/home/jorge/.local/share/ramalama` -> `/var/mnt/ghost-data/ramalama` (~278 GB)
+- `/var/home/jorge/.cache/buildstream` -> `/var/mnt/ghost-data/user-bst-cache` (~244 GB)
+- `/var/home/jorge/.local/share/containers` -> `/var/mnt/ghost-data/user-containers` (~78 GB)
+- `/var/home/jorge/.lmstudio` -> `/var/mnt/ghost-data/lmstudio` (~30 GB)
+- `/var/home/jorge/.cache/Homebrew` -> `/var/mnt/ghost-data/user-homebrew` (~18 GB)
+- `/var/home/jorge/.cache/uv` -> `/var/mnt/ghost-data/user-uv` (~11 GB)
+
+#### Relocation Procedure:
+1. Create directories on the 4TB NVMe SSD and grant ownership to the host user:
+   ```bash
+   sudo mkdir -p /var/mnt/ghost-data/{ramalama,user-bst-cache,user-containers,lmstudio,user-homebrew,user-uv}
+   sudo chown -R 1000:1000 /var/mnt/ghost-data/{ramalama,user-bst-cache,user-containers,lmstudio,user-homebrew,user-uv}
+   ```
+2. High-performance, attribute-preserving sync using rsync:
+   ```bash
+   rsync -aHAXx --numeric-ids /var/home/jorge/.local/share/ramalama/ /var/mnt/ghost-data/ramalama/
+   rsync -aHAXx --numeric-ids /var/home/jorge/.cache/buildstream/ /var/mnt/ghost-data/user-bst-cache/
+   rsync -aHAXx --numeric-ids /var/home/jorge/.local/share/containers/ /var/mnt/ghost-data/user-containers/
+   rsync -aHAXx --numeric-ids /var/home/jorge/.lmstudio/ /var/mnt/ghost-data/lmstudio/
+   rsync -aHAXx --numeric-ids /var/home/jorge/.cache/Homebrew/ /var/mnt/ghost-data/user-homebrew/
+   rsync -aHAXx --numeric-ids /var/home/jorge/.cache/uv/ /var/mnt/ghost-data/user-uv/
+   ```
+3. Swap original directories with symbolic links:
+   ```bash
+   mv /var/home/jorge/.local/share/ramalama /var/home/jorge/.local/share/ramalama.bak
+   ln -s /var/mnt/ghost-data/ramalama /var/home/jorge/.local/share/ramalama
+   
+   # Repeat for all other directories (buildstream, containers, lmstudio, Homebrew, uv)...
+   ```
+4. Verify symlinks are correct:
+   ```bash
+   ls -ld /var/home/jorge/.local/share/ramalama /var/home/jorge/.cache/buildstream /var/home/jorge/.local/share/containers /var/home/jorge/.lmstudio /var/home/jorge/.cache/Homebrew /var/home/jorge/.cache/uv
+   ```
+5. Safe deletion of backups once validated:
+   ```bash
+   rm -rf /var/home/jorge/.local/share/ramalama.bak /var/home/jorge/.cache/buildstream.bak /var/home/jorge/.local/share/containers.bak /var/home/jorge/.lmstudio.bak /var/home/jorge/.cache/Homebrew.bak /var/home/jorge/.cache/uv.bak
+   ```
+
 ## BuildStream 2.x Distributed Builds and Caching
 
 BuildStream 2.x uses the cluster's shared Buildbarn deployment for artifact cache writeback and remote execution. The current design is a two-layer cache: a pod-local hostPath cache under `/root/.cache/buildstream` for fast per-pod state, and a shared Buildbarn frontend for cluster-wide artifact sharing.

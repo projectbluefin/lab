@@ -142,6 +142,29 @@ If a template change is in git but not yet live:
   ```
   Always run this patch (or `just argocd-sync`) and verify that the target template's live version (`argo-mcp-get_workflow_template`) incorporates your changes **before** submitting or resubmitting any workflow runs.
 
+### 6b. Port-forward recovery and hard refresh
+
+If the local Argo CD port-forward drops or the CLI cannot reach the API, restart the
+forward and verify the server before forcing a sync:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 18080:80
+curl -sf http://127.0.0.1:18080/healthz
+```
+
+When the forward is healthy, refresh the Application state before resubmitting a workflow:
+
+```bash
+argocd app get lab --refresh --hard-refresh
+# or, if the CLI is unavailable, trigger the same refresh via kubectl:
+kubectl -n argocd patch application lab \
+  --type=merge -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+```
+
+Use this when a template change is already in git but the live template still appears stale;
+the refresh ensures the next sync uses the latest repo content rather than the previous
+cached manifest snapshot.
+
 ### 7. OCI Helm chart Applications (arc-systems, arc-runners)
 
 ArgoCD can deploy OCI Helm charts directly. These Applications live under `argocd/`

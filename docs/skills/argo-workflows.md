@@ -247,6 +247,25 @@ This fires `run-system` whether `run-software` succeeded or was skipped by its o
 
 For Dakota/BST BuildStream lanes that target the distributed Buildbarn grid, mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block that points artifact writes, source-caches, and remote execution at `grpc://frontend.buildbarn.svc.cluster.local:8980`. The current BuildStream image used by these workflows does not accept the legacy `remoteasset:` block, so the override omits it. This is the pattern used by `dakota-build-pipeline`, `dakota-buildstream-warm-cache`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, and `bst-qa-pipeline`.
 
+### 7b. Queueing and deduplication: gate the template, not just the workflow
+
+Heavy VM and build workflows should be admitted through a semaphore or a deduplication guard before they fan out. In this repo, `manifests/workflow-semaphores.yaml` defines cluster-wide semaphores for the `qa-vm-fleet` and `containerdisk-build` lanes, and the heavy templates (`bluefin-qa-pipeline`, `dakota-qa-pipeline`, `image-poller`, and `digest-watch`) use that admission path to stop duplicate or overlapping runs.
+
+Important: workflow-level synchronization is not enough when the caller uses `workflowTemplateRef` or `templateRef` to dispatch a different WorkflowTemplate. Argo Workflows resolves those calls as separate template invocations, so the lock must live on the called template or the shared admission path. Apply the semaphore at the template that actually does the expensive work, not on the parent workflow wrapper.
+
+```yaml
+spec:
+  templates:
+    - name: heavy-work
+      synchronization:
+        semaphore:
+          configMapKeyRef:
+            name: workflow-semaphores
+            key: qa-vm-fleet
+```
+
+The live pattern in this repo is to place the semaphore on the heavy child template and keep the parent workflow thin; the parent simply passes parameters and exits. This prevents poll bursts from generating unbounded VM fleets and starving node memory requests.
+
 ### 8. File names must match `metadata.name`
 
 WorkflowTemplate file names in `argo/workflow-templates/` must match the resource's `metadata.name`. Divergence (e.g. `provision-vm.yaml` containing `name: provision-bluefin-vm`) confuses ArgoCD tracking and grep-based navigation:
@@ -833,12 +852,14 @@ step.
 - Commit message not in Conventional Commits format — the pre-commit hook rejects any commit not matching `<type>(<scope>): <description>`. Valid types: `feat fix ci chore docs refactor test build perf revert`
 - Removing `suspend: true` from a CronWorkflow, seeing ArgoCD report `Synced`, and stopping there — the live field can silently stay `true`. Always re-check with `kubectl get cronworkflow <name> -o jsonpath='{.spec.suspend}'` after sync.
 - A digest-comparison poller (`digest-watch`, `dakota-commit-poller`, etc.) treated as a guarantee that a downstream artifact exists — it only reacts to source digest *changes*, not to the artifact disappearing out-of-band (disk wipe, registry GC). After any disk/registry event, force-rebuild manually; don't wait for the poller.
+- **Queue Starvation / `activeDeadlineSeconds` Trap**: Leaving a workflow's `activeDeadlineSeconds` at default (or unspecified) when it queues under a template-level semaphore or resource limit. The workflow-level deadline starts ticking upon *submission/creation*, not *execution/scheduling*. If a workflow queues for longer than the global default deadline (e.g., 2h), it gets instantly canceled with `DeadlineExceeded` as soon as it begins running. Always set a generous workflow-level deadline (e.g., 4h/14400s) on queueable templates and dynamic API submission specs.
 
 ## Verification
 
 Before marking any WorkflowTemplate change done:
 
 - [ ] All VM-running pipelines have `spec.activeDeadlineSeconds` set
+- [ ] All queueable templates/dynamic workflows (e.g. `build-containerdisk` and `digest-watch` submit payloads) have a generous workflow-level `activeDeadlineSeconds` (e.g., 14400s / 4h) to avoid queue starvation
 - [ ] Any new CronWorkflow uses `spec.schedules:` (array), not `spec.schedule:` (singular)
 - [ ] All sub-template calls include explicit `arguments:` blocks
 - [ ] Pipeline has `onExit: cleanup` handler

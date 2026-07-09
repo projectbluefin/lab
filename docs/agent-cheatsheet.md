@@ -129,6 +129,13 @@ KUBECONFIG=~/.kube/bluespeed.yaml kubectl -n argocd annotate application lab \
 argocd app sync lab
 ```
 
+**If the local ArgoCD port-forward drops**, restart it and verify the health endpoint
+before syncing or resubmitting a workflow:
+```bash
+kubectl -n argocd port-forward svc/argocd-server 18080:80
+curl -sf http://127.0.0.1:18080/healthz
+```
+
 **Read ArgoCD Application state:**
 ```bash
 KUBECONFIG=~/.kube/bluespeed.yaml kubectl get application lab-infra -n argocd \

@@ -59,6 +59,25 @@ Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check
 `kubectl describe node | grep -A8 "Allocated resources"` and delete VMs whose
 parent workflow is terminal.
 
+## Queueing, cleanup, and Buildbarn recovery
+
+When the cluster is already hot, the fastest recovery is usually to stop the noise
+instead of submitting more work:
+
+1. Delete stale terminal workflows first; leave the newest healthy run in place.
+2. Delete orphaned VMs/PVCs whose parent workflow is already terminal so they do
+   not keep memory or storage reservations pinned.
+3. Gate the expensive lane at the template level with the semaphores in
+   `manifests/workflow-semaphores.yaml`; workflow-level mutexes are not enough for
+   `workflowTemplateRef` / `templateRef` callers.
+4. If Buildbarn storage pods stay `Pending` after a StatefulSet or PVC change, verify
+   the PVC bindings and storage pods before resubmitting a build. The cluster health
+   signal is `kubectl -n buildbarn get pvc` plus `kubectl -n buildbarn get pods`.
+
+This pattern keeps the cluster from falling into a feedback loop where duplicate
+pollers, stale build runs, and orphaned VMs all compete for the same memory and
+storage budget.
+
 ## Mandatory first step
 
 Before any kubectl, k3s, or K8sGPT operation, look up the current API via Context7:

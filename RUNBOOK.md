@@ -113,6 +113,28 @@ Golden disks can be rotated via the `build-containerdisk` template.
 | Host daemons (`sshd`, `systemd-journald`, `systemd-logind`, `systemd-oomd`) die simultaneously on a node; journal shows `systemd-journald: Received SIGTERM from PID <n> (argoexec)` | Workflow steps that set `podSpecPatch: '{"hostPID":true,...}'` (e.g. `build-containerdisk` `install-to-disk`, required by bootc) share the host PID namespace; when Argo terminates the pod (deadline, retry, delete), argoexec signals processes it can see — which is every host process — killing sshd and friends on whichever node ran the step (confirmed 2026-07-08 on both ghost and exo-0) | Immediate recovery: privileged rescue pod (`hostPID`, `runAsUser: 0`, nsenter to PID 1) → `systemctl restart sshd`. Mitigation applied live on both nodes: `/etc/systemd/system/sshd.service.d/50-restart.conf` with `Restart=always`. Root fix tracked in projectbluefin/lab issues: constrain argoexec signal scope or drop hostPID from the bootc install path. |
 | `ghost` SSH (port 22) and k3s API (6443) intermittently refuse connections; NodePort services (zot cache) time out; `kubectl describe node ghost` shows ~99% memory allocated | Two overlapping `image-poll-lts-stable` runs both failed but their `onExit` VM teardown couldn't execute (cluster was already too resource-starved to schedule the teardown step), leaving 10 orphaned 8Gi `virt-launcher` VMs (~80Gi requested) running indefinitely; combined with 774 un-garbage-collected `Failed`/`Succeeded` Argo pods bloating etcd/API server object count and starving control-plane CPU (crashing/starving `sshd` on the same host) — confirmed 2026-07-08 | Delete orphaned `vm`/`vmi` objects whose parent workflow already shows `Failed`/`Error` (`argo list -n argo --status Failed,Error`, then `kubectl delete vm --all -n <test-namespace>`), and bulk-delete stale terminal pods (`kubectl delete pods -n argo --field-selector=status.phase=Failed` / `=Succeeded`). Root fix still open: `ghost` has no `system-reserved`/`kube-reserved` kubelet memory carve-out, so pod requests can legitimately reach ~100% of allocatable with zero headroom for host daemons like `sshd`; and VM teardown-on-exit has no resilience against running during a resource-starved cluster. See `production-hardening` backlog. |
 
+## Durable recovery patterns
+
+The following recovery patterns have been validated in live cluster work and are worth
+keeping as durable operator guidance:
+
+- Queueing and deduplication: use template-level semaphores for VM-heavy and
+  build-heavy templates; workflow-level mutexes do not protect
+  `workflowTemplateRef` / `templateRef` callers.
+- Cluster overload: delete stale terminal workflows and orphaned VMs before
+  resubmitting a build; leaving the old noise in place causes the next run to
+  compete for the same memory budget.
+- Buildbarn backend recovery: if storage pods stay `Pending` after a StatefulSet or
+  PVC change, verify the PVC bindings and the storage pods before re-running the
+  build. Treat the storage pods as the live signal, not the old workflow status.
+- ArgoCD access: if the local port-forward drops, restart it and verify the health
+  endpoint before forcing a sync or submitting a workflow against the updated
+  template.
+- USB4/PD failure mode: if the USB4 link never establishes below the OS and a
+  cable reseat / warm reboot do not help, treat it as an EC/PD issue and continue
+  in Ethernet mode with local read caches rather than chasing Linux networking
+  settings.
+
 ## Historical notes
 
 Keep this file timeless: architecture, topology, and durable failure modes only.

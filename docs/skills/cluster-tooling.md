@@ -33,6 +33,7 @@ metadata:
    - set `override-project-caches: false` to allow falling back to upstream caches (like Freedesktop SDK and GNOME OS), preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
    - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`) so local additions are cached across the cluster.
    - set `source-caches.servers: []` to keep source-cache configuration minimal.
+   - keep BuildStream concurrency intentionally conservative for homelab lanes (`fetchers/builders/pushers: 1`, `build.max-jobs: 1`) so cache-backed builds finish without oversubscribing the cluster.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
 
@@ -53,6 +54,10 @@ rides 1GbE. The cluster stays good at ingesting BST builds via:
   image pulls off the WAN and off cross-node paths.
 - **Per-node hostPath bst-cache** (`/var/tmp/bst-cache/<tag>`) still absorbs
   BuildStream-level reuse before any network hop.
+- **Dakota lane policy:** `dakota-build-pipeline` uses `build-mode=auto` to enable
+  Buildbarn remote execution only when the USB4 data-plane is confirmed up on both
+  ghost and exo-0; otherwise it stays on the cache-only path over ethernet and
+  any retry forces cache-only to preserve the LAN.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

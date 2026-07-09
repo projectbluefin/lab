@@ -53,7 +53,11 @@
   remote execution, and cache reuse only, with a pod-local BuildStream cache kept
   for fast per-pod retry state. The workflow uses a checked-in BuildStream config
   and a warm-cache pre-step so the shared object, action, and remote-asset caches
-  are primed before the main build.
+  are primed before the main build. Dakota is USB4-first: `build-mode=auto`
+  enables remote execution only when both ghost and exo-0 report
+  `lab.projectbluefin.io/usb4-link=up`; otherwise the lane falls back to
+  cache-only mode over ethernet. Retries always force cache-only so a transient
+  link drop does not saturate 1GbE.
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
@@ -137,7 +141,11 @@ Buildbarn topology (2 storage shards, 1 scheduler, 2 frontend replicas, 1
 worker+runner DaemonSet pair per node — one shard/worker pair pinned per node
 via `podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. It **cannot**
 run the real dakota/bluefin-server OCI builds — those require privileges
-Buildbarn's runner deliberately does not grant.
+Buildbarn's runner deliberately does not grant. For Dakota, the BuildStream lane
+uses the shared Buildbarn cache path for artifact writes and only opts into remote
+execution when the USB4 data-plane is confirmed up; if the link is down or a
+retry happens, it falls back to the low-concurrency, cache-only path so the
+cluster stays usable over 1GbE.
 
 ## Cache Warming (Pollers)
 

@@ -162,20 +162,18 @@ spec:
       priorityClassName: bst-build
       affinity:
         nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
                   - key: kubernetes.io/hostname
                     operator: In
                     values:
                       - ghost
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - topologyKey: kubernetes.io/hostname
-              labelSelector:
-                matchLabels:
-                  workflows.argoproj.io/workflow: "{{workflow.name}}"
+      # The workflow-level anti-affinity was preventing the real BuildStream pod
+      # from landing on ghost after the small detect-build-mode step had already
+      # used that node. The DAG already serializes the two BST variants, and the
+      # shared bst-build semaphore serializes overlapping workflows, so we do not
+      # need an extra pod anti-affinity here.
       # The build uses a persistent hostPath cache for retry acceleration plus a checked-in
       # BuildStream config that points the build at the shared Buildbarn frontend for remote
       # cache/writeback and upstream fallback caches. Cold bootstrap and source fetch work can
@@ -232,11 +230,11 @@ spec:
             value: "1"
         resources:
           requests:
-            cpu: "500m"
-            memory: 2Gi
+            cpu: "8"
+            memory: 12Gi
           limits:
-            cpu: "2"
-            memory: 4Gi
+            cpu: "12"
+            memory: 16Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse

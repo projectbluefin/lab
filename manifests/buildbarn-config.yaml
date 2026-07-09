@@ -12,20 +12,20 @@ metadata:
     app.kubernetes.io/part-of: lab
 data:
   common.libsonnet: |
-    // Two CAS/AC shards remain configured, but the clients now use the
-    // headless storage service so they keep working during storage rollouts
-    // and pod churn instead of depending on a single pod DNS name.
+    // Two CAS/AC shards remain configured, but the clients now target the
+    // two storage StatefulSet pods directly so a given object always lands on
+    // the same shard and stays reachable for later reads.
     {
       blobstore: {
         contentAddressableStorage: {
           sharding: {
             shards: {
               "0": {
-                backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
+                backend: { grpc: { client: { address: 'storage-0.buildbarn.svc.cluster.local:8981' } } },
                 weight: 1,
               },
               "1": {
-                backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
+                backend: { grpc: { client: { address: 'storage-1.buildbarn.svc.cluster.local:8981' } } },
                 weight: 1,
               },
             },
@@ -37,11 +37,11 @@ data:
               sharding: {
                 shards: {
                   "0": {
-                    backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
+                    backend: { grpc: { client: { address: 'storage-0.buildbarn.svc.cluster.local:8981' } } },
                     weight: 1,
                   },
                   "1": {
-                    backend: { grpc: { client: { address: 'storage.buildbarn.svc.cluster.local:8981' } } },
+                    backend: { grpc: { client: { address: 'storage-1.buildbarn.svc.cluster.local:8981' } } },
                     weight: 1,
                   },
                 },

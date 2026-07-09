@@ -90,6 +90,7 @@ spec:
               esac
               IF=/sys/class/net/thunderbolt0
               LAST=""
+              N=0
               while true; do
                 STATE=down
                 if [[ "$(cat ${IF}/operstate 2>/dev/null)" == "up" ]] \
@@ -97,15 +98,18 @@ spec:
                    && timeout 2 bash -c "</dev/tcp/${PEER_IP}/10250" 2>/dev/null; then
                   STATE=up
                 fi
-                if [[ "${STATE}" != "${LAST}" ]]; then
+                # Patch on change, plus a periodic re-assert (every ~5 min) so
+                # externally drifted annotations converge back to reality.
+                if [[ "${STATE}" != "${LAST}" || $((N % 20)) -eq 0 ]]; then
                   if kubectl annotate node "${NODE_NAME}" \
-                       "lab.projectbluefin.io/usb4-link=${STATE}" --overwrite; then
-                    echo "usb4-link -> ${STATE}"
+                       "lab.projectbluefin.io/usb4-link=${STATE}" --overwrite >/dev/null; then
+                    [[ "${STATE}" != "${LAST}" ]] && echo "usb4-link -> ${STATE}"
                     LAST="${STATE}"
                   else
                     echo "annotate failed, will retry" >&2
                   fi
                 fi
+                N=$((N + 1))
                 sleep 15
               done
           resources:

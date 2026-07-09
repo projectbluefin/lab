@@ -76,7 +76,8 @@
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
 - **Cache policy:** uses the same shared Buildbarn remote cache/execution path as
   Dakota, via the checked-in `buildstream-remote-cache` config, with
-  `override-project-caches: false` and no upstream fallback remotes.
+  `override-project-caches: false` so the project's own upstream cache URLs remain
+  available as read-only fallbacks while Buildbarn handles artifact writes.
 
 ### bluefin-server-build-pipeline
 - **Purpose:** BuildStream compile pipeline for Bluefin Server elements
@@ -86,9 +87,7 @@
   `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
   `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
   `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
-- **Cache policy:** uses the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`) for artifact cache writes and remote execution; the current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it.
-  via the checked-in `buildstream-remote-cache` config, with project cache
-  overrides left disabled and no upstream fallback remotes.
+- **Cache policy:** uses the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`) for artifact cache writes and remote execution; the current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it. The checked-in `buildstream-remote-cache` config leaves project cache overrides disabled so the project's own upstream cache URLs remain available as read-only fallbacks.
 
 ### bst-qa-pipeline
 - **Purpose:** Smoke-tests the Buildbarn distributed remote-execution grid itself

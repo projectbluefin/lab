@@ -28,8 +28,17 @@ data:
       servers:
       - url: grpc://frontend.buildbarn.svc.cluster.local:8980
         push: true
+      - url: https://gbm.gnome.org:11003
+        push: false
+      - url: https://cache.projectbluefin.io:11001
+        push: false
     source-caches:
       override-project-caches: false
+      servers:
+      - url: https://gbm.gnome.org:11003
+        push: false
+      - url: https://cache.projectbluefin.io:11001
+        push: false
   # Per-project remote-execution snippet body. Pipelines append this under
   # projects.<name> (indented) when distributed builds are enabled.
   remote-execution.conf: |

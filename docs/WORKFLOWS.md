@@ -61,7 +61,10 @@
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
-  [Cache Warming](#cache-warming-pollers)).
+  [Cache Warming](#cache-warming-pollers)). The poller resolves the current
+  GitHub SHA for `dakota:testing` and passes that exact commit into the local
+  BuildStream run, so the lab build checks out the same source revision that
+  GitHub is building instead of drifting to a later branch tip.
 
 ### cosmic-build-pipeline
 - **Purpose:** BuildStream compile pipeline for COSMIC variants

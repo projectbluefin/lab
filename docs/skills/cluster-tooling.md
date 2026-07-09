@@ -57,7 +57,9 @@ rides 1GbE. The cluster stays good at ingesting BST builds via:
 - **Dakota lane policy:** `dakota-build-pipeline` uses `build-mode=auto` to enable
   Buildbarn remote execution only when the USB4 data-plane is confirmed up on both
   ghost and exo-0; otherwise it stays on the cache-only path over ethernet and
-  any retry forces cache-only to preserve the LAN.
+  any retry forces cache-only to preserve the LAN. The dakota commit poller also
+  pins the checkout to the exact GitHub SHA it observed, so the lab build follows
+  the same revision that GitHub is building.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

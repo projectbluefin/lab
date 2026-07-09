@@ -296,6 +296,7 @@ spec:
               \"kind\": \"Workflow\",
               \"metadata\": {\"generateName\": \"build-cd-sync-${CD_TAG}-\", \"namespace\": \"argo\", \"labels\": {\"bluefin.io/cd-tag\": \"${CD_TAG}\"}},
               \"spec\": {
+                \"activeDeadlineSeconds\": 14400,
                 \"workflowTemplateRef\": {\"name\": \"build-containerdisk\"},
                 \"arguments\": {\"parameters\": [
                   {\"name\": \"image\", \"value\": \"${IMAGE}\"},

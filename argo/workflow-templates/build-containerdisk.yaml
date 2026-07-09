@@ -11,6 +11,7 @@ metadata:
       Build steps are unpinned; workflow-local PVC staging keeps install/convert data together.
 spec:
   serviceAccountName: argo
+  activeDeadlineSeconds: 14400  # 4h; allows queued workflows to stay pending without timing out before they execute
   # Delete the 100Gi staging PVC on ANY terminal state — the default
   # (OnWorkflowSuccess) stranded a PVC for every failed build.
   volumeClaimGC:

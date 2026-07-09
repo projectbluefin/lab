@@ -265,7 +265,7 @@ containerd `hosts.toml` (written by `registry-mirror-config` DaemonSet — no k3
 | Instance | Upstream | NodePort | Storage |
 |---|---|---|---|
 | `registry` (writable) | — write target, no upstream | 30500 | `/var/mnt/ghost-data/zot-local` |
-| `zot-cache` | all 6 upstreams (ghcr, docker, quay, fedora, k8s, cgr) | 30501 | `/var/mnt/ghost-data/zot-cache` |
+| `zot-cache` | all 7 upstreams (ghcr, docker, quay, fedora, k8s, cgr, ecr) | 30501 | `/var/mnt/ghost-data/zot-cache` |
 
 Pull path prefixes (used in hosts.toml mirror URLs and Zot destination mapping):
 - `ghcr.io` → `:30501/ghcr`
@@ -274,6 +274,7 @@ Pull path prefixes (used in hosts.toml mirror URLs and Zot destination mapping):
 - `registry.fedoraproject.org` → `:30501/fedora`
 - `registry.k8s.io` → `:30501/k8s`
 - `cgr.dev` → `:30501/cgr`
+- `public.ecr.aws` → `:30501/ecr`
 
 All instances pinned to ghost (hostPath storage) and managed by ArgoCD `lab-infra`
 via `manifests/zot-cache.yaml` (pull-through) and `manifests/zot-writable.yaml` (write target).

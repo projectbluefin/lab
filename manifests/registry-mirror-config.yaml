@@ -61,6 +61,12 @@ data:
     [host."http://192.168.1.102:30501/v2/cgr"]
       capabilities = ["pull", "resolve"]
       override_path = true
+  public.ecr.aws.hosts.toml: |
+    server = "https://public.ecr.aws"
+
+    [host."http://192.168.1.102:30501/v2/ecr"]
+      capabilities = ["pull", "resolve"]
+      override_path = true
   local-zot.hosts.toml: |
     server = "http://192.168.1.102:30500"
 
@@ -99,6 +105,7 @@ spec:
                 /certs.d/registry.fedoraproject.org \
                 /certs.d/registry.k8s.io \
                 /certs.d/cgr.dev \
+                /certs.d/public.ecr.aws \
                 "/certs.d/192.168.1.102:30500"
               cp /config/ghcr.io.hosts.toml                    /certs.d/ghcr.io/hosts.toml
               cp /config/docker.io.hosts.toml                  /certs.d/docker.io/hosts.toml
@@ -106,6 +113,7 @@ spec:
               cp /config/registry.fedoraproject.org.hosts.toml /certs.d/registry.fedoraproject.org/hosts.toml
               cp /config/registry.k8s.io.hosts.toml            /certs.d/registry.k8s.io/hosts.toml
               cp /config/cgr.dev.hosts.toml                    /certs.d/cgr.dev/hosts.toml
+              cp /config/public.ecr.aws.hosts.toml             /certs.d/public.ecr.aws/hosts.toml
               cp /config/local-zot.hosts.toml                  "/certs.d/192.168.1.102:30500/hosts.toml"
               echo "Mirror hosts written."
           volumeMounts:

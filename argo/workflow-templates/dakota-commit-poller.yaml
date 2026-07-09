@@ -51,6 +51,8 @@ spec:
               parameters:
                 - name: ref
                   value: "{{workflow.parameters.branch}}"
+                - name: commit-sha
+                  value: "{{tasks.check-sha.outputs.parameters.sha}}"
                 - name: repo
                   value: "https://github.com/{{workflow.parameters.repo}}.git"
                 - name: registry
@@ -62,6 +64,9 @@ spec:
           - name: changed
             valueFrom:
               path: /tmp/changed
+          - name: sha
+            valueFrom:
+              path: /tmp/sha
       script:
         image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
         command: [sh]
@@ -94,6 +99,7 @@ spec:
             | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['sha'])")
 
           echo "Remote SHA:  ${REMOTE}" >&2
+          printf '%s\n' "${REMOTE}" > /tmp/sha
 
           # Read stored SHA from ConfigMap
           STORED=$(kubectl get configmap image-polling-digests \

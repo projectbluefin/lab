@@ -29,6 +29,8 @@ spec:
         value: "https://github.com/projectbluefin/dakota.git"
       - name: ref
         value: "testing"
+      - name: commit-sha
+        value: ""
       - name: registry
         value: "192.168.1.102:30500"
       # auto: distributed RE when the USB4 link is up on both nodes, else
@@ -45,6 +47,8 @@ spec:
         parameters:
           - name: ref
             value: "{{workflow.parameters.ref}}"
+          - name: commit-sha
+            value: "{{workflow.parameters.commit-sha}}"
           - name: repo
             value: "{{workflow.parameters.repo}}"
           - name: registry
@@ -73,6 +77,8 @@ spec:
                   value: "dakota-cluster-testing"
                 - name: ref
                   value: "{{inputs.parameters.ref}}"
+                - name: commit-sha
+                  value: "{{inputs.parameters.commit-sha}}"
                 - name: repo
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
@@ -90,6 +96,8 @@ spec:
                   value: "dakota-cluster-testing-nvidia"
                 - name: ref
                   value: "{{inputs.parameters.ref}}"
+                - name: commit-sha
+                  value: "{{inputs.parameters.commit-sha}}"
                 - name: repo
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
@@ -166,6 +174,7 @@ spec:
           - name: element
           - name: tag
           - name: ref
+          - name: commit-sha
           - name: repo
           - name: registry
           - name: mode
@@ -234,8 +243,18 @@ spec:
           REPO="{{inputs.parameters.repo}}"
           echo "=== Cloning dakota @ ${REF} ==="
           rm -rf /src
-          git clone --depth=1 --branch "${REF}" "${REPO}" /src
+          git clone --depth=1 "${REPO}" /src
           cd /src
+          COMMIT_SHA="{{inputs.parameters.commit-sha}}"
+          if [[ -n "${COMMIT_SHA}" ]]; then
+            echo "=== Checking out exact GitHub commit ${COMMIT_SHA} ==="
+            git fetch --depth=1 origin "${COMMIT_SHA}"
+            git checkout --detach "${COMMIT_SHA}"
+          else
+            echo "=== Checking out ref ${REF} ==="
+            git fetch --depth=1 origin "${REF}"
+            git checkout --detach FETCH_HEAD
+          fi
 
           # Use the checkout's project.conf to scope the remote-cache override to the
           # active project name while leaving the checked-in config as the shared baseline.

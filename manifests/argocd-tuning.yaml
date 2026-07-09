@@ -87,6 +87,17 @@ spec:
     spec:
       containers:
         - name: argocd-application-controller
+          # REDIS_PASSWORD must be declared here: this SSA patch owns the
+          # container spec, and an earlier apply wiped the upstream env list,
+          # leaving the controller unauthenticated to redis (NOAUTH errors,
+          # partial syncs). Other env vars fall back to argocd-cmd-params-cm.
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: argocd-redis
+                  key: auth
+                  optional: true
           resources:
             requests:
               cpu: 100m

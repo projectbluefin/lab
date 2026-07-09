@@ -37,10 +37,18 @@ Buildbarn as artifact/source cache only when it is down.
 
 ### 2. BuildStream config split (`manifests/buildstream-remote-cache-config.yaml`)
 
-- `dakota-buildstream.conf` becomes cache-only baseline (scheduler, artifacts,
-  source-caches; no `remote-execution` block).
-- New key `remote-execution.conf`: the per-project RE snippet body the
-  pipeline appends when RE mode is selected.
+- `dakota-buildstream.conf` becomes the shared baseline with Buildbarn artifact
+  writes and upstream read-only fallback caches (`gbm.gnome.org`,
+  `cache.freedesktop-sdk.io`, `cache.projectbluefin.io`).
+- The per-project override block keeps `override-project-caches: false` so the
+  project can still reuse upstream bootstrap artifacts when the USB4 link is
+  down or when Buildstream is running in cache-only mode.
+- New key `remote-execution.conf`: the per-project RE snippet body the pipeline
+  appends when RE mode is selected.
+- For checkout trees that track upstream `gnome-build-meta` or
+  `freedesktop-sdk` patch queues, the workflow mirrors those patch queues into
+  the checkout before the build so the artifact keys match the upstream cache
+  identities.
 
 ### 3. Pipeline mode selection (`argo/workflow-templates/dakota-build-pipeline.yaml`)
 

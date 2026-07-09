@@ -85,9 +85,11 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
+          # Keep the two variants serialized so the lab can schedule each BuildStream
+          # pod within the available memory reservations on ghost/exo-0.
           - name: build-bluefin-nvidia
             template: bst-build
-            depends: detect-build-mode
+            depends: build-bluefin
             arguments:
               parameters:
                 - name: element

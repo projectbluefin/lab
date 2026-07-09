@@ -17,12 +17,12 @@ data:
   dakota-buildstream.conf: |
     scheduler:
       network-retries: 8
-      fetchers: 24
-      builders: 24
-      pushers: 24
+      fetchers: 1
+      builders: 1
+      pushers: 1
     build:
-      max-jobs: 24
-
+      max-jobs: 1
+ 
     artifacts:
       override-project-caches: false
       servers:
@@ -30,9 +30,7 @@ data:
         push: true
     source-caches:
       override-project-caches: false
-      servers:
-      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-        push: false
+      servers: []
   # Per-project remote-execution snippet body. Pipelines append this under
   # projects.<name> (indented) when distributed builds are enabled.
   remote-execution.conf: |

@@ -1,0 +1,117 @@
+# USB4 link monitor — annotates ghost and exo-0 with the live state of the
+# point-to-point thunderbolt0 data-plane link so pipelines can pick between
+# distributed remote execution (link up) and cache-only builds (link down).
+#
+# Annotation: lab.projectbluefin.io/usb4-link = up | down
+# "up" requires operstate=up AND carrier=1 AND a TCP probe of the peer's
+# kubelet port over the tb subnet (10.99.0.0/30) — proving end-to-end
+# reachability, not just local link state.
+#
+# hostNetwork gives the pod the host network namespace, so /sys/class/net
+# shows the host's thunderbolt0 and the TCP probe routes over the tb link.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: usb4-link-monitor
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: usb4-link-monitor
+  labels:
+    app.kubernetes.io/part-of: lab
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: usb4-link-monitor
+  labels:
+    app.kubernetes.io/part-of: lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: usb4-link-monitor
+subjects:
+  - kind: ServiceAccount
+    name: usb4-link-monitor
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: usb4-link-monitor
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    matchLabels:
+      app: usb4-link-monitor
+  template:
+    metadata:
+      labels:
+        app: usb4-link-monitor
+    spec:
+      serviceAccountName: usb4-link-monitor
+      hostNetwork: true
+      tolerations:
+        - operator: Exists
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: [ghost, exo-0]
+      containers:
+        - name: monitor
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          command: [bash, -c]
+          args:
+            - |
+              set -u
+              case "${NODE_NAME}" in
+                ghost) PEER_IP=10.99.0.2 ;;
+                exo-0) PEER_IP=10.99.0.1 ;;
+                *) echo "unknown node ${NODE_NAME}, no peer mapping" >&2; exit 1 ;;
+              esac
+              IF=/sys/class/net/thunderbolt0
+              LAST=""
+              while true; do
+                STATE=down
+                if [[ "$(cat ${IF}/operstate 2>/dev/null)" == "up" ]] \
+                   && [[ "$(cat ${IF}/carrier 2>/dev/null)" == "1" ]] \
+                   && timeout 2 bash -c "</dev/tcp/${PEER_IP}/10250" 2>/dev/null; then
+                  STATE=up
+                fi
+                if [[ "${STATE}" != "${LAST}" ]]; then
+                  if kubectl annotate node "${NODE_NAME}" \
+                       "lab.projectbluefin.io/usb4-link=${STATE}" --overwrite; then
+                    echo "usb4-link -> ${STATE}"
+                    LAST="${STATE}"
+                  else
+                    echo "annotate failed, will retry" >&2
+                  fi
+                fi
+                sleep 15
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi

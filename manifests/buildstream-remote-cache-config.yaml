@@ -8,6 +8,12 @@ metadata:
     app.kubernetes.io/component: buildstream
 
 data:
+  # Cache-only baseline: artifact push + source cache are bounded transfers,
+  # safe on 1 GbE. The remote-execution block lives in remote-execution.conf
+  # and is appended by pipelines only when the USB4 data-plane link is up
+  # (see manifests/usb4-link-monitor.yaml and the dakota-build-pipeline
+  # detect-build-mode step) — RE input-root fan-out over ethernet saturates
+  # the LAN and starves the control plane.
   dakota-buildstream.conf: |
     scheduler:
       network-retries: 8
@@ -27,10 +33,28 @@ data:
       servers:
       - url: grpc://frontend.buildbarn.svc.cluster.local:8980
         push: false
+  # Per-project remote-execution snippet body. Pipelines append this under
+  # projects.<name> (indented) when distributed builds are enabled.
+  remote-execution.conf: |
     remote-execution:
       execution-service:
         url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        connection-config:
+          keepalive-time: 60
+          retry-limit: 8
+          retry-delay: 1000
+          request-timeout: 1800
       storage-service:
         url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        connection-config:
+          keepalive-time: 60
+          retry-limit: 8
+          retry-delay: 1000
+          request-timeout: 1800
       action-cache-service:
         url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        connection-config:
+          keepalive-time: 60
+          retry-limit: 8
+          retry-delay: 1000
+          request-timeout: 1800

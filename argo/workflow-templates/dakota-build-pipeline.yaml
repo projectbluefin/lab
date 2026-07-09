@@ -31,6 +31,10 @@ spec:
         value: "deploy/fix-gcc-bootstrap"
       - name: registry
         value: "192.168.1.102:30500"
+      # auto: distributed RE when the USB4 link is up on both nodes, else
+      # cache-only. Operators can force either mode.
+      - name: build-mode
+        value: "auto"
 
   entrypoint: build
 
@@ -45,10 +49,22 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
+          # Plain default (not a workflow-parameter reference) so callers that
+          # invoke this template via templateRef (dakota-commit-poller) resolve
+          # it without defining the parameter themselves.
+          - name: build-mode
+            value: "auto"
       dag:
         tasks:
+          - name: detect-build-mode
+            template: detect-build-mode
+            arguments:
+              parameters:
+                - name: build-mode
+                  value: "{{inputs.parameters.build-mode}}"
           - name: build-bluefin
             template: bst-build
+            depends: detect-build-mode
             arguments:
               parameters:
                 - name: element
@@ -61,8 +77,11 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
+                - name: mode
+                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
           - name: build-bluefin-nvidia
             template: bst-build
+            depends: detect-build-mode
             arguments:
               parameters:
                 - name: element
@@ -75,6 +94,54 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
+                - name: mode
+                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
+
+    # Decide between distributed remote execution and cache-only builds.
+    # RE fans action input roots out across nodes — safe on the USB4 data
+    # plane, but it saturates 1 GbE and starves the control plane. The
+    # usb4-link-monitor DaemonSet keeps a live up/down annotation on ghost
+    # and exo-0; RE is selected only when both report "up". Missing or
+    # unreadable annotations fail safe to cache-only.
+    - name: detect-build-mode
+      inputs:
+        parameters:
+          - name: build-mode
+      outputs:
+        parameters:
+          - name: mode
+            valueFrom:
+              path: /tmp/mode
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        source: |
+          set -uo pipefail
+          REQUESTED="{{inputs.parameters.build-mode}}"
+          MODE=cache-only
+          case "${REQUESTED}" in
+            re) MODE=re ;;
+            cache-only) MODE=cache-only ;;
+            auto)
+              ANNOT='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}'
+              G=$(kubectl get node ghost -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
+              E=$(kubectl get node exo-0 -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
+              echo "usb4-link annotations: ghost=${G:-unset} exo-0=${E:-unset}"
+              if [[ "${G}" == "up" && "${E}" == "up" ]]; then
+                MODE=re
+              fi
+              ;;
+            *) echo "unknown build-mode '${REQUESTED}', using cache-only" >&2 ;;
+          esac
+          echo "build mode: ${MODE}"
+          printf '%s' "${MODE}" > /tmp/mode
 
     - name: bst-build
       priorityClassName: bst-build
@@ -101,6 +168,7 @@ spec:
           - name: ref
           - name: repo
           - name: registry
+          - name: mode
       volumes:
         - name: fuse
           hostPath:
@@ -115,6 +183,8 @@ spec:
             items:
               - key: dakota-buildstream.conf
                 path: buildstream.conf
+              - key: remote-execution.conf
+                path: remote-execution.conf
       script:
         image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
         command: [bash]
@@ -183,29 +253,21 @@ spec:
                 servers:
                 - url: grpc://frontend.buildbarn.svc.cluster.local:8980
                   push: false
-              remote-execution:
-                execution-service:
-                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  connection-config:
-                    keepalive-time: 60
-                    retry-limit: 8
-                    retry-delay: 1000
-                    request-timeout: 1800
-                storage-service:
-                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  connection-config:
-                    keepalive-time: 60
-                    retry-limit: 8
-                    retry-delay: 1000
-                    request-timeout: 1800
-                action-cache-service:
-                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  connection-config:
-                    keepalive-time: 60
-                    retry-limit: 8
-                    retry-delay: 1000
-                    request-timeout: 1800
           EOF
+
+          # Distributed remote execution only when the detect-build-mode step
+          # selected it AND this is the first attempt. Retries force cache-only:
+          # the common retry cause is the USB4 link dropping mid-build, and RE
+          # input-root fan-out over 1GbE saturates the LAN. Everything already
+          # built is in the Buildbarn cache, so the cache-only retry is cheap.
+          MODE="{{inputs.parameters.mode}}"
+          ATTEMPT="{{retries}}"
+          if [[ "${MODE}" == "re" && "${ATTEMPT}" == "0" ]]; then
+            echo "=== Distributed build: remote execution enabled (USB4 link up) ==="
+            sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
+          else
+            echo "=== Cache-only build (mode=${MODE}, attempt=${ATTEMPT}) ==="
+          fi
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

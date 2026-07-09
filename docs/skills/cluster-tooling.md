@@ -325,6 +325,28 @@ workflows. **`/dev/nvme1n1` on `exo-0` is the live system disk — never target 
 
 BuildStream 2.x uses the cluster's shared Buildbarn deployment for artifact cache writeback and remote execution. The current design is a two-layer cache: a pod-local hostPath cache under `/root/.cache/buildstream` for fast per-pod state, and a shared Buildbarn frontend for cluster-wide artifact sharing.
 
+### 0. USB4-gated remote execution (link-state fallback)
+
+Remote execution fans action input roots out across nodes. That is only safe on
+the ghost<->exo-0 USB4 data plane (10.99.0.0/30, table-40 policy routing) —
+over 1 GbE it saturates the LAN and starves the control plane. The lab
+therefore gates RE on live link state:
+
+- `manifests/usb4-link-monitor.yaml`: DaemonSet on ghost + exo-0 annotates each
+  node with `lab.projectbluefin.io/usb4-link: up|down` (operstate + carrier +
+  TCP probe of the peer's kubelet over the tb subnet, every 15 s).
+- `dakota-build-pipeline` runs a `detect-build-mode` step first: `re` only when
+  both annotations are `up` (or `-p build-mode=re` forces it); anything else —
+  including missing annotations — fails safe to `cache-only`.
+- In `cache-only` mode bst builds locally in the pod and uses Buildbarn purely
+  as artifact/source cache (bounded transfers, ethernet-safe).
+- Retries always force cache-only (`{{retries}} > 0`): a mid-build link drop
+  fails the attempt and the retry rides the cache instead of RE.
+- The RE endpoint snippet lives in the `remote-execution.conf` key of the
+  `buildstream-remote-cache` ConfigMap; the baseline `dakota-buildstream.conf`
+  is cache-only. Pipelines append the snippet per-project only in RE mode.
+- Spec: `docs/superpowers/specs/2026-07-09-distributed-bst-usb4-fallback-design.md`
+
 ### 1. Shared Buildbarn frontend
 - **Endpoint**: `grpc://frontend.buildbarn.svc.cluster.local:8980`
 - **Role**: CAS/AC artifact writes and reads; execute-forwarding for BuildStream actions that use the in-cluster execution grid

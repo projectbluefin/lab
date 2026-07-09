@@ -27,10 +27,6 @@ def main():
                 h.update(chunk)
         return f"sha256:{h.hexdigest()}"
 
-    def gh_actions_query_url(term):
-        safe = (term or '').replace(' ', '+')
-        return f"https://github.com/projectbluefin/lab/actions?query={safe}"
-
     def argo_ui_url(workflow_name):
         # Argo Workflows run on the cluster, not GitHub Actions; link straight to
         # the Argo Server UI for the actual workflow instance.

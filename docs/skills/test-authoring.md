@@ -250,6 +250,7 @@ See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
 | "I'll add `@wip` and clean it up later." | `@wip` scenarios are skipped in nightly runs. Fix before merging or they rot. |
 | "`grep -c` returning 0 means zero matches, that's fine." | `grep -c` exits 1 when count=0. Combined with `\|\| echo 0` in a pipeline, this emits `0\n0\n` (double output), breaking exact-match steps. Use `\|\| true` instead. |
 | "Key combos take effect immediately — no sleep needed." | AT-SPI operations need time to reflect UI state after a key combo. Add `sleep(1)` before checking widget state (e.g., tab count after `<Shift><Ctrl><T>`). |
+| "I need to keep empty stubs like before_scenario in environment.py." | Behave runs perfectly fine without empty hooks. Prune them to keep files minimal and highly readable. |
 
 ## Red Flags
 
@@ -262,6 +263,7 @@ See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
 - `grep -c ... || echo 0` in a bash step — `grep -c` exits 1 on zero matches; `|| echo 0` fires and doubles the output; use `|| true` instead
 - No `sleep()` between a keyboard shortcut (e.g. `<Shift><Ctrl><T>`) and the AT-SPI check that follows — race condition; add `sleep(1)` before checking widget state
 - Omission of `behave` from the VM pip install block for non-system suites inside `run-gnome-tests.yaml` — results in exit code 127 ("command not found") at suite run-time
+- Empty behave environment hooks (like `before_scenario`, `after_scenario`) that do nothing in `environment.py` — dead boilerplate; delete them so the file is clean
 
 ## Verification
 

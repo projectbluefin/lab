@@ -1,8 +1,8 @@
 # manifests/bst-build-priorityclass.yaml
-# BST build pods — below lab-test-vm (1,000,000) so test VMs always win
-# scheduling disputes. PreemptionPolicy: Never means BST won't evict others,
-# but can itself be preempted. Since buildbox-casd preserves all artifacts,
-# a preempted build restarts and skips already-built elements.
+# BST build pods run below lab-test-vm (1,000,000) so test VMs keep the
+# highest scheduling priority. Set the pod class to preempt lower-priority
+# workloads so a pending build can make room when the cluster is memory-full,
+# while higher-priority test VMs can still evict BST work when necessary.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -10,6 +10,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 value: 500000
-preemptionPolicy: Never
+preemptionPolicy: PreemptLowerPriority
 globalDefault: false
-description: "BST build pods. Lower priority than lab-test-vm. Preemptable on resource contention."
+description: "BST build pods. Lower priority than lab-test-vm, but can preempt lower-priority work when room is needed."

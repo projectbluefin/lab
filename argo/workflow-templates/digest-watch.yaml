@@ -275,10 +275,16 @@ spec:
           # digest-watch fires every cycle while a slow build is in flight, and
           # without this check each cycle stacked another build-cd-sync workflow
           # (plus its 100Gi PVC) onto the cluster.
-          ACTIVE=$(curl -sf --cacert "${CACERT}" \
+          # Fail closed: if the list call itself fails (API disruption), skip the
+          # submit — assuming ACTIVE=0 on error stacked 8 duplicate builds per
+          # variant during the 2026-07-09 outage recovery.
+          if ! WF_LIST=$(curl -sf --cacert "${CACERT}" \
             -H "Authorization: Bearer ${SA_TOKEN}" \
-            "${KS}/apis/argoproj.io/v1alpha1/namespaces/argo/workflows?labelSelector=bluefin.io/cd-tag%3D${CD_TAG}" \
-            | grep -o '"phase":"[A-Za-z]*"' | grep -cE '"(Running|Pending)"' || true)
+            "${KS}/apis/argoproj.io/v1alpha1/namespaces/argo/workflows?labelSelector=bluefin.io/cd-tag%3D${CD_TAG}"); then
+            echo "Could not list workflows for dedup check - skipping submit (fail closed)" >&2
+            exit 0
+          fi
+          ACTIVE=$(printf '%s' "${WF_LIST}" | grep -o '"phase":"[A-Za-z]*"' | grep -cE '"(Running|Pending)"' || true)
           ACTIVE="${ACTIVE:-0}"
           if [[ "${ACTIVE}" -gt 0 ]]; then
             echo "Build for ${CD_TAG} already active (${ACTIVE}) — skipping submit" >&2

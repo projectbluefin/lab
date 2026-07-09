@@ -31,21 +31,20 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 
 ### Data Plane — Point-to-Point USB4 Link (ghost <-> exo-0 only)
 
-> **STATUS (2026-07-08): kernel modules loaded and active.** The `thunderbolt_net` driver
-> is successfully loaded and running on both `ghost` and `exo-0`. The PCIe runtime power
-> management settings for both hosts are forced to `on` (preventing automatic ASPM sleep
-> states).
+> **STATUS (2026-07-09): LINK UP AND ROUTED.** After the 2026-07-08 EC/PD failure
+> (see RUNBOOK.md), a full power drain of both nodes restored the physical link.
+> `thunderbolt0` is up on both hosts, static IPs and table-40 policy routing are
+> applied and persisted in NetworkManager, and cross-node pod traffic is confirmed
+> flowing over USB4 (~0.16 ms pod-to-pod RTT).
 >
-> While the physical port link is currently reported as `none` (pending physical cable re-seat
-> or slot mapping), we have confirmed that the Linux kernel only registers the `thunderbolt0`
-> network interface dynamically *after* a physical link handshake occurs.
-> 
-> **Important Hardware Slot Mapping**: On AMD Framework laptops (both 13 and 16), only **Slot 1 (back left)** and **Slot 4 (back right)** support USB4 / Thunderbolt 4. If the cable is plugged into Slot 2 or Slot 3, the link state will remain `none` indefinitely. Ensure the USB4 cable is connected strictly to Slot 1 or Slot 4 on both machines to bring the link up and initialize `thunderbolt0`.
+> **Important Hardware Slot Mapping**: On AMD Framework laptops (both 13 and 16), only **Slot 1 (back left)** and **Slot 4 (back right)** support USB4 / Thunderbolt 4. If the cable is plugged into Slot 2 or Slot 3, the link state will remain `none` indefinitely. Ensure the USB4 cable is connected strictly to Slot 1 or Slot 4 on both machines to bring the link up and initialize `thunderbolt0`. On Framework Desktops all rear Type-C ports are USB4.
 > 
 > The complete network design for East-West CNI route separation is fully specified below.
 
-- `ghost`'s `thunderbolt0` (static IP `192.168.4.1/30`) and `exo-0`'s `thunderbolt0`
-  (static IP `192.168.4.2/30`) form a direct, switchless point-to-point USB4 link (40 Gbps).
+- `ghost`'s `thunderbolt0` (static IP `10.99.0.1/30`) and `exo-0`'s `thunderbolt0`
+  (static IP `10.99.0.2/30`) form a direct, switchless point-to-point USB4 link (40 Gbps).
+  The IPs are persisted in NetworkManager profiles (`Wired connection 1` on ghost,
+  `Wired connection 2` on exo-0) with `ipv4.method manual`, so they survive reboots.
 - Intended for pod-to-pod (East-West) traffic between these two nodes specifically:
   build artifact transfer, cache I/O.
 - **Traffic Steering Design (Linux Policy Routing)**: Since the default k3s flannel CNI is
@@ -54,23 +53,28 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
   This completely isolates pod-to-pod build traffic over USB4 while guaranteeing that k3s
   control-plane, API server, and etcd traffic remains strictly on the Ethernet LAN.
   
-  **Implementation Steps (to be executed once the link transitions to UP)**:
-  
-  1. Assign static IP addresses to the `thunderbolt0` interface:
-     - On `ghost`: `sudo ip addr add 192.168.4.1/30 dev thunderbolt0`
-     - On `exo-0`: `sudo ip addr add 192.168.4.2/30 dev thunderbolt0`
-  
-  2. Configure kernel policy routing rules on `ghost` to route `exo-0` pod subnet (`10.42.1.0/24`) over USB4:
+  **Deployed configuration (persisted in NetworkManager, survives reboots)**:
+
+  1. Static IPs live in the NM profiles (`ipv4.method manual`):
+     - ghost (`Wired connection 1`): `10.99.0.1/30`
+     - exo-0 (`Wired connection 2`): `10.99.0.2/30`
+
+  2. Policy routing on `ghost` routes the `exo-0` pod subnet (`10.42.1.0/24`) over USB4:
      ```bash
-     sudo ip rule add to 10.42.1.0/24 table 40
-     sudo ip route add default via 192.168.4.2 dev thunderbolt0 table 40
+     sudo nmcli con mod "Wired connection 1" \
+       +ipv4.routes "10.42.1.0/24 10.99.0.2 table=40" \
+       +ipv4.routing-rules "priority 5209 to 10.42.1.0/24 table 40"
      ```
-  
-  3. Configure kernel policy routing rules on `exo-0` to route `ghost` pod subnet (`10.42.0.0/24`) over USB4:
+
+  3. Policy routing on `exo-0` routes the `ghost` pod subnet (`10.42.0.0/24`) over USB4:
      ```bash
-     sudo ip rule add to 10.42.0.0/24 table 40
-     sudo ip route add default via 192.168.4.1 dev thunderbolt0 table 40
+     sudo nmcli con mod "Wired connection 2" \
+       +ipv4.routes "10.42.0.0/24 10.99.0.1 table=40" \
+       +ipv4.routing-rules "priority 5209 to 10.42.0.0/24 table 40"
      ```
+
+  Verify with `ip route get 10.42.1.10` on ghost — it must show
+  `via 10.99.0.2 dev thunderbolt0 table 40`.
 
   Since these rules are evaluated in custom routing table `40` before the `main` table, they override
   flannel's default Ethernet routes for pod-to-pod transit between the two nodes, while remaining

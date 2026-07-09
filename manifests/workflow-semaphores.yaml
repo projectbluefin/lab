@@ -15,6 +15,9 @@
 #                        time: each fleet is up to 5 VMs x 8Gi requests.
 #   containerdisk-build — build-containerdisk runs (hostPID bootc install,
 #                        4Gi + 100Gi PVC each). Two at a time, one per node.
+#   bst-build          — Dakota BuildStream distributed-build lanes. One at a
+#                        time so pollers and manual submissions do not overlap
+#                        cache-heavy builds and saturate Buildbarn/hostPath caches.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,3 +28,4 @@ metadata:
 data:
   qa-vm-fleet: "1"
   containerdisk-build: "2"
+  bst-build: "1"

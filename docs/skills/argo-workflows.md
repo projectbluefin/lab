@@ -249,7 +249,7 @@ For Dakota/BST BuildStream lanes that target the distributed Buildbarn grid, mou
 
 ### 7b. Queueing and deduplication: gate the template, not just the workflow
 
-Heavy VM and build workflows should be admitted through a semaphore or a deduplication guard before they fan out. In this repo, `manifests/workflow-semaphores.yaml` defines cluster-wide semaphores for the `qa-vm-fleet` and `containerdisk-build` lanes, and the heavy templates (`bluefin-qa-pipeline`, `dakota-qa-pipeline`, `image-poller`, and `digest-watch`) use that admission path to stop duplicate or overlapping runs.
+Heavy VM and build workflows should be admitted through a semaphore or a deduplication guard before they fan out. In this repo, `manifests/workflow-semaphores.yaml` defines cluster-wide semaphores for the `qa-vm-fleet`, `containerdisk-build`, and `bst-build` lanes, and the heavy templates (`bluefin-qa-pipeline`, `dakota-qa-pipeline`, `image-poller`, `digest-watch`, `dakota-build-pipeline`, and `dakota-buildstream-warm-cache`) use that admission path to stop duplicate or overlapping runs.
 
 Important: workflow-level synchronization is not enough when the caller uses `workflowTemplateRef` or `templateRef` to dispatch a different WorkflowTemplate. Argo Workflows resolves those calls as separate template invocations, so the lock must live on the called template or the shared admission path. Apply the semaphore at the template that actually does the expensive work, not on the parent workflow wrapper.
 

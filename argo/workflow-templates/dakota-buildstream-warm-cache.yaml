@@ -32,6 +32,11 @@ spec:
 
   templates:
     - name: warm-cache
+      synchronization:
+        semaphores:
+        - configMapKeyRef:
+            name: workflow-semaphores
+            key: bst-build
       priorityClassName: bst-build
       inputs:
         parameters:

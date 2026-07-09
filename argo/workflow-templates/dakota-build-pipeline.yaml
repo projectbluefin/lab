@@ -43,6 +43,11 @@ spec:
   templates:
 
     - name: build
+      synchronization:
+        semaphores:
+        - configMapKeyRef:
+            name: workflow-semaphores
+            key: bst-build
       inputs:
         parameters:
           - name: ref

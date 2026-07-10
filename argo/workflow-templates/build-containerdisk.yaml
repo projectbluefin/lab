@@ -360,7 +360,7 @@ spec:
           '    args+=("$arg")' \
           '  fi' \
           'done' \
-          'exec /usr/bin/bootupctl.orig "${args[@]}"' \
+          'exec -a bootupctl /usr/bin/bootupctl.orig "${args[@]}"' \
           > "${BOOTABLE_CTX}/bootupctl-wrapper"
 
         printf '%s\n' \

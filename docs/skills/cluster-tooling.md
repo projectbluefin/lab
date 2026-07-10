@@ -329,9 +329,25 @@ workflows. **`/dev/nvme1n1` on `exo-0` is the live system disk — never target 
     but don't leave it indefinitely — it silently eats into the same 4TB drive that
     `bst-cache` and `local-path` PVCs need.
 
-### 3. Offloading Host User Caches and AI Datasets (ramalama, local buildstream, containers)
+### 3. Offloading Host User Caches and AI Datasets (ramalama, local buildstream, containers, and Flatpaks)
 
-To prevent the `ghost` system root disk from filling up and strictly enforce the "4TB NVMe SSD for all workloads, no exceptions" mandate, heavy host-level user directories under `/var/home/jorge/` are relocated to `/var/mnt/ghost-data/` and replaced with symbolic links.
+To prevent the `ghost` system root disk from filling up and strictly enforce the "4TB NVMe SSD for all workloads, no exceptions" mandate, heavy host-level user directories under `/var/home/jorge/` are relocated to `/var/mnt/ghost-data/` and replaced with symbolic links. Additionally, all host-level Flatpaks must be completely uninstalled to preserve precious system root disk space.
+
+#### Host-Level Flatpak Removal:
+All host-level Flatpaks (both system and user-level) must be completely uninstalled to prevent the root partition (under `/var/lib/flatpak` and `~/.local/share/flatpak`) from saturating. Run these commands to purge all Flatpaks from the host:
+
+```bash
+# Uninstall all user-level Flatpaks
+flatpak uninstall --user --all -y
+
+# Uninstall all system-level Flatpaks
+flatpak uninstall --system --all -y
+
+# Reclaim any dangling references or unused runtimes
+flatpak uninstall --unused -y
+```
+
+Never install or run Flatpaks directly on the host; keep the host system thin and let container/VM workloads manage their own runtimes.
 
 #### Target Paths on 4TB NVMe SSD:
 All folders are stored under `/var/mnt/ghost-data/` with exact ownership of `jorge:jorge` (`1000:1000`) and linked back transparently:

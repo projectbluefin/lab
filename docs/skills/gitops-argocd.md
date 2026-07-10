@@ -177,8 +177,19 @@ kubectl apply -f argocd/arc-runners-app.yaml -n argocd
 ```
 
 **CRD annotation size limit** — Large CRDs (e.g. `autoscalingrunnersets.actions.github.com`)
-exceed ArgoCD's 262KB client-side annotation limit. Fix: `ServerSideApply=true` in
-`syncOptions`. Already set in `argocd/arc-controller-app.yaml`.
+exceed ArgoCD's 262KB client-side `last-applied-configuration` annotation limit.
+`ServerSideApply=true` is set in `argocd/arc-controller-app.yaml`, but the CRD may
+still appear `SyncFailed` / `OutOfSync` in the ArgoCD UI. The CRD itself is applied
+and functional; the error is cosmetic once the CRD reaches `Healthy`. Verify with:
+```bash
+kubectl get crd autoscalingrunnersets.actions.github.com
+kubectl get autoscalingrunnersets -n arc-runners
+```
+
+**GitHub App secret** — `arc-runners` needs `arc-github-secret` containing
+`github_app_id`, `github_app_installation_id`, and `github_app_private_key`.
+Without it the controller logs `failed to find GitHub config secret` and no
+listener or runner pods are created.
 
 **Stuck retry loop** — if ArgoCD retries a failed sync with stale syncOptions:
 ```bash

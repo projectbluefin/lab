@@ -151,12 +151,17 @@ outputs:
 
 This keeps workflows self-contained while still exposing machine-readable output in workflow status (`argo get` / `kubectl get wf -o json`).
 
-**`cgr.dev/chainguard/kubectl:latest-dev`** is the correct image for any step that needs both `kubectl` and `bash`. `registry.k8s.io/kubectl` is distroless (no shell — `nc`, `bash /dev/tcp` all fail). Add `cgr.dev` to the registry lint allowlist when using it.
+**`ghcr.io/projectbluefin/lab-runner:latest`** is the preferred, organization-owned FSDK container for pollers, GC, and CronWorkflows in this cluster. It contains `kubectl`, `oras`, `skopeo`, `curl`, `jq`, and full shell capabilities prebuilt. Using organization-owned containers eliminates external runtime package-manager download dependencies and improves offline resiliency.
+
+For steps that still use other images, **`cgr.dev/chainguard/kubectl:latest-dev`** can be used as a fallback if it needs both `kubectl` and `bash`. `registry.k8s.io/kubectl` is distroless (no shell — `nc`, `bash /dev/tcp` all fail).
 
 If a step needs shell features (`mkdir`, redirection, `jq`/`awk` parsing, heredocs), do **not** assume a vendor CLI image has `/bin/sh`. Third-party tool images are often distroless. Either:
 
+- use the organization-owned `ghcr.io/projectbluefin/lab-runner:latest` image,
 - run the binary directly with `container.command`/`args` and avoid shell syntax entirely, or
 - switch to a shell-capable base image (`cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795`, `cgr.dev/chainguard/kubectl:latest-dev`) and install/fetch the CLI inside the step.
+
+To handle any lag in upstream FSDK container image rebuilds, use an inline on-demand bootstrap/fallback wrapper (e.g. `command -v kubectl || curl ...`) inside the shell scripts to guarantee continuous offline execution.
 
 A runtime `/bin/sh: not found` or missing-coreutils failure from a CLI image usually means the image is distroless, not that the WorkflowTemplate syntax is wrong.
 

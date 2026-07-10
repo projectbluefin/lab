@@ -168,9 +168,10 @@ EOF"
 - `privileged: true` in the container securityContext
 - `seccompProfile: { type: Unconfined }` — Chainguard wolfi-base's default seccomp blocks `nsenter`
 
-### Correct DaemonSet image: `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795`
+### Correct DaemonSet image: `ghcr.io/projectbluefin/lab-runner:latest` or `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795`
 
-- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` — has `util-linux` (nsenter), `apk`, full tooling ✅
+- `ghcr.io/projectbluefin/lab-runner:latest` — preferred, organization-owned FSDK container; has `kubectl`, `oras`, `skopeo`, `curl`, `jq`, `util-linux` (nsenter), and full shell capabilities prebuilt. ✅
+- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` — has `util-linux` (nsenter), `apk`, full tooling; can be used as a fallback if needed. ✅
 - `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795-dev` — **DOES NOT EXIST** (tag not published) ❌
 - `cgr.dev/chainguard/busybox` — no nsenter, restricted seccomp blocks namespace entry ❌
 

@@ -302,14 +302,18 @@ This protocol was established after multiple sessions where:
 - Submitting a new workflow immediately after a push without waiting for ArgoCD sync confirmation
 - **Every sync event says "Partial sync operation" and new commits never land** — self-heal is loop-syncing one permanently-drifted resource (check `.status.operationState.operation.sync.resources` and `autoHealAttemptsCount`), pinned to an old revision, which starves full syncs. Known trigger: StatefulSet `volumeClaimTemplates` — the API server injects `apiVersion`/`kind`/`status` per template, which reads as permanent drift under server-side diff. Fix: `ignoreDifferences` with `jqPathExpressions: [.spec.volumeClaimTemplates[]?.apiVersion, ...kind, ...status]` plus `RespectIgnoreDifferences=true` (see `argocd/infra-application.yaml`).
 - **NOAUTH errors in application-controller logs** — the SSA patch in `manifests/argocd-tuning.yaml` owns the controller container spec; any apply that omits `env` wipes the upstream env list including `REDIS_PASSWORD`. The patch must always declare the `REDIS_PASSWORD` secretKeyRef. Symptom: "DiffFromCache error ... NOAUTH Authentication required", degraded/partial syncs.
-- **Using `registry.access.redhat.com` (UBI) or `bitnami/*` images** — both banned in this cluster. Use `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` instead.
-- **Choosing a base image without checking the policy** — preference order is: `cgr.dev/chainguard/*` first, then ask. Fedora images are allowed when appropriate (not replaced with non-existent alternatives). docker.io is banned except `docker.io/rocm/k8s-device-plugin` (annotate `# registry-lint-ignore`).
+- **Using `registry.access.redhat.com` (UBI) or `bitnami/*` images** — both banned in this cluster. Use organization-owned containers (`ghcr.io/projectbluefin/lab-runner:latest`) or fallback to `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` instead.
+- **Choosing a base image without checking the policy** — preference order is: organization-owned FSDK containers (`ghcr.io/projectbluefin/lab-runner:latest`) first, then `cgr.dev/chainguard/*` for general/system infra. Fedora images are allowed when appropriate (not replaced with non-existent alternatives). docker.io is banned except `docker.io/rocm/k8s-device-plugin` (annotate `# registry-lint-ignore`).
 
 ## Image Policy
 
 **Preference order (enforced by `just lint` registry allowlist):**
 
-1. `cgr.dev/chainguard/*` — default choice for all infra/tooling images
+1. **`ghcr.io/projectbluefin/lab-runner:latest` (or other organization-owned containers)** — always preferred for pollers, GC, and CronWorkflows; includes prebuilt CLI utilities (kubectl, skopeo, oras, curl, jq) to eliminate external runtime package manager dependencies and guarantee offline/air-gapped resilience.
+2. `cgr.dev/chainguard/*` — default choice for general/system infra and tooling images
+3. For anything else: **ask the user** — do not assume distros
+4. Fedora images are allowed when appropriate for Fedora/CoreOS-specific tooling
+5. Banned: `registry.access.redhat.com` (UBI), `bitnami/*`, `docker.io/*` (except `docker.io/rocm/k8s-device-plugin` with `# registry-lint-ignore`)
 2. For anything else: **ask the user** — do not assume distros
 3. Fedora images are allowed when appropriate for Fedora/CoreOS-specific tooling
 4. Banned: `registry.access.redhat.com` (UBI), `bitnami/*`, `docker.io/*` (except `docker.io/rocm/k8s-device-plugin` with `# registry-lint-ignore`)

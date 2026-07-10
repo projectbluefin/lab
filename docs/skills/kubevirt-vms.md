@@ -743,3 +743,21 @@ When maintaining custom ebuilds in `flatcar/kernel-overlay/` for Flatcar kernel 
      ```
   2. Overwrite the `bootupctl` binary inside the target image temporarily during the containerDisk build step with an interceptor wrapper script. This wrapper translates `--filesystem /` into `--device /dev/loopX` (resolving the loop device from `/sys/class/block/loop*p3`), avoiding any filesystem inspection completely while keeping execution 100% compatible. **Important**: The wrapper MUST invoke the renamed binary (`/usr/bin/bootupctl.orig`) using `exec -a bootupctl` to preserve `argv[0]`. Otherwise, the Rust CLI (via `clap` multi-call binary matching) defaults to backend mode and does not recognize the `backend` subcommand, causing the probe to fail with `unrecognized subcommand 'backend'`.
   3. Restore the original `/usr/bin/bootupctl` binary during the post-installation phase before unmounting loop partitions to keep the final golden disk clean and production-ready.
+
+### 17. UsrMerge findmnt circular symlink loops (wrapper deduplication)
+* **Symptom**: After deploying a wrapper script inside the image to override a binary (like `findmnt` or `bootupctl`), running the command fails with `Inspecting filesystem: No such file or directory (os error 2)` or results in infinite symlink recursion / command hang.
+* **Root Cause**: Modern operating systems (including Fedora, Bluefin, and Dakota) have undergone **UsrMerge**, which symlinks and merges `/usr/sbin`, `/sbin`, and `/bin` into a single physical directory `/usr/bin`. If a loop or set of commands sequentially copies/symlinks a wrapper script to all of `/usr/bin/findmnt`, `/usr/sbin/findmnt`, `/bin/findmnt`, and `/sbin/findmnt` and overwrites them, it overwrites the newly renamed original binary with a circular symlink pointing back to the wrapper, or destroys the wrapper.
+* **The Fix**:
+  1. **Canonicalize Paths**: Always run `readlink -f` on every candidate binary path inside the container context to find its absolute physical file location before performing moves or copies.
+  2. **Deduplicate Target List**: Store only the unique canonical paths in a whitespace-delimited variable, filtering out any duplicates.
+  3. **Location-Independent Original Invocation**: Write the wrapper using `"${0}.orig"` to dynamically invoke the original renamed binary based on how the wrapper itself was called, avoiding hardcoding path targets:
+     ```bash
+     exec "${0}.orig" "$@"
+     ```
+  4. **Recursive Restoration**: During the post-installation cleanup phase, avoid targeting hardcoded original paths. Instead, run a dynamic file search using `find` to discover and restore all original files:
+     ```bash
+     find "${DEPLOY_DIR}" -name "findmnt.orig" | while read -r orig_file; do
+       base_dir=$(dirname "${orig_file}")
+       mv "${orig_file}" "${base_dir}/findmnt"
+     done
+     ```

@@ -10,6 +10,7 @@ import stats from '../../docs/data/factory-stats.json';
 import telemetry from '../../docs/data/factory-telemetry.json';
 import upstreamStatus from '../../docs/data/upstream-status.json';
 import bstCache from '../../docs/data/bst-cache.json';
+import testsMatrix from '../../docs/data/tests-matrix.json';
 
 const baseUrl = import.meta.env.BASE_URL;
 
@@ -22,6 +23,7 @@ const testCoverageTotal = stats?.test_coverage?.scenarios_total || 0;
 const testCoverageFailed = stats?.test_coverage?.scenarios_failed || 0;
 // Canonical image-status contract: upstream-status.json drives ALL image cards
 const upstreamRows = Array.isArray(upstreamStatus?.rows) ? upstreamStatus.rows : [];
+const testsRows = Array.isArray(testsMatrix?.rows) ? testsMatrix.rows : [];
 
 // Human-readable display names per variant slug
 const variantDisplayNames: Record<string, string> = {
@@ -48,14 +50,26 @@ const imageCards = Array.from(variantMap.entries()).map(([variant, rows]) => {
   const firstRow = rows[0];
   const repo = firstRow?.publisher_repo ?? (images as Record<string, { repo?: string }>)[variant]?.repo ?? null;
   const displayName = variantDisplayNames[variant] ?? variant;
-  const branches = rows.map((row) => ({
-    branch:      row.branch as string,
-    state:       row.state as string,
-    stateReason: (row.state_reason as string | null) ?? null,
-    age:         (row.freshness_age_days as number | null) ?? null,
-    seenAt:      (row.published_at as string | null) ?? null,
-    sourceUrl:   (row.source_url as string | null) ?? null,
-  }));
+  const branches = rows.map((row) => {
+    const branch = row.branch as string;
+    const suites = testsRows
+      .filter((tr) => tr.variant === variant && tr.branch === branch)
+      .map((tr) => ({
+        id: tr.id,
+        suite: tr.suite,
+        result_status: tr.result_status,
+        pass_rate: tr.pass_rate,
+      }));
+    return {
+      branch,
+      state:       row.state as string,
+      stateReason: (row.state_reason as string | null) ?? null,
+      age:         (row.freshness_age_days as number | null) ?? null,
+      seenAt:      (row.published_at as string | null) ?? null,
+      sourceUrl:   (row.source_url as string | null) ?? null,
+      suites,
+    };
+  });
   return { variant, displayName, repo, branches };
 });
 
@@ -455,6 +469,9 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     .pulse-stat-value.tone-good { color: #4ade80; }
     .pulse-stat-value.tone-warn { color: #fbbf24; }
     .pulse-stat-value.tone-bad  { color: #fb7185; }
+    .pulse-stat-value.tone-passed { color: #4ade80; }
+    .pulse-stat-value.tone-failed { color: #fb7185; }
+    .pulse-stat-value.tone-pending { color: #fbbf24; }
     .pulse-stat-name {
       font-size: 0.7rem;
       color: #64748b;
@@ -466,6 +483,44 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
       color: #94a3b8;
       line-height: 1.25;
       max-width: 12rem;
+    }
+    
+    /* Mini BDD test pills on homepage image cards */
+    .mini-test-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #94a3b8;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .mini-test-pill:hover {
+      background: rgba(30, 41, 59, 0.75);
+      border-color: rgba(56, 189, 248, 0.3);
+      color: #f1f5f9;
+      transform: translateY(-0.5px);
+    }
+    .suite-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .mini-test-pill.status--passed .suite-status-dot {
+      background-color: #10b981;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+    }
+    .mini-test-pill.status--failed .suite-status-dot {
+      background-color: #f43f5e;
+      box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
+    }
+    .mini-test-pill.status--unavailable .suite-status-dot {
+      background-color: #64748b;
     }
     .node-links {
       margin-top: 0.5rem;
@@ -730,6 +785,24 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
                         b.stateReason || 'No release timestamp'
                       )}
                     </div>
+                    {b.suites && b.suites.length > 0 && (
+                      <div class="branch-tests-row" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;">
+                        <span style="font-size: 0.65rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 2px;">Tests:</span>
+                        {b.suites.map((s) => {
+                          const suiteAbbr = { smoke: 'smoke', developer: 'dev', software: 'soft', system: 'sys', common: 'common', flatcar: 'flatcar' }[s.suite] || s.suite;
+                          return (
+                            <a
+                              href={`${baseUrl}tests/#${s.id}`}
+                              class={`mini-test-pill status--${s.result_status}`}
+                              title={`${s.suite} suite: ${s.result_status}${s.pass_rate !== null ? ` (${s.pass_rate}% passing)` : ''}`}
+                            >
+                              <span>{suiteAbbr}</span>
+                              <span class="suite-status-dot"></span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}

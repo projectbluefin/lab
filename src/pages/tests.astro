@@ -102,32 +102,75 @@ const loadRowDetails = (resultsPath: string) => {
   return JSON.parse(readFileSync(resultFile, 'utf8')) as MatrixRowDetails;
 };
 
-const rows = contract.rows
+const baseRows = contract.rows
   .map((row) => ({
     ...row,
     details: loadRowDetails(row.results_path),
-  }) satisfies MatrixRow)
-  .sort((left, right) => left.variant.localeCompare(right.variant) || left.suite.localeCompare(right.suite));
+  }) satisfies MatrixRow);
 
-const summaryMetrics = contract.summary_metrics;
-const availableRows = rows.filter((row) => row.state === 'available');
-const unavailableRows = rows.filter((row) => row.state !== 'available');
 const suiteOrder = contract.dimensions.suites;
 const variantOrder = contract.dimensions.variants;
+
+// Define extra variants from index.astro that aren't in tests-matrix.json
+const extraVariants = ['cosmic', 'gnomeos', 'fedora-bootc'];
+const allVariants = [...variantOrder];
+for (const ev of extraVariants) {
+  if (!allVariants.includes(ev)) {
+    allVariants.push(ev);
+  }
+}
+allVariants.sort();
+
+// Create virtual rows for extra variants so they render as explicit unavailable cells
+const virtualRows: MatrixRow[] = [];
+for (const variant of extraVariants) {
+  for (const suite of suiteOrder) {
+    virtualRows.push({
+      id: `${variant}-testing-${suite}`,
+      variant,
+      branch: 'testing',
+      suite,
+      result_status: 'pending',
+      last_run: null,
+      workflow_name: null,
+      scenarios_total: 0,
+      scenarios_failed: 0,
+      pass_rate: null,
+      history_points: 0,
+      results_path: `results/${variant}-testing-${suite}.json`,
+      screenshot_path: null,
+      screenshot_url: null,
+      state: 'unavailable',
+      state_reason: 'Image stream is not yet enrolled in the QA BDD test automation pipeline.',
+      source_url: 'https://github.com/projectbluefin/lab',
+      collected_at: new Date().toISOString(),
+      derivation: 'Virtual row generated for untracked variant.',
+      details: null,
+    });
+  }
+}
+
+const allRows = [...baseRows, ...virtualRows].sort(
+  (left, right) => left.variant.localeCompare(right.variant) || left.suite.localeCompare(right.suite)
+);
+
+const summaryMetrics = contract.summary_metrics;
+const availableRows = allRows.filter((row) => row.state === 'available');
+const unavailableRows = allRows.filter((row) => row.state !== 'available');
 
 // Science-grade KPI computations
 const totalScenarios = availableRows.reduce((sum, row) => sum + row.scenarios_total, 0);
 const totalFailed = availableRows.reduce((sum, row) => sum + row.scenarios_failed, 0);
 const globalPassRate = totalScenarios > 0 ? Number((((totalScenarios - totalFailed) / totalScenarios) * 100).toFixed(2)) : null;
 
-const rowLookup = new Map(rows.map((row) => [`${row.variant}:${row.suite}`, row]));
-const matrix = variantOrder.map((variant) => ({
+const rowLookup = new Map(allRows.map((row) => [`${row.variant}:${row.suite}`, row]));
+const matrix = allVariants.map((variant) => ({
   variant,
   cells: suiteOrder.map((suite) => rowLookup.get(`${variant}:${suite}`) ?? null),
 }));
 
 // Rows with screenshots for the visual gallery section
-const screenshotRows = rows.filter((row) => row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path)));
+const screenshotRows = allRows.filter((row) => row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path)));
 
 const workflowHref = (workflowName: string | null) =>
   workflowName ? `http://192.168.1.102:32746/workflows/argo/${encodeURIComponent(workflowName)}` : null;
@@ -139,8 +182,8 @@ const chartPayload = {
   generatedAt: contract._meta.generated_at,
   status: contract._meta.status,
   suites: suiteOrder,
-  variants: variantOrder,
-  rows: rows.map((row) => ({
+  variants: allVariants,
+  rows: allRows.map((row) => ({
     id: row.id,
     variant: row.variant,
     suite: row.suite,
@@ -292,7 +335,7 @@ const chartPayload = {
   <!-- ═══════════════════════════════════════════════════════════ -->
   <h2 class="section-title">Tests at a Glance</h2>
   <KPIGrid
-    totalCells={rows.length}
+    totalCells={allRows.length}
     availableCount={availableRows.length}
     unavailableCount={unavailableRows.length}
     globalPassRate={globalPassRate}
@@ -353,7 +396,7 @@ const chartPayload = {
     </div>
 
     <div class="detail-stack">
-      {rows.map((row) => (
+      {allRows.map((row) => (
         <TestEvidenceCard
           row={row}
           workflowHref={workflowHref}
@@ -388,7 +431,7 @@ const chartPayload = {
     <ul class="integrity-list">
       <li><strong>Evidence-backed authenticity:</strong> Every pass rate, scenario count, and failure name is collected from real BDD test execution logs in the homelab and written into <code>docs/results/</code>.</li>
       <li><strong>No synthetic data:</strong> Gaps and pending/missing runs stay explicitly labeled as <code>unavailable</code> with their exact collector reason instead of being filled with mock or interpolated statistics.</li>
-      <li><strong>Lanes and Suites:</strong> Out of {rows.length} total matrix cells (covering {variantOrder.length} variants across {suiteOrder.length} test suites), {availableRows.length} are available with completed runs, and {unavailableRows.length} stay marked as awaiting results.</li>
+      <li><strong>Lanes and Suites:</strong> Out of {allRows.length} total matrix cells (covering {allVariants.length} variants across {suiteOrder.length} test suites), {availableRows.length} are available with completed runs, and {unavailableRows.length} stay marked as awaiting results.</li>
       <li><strong>History tracking:</strong> Historical trend lines show up to 10 previous runs per cell, allowing change-point and regression detection across active development branches.</li>
     </ul>
     <a href={`${baseUrl}data/tests-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>

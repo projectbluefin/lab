@@ -83,6 +83,11 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 82. When designing side-by-side grid layouts that contain tables (such as history or statistics tables), ensure the table-scroll wrapper does not unintentionally trigger global full-width card selectors (e.g. `.detail-grid > article:has(.table-scroll) { grid-column: 1 / -1 }`). Explicitly override the column span in scoped styles to maintain the side-by-side columns on wide viewports.
 83. For large detail lists (such as failed scenarios or log traces), implement client-side interactive search/filtering scoped specifically to the card container, and add action buttons to copy exact local execution/reproduction commands (e.g. `behave -n "<scenario>"`). Place global "Expand All" and "Collapse All" button controls near the top of the detail list stack to facilitate navigation.
 84. Do not use the term "uBlue" (case-sensitive or insensitive shorthand) in user-facing texts, page labels, or descriptions. The permitted longform name is "Universal Blue" and the permitted short slug is "ublue-os" (such as in GitHub repository/org references).
+85. To bridge image status freshness and BDD test verification health, render mini test suite status indicators (e.g., green/red/gray pills for smoke, dev, sys suites) directly on the homepage image cards, linking to their respective details anchor.
+86. When image variants are listed on the overview page but missing from the BDD tests dataset, dynamically generate virtual "unavailable" rows in the tests page data loader. This ensures they show in the tests matrix as "Awaiting Evidence" with a clear enrollment explanation, rather than being omitted entirely.
+87. Keep details description lists compact by overriding stacked vertical `dt`/`dd` layouts. Align key-value pairs horizontally using flex row layouts (`display: flex; justify-content: space-between;`) to conserve massive vertical space.
+88. Format raw evidence links (JSON paths, screenshots, workflow links) as premium interactive grid cards with custom icons and descriptions instead of simple bullet lists.
+89. Wrap detailed historical run tables inside collapsible `<details>` blocks to keep page layouts clean and compact, preserving full data visibility on user demand.
 
 ## Common Rationalizations
 

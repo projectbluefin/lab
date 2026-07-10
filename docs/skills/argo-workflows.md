@@ -165,9 +165,9 @@ To handle any lag in upstream FSDK container image rebuilds, use an inline on-de
 
 A runtime `/bin/sh: not found` or missing-coreutils failure from a CLI image usually means the image is distroless, not that the WorkflowTemplate syntax is wrong.
 
-### 5. Always use `onExit` for teardown
+### 5. Always use `onExit` or `hooks` for teardown
 
-Every pipeline that provisions a VM must have a guaranteed teardown:
+Every pipeline that provisions a VM must have a guaranteed teardown. When the pipeline is run directly as a workflow, root-level `spec.onExit` executes:
 
 ```yaml
 spec:
@@ -185,6 +185,36 @@ spec:
           - name: vm-name
             value: "{{workflow.parameters.vm-name}}"
 ```
+
+#### The `templateRef` Trap: Use Step-Level `hooks` for Invoked Pipelines
+If a pipeline is invoked as a task via `templateRef` from another WorkflowTemplate (such as `image-poller`), **the root-level `spec.onExit` of the called template is completely ignored**. If a test step fails, subsequent sequential steps (like an explicit `teardown` step) are skipped, leaving the VM orphaned.
+
+To guarantee teardown in all entrypoints (direct and via `templateRef`), define a step-level lifecycle hook using `hooks.exit` on the test execution task itself:
+
+```yaml
+    - - name: run-tests
+        templateRef:
+          name: run-gnome-tests
+          template: run-gnome-tests
+        arguments:
+          parameters:
+          - name: vm-ip
+            value: "{{steps.provision.outputs.parameters.vm-ip}}"
+          # ...
+        hooks:
+          exit:
+            templateRef:
+              name: teardown-bluefin-vm
+              template: teardown-vm
+            arguments:
+              parameters:
+              - name: vm-name
+                value: "{{inputs.parameters.vm-name}}"
+              - name: namespace
+                value: "{{inputs.parameters.namespace}}"
+```
+
+Step-level hooks are fully supported on DAG tasks and steps inside `WorkflowTemplates`, executing the teardown template immediately on step exit regardless of whether the step succeeded, failed, or timed out.
 
 ### 6. Resource limits — required on all script/container templates
 

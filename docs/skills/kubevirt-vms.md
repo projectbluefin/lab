@@ -731,3 +731,15 @@ When maintaining custom ebuilds in `flatcar/kernel-overlay/` for Flatcar kernel 
 ### 15. Default root filesystem for bootc install
 * **Missing Filesystem Error**: If a bootc container image does not define a default root filesystem in `/usr/lib/bootc/install/00-<osname>.toml`, running `bootc install to-disk` will fail with: `error: Installing to disk: No root filesystem specified`.
 * **The Override**: To bypass this, parameterize the build template and explicitly pass `--filesystem <type>` (e.g., `--filesystem btrfs` or `--filesystem xfs`) during the `bootc install to-disk` command invocation.
+
+### 16. bootupd findmnt bug on btrfs subvolumes (bubblewrap sandbox)
+* **Symptom**: During `bootc install to-disk --via-loopback` on btrfs images (like `bluefin:testing` or `dakota`), the installation fails in the `bootupctl` backend step with: `installing bootloader: run bootupctl: run-chroot: running: bwrap: ...: Inspecting filesystem: No such file or directory (os error 2)`.
+* **Root Cause**: In bootupd < 0.2.35, the `inspect_filesystem` step runs `findmnt` inside a bubblewrap sandbox. When `--write-uuid` is passed, it attempts to find the boot partition's UUID. On btrfs, `/` inside the sandbox is a subvolume, not a standard mountpoint. This makes `findmnt` fail with ENOENT (os error 2). Additionally, passing `--filesystem` to `bootupctl` invokes `inspect_filesystem_of_dir` on `/` inside the sandbox, which executes `findmnt --mountpoint` on the sandbox root directory and crashes with the exact same error.
+* **The Fix**: 
+  1. Configure `bootc` to instruct `bootupd` to skip boot partition UUID writing by writing `/etc/bootc/install/05-custom.toml` with `skip-boot-uuid = true` inside the build pod:
+     ```toml
+     [install.bootupd]
+     skip-boot-uuid = true
+     ```
+  2. Overwrite the `bootupctl` binary inside the target image temporarily during the containerDisk build step with an interceptor wrapper script. This wrapper translates `--filesystem /` into `--device /dev/loopX` (resolving the loop device from `/sys/class/block/loop*p3`), avoiding any filesystem inspection completely while keeping execution 100% compatible.
+  3. Restore the original `/usr/bin/bootupctl` binary during the post-installation phase before unmounting loop partitions to keep the final golden disk clean and production-ready.

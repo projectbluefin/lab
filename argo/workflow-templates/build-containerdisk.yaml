@@ -343,10 +343,39 @@ spec:
         BOOTABLE_IMAGE_REMOTE="192.168.1.102:30500/bluefin-server-bootable:${TAG}"
         BOOTABLE_CTX="${STAGING}/bootable-build"
         mkdir -p "${BOOTABLE_CTX}"
+
+        printf '%s\n' \
+          '#!/bin/bash' \
+          'args=()' \
+          'for arg in "$@"; do' \
+          '  if [ "$arg" = "--filesystem" ]; then' \
+          '    args+=("--device")' \
+          '  elif [ "$arg" = "/" ] && [ "${args[-1]}" = "--device" ]; then' \
+          '    loop_dev=$(ls /dev/loop*p3 2>/dev/null | head -n 1 | sed "s/p3$//")' \
+          '    if [ -z "$loop_dev" ]; then' \
+          '      loop_dev="/dev/loop0"' \
+          '    fi' \
+          '    args+=("$loop_dev")' \
+          '  else' \
+          '    args+=("$arg")' \
+          '  fi' \
+          'done' \
+          'exec /usr/bin/bootupctl.orig "${args[@]}"' \
+          > "${BOOTABLE_CTX}/bootupctl-wrapper"
+
         printf '%s\n' \
           "FROM ${IMAGE}" \
           "LABEL containers.bootc=1" \
-          "RUN set -eux; kver=\$(basename /usr/lib/modules/*); test -e \"/usr/lib/modules/\${kver}/vmlinuz\" || cp /boot/vmlinuz \"/usr/lib/modules/\${kver}/vmlinuz\"" \
+          'RUN set -eux; kver=$(basename /usr/lib/modules/*); test -e "/usr/lib/modules/${kver}/vmlinuz" || cp /boot/vmlinuz "/usr/lib/modules/${kver}/vmlinuz"' \
+          'COPY bootupctl-wrapper /tmp/bootupctl-wrapper' \
+          'RUN set -eux; \' \
+          '    if [ -f /usr/bin/bootupctl ]; then \' \
+          '        mv /usr/bin/bootupctl /usr/bin/bootupctl.orig; \' \
+          '        mv /tmp/bootupctl-wrapper /usr/bin/bootupctl; \' \
+          '        chmod +x /usr/bin/bootupctl; \' \
+          '    else \' \
+          '        rm -f /tmp/bootupctl-wrapper; \' \
+          '    fi' \
           > "${BOOTABLE_CTX}/Containerfile"
         echo "[BUILD] deriving bootable source image ${BOOTABLE_IMAGE_LOCAL}"
         podman build --tls-verify=false -t "${BOOTABLE_IMAGE_LOCAL}" -f "${BOOTABLE_CTX}/Containerfile" "${BOOTABLE_CTX}"
@@ -414,6 +443,13 @@ spec:
                 echo "[POST-INSTALL] sshd.service already enabled"
               fi
               SSHD_ENABLED=true
+
+              # Restore original bootupctl binary if wrapper exists
+              if [ -f "${DEPLOY_DIR}/usr/bin/bootupctl.orig" ]; then
+                mv "${DEPLOY_DIR}/usr/bin/bootupctl.orig" "${DEPLOY_DIR}/usr/bin/bootupctl"
+                echo "[POST-INSTALL] Original bootupctl binary restored in ${DEPLOY_DIR}"
+              fi
+
               umount "${SYSROOT}"
               break
             fi

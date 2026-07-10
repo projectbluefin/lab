@@ -221,6 +221,13 @@ spec:
             value: poll
           - name: GRPC_ENABLE_FORK_SUPPORT
             value: "1"
+          # buildstream-plugins-community git_repo uses dulwich, whose filter-process
+          # protocol trips over git-lfs smudge for repos with .gitattributes LFS
+          # entries (e.g. pop-os/cosmic-edit). git CLI handles them fine; dulwich
+          # does not. The LFS files in this project are screenshots/metainfo only,
+          # so skipping smudge does not affect the compiled artifact.
+          - name: GIT_LFS_SKIP_SMUDGE
+            value: "1"
         resources:
           requests:
             cpu: "1"
@@ -351,6 +358,9 @@ spec:
           - name: GRPC_POLL_STRATEGY
             value: poll
           - name: GRPC_ENABLE_FORK_SUPPORT
+            value: "1"
+          # See bst-build-re for rationale: dulwich git-lfs smudge workaround.
+          - name: GIT_LFS_SKIP_SMUDGE
             value: "1"
         resources:
           requests:

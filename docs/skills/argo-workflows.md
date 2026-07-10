@@ -315,11 +315,38 @@ argo/workflow-templates/provision-containerdisk-vm.yaml  →  metadata.name: pro
 
 ArgoCD tracks by GVK + resource name, not filename. A rename is safe — just git mv and push.
 
+### 8b. Renaming or consolidating templates: lint order matters
+
+When a template is renamed, merged, or deleted, standalone submit Workflows that reference the new name will fail `argo lint` until the live server has the new template. Validate in this order:
+
+1. Offline lint the WorkflowTemplate directory first (cross-file refs resolve without a server):
+   ```bash
+   argo lint --offline argo/workflow-templates/
+   ```
+2. Push to `main` and let ArgoCD sync, or force sync with a port-forward:
+   ```bash
+   kubectl port-forward svc/argocd-server -n argocd 18080:443 &
+   argocd app sync testing-lab
+   ```
+3. Verify the live template exists before resubmitting dependent workflows:
+   ```bash
+   argo-mcp-get_workflow_template name=<new-template> namespace=argo
+   # or
+   kubectl get workflowtemplate -n argo <new-template>
+   ```
+4. Only then run the full lint, including standalone submit Workflows:
+   ```bash
+   just lint
+   ```
+
 ### 9. Dead templates: prune promptly, don't leave DEPRECATED annotations
 
 When a WorkflowTemplate is superseded:
 1. Delete the file from `argo/workflow-templates/` in the same PR that removes the dependency
-2. `prune: true` on the ArgoCD Application will delete it from the cluster automatically on next sync
+2. Automated sync with `prune: true` will remove it on the next ArgoCD cycle, but a manual `argocd app sync` without `--prune` will report "requires pruning" and leave the old template in the cluster. To prune immediately:
+   ```bash
+   argocd app sync testing-lab --prune
+   ```
 3. Do not leave templates with `DEPRECATED` annotations in git — they accumulate and confuse agents
 
 One-shot bootstrap templates (`install-*`, `setup-*`, `titan-disk-cleanup`) should not persist indefinitely in the cluster. If they have no git backing, `kubectl delete workflowtemplate -n argo <name>` is safe since ArgoCD won't recreate what isn't in git.

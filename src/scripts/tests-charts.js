@@ -1,3 +1,5 @@
+import * as echarts from 'echarts';
+
 const payloadNode = document.getElementById('tests-chart-data');
 const payload = payloadNode ? JSON.parse(payloadNode.textContent ?? '{}') : {};
 const rows = Array.isArray(payload.rows) ? payload.rows : [];
@@ -31,8 +33,19 @@ const renderChart = (id, option, emptyMessage) => {
   charts.push(chart);
 };
 
+const palette = [
+  { color: '#38bdf8', rgbaStart: 'rgba(56, 189, 248, 0.4)', rgbaEnd: 'rgba(56, 189, 248, 0)', glow: 'rgba(56, 189, 248, 0.8)' },
+  { color: '#4ade80', rgbaStart: 'rgba(74, 222, 128, 0.4)', rgbaEnd: 'rgba(74, 222, 128, 0)', glow: 'rgba(74, 222, 128, 0.8)' },
+  { color: '#f59e0b', rgbaStart: 'rgba(245, 158, 11, 0.4)', rgbaEnd: 'rgba(245, 158, 11, 0)', glow: 'rgba(245, 158, 11, 0.8)' },
+  { color: '#ec4899', rgbaStart: 'rgba(236, 72, 153, 0.4)', rgbaEnd: 'rgba(236, 72, 153, 0)', glow: 'rgba(236, 72, 153, 0.8)' },
+  { color: '#8b5cf6', rgbaStart: 'rgba(139, 92, 246, 0.4)', rgbaEnd: 'rgba(139, 92, 246, 0)', glow: 'rgba(139, 92, 246, 0.8)' },
+  { color: '#f43f5e', rgbaStart: 'rgba(244, 63, 94, 0.4)', rgbaEnd: 'rgba(244, 63, 94, 0)', glow: 'rgba(244, 63, 94, 0.8)' },
+  { color: '#10b981', rgbaStart: 'rgba(16, 185, 129, 0.4)', rgbaEnd: 'rgba(16, 185, 129, 0)', glow: 'rgba(16, 185, 129, 0.8)' },
+  { color: '#3b82f6', rgbaStart: 'rgba(59, 130, 246, 0.4)', rgbaEnd: 'rgba(59, 130, 246, 0)', glow: 'rgba(59, 130, 246, 0.8)' },
+];
+
 const trendSeries = availableRows
-  .map((row) => {
+  .map((row, index) => {
     const history = Array.isArray(row.details?.history) ? [...row.details.history] : [];
     const points = history
       .sort((left, right) => new Date(left.run_date).getTime() - new Date(right.run_date).getTime())
@@ -46,6 +59,8 @@ const trendSeries = availableRows
       return null;
     }
 
+    const theme = palette[index % palette.length];
+
     return {
       name: row.id,
       type: 'line',
@@ -53,6 +68,21 @@ const trendSeries = availableRows
       showSymbol: points.length <= 8,
       symbolSize: 8,
       emphasis: { focus: 'series' },
+      lineStyle: {
+        width: 3,
+        shadowColor: theme.glow,
+        shadowBlur: 10,
+        shadowOffsetY: 4,
+      },
+      itemStyle: {
+        color: theme.color,
+      },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: theme.rgbaStart },
+          { offset: 1, color: theme.rgbaEnd },
+        ]),
+      },
       data: points,
     };
   })
@@ -237,7 +267,7 @@ renderChart(
               formatter: (params) => (params.data.value[2] < 0 ? '◆' : `${params.data.value[2]}%`),
             },
             data: heatmapAvailable,
-            itemStyle: { borderColor: 'rgba(255,255,255,0.04)', borderWidth: 1 },
+            itemStyle: { borderColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderRadius: 4 },
             emphasis: { itemStyle: { borderColor: '#38bdf8', borderWidth: 2 } },
           },
           {

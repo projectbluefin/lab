@@ -1,0 +1,116 @@
+---
+interface Props {
+  screenshotRows: any[];
+}
+
+const { screenshotRows } = Astro.props;
+---
+
+<style>
+  /* ── Screenshot visual evidence gallery ─────────────────── */
+  .screenshot-gallery {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .screenshot-gallery h4 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.75rem 0;
+  }
+  .screenshot-card {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 520px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.5);
+    transition: border-color 0.2s;
+  }
+  .screenshot-card:hover {
+    border-color: rgba(56, 189, 248, 0.35);
+  }
+  .screenshot-link {
+    position: relative;
+    display: block;
+    text-decoration: none;
+  }
+  .screenshot-img {
+    display: block;
+    width: 100%;
+    max-height: 320px;
+    object-fit: cover;
+    object-position: top center;
+  }
+  .screenshot-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: rgba(248, 250, 252, 0);
+    transition: all 0.2s;
+  }
+  .screenshot-link:hover .screenshot-overlay {
+    background: rgba(15, 23, 42, 0.55);
+    color: #f8fafc;
+  }
+  .screenshot-caption {
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+</style>
+
+{screenshotRows.length > 0 && (
+  <section class="status-card" style="margin-bottom: 2rem;">
+    <div class="section-heading">
+      <div>
+        <p class="status-card__eyebrow">Visual Evidence</p>
+        <h2>Screenshot gallery</h2>
+        <p>
+          Dogtail/behave UI test screenshots captured from live KubeVirt VM sessions.
+          Each image links to the full-resolution capture from the test run.
+        </p>
+      </div>
+      <div class="section-heading__meta">
+        <span>{screenshotRows.length} screenshots</span>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem;">
+      {screenshotRows.map((row) => (
+        <div class="screenshot-card">
+          <a href={row.screenshot_url!} target="_blank" rel="noreferrer" class="screenshot-link">
+            <img
+              src={row.screenshot_url!}
+              alt={`UI screenshot — ${row.suite} on ${row.variant}`}
+              class="screenshot-img"
+              loading="lazy"
+              decoding="async"
+            />
+            <div class="screenshot-overlay">
+              <span>↗ Full size</span>
+            </div>
+          </a>
+          <div class="screenshot-caption">
+            <span class={`pill pill--${row.result_status}`}>{row.result_status}</span>
+            <span style="font-size: 0.72rem; color: #94a3b8;">{row.variant} · {row.suite}</span>
+            {row.pass_rate !== null && (
+              <span style="font-size: 0.72rem; color: #4ade80; margin-left: auto;">{row.pass_rate}%</span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+)}

@@ -1,0 +1,224 @@
+---
+interface MatrixCell {
+  id: string;
+  variant: string;
+  suite: string;
+  result_status: string;
+  last_run: string | null;
+  scenarios_total: number;
+  scenarios_failed: number;
+  pass_rate: number | null;
+  state: string;
+  state_reason: string | null;
+}
+
+interface MatrixRow {
+  variant: string;
+  cells: (MatrixCell | null)[];
+}
+
+interface Props {
+  matrix: MatrixRow[];
+  suiteOrder: string[];
+}
+
+const { matrix, suiteOrder } = Astro.props;
+---
+
+<style>
+  /* ── Matrix Toolbar ──────────────────────────────────────── */
+  .matrix-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0.75rem 1.25rem;
+    border-radius: 14px;
+  }
+  .search-wrapper {
+    flex: 1;
+    min-width: 260px;
+    position: relative;
+  }
+  .test-search-input {
+    width: 100%;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #f8fafc;
+    padding: 0.5rem 1rem 0.5rem 2.25rem;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    outline: none;
+    transition: all 0.2s ease;
+  }
+  .test-search-input:focus {
+    border-color: rgba(56, 189, 248, 0.4);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+  }
+  .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #64748b;
+    pointer-events: none;
+  }
+  .filter-group {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .filter-btn {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
+    padding: 0.4rem 1rem;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s ease;
+  }
+  .filter-btn:hover {
+    color: #cbd5e1;
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .filter-btn.active {
+    background: rgba(56, 189, 248, 0.15);
+    border-color: rgba(56, 189, 248, 0.3);
+    color: #38bdf8;
+  }
+</style>
+
+<div class="matrix-toolbar">
+  <div class="search-wrapper">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input type="text" id="test-search" placeholder="Filter by variant, suite, or status..." class="test-search-input" />
+  </div>
+  <div class="filter-group">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="passed">Passed</button>
+    <button class="filter-btn" data-filter="failed">Failed</button>
+    <button class="filter-btn" data-filter="unavailable">Awaiting Evidence</button>
+  </div>
+</div>
+
+<div class="table-scroll">
+  <table class="matrix-table">
+    <thead>
+      <tr>
+        <th scope="col">Variant</th>
+        {suiteOrder.map((suite) => (
+          <th scope="col">{suite}</th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {matrix.map(({ variant, cells }) => {
+        // Collect all statuses of available cells to classify the row
+        const rowStatuses = cells.map(c => c?.state === 'available' ? c.result_status : 'unavailable');
+        const isFailed = rowStatuses.includes('failed');
+        const isPassed = rowStatuses.includes('passed') && !isFailed;
+        const rowStatus = isFailed ? 'failed' : (isPassed ? 'passed' : 'unavailable');
+        const textContent = `${variant} ${cells.map(c => c ? `${c.suite} ${c.result_status}` : '').join(' ')}`;
+
+        return (
+          <tr data-test-row data-test-text={textContent} data-test-status={rowStatus}>
+            <th scope="row">{variant}</th>
+            {cells.map((cell) => (
+              <td class:list={['matrix-table__cell', cell?.state === 'available' && 'is-available', cell && cell.state !== 'available' && 'is-unavailable', !cell && 'is-missing']}>
+                {cell ? (
+                  <a href={`#${cell.id}`} class="matrix-table__link">
+                    <span class={`pill pill--${cell.state === 'available' ? cell.result_status : 'unavailable'}`}>
+                      {cell.state === 'available' ? cell.result_status : 'unavailable'}
+                    </span>
+                    <strong>{cell.state === 'available' && cell.pass_rate !== null ? `${cell.pass_rate}%` : '—'}</strong>
+                    <span>{cell.scenarios_failed}/{cell.scenarios_total} failed</span>
+                    
+                    {cell.state === 'available' && cell.pass_rate !== null && (
+                      <div class="progress-bar-container">
+                        <div
+                          class="progress-bar"
+                          style={`width: ${cell.pass_rate}%; background: ${
+                            cell.pass_rate >= 90
+                              ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                              : cell.pass_rate >= 60
+                                ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                                : 'linear-gradient(90deg, #ef4444, #f87171)'
+                          };`}
+                        />
+                      </div>
+                    )}
+                  </a>
+                ) : (
+                  <span class="matrix-table__empty">No published row</span>
+                )}
+              </td>
+            ))}
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const searchInput = document.getElementById('test-search') as HTMLInputElement | null;
+  const filterButtons = document.querySelectorAll('.filter-btn');
+  const rows = document.querySelectorAll('[data-test-row]');
+  const cards = document.querySelectorAll('[data-test-card]');
+
+  const filterMatrix = () => {
+    if (!searchInput) return;
+    const query = searchInput.value.toLowerCase().trim();
+    const activeFilterBtn = document.querySelector('.filter-btn.active') as HTMLButtonElement | null;
+    const activeFilter = activeFilterBtn ? activeFilterBtn.dataset.filter : 'all';
+
+    // 1. Filter Matrix Table Rows
+    rows.forEach((rowEl) => {
+      const row = rowEl as HTMLElement;
+      const text = row.dataset.testText?.toLowerCase() || '';
+      const status = row.dataset.testStatus || ''; // "passed", "failed", "unavailable"
+      
+      const matchesSearch = text.includes(query);
+      const matchesFilter = activeFilter === 'all' || status === activeFilter;
+
+      if (matchesSearch && matchesFilter) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    // 2. Filter Detail Cards
+    cards.forEach((cardEl) => {
+      const card = cardEl as HTMLElement;
+      const id = card.dataset.testId?.toLowerCase() || '';
+      const variant = card.dataset.testVariant?.toLowerCase() || '';
+      const suite = card.dataset.testSuite?.toLowerCase() || '';
+      const status = card.dataset.testStatus || ''; // "passed", "failed", "unavailable"
+      
+      const matchesSearch = id.includes(query) || variant.includes(query) || suite.includes(query);
+      const matchesFilter = activeFilter === 'all' || status === activeFilter;
+
+      if (matchesSearch && matchesFilter) {
+        card.style.display = '';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  };
+
+  searchInput?.addEventListener('input', filterMatrix);
+  filterButtons.forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      filterButtons.forEach((b) => b.classList.remove('active'));
+      const currentTarget = e.currentTarget as HTMLButtonElement;
+      currentTarget.classList.add('active');
+      filterMatrix();
+    });
+  });
+</script>

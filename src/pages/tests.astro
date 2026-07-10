@@ -6,6 +6,12 @@ import TestsCharts from '../components/TestsCharts.astro';
 import SiteLayout from '../layouts/SiteLayout.astro';
 import testsMatrix from '../../docs/data/tests-matrix.json';
 
+import KPIGrid from '../components/tests/KPIGrid.astro';
+import SuiteMatrix from '../components/tests/SuiteMatrix.astro';
+import TestEvidenceCard from '../components/tests/TestEvidenceCard.astro';
+import RunbookSection from '../components/tests/RunbookSection.astro';
+import EvidenceGallery from '../components/tests/EvidenceGallery.astro';
+
 interface SummaryMetric {
   id: string;
   label: string;
@@ -459,71 +465,15 @@ const chartPayload = {
   <!--  KPI SCORECARDS                                             -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <h2 class="section-title">Tests at a Glance</h2>
-
-  <!-- Legacy hidden section keeps existing tests passing -->
-  <section class="metric-grid legacy-hidden">
-    {summaryMetrics.map((metric) => (
-      <article class="metric-card">
-        <p class="metric-card__label">{metric.label}</p>
-        <p class="metric-card__value">{metric.value}</p>
-        <p class="metric-card__meta">
-          {metric.unit} · {metric.state}
-        </p>
-      </article>
-    ))}
-    <article class="metric-card">
-      <p class="metric-card__label">Rows with history detail</p>
-      <p class="metric-card__value">{availableRows.filter((row) => (row.details?.history?.length ?? 0) > 0).length}</p>
-      <p class="metric-card__meta">count · {contract._meta.status}</p>
-    </article>
-  </section>
-
-  <div class="kpi-grid">
-    <!-- Total matrix cells -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Total matrix cells</div>
-      <div>
-        <div class="kpi-card__value">{rows.length}</div>
-        <div class="kpi-card__sub">suite/variant combinations</div>
-      </div>
-    </div>
-
-    <!-- Completed runs -->
-    <div class="kpi-card kpi-card--success">
-      <div class="kpi-card__title">Lanes with results <span class="pill-ok">✓</span></div>
-      <div>
-        <div class="kpi-card__value">{availableRows.length}</div>
-        <div class="kpi-card__sub">completed QA runs published</div>
-      </div>
-    </div>
-
-    <!-- Awaiting results -->
-    <div class="kpi-card kpi-card--warning">
-      <div class="kpi-card__title">Awaiting execution <span class="pill-gap">—</span></div>
-      <div>
-        <div class="kpi-card__value">{unavailableRows.length}</div>
-        <div class="kpi-card__sub">runs pending/unexecuted</div>
-      </div>
-    </div>
-
-    <!-- Global pass rate -->
-    <div class="kpi-card kpi-card--success">
-      <div class="kpi-card__title">Global pass rate</div>
-      <div>
-        <div class="kpi-card__value">{globalPassRate !== null ? `${globalPassRate}%` : '—'}</div>
-        <div class="kpi-card__sub">across all verified scenarios</div>
-      </div>
-    </div>
-
-    <!-- Total scenarios verified -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Verified scenarios</div>
-      <div>
-        <div class="kpi-card__value">{totalScenarios.toLocaleString()}</div>
-        <div class="kpi-card__sub">behave assertions run</div>
-      </div>
-    </div>
-  </div>
+  <KPIGrid
+    totalCells={rows.length}
+    availableCount={availableRows.length}
+    unavailableCount={unavailableRows.length}
+    globalPassRate={globalPassRate}
+    totalScenarios={totalScenarios}
+    summaryMetrics={summaryMetrics}
+    status={contract._meta.status}
+  />
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  CHARTS SECTION                                             -->
@@ -533,48 +483,7 @@ const chartPayload = {
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  VISUAL EVIDENCE GALLERY                                    -->
   <!-- ═══════════════════════════════════════════════════════════ -->
-  {screenshotRows.length > 0 && (
-    <section class="status-card" style="margin-bottom: 2rem;">
-      <div class="section-heading">
-        <div>
-          <p class="status-card__eyebrow">Visual Evidence</p>
-          <h2>Screenshot gallery</h2>
-          <p>
-            Dogtail/behave UI test screenshots captured from live KubeVirt VM sessions.
-            Each image links to the full-resolution capture from the test run.
-          </p>
-        </div>
-        <div class="section-heading__meta">
-          <span>{screenshotRows.length} screenshots</span>
-        </div>
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem;">
-        {screenshotRows.map((row) => (
-          <div class="screenshot-card">
-            <a href={row.screenshot_url!} target="_blank" rel="noreferrer" class="screenshot-link">
-              <img
-                src={row.screenshot_url!}
-                alt={`UI screenshot — ${row.suite} on ${row.variant}`}
-                class="screenshot-img"
-                loading="lazy"
-                decoding="async"
-              />
-              <div class="screenshot-overlay">
-                <span>↗ Full size</span>
-              </div>
-            </a>
-            <div class="screenshot-caption">
-              <span class={`pill pill--${row.result_status}`}>{row.result_status}</span>
-              <span style="font-size: 0.72rem; color: #94a3b8;">{row.variant} · {row.suite}</span>
-              {row.pass_rate !== null && (
-                <span style="font-size: 0.72rem; color: #4ade80; margin-left: auto;">{row.pass_rate}%</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )}
+  <EvidenceGallery screenshotRows={screenshotRows} />
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  SUITE BY VARIANT MATRIX                                    -->
@@ -589,56 +498,7 @@ const chartPayload = {
         </p>
       </div>
     </div>
-
-    <div class="table-scroll">
-      <table class="matrix-table">
-        <thead>
-          <tr>
-            <th scope="col">Variant</th>
-            {suiteOrder.map((suite) => (
-              <th scope="col">{suite}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {matrix.map(({ variant, cells }) => (
-            <tr>
-              <th scope="row">{variant}</th>
-              {cells.map((cell) => (
-                <td class:list={['matrix-table__cell', cell?.state === 'available' && 'is-available', cell && cell.state !== 'available' && 'is-unavailable', !cell && 'is-missing']}>
-                  {cell ? (
-                    <a href={`#${cell.id}`} class="matrix-table__link">
-                      <span class={`pill pill--${cell.state === 'available' ? cell.result_status : 'unavailable'}`}>
-                        {cell.state === 'available' ? cell.result_status : 'unavailable'}
-                      </span>
-                      <strong>{cell.state === 'available' && cell.pass_rate !== null ? `${cell.pass_rate}%` : '—'}</strong>
-                      <span>{cell.scenarios_failed}/{cell.scenarios_total} failed</span>
-                      
-                      {cell.state === 'available' && cell.pass_rate !== null && (
-                        <div class="progress-bar-container">
-                          <div
-                            class="progress-bar"
-                            style={`width: ${cell.pass_rate}%; background: ${
-                              cell.pass_rate >= 90
-                                ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                                : cell.pass_rate >= 60
-                                  ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                                  : 'linear-gradient(90deg, #ef4444, #f87171)'
-                            };`}
-                          />
-                        </div>
-                      )}
-                    </a>
-                  ) : (
-                    <span class="matrix-table__empty">No published row</span>
-                  )}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <SuiteMatrix matrix={matrix} suiteOrder={suiteOrder} />
   </section>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -662,199 +522,11 @@ const chartPayload = {
 
     <div class="detail-stack">
       {rows.map((row) => (
-        <details id={row.id} class="detail-card" open={row.state === 'available'}>
-          <summary>
-            <div>
-              <p class="detail-card__eyebrow">{row.variant} · {row.suite}</p>
-              <h3>{row.id}</h3>
-            </div>
-            <div class="detail-card__summary">
-              <span class={`pill pill--${row.state === 'available' ? row.result_status : 'unavailable'}`}>
-                {row.state === 'available' ? row.result_status : 'unavailable'}
-              </span>
-              <strong>{row.pass_rate !== null ? `${row.pass_rate}%` : 'No pass rate'}</strong>
-            </div>
-          </summary>
-
-          <div class="detail-card__body">
-            <div class="detail-grid">
-              <article>
-                <h4>Latest run</h4>
-                <dl>
-                  <div>
-                    <dt>Branch</dt>
-                    <dd>{row.branch}</dd>
-                  </div>
-                  <div>
-                    <dt>Architecture</dt>
-                    <dd>
-                      <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">x86_64</span>
-                      <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">aarch64</span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Execution Mode</dt>
-                    <dd>
-                      {row.suite === 'system' ? (
-                        <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2);">KubeVirt VM</span>
-                      ) : (
-                        <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container Pod</span>
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Last run</dt>
-                    <dd>{row.last_run ? new Date(row.last_run).toLocaleString() : 'Unavailable'}</dd>
-                  </div>
-                  <div>
-                    <dt>Scenarios</dt>
-                    <dd>{row.scenarios_total}</dd>
-                  </div>
-                  <div>
-                    <dt>Failed scenarios</dt>
-                    <dd>{row.scenarios_failed}</dd>
-                  </div>
-                  <div>
-                    <dt>History points</dt>
-                    <dd>{row.history_points}</dd>
-                  </div>
-                </dl>
-              </article>
-
-              <article>
-                <h4>Evidence links</h4>
-                <ul class="evidence-list">
-                  <li><a href={`../${row.results_path}`}>{row.results_path}</a></li>
-                  <li><a href={row.source_url} rel="noreferrer">Source JSON on GitHub</a></li>
-                  {row.screenshot_url && <li><a href={row.screenshot_url} rel="noreferrer">Latest screenshot</a></li>}
-                  {row.workflow_name && workflowHref(row.workflow_name) && (
-                    <li><a href={workflowHref(row.workflow_name)!} rel="noreferrer">Workflow: {row.workflow_name}</a></li>
-                  )}
-                </ul>
-              </article>
-            </div>
-
-            {/* ── Visual Evidence Gallery ── */}
-            <div class="screenshot-gallery">
-              <h4>Visual Evidence</h4>
-              {row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path)) ? (
-                <div class="screenshot-card">
-                  <a href={row.screenshot_url} target="_blank" rel="noreferrer" class="screenshot-link">
-                    <img
-                      src={row.screenshot_url}
-                      alt={`UI screenshot for ${row.id} — ${row.suite} suite on ${row.variant}`}
-                      class="screenshot-img"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <div class="screenshot-overlay">
-                      <span>↗ Full size</span>
-                    </div>
-                  </a>
-                  <div class="screenshot-caption">
-                    <span class={`pill pill--${row.result_status}`}>{row.result_status}</span>
-                    <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.5rem;">
-                      {row.suite} · {row.variant} · {row.last_run ? new Date(row.last_run).toLocaleDateString() : 'Awaiting Run'}
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div class="screenshot-placeholder">
-                  <div class="screenshot-placeholder__content">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="placeholder-icon"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                    <h5>{row.suite === 'system' ? 'No Screenshot Captured Yet' : 'Non-Virtual Evidence Captured'}</h5>
-                    <p>
-                      {row.suite === 'system' ? (
-                        <span>The <strong>{row.suite}</strong> suite runs automated platform-contract BDD tests inside an ephemeral KubeVirt VM. A screenshot of the desktop session is captured via Wayland on successful execution.</span>
-                      ) : (
-                        <span>The <strong>{row.suite}</strong> suite runs automated desktop/app BDD tests inside a non-privileged, software-rendered Kubernetes Container Pod. Real-time CLI logs provide complete execution evidence.</span>
-                      )}
-                    </p>
-                    <div class="placeholder-meta">
-                      <span>Target: {row.variant} ({row.branch})</span>
-                      <span>Run command: <code>just run-tests-tag {row.branch === 'testing' ? 'testing' : 'stable'}</code></span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {row.state !== 'available' ? (
-              <div class="detail-note detail-note--unavailable">
-                <h4>Unavailable state</h4>
-                <p>{row.state_reason ?? 'No completed run has been published for this matrix cell yet.'}</p>
-              </div>
-            ) : (
-              <>
-                <div class="detail-grid detail-grid--split">
-                  <article>
-                    <h4>Latest failure list</h4>
-                    {row.details?.failed_scenarios?.length ? (
-                      <ol class="failure-list">
-                        {row.details.failed_scenarios.map((scenario) => (
-                          <li>{scenario}</li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <p class="detail-note">No failed scenario names published for the latest run.</p>
-                    )}
-                  </article>
-
-                  <article>
-                    <h4>History</h4>
-                    {row.details?.history?.length ? (
-                      <div class="table-scroll">
-                        <table class="history-table">
-                          <thead>
-                            <tr>
-                              <th scope="col">Run date</th>
-                              <th scope="col">Workflow</th>
-                              <th scope="col">Status</th>
-                              <th scope="col">Failed</th>
-                              <th scope="col">Pass rate</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {row.details.history.map((entry) => {
-                              const rate = detailPassRate(entry.scenarios, entry.failed);
-                              return (
-                                <tr>
-                                  <td>{new Date(entry.run_date).toLocaleString()}</td>
-                                  <td>{entry.workflow_name ?? 'Unavailable'}</td>
-                                  <td>{entry.status}</td>
-                                  <td>{entry.failed}/{entry.scenarios}</td>
-                                  <td class="rate-col">
-                                    <strong>{rate === null ? '—' : `${rate}%`}</strong>
-                                    {rate !== null && (
-                                      <div class="progress-bar-container progress-bar-container--small">
-                                        <div
-                                          class="progress-bar"
-                                          style={`width: ${rate}%; background: ${
-                                            rate >= 90
-                                              ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                                              : rate >= 60
-                                                ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                                                : 'linear-gradient(90deg, #ef4444, #f87171)'
-                                          };`}
-                                        />
-                                      </div>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p class="detail-note">No published history rows in the linked result JSON yet.</p>
-                    )}
-                  </article>
-                </div>
-              </>
-            )}
-          </div>
-        </details>
+        <TestEvidenceCard
+          row={row}
+          workflowHref={workflowHref}
+          detailPassRate={detailPassRate}
+        />
       ))}
     </div>
   </section>
@@ -863,111 +535,7 @@ const chartPayload = {
   <!--  TRIAGE & RUNBOOK SECTION                                   -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <h2 class="section-title">Triage & Local Execution Runbook</h2>
-  <div class="integrity-panel" style="background: rgba(15, 23, 42, 0.55); border-color: rgba(56, 189, 248, 0.15);">
-    <h4>Common Test Failures & Diagnostic Commands</h4>
-    <div class="table-scroll" style="margin-bottom: 1.5rem;">
-      <table class="history-table" style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Observed Log/Symptom</th>
-            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Root Cause</th>
-            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Remediation CLI Command</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">Permission denied (publickey) at SSH wait</td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Test VM is running but lacks the injected SSH public keys in the guest authorized_keys.</td>
-            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just setup-ssh-secret</code></td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">Workflow times out waiting for SSH</td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Test VM failed to boot, or the KubeVirt QEMU guest agent is not running to accept credentials.</td>
-            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just list-vms</code><br/><span style="font-size: 0.7rem; color: #64748b;">Verify the VM is ready; check if the namespace secret matches.</span></td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f59e0b;">LTS VM goes "Stopped" immediately</td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">SSH public key secret is missing from the bluefin-lts-test namespace.</td>
-            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just argocd-sync</code><br/><span style="font-size: 0.7rem; color: #64748b;">Forces ArgoCD to re-sync namespaces and apply SSH secrets.</span></td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #ef4444;">FailedCreate: metadata.labels must be ≤63 chars</td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Argo workflow generated a VM name that exceeds the Kubernetes label length limits.</td>
-            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">use workflow.name-item pattern</code><br/><span style="font-size: 0.7rem; color: #64748b;">Shorten test naming definitions in the YAML templates.</span></td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #94a3b8;">VM stuck in Terminating status</td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Virt-launcher pod is locked by system processes and needs manual termination.</td>
-            <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">kubectl delete pod -n bluefin-test ...</code></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h4 style="margin-top: 1.5rem;">How to Reproduce & Run Tests Locally</h4>
-    <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.6; margin-bottom: 0.75rem;">
-      Bluefin operates as an atomic, image-based OS. You can replicate the exact dashboard BDD verification checks locally using the following steps:
-    </p>
-    <ol style="margin: 0; padding-left: 1.25rem; color: #64748b; font-size: 0.85rem; line-height: 1.7;">
-      <li><strong>Verify Cluster Access:</strong> Run <code>just list-vms</code> to confirm connection and schedule availability on ghost control plane.</li>
-      <li><strong>Initialize Local SSH Credentials:</strong> Execute <code>just setup-ssh-secret</code> to build the ed25519 key-pair used by workflow pods to ssh into the test VMs.</li>
-      <li><strong>Prepare Golden Disk:</strong> Run <code>just ensure-disk testing</code> or <code>just ensure-disk lts-testing</code> to build the VM disk container.</li>
-      <li><strong>Submit Test Suite:</strong> Run <code>just run-tests-tag testing</code> to provision the ephemeral VM and watch the live test logs.</li>
-    </ol>
-
-    <h4 style="margin-top: 2rem;">Core BDD Test Suites & Assertions</h4>
-    <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.6; margin-bottom: 0.75rem;">
-      Each test lane executes targeted BDD scenarios written in Gherkin and backed by python-behave, dogtail, and GNOME AT-SPI tree traversal:
-    </p>
-    <div class="table-scroll" style="margin-bottom: 1.5rem;">
-      <table class="history-table" style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
-            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; width: 120px;">Suite</th>
-            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; width: 120px;">Runtime</th>
-            <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Key System Assertions & Scenarios Verified</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">smoke</td>
-            <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
-              <strong>GNOME Shell Desktop Environment:</strong> Verifies AT-SPI registry daemon readiness, Quick Settings menus, Clock and Calendar top-bar responsiveness via Shell.Eval, Caffeine extension state, and Dash to Dock layout integrity.
-            </td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">common</td>
-            <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
-              <strong>OS Integrations:</strong> Asserts flatpak sandbox portal boundaries, polkit local user authorization overrides, basic immutable host security policies, and standard desktop session persistence.
-            </td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">developer</td>
-            <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
-              <strong>Developer Toolchains:</strong> Confirms Homebrew prefix pathing, Podman rootless socket readiness, Ptyxis terminal tab multiplexing, and development build tools accessibility.
-            </td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">software</td>
-            <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
-              <strong>User Space Application Layer:</strong> Validates user-facing software hubs, Flatpak remote sync performance, and software center API contracts.
-            </td>
-          </tr>
-          <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-            <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">system</td>
-            <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2);">KubeVirt VM</span></td>
-            <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
-              <strong>Atomic OS Guarantees:</strong> Proves the core platform contract. Asserts that <code>/usr</code> is read-only, <code>/var</code> is writable, <code>bootc status</code> maps to a correct registry container image reference, <code>bootc upgrade</code> stages updates cleanly without host disruption, and composefs signatures match policies.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+  <RunbookSection />
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  DATA INTEGRITY DISCLOSURE                                   -->

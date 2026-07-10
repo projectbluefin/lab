@@ -39,7 +39,7 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /class="image-status-grid"/, 'overview renders image status section');
   assert.match(html('docs/index.html'), /href="\/images\/"/, 'overview links to images at domain root');
   assert.match(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav shows Overview tab');
-  assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+"[^>]* data-cfasync="false"/, 'tests page keeps Cloudflare-safe chart script');
+  assert.match(html('docs/tests/index.html'), /src="\/_astro\/TestsCharts\.[^"]+"/, 'tests page keeps bundled chart script');
   assert.match(html('docs/images/index.html'), /src="\/_astro\/upstream-page\.[^"]+"[^>]* data-cfasync="false"/, 'images page keeps Cloudflare-safe chart script');
   const adoptionPage = html('docs/adoption/index.html');
   assert.match(adoptionPage, /data-cfasync="false"/, 'adoption page keeps Cloudflare-safe chart script');
@@ -82,7 +82,6 @@ test('Astro build emits multipage factory routes into docs', () => {
 
   for (const [page, scriptToken] of [
     ['docs/images/index.html', 'upstream-page'],
-    ['docs/tests/index.html', 'tests-charts'],
     ['docs/builds/index.html', 'builds-charts'],
   ]) {
     const pageHtml = html(page);

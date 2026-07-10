@@ -1,0 +1,445 @@
+---
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+
+interface MatrixHistoryPoint {
+  run_date: string;
+  workflow_name: string | null;
+  status: string;
+  scenarios: number;
+  failed: number;
+  duration_seconds?: number;
+}
+
+interface FailedScenarioDetailed {
+  scenario_name: string;
+  duration_seconds: number;
+  failing_step: string;
+  error_message: string;
+}
+
+interface MatrixRowDetails {
+  variant: string;
+  suite: string;
+  last_run: string | null;
+  workflow_name: string | null;
+  status: string;
+  scenarios: number;
+  failed: number;
+  failed_scenarios?: string[];
+  failed_scenarios_detailed?: FailedScenarioDetailed[];
+  screenshot_url?: string | null;
+  history: MatrixHistoryPoint[];
+  duration_seconds?: number;
+}
+
+interface MatrixRow {
+  id: string;
+  variant: string;
+  branch: string;
+  suite: string;
+  result_status: string;
+  last_run: string | null;
+  workflow_name: string | null;
+  scenarios_total: number;
+  scenarios_failed: number;
+  pass_rate: number | null;
+  history_points: number;
+  results_path: string;
+  screenshot_path: string | null;
+  screenshot_url: string | null;
+  state: string;
+  state_reason: string | null;
+  source_url: string;
+  collected_at: string;
+  derivation: string;
+  details: MatrixRowDetails | null;
+}
+
+interface Props {
+  row: MatrixRow;
+  workflowHref: (workflowName: string | null) => string | null;
+  detailPassRate: (scenarios: number, failed: number) => number | null;
+}
+
+const { row, workflowHref, detailPassRate } = Astro.props;
+
+const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path));
+---
+
+<style>
+  /* ── Dot timelines ───────────────────────────────────────── */
+  .history-timeline {
+    margin-top: 1.5rem;
+    padding: 1rem 1.25rem;
+    background: rgba(15, 23, 42, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .timeline-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .timeline-dots {
+    display: flex;
+    gap: 0.35rem;
+  }
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .dot:hover {
+    transform: scale(1.3);
+  }
+  .dot.passed {
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  }
+  .dot.failed {
+    background: #f43f5e;
+    box-shadow: 0 0 8px rgba(244, 63, 94, 0.4);
+  }
+  
+  /* Simple dynamic CSS Tooltip */
+  .dot::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 150%;
+    left: 50%;
+    transform: translateX(-50%) scale(0.85);
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(125, 211, 252, 0.3);
+    color: #f8fafc;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  }
+  .dot:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+
+  /* ── Terminal Mockup ─────────────────────────────────────── */
+  .terminal-mockup {
+    background: #0b0f19;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 1rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+  .terminal-header {
+    background: #161b26;
+    padding: 0.5rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .terminal-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .terminal-dot.red { background: #ef4444; }
+  .terminal-dot.yellow { background: #f59e0b; }
+  .terminal-dot.green { background: #10b981; }
+  
+  .terminal-title {
+    margin-left: 0.5rem;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .terminal-body {
+    padding: 1rem;
+    font-family: 'Ptyxis', 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    color: #cbd5e1;
+    line-height: 1.5;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .terminal-line {
+    margin: 0 0 0.5rem 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .text-red { color: #f43f5e; font-weight: bold; }
+  .text-yellow { color: #f59e0b; }
+  .text-dim { color: #475569; }
+  .text-cyan { color: #38bdf8; }
+</style>
+
+<details id={row.id} class="detail-card" open={row.state === 'available'} data-test-card data-test-id={row.id} data-test-variant={row.variant} data-test-suite={row.suite} data-test-status={row.state === 'available' ? row.result_status : 'unavailable'}>
+  <summary>
+    <div>
+      <p class="detail-card__eyebrow">{row.variant} · {row.suite}</p>
+      <h3>{row.id}</h3>
+    </div>
+    <div class="detail-card__summary">
+      <span class={`pill pill--${row.state === 'available' ? row.result_status : 'unavailable'}`}>
+        {row.state === 'available' ? row.result_status : 'unavailable'}
+      </span>
+      <strong>{row.pass_rate !== null ? `${row.pass_rate}%` : 'No pass rate'}</strong>
+    </div>
+  </summary>
+
+  <div class="detail-card__body">
+    <div class="detail-grid">
+      <article>
+        <h4>Latest run</h4>
+        <dl>
+          <div>
+            <dt>Branch</dt>
+            <dd>{row.branch}</dd>
+          </div>
+          <div>
+            <dt>Architecture</dt>
+            <dd>
+              <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">x86_64</span>
+              <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">aarch64</span>
+            </dd>
+          </div>
+          <div>
+            <dt>Execution Mode</dt>
+            <dd>
+              {row.suite === 'system' ? (
+                <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2);">KubeVirt VM</span>
+              ) : (
+                <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container Pod</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>Last run</dt>
+            <dd>{row.last_run ? new Date(row.last_run).toLocaleString() : 'Unavailable'}</dd>
+          </div>
+          {row.details?.duration_seconds !== undefined && row.details.duration_seconds > 0 && (
+            <div>
+              <dt>Run duration</dt>
+              <dd>{row.details.duration_seconds} seconds</dd>
+            </div>
+          )}
+          <div>
+            <dt>Scenarios</dt>
+            <dd>{row.scenarios_total}</dd>
+          </div>
+          <div>
+            <dt>Failed scenarios</dt>
+            <dd>{row.scenarios_failed}</dd>
+          </div>
+          <div>
+            <dt>History points</dt>
+            <dd>{row.history_points}</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article>
+        <h4>Evidence links</h4>
+        <ul class="evidence-list">
+          <li><a href={`../${row.results_path}`}>{row.results_path}</a></li>
+          <li><a href={row.source_url} rel="noreferrer" target="_blank">Source JSON on GitHub</a></li>
+          {row.screenshot_url && <li><a href={row.screenshot_url} rel="noreferrer" target="_blank">Latest screenshot</a></li>}
+          {row.workflow_name && workflowHref(row.workflow_name) && (
+            <li><a href={workflowHref(row.workflow_name)!} rel="noreferrer" target="_blank">Workflow: {row.workflow_name}</a></li>
+          )}
+        </ul>
+      </article>
+    </div>
+
+    {/* ── Visual Evidence Gallery ── */}
+    <div class="screenshot-gallery">
+      <h4>Visual Evidence</h4>
+      {hasScreenshot ? (
+        <div class="screenshot-card">
+          <a href={row.screenshot_url!} target="_blank" rel="noreferrer" class="screenshot-link">
+            <img
+              src={row.screenshot_url!}
+              alt={`UI screenshot for ${row.id} — ${row.suite} suite on ${row.variant}`}
+              class="screenshot-img"
+              loading="lazy"
+              decoding="async"
+            />
+            <div class="screenshot-overlay">
+              <span>↗ Full size</span>
+            </div>
+          </a>
+          <div class="screenshot-caption">
+            <span class={`pill pill--${row.result_status}`}>{row.result_status}</span>
+            <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.5rem;">
+              {row.suite} · {row.variant} · {row.last_run ? new Date(row.last_run).toLocaleDateString() : 'Awaiting Run'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div class="screenshot-placeholder">
+          <div class="screenshot-placeholder__content">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="placeholder-icon"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            <h5>{row.suite === 'system' ? 'No Screenshot Captured Yet' : 'Non-Virtual Evidence Captured'}</h5>
+            <p>
+              {row.suite === 'system' ? (
+                <span>The <strong>{row.suite}</strong> suite runs automated platform-contract BDD tests inside an ephemeral KubeVirt VM. A screenshot of the desktop session is captured via Wayland on successful execution.</span>
+              ) : (
+                <span>The <strong>{row.suite}</strong> suite runs automated desktop/app BDD tests inside a non-privileged, software-rendered Kubernetes Container Pod. Real-time CLI logs provide complete execution evidence.</span>
+              )}
+            </p>
+            <div class="placeholder-meta">
+              <span>Target: {row.variant} ({row.branch})</span>
+              <span>Run command: <code>just run-tests-tag {row.branch === 'testing' ? 'testing' : 'stable'}</code></span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+    {/* ── Historical Dot-Timeline ── */}
+    {row.details?.history?.length ? (
+      <div class="history-timeline">
+        <span class="timeline-label">Execution Timeline (Last 15 Runs)</span>
+        <div class="timeline-dots">
+          {[...row.details.history].reverse().map((entry) => {
+            const rate = detailPassRate(entry.scenarios, entry.failed);
+            const formattedDate = new Date(entry.run_date).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            const durationText = entry.duration_seconds ? ` | Duration: ${entry.duration_seconds}s` : '';
+            const tooltip = `Workflow: ${entry.workflow_name || 'Manual'} | Pass Rate: ${rate !== null ? `${rate}%` : '—'} | Failed: ${entry.failed}/${entry.scenarios}${durationText} | ${formattedDate}`;
+            return (
+              <span 
+                class:list={['dot', entry.status === 'passed' ? 'passed' : 'failed']} 
+                data-tooltip={tooltip}
+              />
+            );
+          })}
+        </div>
+      </div>
+    ) : null}
+
+    {row.state !== 'available' ? (
+      <div class="detail-note detail-note--unavailable">
+        <h4>Unavailable state</h4>
+        <p>{row.state_reason ?? 'No completed run has been published for this matrix cell yet.'}</p>
+      </div>
+    ) : (
+      <>
+        <div class="detail-grid detail-grid--split">
+          <article>
+            <h4>Latest Diagnostics & Logs</h4>
+            
+            {row.details?.failed_scenarios_detailed?.length ? (
+              row.details.failed_scenarios_detailed.map((detailed) => (
+                <div class="terminal-mockup">
+                  <div class="terminal-header">
+                    <span class="terminal-dot red"></span>
+                    <span class="terminal-dot yellow"></span>
+                    <span class="terminal-dot green"></span>
+                    <span class="terminal-title">behave --suite {row.suite} --scenario "{detailed.scenario_name.slice(0, 30)}..."</span>
+                  </div>
+                  <div class="terminal-body">
+                    <pre class="terminal-line"><span class="text-red">[FAILED]</span> Scenario: {detailed.scenario_name}</pre>
+                    <pre class="terminal-line">  <span class="text-yellow">Step:</span> {detailed.failing_step}</pre>
+                    <pre class="terminal-line">  <span class="text-dim">Duration:</span> {detailed.duration_seconds}s</pre>
+                    <pre class="terminal-line text-cyan">{detailed.error_message}</pre>
+                  </div>
+                </div>
+              ))
+            ) : row.details?.failed_scenarios?.length ? (
+              <div class="terminal-mockup">
+                <div class="terminal-header">
+                  <span class="terminal-dot red"></span>
+                  <span class="terminal-dot yellow"></span>
+                  <span class="terminal-dot green"></span>
+                  <span class="terminal-title">behave --suite {row.suite} --summary</span>
+                </div>
+                <div class="terminal-body">
+                  <pre class="terminal-line"><span class="text-red">[FAILED]</span> The following scenarios failed in the latest run:</pre>
+                  {row.details.failed_scenarios.map((scenario, index) => (
+                    <pre class="terminal-line">  {index + 1}. {scenario}</pre>
+                  ))}
+                  <pre class="terminal-line text-dim">Note: Upgrade results pipeline to see detailed error traces and step runtimes.</pre>
+                </div>
+              </div>
+            ) : (
+              <p class="detail-note">No failed scenario names published for the latest run.</p>
+            )}
+          </article>
+
+          <article>
+            <h4>History Table</h4>
+            {row.details?.history?.length ? (
+              <div class="table-scroll">
+                <table class="history-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Run date</th>
+                      <th scope="col">Workflow</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Failed</th>
+                      <th scope="col">Pass rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {row.details.history.map((entry) => {
+                      const rate = detailPassRate(entry.scenarios, entry.failed);
+                      return (
+                        <tr>
+                          <td>{new Date(entry.run_date).toLocaleString()}</td>
+                          <td>{entry.workflow_name ?? 'Unavailable'}</td>
+                          <td>{entry.status}</td>
+                          <td>{entry.failed}/{entry.scenarios}</td>
+                          <td class="rate-col">
+                            <strong>{rate === null ? '—' : `${rate}%`}</strong>
+                            {rate !== null && (
+                              <div class="progress-bar-container progress-bar-container--small">
+                                <div
+                                  class="progress-bar"
+                                  style={`width: ${rate}%; background: ${
+                                    rate >= 90
+                                      ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                                      : rate >= 60
+                                        ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                                        : 'linear-gradient(90deg, #ef4444, #f87171)'
+                                  };`}
+                                />
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p class="detail-note">No published history rows in the linked result JSON yet.</p>
+            )}
+          </article>
+        </div>
+      </>
+    )}
+  </div>
+</details>

@@ -53,18 +53,10 @@ spec:
       args:
       - |
         set -euo pipefail
-        rm -rf /workspace/lab
-        for attempt in 1 2 3; do
-          if git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
-              https://github.com/projectbluefin/lab \
-              /workspace/lab 2>&1; then
-            echo "Synced lab @ {{inputs.parameters.branch}} (attempt ${attempt})"
-            exit 0
-          fi
-          rm -rf /workspace/lab
-          sleep 5
-        done
-        exit 1
+        # cgr.dev/chainguard/git has no rm, but we don't need it as workspace is a fresh emptyDir
+        git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
+            https://github.com/projectbluefin/lab \
+            /workspace/lab
     container:
       image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
       imagePullPolicy: IfNotPresent

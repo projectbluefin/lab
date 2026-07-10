@@ -57,7 +57,7 @@ spec:
             path: /dev/fuse
             type: CharDevice
       script:
-        image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+        image: ghcr.io/projectbluefin/lab-runner:latest
         command: [sh]
         securityContext:
           privileged: true
@@ -78,7 +78,6 @@ spec:
           - name: dev-fuse
             mountPath: /dev/fuse
         source: |
-          apk add --no-cache bash curl jq git python3 just podman fuse-overlayfs >/dev/null 2>&1
           exec bash <<'SCRIPT_EOF'
           set -euxo pipefail
 

@@ -39,7 +39,7 @@ spec:
      # NOTE: No output artifacts declared — artifact repository is not configured.
       # Results are captured via stdout (pod logs / Loki). Same pattern as run-gnome-tests.
     container:
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      image: ghcr.io/projectbluefin/lab-runner:latest
       imagePullPolicy: Always
       resources:
         requests:
@@ -72,7 +72,6 @@ spec:
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 py3-pip >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         mkdir -p /tmp/results

@@ -26,7 +26,7 @@ spec:
   templates:
     - name: gate-candidate
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: ghcr.io/projectbluefin/lab-runner:latest
         securityContext:
           runAsUser: 0
         command: [bash]
@@ -39,7 +39,6 @@ spec:
             memory: 512Mi
         source: |
           set -euo pipefail
-          apk add --no-cache coreutils >/dev/null 2>&1
 
           STATE_CM="flatcar-kernel-lifecycle-state"
           GATE_WINDOW_SECONDS=86400

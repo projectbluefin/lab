@@ -333,7 +333,7 @@ spec:
       - name: vm-name
       - name: namespace
     script:
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -343,7 +343,6 @@ spec:
           cpu: 500m
           memory: 256Mi
       source: |-
-        apk add --no-cache bash curl jq kubectl git python3 xz >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         exec 3>&1

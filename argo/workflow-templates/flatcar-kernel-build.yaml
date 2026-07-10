@@ -290,7 +290,7 @@ spec:
         valueFrom:
           path: /tmp/filename.txt
     script:
-      image: cgr.dev/chainguard/python:latest-dev
+      image: ghcr.io/projectbluefin/lab-runner:latest
       securityContext:
         runAsUser: 0
       command: [sh]
@@ -309,7 +309,6 @@ spec:
             key: id_ed25519
       source: |
         set -eu
-        apk add --no-cache curl git openssh-client coreutils >/dev/null
         if ! command -v kubectl >/dev/null 2>&1; then
           KVER="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
           mkdir -p /tmp/bin

@@ -59,7 +59,7 @@ spec:
       # Results are captured via outputs.result (stdout) + kubectl logs.
     initContainers:
     - name: git-sync
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         requests:
           cpu: 100m
@@ -73,7 +73,6 @@ spec:
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         for attempt in 1 2 3; do
           # Clear any partial clone from a previous attempt — git clone
@@ -105,7 +104,7 @@ spec:
         mountPath: /workspace
     container:
         # Fedora: has dnf, python3, pip3 — matches Bluefin (Fedora-based) package names
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      image: ghcr.io/projectbluefin/lab-runner:latest
       imagePullPolicy: Always
       resources:
         requests:
@@ -145,7 +144,6 @@ spec:
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         {
         set -euo pipefail

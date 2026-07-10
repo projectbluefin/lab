@@ -411,8 +411,8 @@ spec:
     name: prepare-storage-backend
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: '1'
@@ -421,7 +421,6 @@ spec:
           cpu: 250m
           memory: 256Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -558,8 +557,8 @@ spec:
     name: run-bootc-switch
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: '1'
@@ -568,7 +567,6 @@ spec:
           cpu: 250m
           memory: 256Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -708,8 +706,8 @@ spec:
     name: reboot-and-wait
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: 500m
@@ -718,7 +716,6 @@ spec:
           cpu: 100m
           memory: 128Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -789,8 +786,8 @@ spec:
     name: collect-evidence
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: '1'
@@ -799,7 +796,6 @@ spec:
           cpu: 250m
           memory: 256Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -1015,8 +1011,8 @@ spec:
     name: verify-state
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: 500m
@@ -1025,7 +1021,6 @@ spec:
           cpu: 100m
           memory: 128Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then

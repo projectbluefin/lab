@@ -57,11 +57,10 @@ spec:
         secretName: "{{inputs.parameters.ssh-key-secret}}"
         defaultMode: 0400
     container:
-      image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -uo pipefail
 

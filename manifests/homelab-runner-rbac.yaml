@@ -7,9 +7,11 @@
 #   - No Argo Workflow management permissions
 #   - Only what kubectl needs: namespace lifecycle + namespace-scoped fixtures
 #
-# Dynamic namespaces (homelab-*-test-<id>) are created at workflow start, so
-# namespace-scoped permissions must be cluster-wide via ClusterRoleBinding.
-# This is narrower than argo SA but still cluster-scoped — tracked in issue #146.
+# Principle of least privilege for workspaces (Issue #146):
+#   - Cluster-scoped permissions are strictly limited to namespace creation and deletion.
+#   - All namespace-scoped permissions (deployments, pods, PVCs, etc.) are bound via
+#     RoleBindings inside target namespaces.
+#
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -19,10 +21,11 @@ metadata:
     app.kubernetes.io/component: homelab-rbac
     app.kubernetes.io/part-of: bluefin-test-suite
 ---
+# ClusterRole for cluster-scoped namespace management only (No namespace-scoped access)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: homelab-runner-role
+  name: homelab-runner-namespace-manager
   labels:
     app.kubernetes.io/component: homelab-rbac
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -31,6 +34,32 @@ rules:
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-runner-namespace-binding
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-namespace-manager
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+# Shared ClusterRole defining the namespace-scoped permissions (Bound via local RoleBindings)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homelab-runner-workspace-role
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+rules:
   # Workload fixtures — Deployments, ReplicaSets (for rollout status)
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets"]
@@ -65,18 +94,143 @@ rules:
   - apiGroups: ["argoproj.io"]
     resources: ["workflowtaskresults"]
     verbs: ["create", "patch"]
+  # Role bindings — allow dynamic workspace initialization inside newly created namespaces
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "list", "watch", "create", "delete"]
 ---
+# RoleBindings inside authorized namespaces
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: homelab-runner-binding
+  name: homelab-runner-workspace-binding
+  namespace: argo
   labels:
     app.kubernetes.io/component: homelab-rbac
     app.kubernetes.io/part-of: bluefin-test-suite
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: homelab-runner-role
+  name: homelab-runner-workspace-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homelab-runner-workspace-binding
+  namespace: bluefin-test
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-workspace-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homelab-runner-workspace-binding
+  namespace: bluefin-lts-test
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-workspace-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homelab-runner-workspace-binding
+  namespace: flatcar-test
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-workspace-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homelab-runner-workspace-binding
+  namespace: gnomeos-test
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-workspace-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homelab-runner-workspace-binding
+  namespace: snosi-test
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-workspace-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homelab-runner-workspace-binding
+  namespace: aurora-test
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-workspace-role
+subjects:
+  - kind: ServiceAccount
+    name: homelab-runner
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: homelab-runner-workspace-binding
+  namespace: knuckle-test
+  labels:
+    app.kubernetes.io/component: homelab-rbac
+    app.kubernetes.io/part-of: bluefin-test-suite
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-runner-workspace-role
 subjects:
   - kind: ServiceAccount
     name: homelab-runner

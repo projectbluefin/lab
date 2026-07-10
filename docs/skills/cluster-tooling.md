@@ -499,11 +499,12 @@ for claim in cas-storage-0 ac-storage-0 cas-storage-1 ac-storage-1; do
 done
 ```
 
-As of **2026-07-08**, the live cluster still reports a single `DEFAULT_PATH_FOR_NON_LISTED_NODES=/var/mnt/ghost-data/local-path`, and the live Buildbarn PVs reflect that literally:
-- `storage-0` is on `exo-0`, but its PVs still live under `/var/mnt/ghost-data/local-path/...` on `exo-0`'s system disk.
-- `storage-1` is on `ghost`, under `/var/mnt/ghost-data/local-path/...` on `ghost`.
+As of **2026-07-09**, the `local-path-config` ConfigMap has been corrected to use explicit per-node paths:
+- `ghost` is mapped to `/var/mnt/ghost-data/local-path`
+- `exo-0` is mapped to `/var/mnt/exo0-data/local-path`
 
-If `local-path-config` is later corrected to use explicit per-node paths (for example `exo-0` → `/var/mnt/exo0-data/local-path`), trust the **live PV output above**, not stale docs.
+This ensures that both nodes write their local-path persistent volume data directly to their respective 4TB NVMe SSD drives instead of the root system partition. Always verify the live configuration via:
+`kubectl get configmap local-path-config -n kube-system -o jsonpath='{.data.config\.json}{"\n"}'`
 
 #### Why `rsync --sparse` is the right tool here
 This storage is **not** shaped like the old multi-million-file BuildStream cache. The live shard layout is sparse block-device files:

@@ -27,8 +27,8 @@ spec:
           app.kubernetes.io/part-of: bluefin-test-suite
           bluefin.io/step: dakota-pr-import-poller
       script:
-        image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
-        command: [sh]
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
         resources:
           requests:
             cpu: 100m
@@ -43,8 +43,6 @@ spec:
                 name: github-token
                 key: token
         source: |
-          apk add --no-cache bash curl jq kubectl git >/dev/null 2>&1
-          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
 
           API="https://api.github.com"
@@ -121,5 +119,3 @@ spec:
               dispatch_pr "$PR"
             done < <(echo "$RESULTS" | jq -c '.items[]')
           fi
-
-          SCRIPT_EOF

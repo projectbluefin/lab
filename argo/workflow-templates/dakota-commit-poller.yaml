@@ -68,8 +68,8 @@ spec:
             valueFrom:
               path: /tmp/sha
       script:
-        image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
-        command: [sh]
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
         resources:
           requests:
             cpu: 100m
@@ -84,8 +84,6 @@ spec:
                 name: github-token
                 key: token
         source: |
-          apk add --no-cache bash curl jq kubectl git python3 >/dev/null 2>&1
-          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
           REPO="{{workflow.parameters.repo}}"
           BRANCH="{{workflow.parameters.branch}}"
@@ -96,7 +94,7 @@ spec:
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${REPO}/commits?sha=${BRANCH}&per_page=1" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['sha'])")
+            | jq -r '.[0].sha')
 
           echo "Remote SHA:  ${REMOTE}" >&2
           printf '%s\n' "${REMOTE}" > /tmp/sha

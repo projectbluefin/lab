@@ -22,8 +22,8 @@ spec:
     templates:
       - name: poll-and-trigger
         script:
-          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
-          command: [sh]
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          command: [bash]
           resources:
             requests:
               cpu: 100m
@@ -32,20 +32,11 @@ spec:
               cpu: 300m
               memory: 512Mi
           source: |
-            apk add --no-cache bash curl jq kubectl git python3 >/dev/null 2>&1
-            exec bash <<'SCRIPT_EOF'
             set -euo pipefail
 
             # Fetch latest stable kernel version from kernel.org
             LATEST=$(curl -sf https://www.kernel.org/releases.json \
-              | python3 -c "
-            import sys, json
-            data = json.load(sys.stdin)
-            for r in data['releases']:
-                if r['moniker'] == 'stable':
-                    print(r['version'])
-                    break
-            ")
+              | jq -r '.releases[] | select(.moniker == "stable") | .version' | head -n 1)
             echo "Latest kernel.org stable: ${LATEST}"
 
             # Read last-seen version from ConfigMap
@@ -78,7 +69,6 @@ spec:
             kubectl patch configmap flatcar-kernel-polling-state \
               -n argo --type=merge \
               -p "{\"data\":{\"kernel-stable\":\"${LATEST}\"}}"
-            SCRIPT_EOF
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow

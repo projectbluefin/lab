@@ -76,9 +76,15 @@ const formatDuration = (seconds?: number) => {
 ---
 
 <style>
+  /* Prevent horizontal overflow by letting grid item shrink */
+  .detail-grid > article {
+    min-width: 0;
+  }
+
   /* Override global wide-table grid column rule for split grid */
   .detail-grid--split > article {
     grid-column: span 1 !important;
+    min-width: 0;
   }
   @media (max-width: 900px) {
     .detail-grid--split > article {

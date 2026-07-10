@@ -407,6 +407,13 @@ therefore gates RE on live link state:
   both annotations are `up` (or `-p build-mode=re` forces it); anything else —
   including missing annotations — fails safe to `cache-only`.
 - In `cache-only` mode bst builds locally in the pod and uses Buildbarn purely
+  for artifact pulling/pushing.
+
+> ⚠️ **CRITICAL SRE Operational Guidance on Thunderbolt Link Down**:
+> If the physical USB4/Thunderbolt link is down, the static table-40 policy routing rules persisted in NetworkManager on `exo-0` and `ghost` will continue to match pod traffic destined for the other node's pod CIDR (e.g., `10.42.0.0/24` for ghost / CoreDNS) and try to route it over `thunderbolt0` (which has `NO-CARRIER`), silently blackholing all cross-node pod-to-pod and DNS traffic.
+> To restore healthy LAN-fallback pod networking while the physical link is down:
+> 1. On `exo-0`, deactivate the NM Thunderbolt connection: `sudo nmcli con down "Wired connection 2"`
+> 2. On `ghost`, delete the stale routing rule: `sudo ip rule del priority 5209`
   as artifact/source cache (bounded transfers, ethernet-safe).
 - Retries always force cache-only (`{{retries}} > 0`): a mid-build link drop
   fails the attempt and the retry rides the cache instead of RE.

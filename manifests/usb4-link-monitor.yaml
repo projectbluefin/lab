@@ -73,7 +73,10 @@ spec:
                     values: [ghost, exo-0]
       containers:
         - name: monitor
-          image: cgr.dev/chainguard/kubectl:latest-dev
+          image: ghcr.io/projectbluefin/lab-runner:latest
+          securityContext:
+            privileged: true
+            runAsUser: 0
           env:
             - name: NODE_NAME
               valueFrom:
@@ -83,6 +86,17 @@ spec:
           args:
             - |
               set -u
+
+              # Bootstrap kubectl if not in PATH
+              if ! command -v kubectl >/dev/null 2>&1; then
+                KUBECTL=/tmp/kubectl
+                if [ ! -f "${KUBECTL}" ]; then
+                  curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+                  chmod +x "${KUBECTL}"
+                fi
+                kubectl() { "${KUBECTL}" "$@"; }
+              fi
+
               case "${NODE_NAME}" in
                 ghost) PEER_IP=10.99.0.2 ;;
                 exo-0) PEER_IP=10.99.0.1 ;;
@@ -92,6 +106,17 @@ spec:
               LAST=""
               N=0
               while true; do
+                # Ensure DNS traffic (UDP/TCP port 53) is ALWAYS routed via Ethernet (main table)
+                # This guarantees DNS queries are immune to any USB4 interface state or table 40.
+                for proto in udp tcp; do
+                  for porttype in dport sport; do
+                    if ! ip rule show | grep -F "5208:" | grep -q "${proto} ${porttype} 53"; then
+                      echo "Applying persistent SRE DNS routing override: ${proto} ${porttype} 53 via main table"
+                      ip rule add ipproto ${proto} ${porttype} 53 lookup main pref 5208 || true
+                    fi
+                  done
+                done
+
                 STATE=down
                 if [[ "$(cat ${IF}/operstate 2>/dev/null)" == "up" ]] \
                    && [[ "$(cat ${IF}/carrier 2>/dev/null)" == "1" ]] \

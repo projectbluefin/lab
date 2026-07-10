@@ -27,7 +27,7 @@ spec:
         nodeSelector:
           kubernetes.io/hostname: ghost
         script:
-          image: cgr.dev/chainguard/kubectl:latest-dev
+          image: ghcr.io/projectbluefin/lab-runner:latest
           command: [bash]
           resources:
             requests:
@@ -38,6 +38,16 @@ spec:
               memory: 128Mi
           source: |
             set -euo pipefail
+
+            # Bootstrap kubectl if not in PATH
+            if ! command -v kubectl >/dev/null 2>&1; then
+              KUBECTL=/tmp/kubectl
+              if [ ! -f "${KUBECTL}" ]; then
+                curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+                chmod +x "${KUBECTL}"
+              fi
+              kubectl() { "${KUBECTL}" "$@"; }
+            fi
             NAMESPACES="aurora-test bluefin-test bluefin-lts-test flatcar-test knuckle-test"
             # Delete VMs older than 3 hours — use kubectl with age filter
             # The argo-workflow label links a VM to its parent workflow

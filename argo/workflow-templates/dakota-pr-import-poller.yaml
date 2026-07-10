@@ -27,7 +27,7 @@ spec:
           app.kubernetes.io/part-of: bluefin-test-suite
           bluefin.io/step: dakota-pr-import-poller
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: ghcr.io/projectbluefin/lab-runner:latest
         command: [bash]
         resources:
           requests:
@@ -43,8 +43,17 @@ spec:
                 name: github-token
                 key: token
         source: |
-          apk add --no-cache curl jq >/dev/null 2>&1
           set -euo pipefail
+
+          # Bootstrap kubectl if not in PATH
+          if ! command -v kubectl >/dev/null 2>&1; then
+            KUBECTL=/tmp/kubectl
+            if [ ! -f "${KUBECTL}" ]; then
+              curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+              chmod +x "${KUBECTL}"
+            fi
+            kubectl() { "${KUBECTL}" "$@"; }
+          fi
 
           API="https://api.github.com"
           REPO="projectbluefin/dakota"

@@ -670,6 +670,10 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
         grid-template-columns: 1fr;
       }
     }
+
+    /* TB4 Dash animations */
+    @keyframes tb4-dash-fwd { to { stroke-dashoffset: -28; } }
+    @keyframes tb4-dash-rev { to { stroke-dashoffset: 28; } }
   </style>
 
   <div id="factory-dashboard">
@@ -820,7 +824,7 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
       Who's donating cycles to test Bluefin right now — each card is a real machine running real tests.
     </p>
     <div id="cluster-canvas-wrap">
-    <svg id="fabric-svg" aria-hidden="true"></svg>
+    <svg id="fabric-svg" aria-hidden="true" data-astro-cid-lcdefpme="" width="1360" height="478.79998779296875" viewBox="0 0 1360 478.79998779296875"><defs><filter id="tb4-glow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#fb923c" flood-opacity="0.85"></feDropShadow></filter></defs><path d="M 503.8000183105469 45.60009765625 L 503.8000183105469 6.60009765625 L 159.39999389648438 6.60009765625 L 159.39999389648438 45.60009765625" fill="none" stroke="rgba(251, 146, 96, 0.12)" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"></path><path d="M 503.8000183105469 45.60009765625 L 503.8000183105469 6.60009765625 L 159.39999389648438 6.60009765625 L 159.39999389648438 45.60009765625" fill="none" stroke="#fb923c" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" filter="url(#tb4-glow)"></path><path d="M 503.8000183105469 45.60009765625 L 503.8000183105469 6.60009765625 L 159.39999389648438 6.60009765625 L 159.39999389648438 45.60009765625" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="miter" stroke-dasharray="8 20" stroke-dashoffset="0" style="animation: 0.6s linear infinite tb4-dash-fwd;"></path><path d="M 496.8000183105469 45.60009765625 L 496.8000183105469 14.60009765625 L 167.39999389648438 14.60009765625 L 167.39999389648438 45.60009765625" fill="none" stroke="rgba(251, 146, 96, 0.12)" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"></path><path d="M 495.8000183105469 45.60009765625 L 495.8000183105469 14.60009765625 L 167.39999389648438 14.60009765625 L 167.39999389648438 45.60009765625" fill="none" stroke="#fb923c" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" filter="url(#tb4-glow)"></path><path d="M 496.8000183105469 45.60009765625 L 496.8000183105469 14.60009765625 L 167.39999389648438 14.60009765625 L 167.39999389648438 45.60009765625" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="miter" stroke-dasharray="8 20" stroke-dashoffset="0" style="animation: 0.6s linear infinite tb4-dash-rev;"></path><a xlink:href="https://github.com/projectbluefin/lab/blob/main/docs/ghost-lab-architecture.md#data-plane--40-gbps-usb4-daisy-chain-mesh" target="_blank" rel="noreferrer" style="cursor: pointer; pointer-events: auto;"><rect x="247.60000610351562" y="-2.39990234375" width="176" height="26" rx="13" fill="#0b0f19" stroke="#fb923c" stroke-width="1.5"></rect><text x="335.6000061035156" y="10.60009765625" text-anchor="middle" dominant-baseline="central" fill="#fb923c" font-size="10.5" font-family="ui-monospace, monospace" font-weight="700" letter-spacing="0.05em">40G · USB4 / Thunderbolt</text></a></svg>
     <div class="nodes-grid">
       {clusterNodes.map((node) => (
         <article class="node-card" data-node-name={node.name}>
@@ -1237,217 +1241,5 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     }
 
     waitForCharts();
-
-    // ── Fabric link SVG overlay ────────────────────────────────
-    // ── Fabric link SVG overlay ────────────────────────────────
-    (function() {
-      var kfStyle = document.createElement('style');
-      kfStyle.textContent = 
-        '@keyframes tb4-dash-fwd { to { stroke-dashoffset: -28; } } ' +
-        '@keyframes tb4-dash-rev { to { stroke-dashoffset: 28; } }';
-      document.head.appendChild(kfStyle);
-
-      function drawFabricLinks() {
-        var svg = document.getElementById('fabric-svg');
-        if (!svg) return;
-        var wrap = document.getElementById('cluster-canvas-wrap');
-        if (!wrap) return;
-
-        // Obtain exact pixel dimensions of the container wrapper.
-        var wrapRect = wrap.getBoundingClientRect();
-        if (wrapRect.width === 0 || wrapRect.height === 0) return;
-
-        // Align SVG viewport exactly to CSS pixels.
-        svg.setAttribute('width',  wrapRect.width);
-        svg.setAttribute('height', wrapRect.height);
-        svg.setAttribute('viewBox', '0 0 ' + wrapRect.width + ' ' + wrapRect.height);
-
-        // Clear previous render
-        while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-        var fromEl = wrap.querySelector('[data-node-name="ghost"]');
-        var toEl   = wrap.querySelector('[data-node-name="exo-0"]');
-        if (!fromEl || !toEl) return;
-
-        var fr = fromEl.getBoundingClientRect();
-        var tr = toEl.getBoundingClientRect();
-
-        // Convert coordinates from viewport-relative to wrap-relative
-        var f = {
-          left:   fr.left   - wrapRect.left,
-          right:  fr.right  - wrapRect.left,
-          top:    fr.top    - wrapRect.top,
-          bottom: fr.bottom - wrapRect.top,
-          width:  fr.width,
-          height: fr.height
-        };
-        var t = {
-          left:   tr.left   - wrapRect.left,
-          right:  tr.right  - wrapRect.left,
-          top:    tr.top    - wrapRect.top,
-          bottom: tr.bottom - wrapRect.top,
-          width:  tr.width,
-          height: tr.height
-        };
-
-        // Determine layout: horizontal or vertical stack
-        var isHorizontal = Math.abs(f.left - t.left) > Math.abs(f.top - t.top);
-
-        var x1, y1, x2, y2;
-        var d1, d2;
-        var mx, my;
-        var offset = 35; // height/width of U-turn segment
-        var gap = 4;     // spacing between parallel lines
-
-        if (isHorizontal) {
-          x1 = f.left + f.width / 2;  y1 = f.top;
-          x2 = t.left + t.width / 2;  y2 = t.top;
-
-          // Parallel paths: shifted left (-gap) and right (+gap) on vertical, top (-gap) and bottom (+gap) on horizontal
-          d1 = 'M ' + (x1 - gap) + ' ' + y1 + 
-               ' L ' + (x1 - gap) + ' ' + (y1 - offset - gap) + 
-               ' L ' + (x2 - gap) + ' ' + (y2 - offset - gap) + 
-               ' L ' + (x2 - gap) + ' ' + y2;
-
-          d2 = 'M ' + (x1 + gap) + ' ' + y1 + 
-               ' L ' + (x1 + gap) + ' ' + (y1 - offset + gap) + 
-               ' L ' + (x2 + gap) + ' ' + (y2 - offset + gap) + 
-               ' L ' + (x2 + gap) + ' ' + y2;
-
-          mx = (x1 + x2) / 2;
-          my = y1 - offset;
-        } else {
-          x1 = f.right;  y1 = f.top + f.height / 2;
-          x2 = t.right;  y2 = t.top + t.height / 2;
-
-          // Parallel paths: shifted up (-gap) and down (+gap) on horizontal, left (-gap) and right (+gap) on vertical
-          d1 = 'M ' + x1 + ' ' + (y1 - gap) + 
-               ' L ' + (x1 + offset - gap) + ' ' + (y1 - gap) + 
-               ' L ' + (x2 + offset - gap) + ' ' + (y2 - gap) + 
-               ' L ' + x2 + ' ' + (y2 - gap);
-
-          d2 = 'M ' + x1 + ' ' + (y1 + gap) + 
-               ' L ' + (x1 + offset + gap) + ' ' + (y1 + gap) + 
-               ' L ' + (x2 + offset + gap) + ' ' + (y2 + gap) + 
-               ' L ' + x2 + ' ' + (y2 + gap);
-
-          mx = x1 + offset;
-          my = (y1 + y2) / 2;
-        }
-
-        var color = '#fb923c';
-        var ns = 'http://www.w3.org/2000/svg';
-
-        // Glow filter
-        var defs = document.createElementNS(ns, 'defs');
-        var filter = document.createElementNS(ns, 'filter');
-        filter.id = 'tb4-glow';
-        filter.setAttribute('x', '-50%'); filter.setAttribute('y', '-50%');
-        filter.setAttribute('width', '200%'); filter.setAttribute('height', '200%');
-        var feGlow = document.createElementNS(ns, 'feDropShadow');
-        feGlow.setAttribute('dx', '0'); feGlow.setAttribute('dy', '0');
-        feGlow.setAttribute('stdDeviation', '4');
-        feGlow.setAttribute('flood-color', color);
-        feGlow.setAttribute('flood-opacity', '0.85');
-        filter.appendChild(feGlow);
-        defs.appendChild(filter);
-        svg.appendChild(defs);
-
-        // Helper to append a full composite line (track + base + animated flow)
-        function appendParallelLine(d, animName) {
-          // Faint back pipe/track
-          var track = document.createElementNS(ns, 'path');
-          track.setAttribute('d', d);
-          track.setAttribute('fill', 'none');
-          track.setAttribute('stroke', 'rgba(251, 146, 96, 0.12)');
-          track.setAttribute('stroke-width', '5');
-          track.setAttribute('stroke-linecap', 'square');
-          track.setAttribute('stroke-linejoin', 'miter');
-          svg.appendChild(track);
-
-          // Glowing solid base line
-          var baseLine = document.createElementNS(ns, 'path');
-          baseLine.setAttribute('d', d);
-          baseLine.setAttribute('fill', 'none');
-          baseLine.setAttribute('stroke', color);
-          baseLine.setAttribute('stroke-width', '1.8');
-          baseLine.setAttribute('stroke-linecap', 'square');
-          baseLine.setAttribute('stroke-linejoin', 'miter');
-          baseLine.setAttribute('filter', 'url(#tb4-glow)');
-          svg.appendChild(baseLine);
-
-          // High-speed bright data packet flow (flowing dashes)
-          var flowLine = document.createElementNS(ns, 'path');
-          flowLine.setAttribute('d', d);
-          flowLine.setAttribute('fill', 'none');
-          flowLine.setAttribute('stroke', '#ffffff');
-          flowLine.setAttribute('stroke-width', '2.2');
-          flowLine.setAttribute('stroke-linecap', 'square');
-          flowLine.setAttribute('stroke-linejoin', 'miter');
-          flowLine.setAttribute('stroke-dasharray', '8 20');
-          flowLine.setAttribute('stroke-dashoffset', '0');
-          flowLine.style.animation = animName + ' 0.6s linear infinite';
-          svg.appendChild(flowLine);
-        }
-
-        // Render Tx and Rx lines with opposite animation flows
-        appendParallelLine(d1, 'tb4-dash-fwd');
-        appendParallelLine(d2, 'tb4-dash-rev');
-
-        // 4. Centered interactive info label
-        var labelW = 176, labelH = 26, labelR = 13;
-
-        var a = document.createElementNS(ns, 'a');
-        a.setAttributeNS('http://www.w3.org/1999/xlink', 'href',
-          'https://github.com/projectbluefin/lab/blob/main/docs/ghost-lab-architecture.md#data-plane--40-gbps-usb4-daisy-chain-mesh');
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noreferrer');
-        a.style.cursor = 'pointer';
-        a.style.pointerEvents = 'auto';
-
-        var bg = document.createElementNS(ns, 'rect');
-        bg.setAttribute('x', mx - labelW/2);
-        bg.setAttribute('y', my - labelH/2);
-        bg.setAttribute('width', labelW);
-        bg.setAttribute('height', labelH);
-        bg.setAttribute('rx', labelR);
-        bg.setAttribute('fill', '#0b0f19'); // fully opaque matching card background
-        bg.setAttribute('stroke', color);
-        bg.setAttribute('stroke-width', '1.5');
-        a.appendChild(bg);
-
-        var txt = document.createElementNS(ns, 'text');
-        txt.setAttribute('x', mx);
-        txt.setAttribute('y', my);
-        txt.setAttribute('text-anchor', 'middle');
-        txt.setAttribute('dominant-baseline', 'central');
-        txt.setAttribute('fill', color);
-        txt.setAttribute('font-size', '10.5');
-        txt.setAttribute('font-family', 'ui-monospace, monospace');
-        txt.setAttribute('font-weight', '700');
-        txt.setAttribute('letter-spacing', '0.05em');
-        txt.textContent = '40G · USB4 / Thunderbolt';
-        a.appendChild(txt);
-
-        svg.appendChild(a);
-      }
-
-      // Initialize observer to guarantee exact layouts on any size/rendering shift
-      var wrap = document.getElementById('cluster-canvas-wrap');
-      if (wrap && typeof ResizeObserver !== 'undefined') {
-        var observer = new ResizeObserver(function() {
-          drawFabricLinks();
-        });
-        observer.observe(wrap);
-      } else {
-        // Fallback
-        if (document.readyState === 'complete') {
-          drawFabricLinks();
-        } else {
-          window.addEventListener('load', drawFabricLinks);
-        }
-        window.addEventListener('resize', drawFabricLinks);
-      }
-    })();
   </script>
 </SiteLayout>

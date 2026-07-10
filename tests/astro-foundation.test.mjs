@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -10,12 +10,15 @@ function html(file) {
   return readFileSync(path.join(repo, file), 'utf8');
 }
 
-test('Astro build emits multipage factory routes into docs', () => {
+before(() => {
   execFileSync('npm', ['run', 'build'], {
     cwd: repo,
     stdio: 'pipe',
     encoding: 'utf8',
   });
+});
+
+test('Astro build emits multipage factory routes into docs', () => {
 
   const expectedFiles = [
     'docs/index.html',
@@ -25,6 +28,7 @@ test('Astro build emits multipage factory routes into docs', () => {
     'docs/adoption/index.html',
     'docs/userspace/index.html',
     'docs/about/index.html',
+    'docs/evidence/index.html',
   ];
 
   for (const file of expectedFiles) {
@@ -105,12 +109,6 @@ test('Astro build emits multipage factory routes into docs', () => {
 });
 
 test('tests page renders matrix views, chart mounts, evidence links, and unavailable states', () => {
-  execFileSync('npm', ['run', 'build'], {
-    cwd: repo,
-    stdio: 'pipe',
-    encoding: 'utf8',
-  });
-
   const testsPage = html('docs/tests/index.html');
 
   assert.match(testsPage, /Reliability trends/i, 'tests page shows reliability trend chart section');
@@ -138,12 +136,6 @@ test('tests page renders matrix views, chart mounts, evidence links, and unavail
 });
 
 test('images page renders grouped views, chart mounts, evidence links, and unavailable states', () => {
-  execFileSync('npm', ['run', 'build'], {
-    cwd: repo,
-    stdio: 'pipe',
-    encoding: 'utf8',
-  });
-
   const imagesPage = html('docs/images/index.html');
 
   assert.match(imagesPage, /Stream availability by family/i, 'images page shows grouped availability chart section');
@@ -155,16 +147,10 @@ test('images page renders grouped views, chart mounts, evidence links, and unava
   assert.match(imagesPage, /https:\/\/github\.com\/ublue-os\/aurora\/releases/i, 'images page links non-bluefin evidence');
   assert.match(imagesPage, /Fedora Silverblue|Fedora Kinoite/i, 'images page references Silverblue and Kinoite upstream parent OSes');
   assert.match(imagesPage, /https:\/\/fedoraproject\.org\/silverblue\/|https:\/\/fedoraproject\.org\/kinoite\//i, 'images page links upstream Silverblue and Kinoite homepages');
-  assert.match(imagesPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart|upstream-distribution-chart|upstream-brackets-chart/, 'images page renders chart containers');
+  assert.match(imagesPage, /upstream-availability-chart|upstream-freshness-chart|upstream-timeline-chart|upstream-distribution-chart|upstream-brackets-chart|upstream-poller-heatmap-chart/, 'images page renders chart containers');
 });
 
 test('userspace page renders FSDK containers, registry metadata, and charts', () => {
-  execFileSync('npm', ['run', 'build'], {
-    cwd: repo,
-    stdio: 'pipe',
-    encoding: 'utf8',
-  });
-
   const userspacePage = html('docs/userspace/index.html');
 
   assert.match(userspacePage, /Freedesktop SDK Container Images/i, 'userspace page renders main title');
@@ -186,4 +172,16 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
   assert.match(userspacePage, /Sizzling/i, 'userspace page renders sizzling heat metric label');
   assert.match(userspacePage, /heat-glowing-bar/i, 'userspace page renders glowing and sizzling progress bar elements');
   assert.match(userspacePage, /Data Integrity Posture/i, 'userspace page renders Data Integrity Posture section');
+});
+
+test('evidence page renders triage charts, coordinate overlays, gallery, and data integrity disclosure', () => {
+  const evidencePage = html('docs/evidence/index.html');
+
+  assert.match(evidencePage, /Evidence Ledger/i, 'evidence page renders main title');
+  assert.match(evidencePage, /Diagnostic Telemetry Metrics/i, 'evidence page renders diagnostic metrics section');
+  assert.match(evidencePage, /Failure Triage Scatter Plot/i, 'evidence page renders triage scatter plot section');
+  assert.match(evidencePage, /AT-SPI Coordinate Map Overlay/i, 'evidence page renders coordinate overlay section');
+  assert.match(evidencePage, /Visual Evidence Gallery/i, 'evidence page renders visual evidence gallery section');
+  assert.match(evidencePage, /Failure Runbooks/i, 'evidence page renders failure runbooks section');
+  assert.match(evidencePage, /Data Integrity Posture/i, 'evidence page renders data integrity posture section');
 });

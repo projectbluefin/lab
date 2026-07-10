@@ -259,18 +259,108 @@ function initBracketsChart(model) {
   return chart;
 }
 
+function initPollerHeatmapChart(model) {
+  const element = document.getElementById('upstream-poller-heatmap-chart');
+  if (!element || !model.charts.pollerHeatmap) return null;
+
+  const chart = echarts.init(element);
+  chart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: {
+      position: 'top',
+      backgroundColor: 'rgba(15, 23, 42, 0.95)',
+      borderColor: 'rgba(125, 211, 252, 0.35)',
+      textStyle: { color: '#e2e8f0' },
+      formatter(params) {
+        const value = params.value;
+        const dateStr = value[0];
+        const count = value[1];
+        return `<strong>${dateStr}</strong><br/>Polls: ${count}`;
+      }
+    },
+    visualMap: {
+      min: 0,
+      max: 24,
+      type: 'continuous',
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 0,
+      text: ['High Density', 'Low Density'],
+      textStyle: { color: '#94a3b8' },
+      inRange: {
+        color: ['#1e293b', '#0369a1', '#0ea5e9', '#38bdf8']
+      }
+    },
+    calendar: {
+      top: 40,
+      bottom: 40,
+      left: 60,
+      right: 30,
+      cellSize: ['auto', 13],
+      range: '2026',
+      itemStyle: {
+        color: '#1e293b',
+        borderWidth: 1,
+        borderColor: '#0f172a'
+      },
+      splitLine: {
+        show: true,
+        lineStyle: {
+          color: '#0f172a',
+          width: 2,
+          type: 'solid'
+        }
+      },
+      yearLabel: { show: false },
+      dayLabel: {
+        firstDay: 1,
+        color: '#94a3b8',
+        nameMap: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+      },
+      monthLabel: {
+        color: '#94a3b8',
+        nameMap: 'en'
+      }
+    },
+    series: {
+      type: 'heatmap',
+      coordinateSystem: 'calendar',
+      data: model.charts.pollerHeatmap.data
+    }
+  });
+  return chart;
+}
+
 const model = readModel();
-if (model) {
-  const charts = [
-    initAvailabilityChart(model),
-    initFreshnessChart(model),
-    initTimelineChart(model),
-    initDistributionChart(model),
-    initBracketsChart(model)
-  ].filter(Boolean);
-  if (charts.length) {
-    window.addEventListener('resize', () => {
-      charts.forEach((chart) => chart.resize());
+const charts = [];
+
+function lazyInit(id, initFn) {
+  const element = document.getElementById(id);
+  if (!element) return;
+
+  const observer = new IntersectionObserver((entries, obs) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        obs.unobserve(element);
+        const chart = initFn();
+        if (chart) {
+          charts.push(chart);
+        }
+      }
     });
-  }
+  }, { rootMargin: '100px' });
+  observer.observe(element);
+}
+
+if (model) {
+  lazyInit('upstream-availability-chart', () => initAvailabilityChart(model));
+  lazyInit('upstream-freshness-chart', () => initFreshnessChart(model));
+  lazyInit('upstream-timeline-chart', () => initTimelineChart(model));
+  lazyInit('upstream-distribution-chart', () => initDistributionChart(model));
+  lazyInit('upstream-brackets-chart', () => initBracketsChart(model));
+  lazyInit('upstream-poller-heatmap-chart', () => initPollerHeatmapChart(model));
+
+  window.addEventListener('resize', () => {
+    charts.forEach((chart) => chart.resize());
+  });
 }

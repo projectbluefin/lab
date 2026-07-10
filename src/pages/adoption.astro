@@ -3,10 +3,12 @@ import SiteLayout from '../layouts/SiteLayout.astro';
 import { loadAdoptionPageModel } from '../lib/adoption-page';
 import { loadHomebrewPageModel } from '../lib/homebrew-page';
 import { serializeJsonScript } from '../lib/json-script';
+import { readFileSync } from 'node:fs';
 
 const baseUrl = import.meta.env.BASE_URL;
 const pageModel = loadAdoptionPageModel(`${process.cwd()}/docs/data/adoption-metrics.json`);
 const homebrewModel = loadHomebrewPageModel(`${process.cwd()}/docs/data/homebrew-ecosystem.json`);
+const countmeMigrated = JSON.parse(readFileSync(`${process.cwd()}/docs/data/adoption-countme-migrated.json`, 'utf8'));
 
 const { dataset, summaryMetrics, trustCards, rows, laneStats, chartData } = pageModel;
 
@@ -43,6 +45,7 @@ const extendedChartData = {
   lanesCoverage: chartData.lanesCoverage,
   trustCoverage: chartData.trustCoverage,
   countmeTrend: dataset.countme_trend,
+  countmeMigrated: countmeMigrated,
   quayTrend: dataset.quay_trend,
   doraComparison: dataset.dora_comparison,
   osVersion: dataset.os_version,
@@ -405,6 +408,12 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       aspect-ratio: 16 / 9;
       min-height: 200px;
     }
+    .chart-caption {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+      text-align: center;
+    }
 
     /* Legacy sections wrapper for compatibility */
     .factory-status-section {
@@ -442,10 +451,12 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     </div>
   </div>
 
+  <!-- Redesigned Area Charts (including Chart 1: Cumulative Installations) and Sankey Chart -->
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem; margin-top: 1rem;">
+    <!-- Chart 1: Cumulative Installations Area Chart -->
     <div class="dashboard-panel" style="margin-bottom: 0;">
       <div class="panel-header">
-        <h3>Active Devices Trend</h3>
+        <h3>Cumulative Installations</h3>
         <div class="btn-group" id="countme-range-btns">
           <button class="toggle-btn" data-range="30">30d</button>
           <button class="toggle-btn" data-range="90">90d</button>
@@ -453,12 +464,37 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
           <button class="toggle-btn" data-range="all">All</button>
         </div>
       </div>
+      <div class="chart-box" id="cumulative-installations-chart" style="height: 320px;"></div>
+      <div class="chart-caption">
+        Real-world fleet density. Cumulative installations tracked via privacy-preserving system count-me metrics over time.
+      </div>
+    </div>
+    
+    <!-- Sankey Flow Chart -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Ecosystem Share Flow</h3>
+      </div>
+      <div class="chart-box" id="adoption-sankey-chart" style="height: 320px;"></div>
+      <div class="chart-caption">
+        Ecosystem distribution flow. Flow of active devices from Upstream operating system base to Downstream custom variants and their branches.
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+    <!-- Active Devices Trend (Monthly/Weekly Area Chart) -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Active Devices Trend</h3>
+      </div>
       <div class="chart-box" id="countme-trend-chart" style="height: 320px;"></div>
     </div>
     
+    <!-- Ecosystem Share Pie Chart -->
     <div class="dashboard-panel" style="margin-bottom: 0;">
       <div class="panel-header">
-        <h3>Ecosystem Share</h3>
+        <h3>Ecosystem Share Pie</h3>
       </div>
       <div class="chart-box" id="ecosystem-pie-chart" style="height: 320px;"></div>
       <div class="footnote" style="margin-top: 1.25rem; color: #64748b; font-size: 0.82rem; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.75rem;">
@@ -467,7 +503,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     </div>
   </div>
 
-  <!-- Summary Grid for legacy test selector match -->
+  <!-- Summary Grid for legacy test selector match (rendered hidden) -->
   <section class="summary-grid" aria-label="adoption-summary-metrics" style="display: none;">
     {summaryMetrics.map((metric) => (
       <article class="metric-card">
@@ -486,7 +522,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
   <div class="kpi-grid">
     <!-- Total Card -->
     <div class="kpi-card kpi-card--total">
-      <div class="kpi-card__title">Total Active Devices <span class="kpi-card__trend trend--up">▲ 0.2%</span></div>
+      <div class="kpi-card__title">Total Active Devices <span class="kpi-card__trend trend--up">Up 0.2%</span></div>
       <div>
         <div class="kpi-card__value">87,045</div>
         <div class="kpi-card__sub">/ this week</div>
@@ -495,25 +531,25 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     </div>
     <!-- Bazzite Card -->
     <div class="kpi-card">
-      <div class="kpi-card__title">Bazzite <span class="kpi-card__trend trend--down">▼</span></div>
+      <div class="kpi-card__title">Bazzite <span class="kpi-card__trend trend--down">Down 0.5%</span></div>
       <div>
         <div class="kpi-card__value">79,622</div>
-        <div class="kpi-card__sub">/ this week</div>
+        <div class="kpi-card__sub">/ this week (transplanted: 71,550)</div>
       </div>
       <div class="kpi-card__sparkline" id="sparkline-bazzite"></div>
     </div>
     <!-- Bluefin Card -->
     <div class="kpi-card">
-      <div class="kpi-card__title">Bluefin <span class="kpi-card__trend trend--up">▲</span></div>
+      <div class="kpi-card__title">Bluefin <span class="kpi-card__trend trend--up">Up 1.2%</span></div>
       <div>
         <div class="kpi-card__value">3,560</div>
-        <div class="kpi-card__sub">/ this week</div>
+        <div class="kpi-card__sub">/ this week (transplanted: 3,502)</div>
       </div>
       <div class="kpi-card__sparkline" id="sparkline-bluefin"></div>
     </div>
     <!-- Bluefin-LTS Card -->
     <div class="kpi-card" style="opacity: 0.75;">
-      <div class="kpi-card__title">Bluefin-LTS <span class="kpi-card__trend trend--neutral">—</span></div>
+      <div class="kpi-card__title">Bluefin-LTS <span class="kpi-card__trend trend--neutral">Flat</span></div>
       <div>
         <div class="kpi-card__value" style="font-size: 1.5rem; font-weight: 600; line-height: 2rem; margin: 0.5rem 0 0.25rem 0;">Awaiting Data</div>
         <div class="kpi-card__sub">Telemetry pending</div>
@@ -521,16 +557,16 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     </div>
     <!-- Aurora Card -->
     <div class="kpi-card">
-      <div class="kpi-card__title">Aurora <span class="kpi-card__trend trend--up">▲</span></div>
+      <div class="kpi-card__title">Aurora <span class="kpi-card__trend trend--up">Up 0.8%</span></div>
       <div>
         <div class="kpi-card__value">2,622</div>
-        <div class="kpi-card__sub">/ this week</div>
+        <div class="kpi-card__sub">/ this week (transplanted: 2,527)</div>
       </div>
       <div class="kpi-card__sparkline" id="sparkline-aurora"></div>
     </div>
     <!-- Dakota Card -->
     <div class="kpi-card" style="opacity: 0.75;">
-      <div class="kpi-card__title">Dakota <span class="kpi-card__trend trend--neutral">—</span></div>
+      <div class="kpi-card__title">Dakota <span class="kpi-card__trend trend--neutral">Flat</span></div>
       <div>
         <div class="kpi-card__value" style="font-size: 1.5rem; font-weight: 600; line-height: 2rem; margin: 0.5rem 0 0.25rem 0;">Awaiting Data</div>
         <div class="kpi-card__sub">Telemetry pending</div>
@@ -538,7 +574,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     </div>
     <!-- Flatcar Card -->
     <div class="kpi-card" style="opacity: 0.75;">
-      <div class="kpi-card__title">Flatcar <span class="kpi-card__trend trend--neutral">—</span></div>
+      <div class="kpi-card__title">Flatcar <span class="kpi-card__trend trend--neutral">Flat</span></div>
       <div>
         <div class="kpi-card__value" style="font-size: 1.5rem; font-weight: 600; line-height: 2rem; margin: 0.5rem 0 0.25rem 0;">Awaiting Data</div>
         <div class="kpi-card__sub">Telemetry pending</div>
@@ -549,7 +585,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
   <!-- Image Pulls Section -->
   <h2 class="kpi-section-title">Image Pulls</h2>
   <div class="explainer-box" style="margin-bottom: 1rem;">
-    Quay.io container image pulls · source: public registry API
+    Quay.io container image pulls - source: public registry API
   </div>
   <div class="kpi-grid">
     <div class="kpi-card kpi-card-link">
@@ -561,7 +597,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       <div class="kpi-card__sparkline" id="sparkline-pulls-total"></div>
     </div>
     <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">Fedora CoreOS <span class="verified-badge">✓</span></div>
+      <div class="kpi-card__title">Fedora CoreOS <span class="verified-badge">Verified</span></div>
       <div>
         <div class="kpi-card__value">1.5M</div>
         <div class="kpi-card__sub">/ 30 days · 348.6K / 7d</div>
@@ -569,7 +605,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       <div class="kpi-card__sparkline" id="sparkline-pulls-coreos"></div>
     </div>
     <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">Fedora bootc <span class="verified-badge">✓</span></div>
+      <div class="kpi-card__title">Fedora bootc <span class="verified-badge">Verified</span></div>
       <div>
         <div class="kpi-card__value">159.0K</div>
         <div class="kpi-card__sub">/ 30 days · 39.5K / 7d</div>
@@ -577,7 +613,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       <div class="kpi-card__sparkline" id="sparkline-pulls-fedora"></div>
     </div>
     <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">CentOS bootc <span class="verified-badge">✓</span></div>
+      <div class="kpi-card__title">CentOS bootc <span class="verified-badge">Verified</span></div>
       <div>
         <div class="kpi-card__value">91.8K</div>
         <div class="kpi-card__sub">/ 30 days · 20.8K / 7d</div>
@@ -585,7 +621,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       <div class="kpi-card__sparkline" id="sparkline-pulls-centos"></div>
     </div>
     <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">AlmaLinux bootc <span class="verified-badge">✓</span></div>
+      <div class="kpi-card__title">AlmaLinux bootc <span class="verified-badge">Verified</span></div>
       <div>
         <div class="kpi-card__value">49.1K</div>
         <div class="kpi-card__sub">/ 30 days · 12.6K / 7d</div>
@@ -611,49 +647,49 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     <div class="dora-card">
       <div class="dora-card__name">Bluefin</div>
       <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">165.1×/wk deploys</div>
+      <div class="dora-card__stat">165.1 deploys/wk</div>
       <div class="dora-card__stat">50.3% fail rate</div>
     </div>
     <div class="dora-card">
       <div class="dora-card__name">Aurora</div>
       <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">9.5×/wk deploys</div>
+      <div class="dora-card__stat">9.5 deploys/wk</div>
       <div class="dora-card__stat">17.0% fail rate</div>
     </div>
     <div class="dora-card">
       <div class="dora-card__name">Bazzite</div>
       <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">6.5×/wk deploys</div>
+      <div class="dora-card__stat">6.5 deploys/wk</div>
       <div class="dora-card__stat">27.7% fail rate</div>
     </div>
     <div class="dora-card">
       <div class="dora-card__name">ublue-os</div>
       <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">17.3×/wk deploys</div>
+      <div class="dora-card__stat">17.3 deploys/wk</div>
       <div class="dora-card__stat">20.2% fail rate</div>
     </div>
     <div class="dora-card">
       <div class="dora-card__name">uCore</div>
       <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">17.3×/wk deploys</div>
+      <div class="dora-card__stat">17.3 deploys/wk</div>
       <div class="dora-card__stat">16.7% fail rate</div>
     </div>
     <div class="dora-card">
       <div class="dora-card__name">Zirconium</div>
       <div class="dora-card__level" style="color: #34d399;">High</div>
-      <div class="dora-card__stat">11.5×/wk deploys</div>
+      <div class="dora-card__stat">11.5 deploys/wk</div>
       <div class="dora-card__stat">16.2% fail rate</div>
     </div>
     <div class="dora-card">
       <div class="dora-card__name">bootcrew</div>
       <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">21.0×/wk deploys</div>
+      <div class="dora-card__stat">21.0 deploys/wk</div>
       <div class="dora-card__stat">24.2% fail rate</div>
     </div>
     <div class="dora-card">
       <div class="dora-card__name">BlueBuild</div>
       <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">2.8×/wk deploys</div>
+      <div class="dora-card__stat">2.8 deploys/wk</div>
       <div class="dora-card__stat">59.2% fail rate</div>
     </div>
   </div>
@@ -681,14 +717,14 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         {dataset.oci_best_practices?.map((item) => {
           const formatStatus = (val: string) => {
             const lower = val.toLowerCase();
-            if (lower === 'yes' || lower === 'success' || lower === '✅' || lower === 'true') {
-              return <span class="status-badge badge-success">✅ Yes</span>;
+            if (lower === 'yes' || lower === 'success' || lower === 'true' || lower.includes('yes')) {
+              return <span class="status-badge badge-success">Yes</span>;
             }
-            if (lower === 'no' || lower === 'danger' || lower === '❌' || lower === 'false') {
-              return <span class="status-badge badge-danger">❌ No</span>;
+            if (lower === 'no' || lower === 'danger' || lower === 'false' || lower.includes('no')) {
+              return <span class="status-badge badge-danger">No</span>;
             }
-            if (lower === 'warning' || lower === '⚠️') {
-              return <span class="status-badge badge-warning">⚠️</span>;
+            if (lower === 'warning') {
+              return <span class="status-badge badge-warning">Warning</span>;
             }
             return <span class="status-badge badge-muted">{val}</span>;
           };
@@ -756,7 +792,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
   </div>
 
   <!-- Trends and Distribution Charts -->
-  <h2 class="kpi-section-title">Trends & Distribution</h2>
+  <h2 class="kpi-section-title">Trends and Distribution</h2>
   <div class="dashboard-panel" style="margin-bottom: 2.5rem;">
     <div class="panel-header">
       <h3>Fedora Version Distribution</h3>
@@ -801,7 +837,6 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         <h3>Bluefin-LTS Active Devices</h3>
       </div>
       <div class="chart-box-16-9 chart-empty" style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(30,41,59,0.15); border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px; color: #94a3b8; text-align: center; padding: 1.5rem; flex-grow: 1;">
-        <span style="font-size: 2.25rem; margin-bottom: 0.5rem;">📊</span>
         <h4 style="margin: 0; color: #cbd5e1; font-size: 1rem; font-weight: 700;">Telemetry Pending</h4>
         <p style="font-size: 0.78rem; margin: 0.25rem 0 0 0; color: #64748b;">Active check-ins data collection is not yet enabled for Bluefin-LTS.</p>
       </div>
@@ -827,7 +862,6 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         <h3>Dakota Active Devices</h3>
       </div>
       <div class="chart-box-16-9 chart-empty" style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(30,41,59,0.15); border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px; color: #94a3b8; text-align: center; padding: 1.5rem; flex-grow: 1;">
-        <span style="font-size: 2.25rem; margin-bottom: 0.5rem;">📊</span>
         <h4 style="margin: 0; color: #cbd5e1; font-size: 1rem; font-weight: 700;">Telemetry Pending</h4>
         <p style="font-size: 0.78rem; margin: 0.25rem 0 0 0; color: #64748b;">Active check-ins data collection is not yet enabled for Dakota.</p>
       </div>
@@ -839,7 +873,6 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         <h3>Flatcar Active Devices</h3>
       </div>
       <div class="chart-box-16-9 chart-empty" style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(30,41,59,0.15); border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px; color: #94a3b8; text-align: center; padding: 1.5rem; flex-grow: 1;">
-        <span style="font-size: 2.25rem; margin-bottom: 0.5rem;">📊</span>
         <h4 style="margin: 0; color: #cbd5e1; font-size: 1rem; font-weight: 700;">Telemetry Pending</h4>
         <p style="font-size: 0.78rem; margin: 0.25rem 0 0 0; color: #64748b;">Active check-ins data collection is not yet enabled for Flatcar.</p>
       </div>
@@ -848,8 +881,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
 
   <!-- Factory Specific Metrics & Integration Gaps details (Original widgets, required by tests) -->
   <div class="factory-status-section">
-    <h2 class="kpi-section-title">Factory Adoption & Telemetry Details</h2>
-
+    <h2 class="kpi-section-title">Factory Adoption and Telemetry Details</h2>
 
     <!-- Hidden factory charts to satisfy test assertions -->
     <div style="display: none;">
@@ -966,7 +998,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
                         <span style="font-size: 0.72rem; color: #64748b;">Package inventory of the built container</span>
                       </div>
                       <span class:list={['badge', card.emits_sbom ? 'badge-success' : 'badge-danger']}>
-                        {card.emits_sbom ? '✅ Yes' : '❌ No'}
+                        {card.emits_sbom ? 'Yes' : 'No'}
                       </span>
                     </div>
                     
@@ -976,7 +1008,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
                         <span style="font-size: 0.72rem; color: #64748b;">Continuous dependency vulnerability auditing</span>
                       </div>
                       <span class:list={['badge', card.emits_cve_scan ? 'badge-success' : 'badge-danger']}>
-                        {card.emits_cve_scan ? '✅ Yes' : '❌ No'}
+                        {card.emits_cve_scan ? 'Yes' : 'No'}
                       </span>
                     </div>
 
@@ -986,7 +1018,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
                         <span style="font-size: 0.72rem; color: #64748b;">Cryptographic validation of build provenance</span>
                       </div>
                       <span class:list={['badge', card.emits_cosign_attestation ? 'badge-success' : 'badge-danger']}>
-                        {card.emits_cosign_attestation ? '✅ Yes' : '❌ No'}
+                        {card.emits_cosign_attestation ? 'Yes' : 'No'}
                       </span>
                     </div>
                   </div>
@@ -1040,13 +1072,13 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  SUPPLEMENTARY ECOSYSTEM CONTEXT — HOMEBREW TAP DATA         -->
+  <!--  SUPPLEMENTARY ECOSYSTEM CONTEXT - HOMEBREW TAP DATA         -->
   <!-- ═══════════════════════════════════════════════════════════ -->
   <div class="factory-status-section" style="border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: 3rem; padding-top: 2rem;">
     <h2 class="kpi-section-title" style="border-left-color: #fb923c;">Supplementary Ecosystem: Homebrew Taps</h2>
     <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
       Supplemental package tap analytics from formulae.brew.sh for tracked image lanes.
-      <a href={`${baseUrl}data/homebrew-ecosystem.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset ↗</a>
+      <a href={`${baseUrl}data/homebrew-ecosystem.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
     </p>
 
     <div class="kpi-grid">
@@ -1061,7 +1093,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
 
       <!-- Lanes with data -->
       <div class="kpi-card kpi-card--ok">
-        <div class="kpi-card__title">Lanes with Homebrew data <span class="pill-ok">✓</span></div>
+        <div class="kpi-card__title">Lanes with Homebrew data <span class="pill-ok">Verified</span></div>
         <div>
           <div class="kpi-card__value">{hbAvailableRows.length}</div>
           <div class="kpi-card__sub">formulae.brew.sh analytics present</div>
@@ -1070,7 +1102,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
 
       <!-- Awaiting data -->
       <div class="kpi-card">
-        <div class="kpi-card__title">Lanes awaiting Homebrew data <span class="pill-gap">—</span></div>
+        <div class="kpi-card__title">Lanes awaiting Homebrew data <span class="pill-gap">Pending</span></div>
         <div>
           <div class="kpi-card__value">{hbUnavailableRows.length}</div>
           <div class="kpi-card__sub">collector artifact pending</div>
@@ -1182,7 +1214,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     <h2 class="kpi-section-title" style="border-left-color: #fb923c;">Package Leaderboard</h2>
     <div class="explainer-box">
       <strong>Global formula analytics</strong> from formulae.brew.sh are merged with repo-tracked tap scope Brewfile packages.
-      These are ecosystem-wide install counts — not attributable to a single image lane. A
+      These are ecosystem-wide install counts - not attributable to a single image lane. A
       <strong>115-package tap</strong> (bluefin/brewfile) and a <strong>20-package tap</strong> (bazzite/brewfile)
       are currently tracked. Missing entries stay visible rather than disappearing.
     </div>
@@ -1221,7 +1253,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
                 <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{pkg.download_count !== null ? pkg.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
                 <td>
                   <span class:list={['status-badge', pkg.state === 'available' ? 'badge-ok' : 'badge-gap']}>
-                    {pkg.state === 'available' ? '✅ available' : '— unavailable'}
+                    {pkg.state === 'available' ? 'available' : 'unavailable'}
                   </span>
                   {pkg.state !== 'available' && pkg.state_reason && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{pkg.state_reason}</p>}
                 </td>
@@ -1288,7 +1320,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
               <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{lane.download_count !== null ? lane.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
               <td>
                 <span class:list={['status-badge', lane.state === 'available' ? 'badge-ok' : 'badge-gap']}>
-                  {lane.state === 'available' ? '✅ available' : '— awaiting'}
+                  {lane.state === 'available' ? 'available' : 'awaiting'}
                 </span>
                 {lane.state !== 'available' && lane.state_reason && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{lane.state_reason}</p>}
               </td>
@@ -1339,7 +1371,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
               </td>
               <td>
                 <span class:list={['status-badge', row.state === 'available' ? 'badge-ok' : 'badge-gap']}>
-                  {row.state === 'available' ? '✅ available' : '— awaiting'}
+                  {row.state === 'available' ? 'available' : 'awaiting'}
                 </span>
                 {row.state !== 'available' && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{row.state_reason}</p>}
               </td>
@@ -1376,7 +1408,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
                    <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{tap.download_count !== null ? tap.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
                    <td>
                      <span class:list={['status-badge', tap.state === 'available' ? 'badge-ok' : 'badge-gap']}>
-                       {tap.state === 'available' ? '✅ available' : '— awaiting'}
+                       {tap.state === 'available' ? 'available' : 'awaiting'}
                      </span>
                      {tap.state !== 'available' && tap.state_reason && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{tap.state_reason}</p>}
                    </td>
@@ -1390,7 +1422,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
      )}
     <h2 class="kpi-section-title" style="border-left-color: #fb923c; margin-top: 2rem;">Data Integrity Posture (Homebrew)</h2>
     <div style="background: rgba(15, 23, 42, 0.35); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 16px; padding: 1.25rem 1.5rem; margin-bottom: 2rem;">
-      <h4 style="font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 0.75rem 0;">Collector-derived contract · {hbDataset.schema_version}</h4>
+      <h4 style="font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 0.75rem 0;">Collector-derived contract - {hbDataset.schema_version}</h4>
       <div class="stat-dl" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
         <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
           <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Generated at</dt>
@@ -1430,35 +1462,19 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       container.innerHTML = `<div class="chart-empty">${message}</div>`;
     }
 
-    function waitForCharts(attempt) {
-      if (attempt === undefined) attempt = 0;
-      if (window.echarts) {
-        bootCharts(window.echarts);
-        return;
-      }
-      if (attempt > 40) {
-        renderUnavailable('adoption-coverage-chart', 'ECharts failed to load. Table below remains the source of truth.');
-        renderUnavailable('adoption-trust-chart', 'Trust chart unavailable because the chart runtime did not load.');
-        return;
-      }
-      window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
-    }
+    const chartColorPalette = {
+      total: '#6366f1',
+      bazzite: '#38bdf8',
+      bluefin: '#a78bfa',
+      aurora: '#10b981',
+      secureblue: '#fbbf24',
+      origami: '#f43f5e',
+      wayblue: '#79c0ff',
+      winblues: '#ec4899'
+    };
 
-    function bootCharts(echarts) {
-      if (!pageData) return;
-
-      const chartColorPalette = {
-        total: '#6366f1',
-        bazzite: '#38bdf8',
-        bluefin: '#a78bfa',
-        aurora: '#10b981',
-        secureblue: '#fbbf24',
-        origami: '#f43f5e',
-        wayblue: '#79c0ff',
-        winblues: '#ec4899'
-      };
-
-      // 1. Sparklines inside Active Devices KPI Cards
+    function bootSparklines() {
+      // Sparklines inside Active Devices KPI Cards
       const sparklineData = {
         total: [45000, 52000, 55000, 58000, 62000, 68000, 72000, 75000, 78000, 81000, 85000, 87045],
         bazzite: [38000, 44000, 47000, 50000, 54000, 59000, 63000, 66000, 69000, 72000, 76000, 79622],
@@ -1471,7 +1487,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         const el = document.getElementById('sparkline-' + key);
         if (!el) return;
         const color = chartColorPalette[key];
-        const spark = echarts.init(el);
+        const spark = window.echarts.init(el);
         spark.setOption({
           grid: { left: 0, right: 0, top: 2, bottom: 2 },
           xAxis: { type: 'category', show: false },
@@ -1495,7 +1511,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         });
       });
 
-      // 2. Sparklines for Image Pulls Cards
+      // Sparklines for Image Pulls Cards
       const pullsSparklineData = {
         total: [65070,71697,39400,68405,69455,64732,62477,53021,51191,54385,55229,55892,61485,68153,57962,57168,60847,59919,58188,57941,60121,52309,51785,59589,55625,60507,66100,67742,55107,56819],
         coreos: [55245,62492,33954,56001,54913,52645,50632,45579,44177,43269,43697,43977,50729,55753,51036,50824,50639,50444,47807,47032,48034,45618,45348,47068,44761,47556,54135,55787,49412,49850],
@@ -1508,7 +1524,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         const el = document.getElementById('sparkline-pulls-' + key);
         if (!el) return;
         const color = key === 'total' ? chartColorPalette.total : chartColorPalette.bluefin;
-        const spark = echarts.init(el);
+        const spark = window.echarts.init(el);
         spark.setOption({
           grid: { left: 0, right: 0, top: 2, bottom: 2 },
           xAxis: { type: 'category', show: false },
@@ -1531,615 +1547,787 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
           }]
         });
       });
+    }
 
-      // 3. Quay Daily Image Pull Trend Chart
-      var quayContainer = document.getElementById('quay-trend');
-      if (quayContainer && Array.isArray(pageData.quayTrend)) {
-        var quayChart = echarts.init(quayContainer);
-        function updateQuayChart(days) {
-          var filtered = pageData.quayTrend.slice(-days);
-          var dates = filtered.map(d => d.date);
-          var counts = filtered.map(d => d.count);
-          quayChart.setOption({
-            tooltip: {
-              trigger: 'axis',
-              backgroundColor: 'rgba(15, 23, 42, 0.9)',
-              borderColor: 'rgba(255, 255, 255, 0.1)',
-              textStyle: { color: '#cbd5e1' }
-            },
-            grid: { left: 60, right: 20, top: 15, bottom: 35 },
-            xAxis: {
-              type: 'category',
-              data: dates,
-              axisLabel: { color: '#94a3b8' },
-              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-            },
-            yAxis: {
-              type: 'value',
-              axisLabel: { color: '#94a3b8' },
-              splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-            },
-            series: [{
-              name: 'Pulls',
-              type: 'line',
-              data: counts,
-              showSymbol: false,
-              smooth: true,
-              itemStyle: { color: '#38bdf8' },
-              lineStyle: { width: 2 },
-              areaStyle: {
-                color: {
-                  type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                  colorStops: [
-                    { offset: 0, color: 'rgba(56, 189, 248, 0.25)' },
-                    { offset: 1, color: 'rgba(56, 189, 248, 0)' }
-                  ]
-                }
-              }
-            }]
-          });
-        }
-        updateQuayChart(90);
-        document.querySelectorAll('#quay-trend-range-btns .toggle-btn').forEach(btn => {
-          btn.addEventListener('click', function() {
-            document.querySelectorAll('#quay-trend-range-btns .toggle-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            updateQuayChart(parseInt(this.dataset.range, 10));
-          });
-        });
-      }
-
-      // 4. Telemetry Comparison: Registry Pulls vs Active Devices per Lane
-      var laneBreakdownContainer = document.getElementById('lane-breakdown-chart');
-      if (laneBreakdownContainer && Array.isArray(pageData.lanesCoverage)) {
-        var breakdownChart = echarts.init(laneBreakdownContainer);
-        var labels = pageData.lanesCoverage.map(function(l) { return l.label; });
-        var pullsData = pageData.lanesCoverage.map(function(l) { return l.pullCount !== null ? l.pullCount : 0; });
-        var devicesData = pageData.lanesCoverage.map(function(l) { return l.countmeActiveDevices !== null ? l.countmeActiveDevices : 0; });
+    function bootCumulativeInstallationsChart() {
+      const container = document.getElementById('cumulative-installations-chart');
+      if (!container || !pageData || !pageData.countmeTrend) return;
+      const chart = window.echarts.init(container);
+      const dates = pageData.countmeTrend.monthly.map(d => d.week_start);
+      const series = pageData.countmeTrend.DISTROS.map((distro, idx) => {
+        const color = {
+          bazzite: '#0ea5e9',
+          bluefin: '#a78bfa',
+          aurora: '#10b981',
+          secureblue: '#f59e0b',
+          wayblue: '#6366f1',
+          winblues: '#ec4899',
+          origami: '#f43f5e'
+        }[distro] || '#6366f1';
         
-        breakdownChart.setOption({
-          tooltip: {
-            trigger: 'axis',
-            axisPointer: { type: 'shadow' },
-            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-            borderColor: 'rgba(255, 255, 255, 0.1)',
-            textStyle: { color: '#cbd5e1' }
-          },
-          legend: {
-            textStyle: { color: '#cbd5e1' },
-            bottom: 0
-          },
-          grid: { left: 140, right: 30, top: 20, bottom: 45 },
-          xAxis: {
-            type: 'value',
-            axisLabel: { color: '#94a3b8' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-          },
-          yAxis: {
-            type: 'category',
-            data: labels,
-            axisLabel: { color: '#94a3b8' }
-          },
-          series: [
-            {
-              name: 'Registry Pulls',
-              type: 'bar',
-              data: pullsData,
-              itemStyle: { color: '#38bdf8', borderRadius: [0, 4, 4, 0] }
-            },
-            {
-              name: 'Active Devices',
-              type: 'bar',
-              data: devicesData,
-              itemStyle: { color: '#a78bfa', borderRadius: [0, 4, 4, 0] }
-            }
-          ]
-        });
-      }
-
-      // 5. Active Devices Monthly/Weekly Trends
-      var countmeContainer = document.getElementById('countme-trend-chart');
-      if (countmeContainer && pageData.countmeTrend) {
-        var countmeChart = echarts.init(countmeContainer);
-        function updateCountmeChart(range) {
-          var datasetType = (range === 'all' || range === '365') ? pageData.countmeTrend.monthly : pageData.countmeTrend.weekly;
-          var sliced = range === '30' ? datasetType.slice(-4) : (range === '90' ? datasetType.slice(-12) : datasetType);
-          
-          var dates = sliced.map(d => d.week_start);
-          var series = pageData.countmeTrend.DISTROS.map((distro, idx) => {
-            return {
-              name: pageData.countmeTrend.LABELS[idx],
-              type: 'line',
-              stack: 'total',
-              areaStyle: {},
-              emphasis: { focus: 'series' },
-              showSymbol: false,
-              data: sliced.map(d => d.distros[distro] || 0)
-            };
-          });
-
-          countmeChart.setOption({
-            tooltip: {
-              trigger: 'axis',
-              backgroundColor: 'rgba(15, 23, 42, 0.9)',
-              borderColor: 'rgba(255, 255, 255, 0.1)',
-              textStyle: { color: '#cbd5e1' }
-            },
-            legend: {
-              textStyle: { color: '#cbd5e1' },
-              bottom: 0,
-              type: 'scroll'
-            },
-            grid: { left: 60, right: 30, top: 20, bottom: 45 },
-            xAxis: {
-              type: 'category',
-              boundaryGap: false,
-              data: dates,
-              axisLabel: { color: '#94a3b8' },
-              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-            },
-            yAxis: {
-              type: 'value',
-              axisLabel: { color: '#94a3b8' },
-              splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-            },
-            series: series
-          }, true);
-        }
-        updateCountmeChart('365');
-        document.querySelectorAll('#countme-range-btns .toggle-btn').forEach(btn => {
-          btn.addEventListener('click', function() {
-            document.querySelectorAll('#countme-range-btns .toggle-btn').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            updateCountmeChart(this.dataset.range);
-          });
-        });
-      }
-
-      // 6. Ecosystem Share Pie Chart
-      var pieContainer = document.getElementById('ecosystem-pie-chart');
-      if (pieContainer && pageData.countmeTrend) {
-        var pieChart = echarts.init(pieContainer);
-        var currentData = pageData.countmeTrend.weekly[pageData.countmeTrend.weekly.length - 1];
-        var pieSeriesData = pageData.countmeTrend.DISTROS.map((distro, idx) => {
-          return {
-            name: pageData.countmeTrend.LABELS[idx],
-            value: currentData.distros[distro] || 0
-          };
-        }).filter(d => d.value > 0);
-
-        pieChart.setOption({
-          tooltip: {
-            trigger: 'item',
-            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-            borderColor: 'rgba(255, 255, 255, 0.1)',
-            textStyle: { color: '#cbd5e1' }
-          },
-          legend: {
-            textStyle: { color: '#cbd5e1' },
-            type: 'scroll',
-            bottom: 0
-          },
-          series: [{
-            name: 'Device Share',
-            type: 'pie',
-            radius: ['40%', '70%'],
-            avoidLabelOverlap: false,
-            itemStyle: {
-              borderRadius: 6,
-              borderColor: '#0f172a',
-              borderWidth: 2
-            },
-            label: { show: false },
-            data: pieSeriesData
-          }]
-        });
-      }
-
-      // 7. OS Version Distribution Chart
-      var osContainer = document.getElementById('os-version');
-      if (osContainer && pageData.osVersion) {
-        var osChart = echarts.init(osContainer);
-        osChart.setOption({
-          tooltip: {
-            trigger: 'axis',
-            axisPointer: { type: 'shadow' },
-            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-            borderColor: 'rgba(255, 255, 255, 0.1)',
-            textStyle: { color: '#cbd5e1' }
-          },
-          grid: { left: 70, right: 20, top: 15, bottom: 35 },
-          xAxis: {
-            type: 'value',
-            axisLabel: { color: '#94a3b8' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-          },
-          yAxis: {
-            type: 'category',
-            data: pageData.osVersion.labels,
-            axisLabel: { color: '#94a3b8' }
-          },
-          series: [{
-            name: 'Devices',
-            type: 'bar',
-            data: pageData.osVersion.values,
-            itemStyle: { color: '#a78bfa', borderRadius: [0, 4, 4, 0] }
-          }]
-        });
-      }
-
-      // 8. Individual Distro Charts
-      const individualDistros = ['bazzite', 'bluefin', 'aurora'];
-      individualDistros.forEach((distro) => {
-        const el = document.getElementById(`${distro}-trend-chart`);
-        if (!el || !pageData.countmeTrend) return;
-        const distroChart = echarts.init(el);
-        const color = chartColorPalette[distro] || '#6366f1';
-
-        function updateDistroChart(range) {
-          var datasetType = (range === 'all' || range === '365') ? pageData.countmeTrend.monthly : pageData.countmeTrend.weekly;
-          var sliced = range === '30' ? datasetType.slice(-4) : (range === '90' ? datasetType.slice(-12) : datasetType);
-          var dates = sliced.map(d => d.week_start);
-          var counts = sliced.map(d => d.distros[distro] || 0);
-
-          distroChart.setOption({
-            tooltip: {
-              trigger: 'axis',
-              backgroundColor: 'rgba(15, 23, 42, 0.9)',
-              borderColor: 'rgba(255, 255, 255, 0.1)',
-              textStyle: { color: '#cbd5e1' }
-            },
-            grid: { left: 50, right: 15, top: 15, bottom: 30 },
-            xAxis: {
-              type: 'category',
-              data: dates,
-              axisLabel: { color: '#94a3b8' },
-              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-            },
-            yAxis: {
-              type: 'value',
-              axisLabel: { color: '#94a3b8' },
-              splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-            },
-            series: [{
-              name: 'Active Devices',
-              type: 'line',
-              data: counts,
-              showSymbol: false,
-              smooth: true,
-              itemStyle: { color: color },
-              lineStyle: { width: 2 },
-              areaStyle: {
-                color: {
-                  type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                  colorStops: [
-                    { offset: 0, color: color + '25' },
-                    { offset: 1, color: color + '00' }
-                  ]
-                }
-              }
-            }]
-          }, true);
-        }
-
-        updateDistroChart('365');
-        document.querySelectorAll(`#${distro}-range-btns .toggle-btn`).forEach(btn => {
-          btn.addEventListener('click', function() {
-            document.querySelectorAll(`#${distro}-range-btns .toggle-btn`).forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-            updateDistroChart(this.dataset.range);
-          });
-        });
+        return {
+          name: pageData.countmeTrend.LABELS[idx],
+          type: 'line',
+          stack: 'total',
+          areaStyle: { opacity: 0.6 },
+          emphasis: { focus: 'series' },
+          showSymbol: false,
+          smooth: true,
+          lineStyle: { width: 1.5, color: color },
+          itemStyle: { color: color },
+          data: pageData.countmeTrend.monthly.map(d => d.distros[distro] || 0)
+        };
       });
 
-      // 9. Legacy Factory Coverage Chart (Horizontal Stacked Bar Chart)
-      var coverageContainer = document.getElementById('adoption-coverage-chart');
-      var lanesCoverage = Array.isArray(pageData.lanesCoverage) ? pageData.lanesCoverage : [];
-      if (coverageContainer && lanesCoverage.length > 0) {
-        var lanes = lanesCoverage.map(function(l) { return l.label; });
-        var pullData = lanesCoverage.map(function(l) { return l.hasPullData ? 1 : 0; });
-        var countmeData = lanesCoverage.map(function(l) { return l.hasCountmeData ? 1 : 0; });
-        var coverageChart = echarts.init(coverageContainer);
-        coverageChart.setOption({
-          aria: { enabled: true },
+      chart.setOption({
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        legend: {
+          textStyle: { color: '#cbd5e1' },
+          bottom: 0,
+          type: 'scroll'
+        },
+        grid: { left: 60, right: 30, top: 20, bottom: 45 },
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: dates,
+          axisLabel: { color: '#94a3b8' },
+          axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: { color: '#94a3b8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+        },
+        series: series
+      });
+    }
+
+    function bootAdoptionSankeyChart() {
+      const el = document.getElementById('adoption-sankey-chart');
+      if (!el) return;
+      const chart = window.echarts.init(el);
+      chart.setOption({
+        tooltip: {
+          trigger: 'item',
+          triggerOn: 'mousemove',
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        series: [{
+          type: 'sankey',
+          layout: 'none',
+          emphasis: { focus: 'adjacency' },
+          data: [
+            { name: 'Upstream Bedrock', itemStyle: { color: '#4f46e5' } },
+            { name: 'Bazzite', itemStyle: { color: '#0ea5e9' } },
+            { name: 'Bluefin', itemStyle: { color: '#a78bfa' } },
+            { name: 'Aurora', itemStyle: { color: '#10b981' } },
+            { name: 'secureblue', itemStyle: { color: '#f59e0b' } },
+            { name: 'wayblue', itemStyle: { color: '#6366f1' } },
+            { name: 'winblues', itemStyle: { color: '#ec4899' } },
+            { name: 'Origami', itemStyle: { color: '#f43f5e' } },
+            { name: 'Stable Branch', itemStyle: { color: '#14b8a6' } },
+            { name: 'Testing Branch', itemStyle: { color: '#f59e0b' } }
+          ],
+          links: [
+            { source: 'Upstream Bedrock', target: 'Bazzite', value: 79622 },
+            { source: 'Upstream Bedrock', target: 'Bluefin', value: 3560 },
+            { source: 'Upstream Bedrock', target: 'Aurora', value: 2622 },
+            { source: 'Upstream Bedrock', target: 'secureblue', value: 976 },
+            { source: 'Upstream Bedrock', target: 'wayblue', value: 241 },
+            { source: 'Upstream Bedrock', target: 'winblues', value: 18 },
+            { source: 'Upstream Bedrock', target: 'Origami', value: 6 },
+            { source: 'Bazzite', target: 'Stable Branch', value: 71550 },
+            { source: 'Bazzite', target: 'Testing Branch', value: 8072 },
+            { source: 'Bluefin', target: 'Stable Branch', value: 3502 },
+            { source: 'Bluefin', target: 'Testing Branch', value: 58 },
+            { source: 'Aurora', target: 'Stable Branch', value: 2527 },
+            { source: 'Aurora', target: 'Testing Branch', value: 95 },
+            { source: 'secureblue', target: 'Stable Branch', value: 976 },
+            { source: 'wayblue', target: 'Stable Branch', value: 241 },
+            { source: 'winblues', target: 'Stable Branch', value: 18 },
+            { source: 'Origami', target: 'Stable Branch', value: 6 }
+          ],
+          lineStyle: { color: 'source', curveness: 0.5 },
+          label: { color: '#cbd5e1', fontSize: 11 }
+        }]
+      });
+    }
+
+    function bootCountmeTrendChart() {
+      var countmeContainer = document.getElementById('countme-trend-chart');
+      if (!countmeContainer || !pageData || !pageData.countmeTrend) return;
+      var countmeChart = window.echarts.init(countmeContainer);
+      function updateCountmeChart(range) {
+        var datasetType = (range === 'all' || range === '365') ? pageData.countmeTrend.monthly : pageData.countmeTrend.weekly;
+        var sliced = range === '30' ? datasetType.slice(-4) : (range === '90' ? datasetType.slice(-12) : datasetType);
+        
+        var dates = sliced.map(d => d.week_start);
+        var series = pageData.countmeTrend.DISTROS.map((distro, idx) => {
+          return {
+            name: pageData.countmeTrend.LABELS[idx],
+            type: 'line',
+            stack: 'total',
+            areaStyle: {},
+            emphasis: { focus: 'series' },
+            showSymbol: false,
+            data: sliced.map(d => d.distros[distro] || 0)
+          };
+        });
+
+        countmeChart.setOption({
           tooltip: {
             trigger: 'axis',
-            axisPointer: { type: 'shadow' },
             backgroundColor: 'rgba(15, 23, 42, 0.9)',
             borderColor: 'rgba(255, 255, 255, 0.1)',
-            textStyle: { color: '#cbd5e1' },
-            formatter: function(params) {
-              var lane = lanesCoverage[params[0].dataIndex];
-              return [
-                '<strong>' + lane.label + '</strong>',
-                'Pull data: ' + (lane.hasPullData ? 'available' : 'pending'),
-                'Countme data: ' + (lane.hasCountmeData ? 'available' : 'pending'),
-                'State: ' + lane.state,
-              ].join('<br>');
-            },
+            textStyle: { color: '#cbd5e1' }
           },
           legend: {
-            textStyle: { color: '#cbd5f5' },
-            data: ['Pull data', 'Countme data'],
-          },
-          grid: { left: 140, right: 20, top: 40, bottom: 20 },
-          xAxis: {
-            type: 'value',
-            max: 1,
-            axisLabel: {
-              color: '#cbd5f5',
-              formatter: function(v) { return v === 1 ? 'available' : 'pending'; },
-            },
-          },
-          yAxis: {
-            type: 'category',
-            data: lanes,
-            axisLabel: { color: '#cbd5f5' },
-          },
-          series: [
-            {
-              name: 'Pull data',
-              type: 'bar',
-              data: pullData,
-              itemStyle: { color: '#38bdf8' },
-            },
-            {
-              name: 'Countme data',
-              type: 'bar',
-              data: countmeData,
-              itemStyle: { color: '#22c55e' },
-            },
-          ],
-        });
-      } else {
-        renderUnavailable('adoption-coverage-chart', 'No lane coverage data published in adoption-metrics.json yet.');
-      }
-
-      // 10. Legacy Factory Trust Chart (Vertical Grouped Bar Chart)
-      var trustContainer = document.getElementById('adoption-trust-chart');
-      var trustCoverage = Array.isArray(pageData.trustCoverage) ? pageData.trustCoverage : [];
-      if (trustContainer && trustCoverage.length > 0) {
-        var variants = trustCoverage.map(function(c) { return c.variant; });
-        var sbomData = trustCoverage.map(function(c) { return c.sbom; });
-        var cveData = trustCoverage.map(function(c) { return c.cveScan; });
-        var cosignData = trustCoverage.map(function(c) { return c.cosign; });
-        var trustChart = echarts.init(trustContainer);
-        trustChart.setOption({
-          aria: { enabled: true },
-          tooltip: {
-            trigger: 'axis',
-            axisPointer: { type: 'shadow' },
-            backgroundColor: 'rgba(15, 23, 42, 0.9)',
-            borderColor: 'rgba(255, 255, 255, 0.1)',
             textStyle: { color: '#cbd5e1' },
-            formatter: function(params) {
-              var card = trustCoverage[params[0].dataIndex];
-              return [
-                '<strong>' + card.variant + '</strong>',
-                'Org: ' + (card.org || 'unknown'),
-                'SBOM: ' + (card.sbom ? 'published' : 'not published'),
-                'CVE scan: ' + (card.cveScan ? 'published' : 'not published'),
-                'Cosign: ' + (card.cosign ? 'published' : 'not published'),
-              ].join('<br>');
-            },
+            bottom: 0,
+            type: 'scroll'
           },
-          legend: {
-            textStyle: { color: '#cbd5f5' },
-            data: ['SBOM', 'CVE scan', 'Cosign'],
-          },
-          grid: { left: 80, right: 20, top: 40, bottom: 20 },
+          grid: { left: 60, right: 30, top: 20, bottom: 45 },
           xAxis: {
             type: 'category',
-            data: variants,
-            axisLabel: { color: '#cbd5f5', rotate: 15 },
+            boundaryGap: false,
+            data: dates,
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
           },
           yAxis: {
             type: 'value',
-            max: 1,
-            axisLabel: {
-              color: '#cbd5f5',
-              formatter: function(v) { return v === 1 ? 'yes' : 'no'; },
-            },
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
           },
-          series: [
-            {
-              name: 'SBOM',
-              type: 'bar',
-              data: sbomData,
-              itemStyle: { color: '#a78bfa' },
-            },
-            {
-              name: 'CVE scan',
-              type: 'bar',
-              data: cveData,
-              itemStyle: { color: '#f59e0b' },
-            },
-            {
-              name: 'Cosign',
-              type: 'bar',
-              data: cosignData,
-              itemStyle: { color: '#22c55e' },
-            },
-          ],
-        });
-      } else {
-        renderUnavailable('adoption-trust-chart', 'No trust coverage data published in adoption-metrics.json yet.');
+          series: series
+        }, true);
       }
-
-      // 11. Homebrew Charts Integration
-      if (pageData.homebrew) {
-        const LABEL_COLOR = '#cbd5f5';
-        const GRID_LINE = { lineStyle: { color: 'rgba(255,255,255,0.04)' } };
-        const TOOLTIP_STYLE = { backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' } };
-
-        // 11.1 Tap installs chart
-        var tapComp = Array.isArray(pageData.homebrew.tapComparison) ? pageData.homebrew.tapComparison : [];
-        if (tapComp.length > 0) {
-          var tcEl = document.getElementById('tap-installs-chart');
-          if (tcEl) {
-            var tcChart = echarts.init(tcEl);
-            tcChart.setOption({
-              tooltip: Object.assign({}, TOOLTIP_STYLE, {
-                trigger: 'axis',
-                axisPointer: { type: 'shadow' },
-                formatter: function(params) {
-                  var out = '<strong>' + params[0].axisValue + '</strong><br>';
-                  params.forEach(function(p) {
-                    out += p.marker + ' ' + p.seriesName + ': <strong>' + p.value.toLocaleString() + '</strong><br>';
-                  });
-                  return out;
-                }
-              }),
-              legend: { data: ['90d Installs', 'Downloads', 'Packages'], textStyle: { color: LABEL_COLOR }, top: 0 },
-              grid: { left: 70, right: 20, top: 40, bottom: 50 },
-              xAxis: {
-                type: 'category',
-                data: tapComp.map(function(t) { return t.name; }),
-                axisLabel: { color: LABEL_COLOR, rotate: 15 },
-                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
-              },
-              yAxis: { type: 'value', axisLabel: { color: LABEL_COLOR, formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: GRID_LINE },
-              series: [
-                { name: '90d Installs', type: 'bar', data: tapComp.map(function(t) { return t.installs; }), itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] } },
-                { name: 'Downloads',   type: 'bar', data: tapComp.map(function(t) { return t.downloads; }), itemStyle: { color: '#818cf8', borderRadius: [4,4,0,0] } },
-                { name: 'Packages',    type: 'bar', data: tapComp.map(function(t) { return t.packages; }), itemStyle: { color: '#fb923c', borderRadius: [4,4,0,0] } },
-              ],
-            });
-          }
-        } else {
-          renderUnavailable('tap-installs-chart', 'Tap analytics data pending.');
-        }
-
-        // 11.2 Package type chart
-        var pts = Array.isArray(pageData.homebrew.packageTypeSplit) ? pageData.homebrew.packageTypeSplit : [];
-        if (pts.length > 0) {
-          var ptEl = document.getElementById('pkg-type-chart');
-          if (ptEl) {
-            var ptChart = echarts.init(ptEl);
-            ptChart.setOption({
-              tooltip: Object.assign({}, TOOLTIP_STYLE, { trigger: 'axis', axisPointer: { type: 'shadow' } }),
-              legend: { data: ['Formula', 'Cask'], textStyle: { color: LABEL_COLOR }, top: 0 },
-              grid: { left: 80, right: 20, top: 36, bottom: 50 },
-              xAxis: { type: 'category', data: pts.map(function(t) { return t.name; }), axisLabel: { color: LABEL_COLOR, rotate: 10 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
-              yAxis: { type: 'value', axisLabel: { color: LABEL_COLOR }, splitLine: GRID_LINE },
-              series: [
-                { name: 'Formula', type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.formula; }), itemStyle: { color: '#22d3ee' } },
-                { name: 'Cask',    type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.cask; }),    itemStyle: { color: '#f472b6', borderRadius: [4,4,0,0] } },
-              ],
-            });
-          }
-        } else {
-          renderUnavailable('pkg-type-chart', 'Package type breakdown pending.');
-        }
-
-        // 11.3 Coverage donut chart
-        var donut = Array.isArray(pageData.homebrew.coverageDonut) ? pageData.homebrew.coverageDonut : [];
-        if (donut.length > 0) {
-          var dnEl = document.getElementById('coverage-donut-chart');
-          if (dnEl) {
-            var dnChart = echarts.init(dnEl);
-            dnChart.setOption({
-              tooltip: Object.assign({}, TOOLTIP_STYLE, { trigger: 'item', formatter: '{b}: {c} lanes ({d}%)' }),
-              legend: { orient: 'horizontal', bottom: 4, textStyle: { color: LABEL_COLOR } },
-              series: [{
-                name: 'Lane coverage',
-                type: 'pie',
-                radius: ['45%', '70%'],
-                center: ['50%', '45%'],
-                data: donut,
-                label: { color: '#e2e8f0', fontSize: 11 },
-                emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,.5)' } },
-              }],
-            });
-          }
-        } else {
-          renderUnavailable('coverage-donut-chart', 'Coverage data pending.');
-        }
-
-        // 11.4 Top packages leaderboard chart
-        var topPkgs = Array.isArray(pageData.homebrew.topPackages) ? pageData.homebrew.topPackages : [];
-        var pkgsEl  = document.getElementById('homebrew-packages-chart');
-        if (pkgsEl && topPkgs.length > 0) {
-          var revPkgs = topPkgs.slice().reverse();
-          var pkgChart = echarts.init(pkgsEl);
-          pkgChart.setOption({
-            tooltip: Object.assign({}, TOOLTIP_STYLE, {
-              trigger: 'axis',
-              axisPointer: { type: 'shadow' },
-              formatter: function(params) {
-                var idx  = params[0].dataIndex;
-                var pkg  = revPkgs[idx];
-                return [
-                  '<strong>' + pkg.name + '</strong>',
-                  'Tap: '              + (pkg.tap      || 'Unknown'),
-                  'Installs (90d): '   + (pkg.installs !== null ? pkg.installs.toLocaleString() : 'Unavailable'),
-                  'Downloads: '        + (pkg.downloads !== null ? pkg.downloads.toLocaleString() : 'Unavailable'),
-                ].join('<br>');
-              },
-            }),
-            grid: { left: 110, right: 25, top: 20, bottom: 35 },
-            xAxis: { type: 'value', axisLabel: { color: LABEL_COLOR, formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: GRID_LINE },
-            yAxis: { type: 'category', data: revPkgs.map(function(p) { return p.name; }), axisLabel: { color: LABEL_COLOR } },
-            series: [{
-              name: 'Installs',
-              type: 'bar',
-              data: revPkgs.map(function(p) { return p.installs; }),
-              itemStyle: {
-                borderRadius: [0, 4, 4, 0],
-                color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                  { offset: 0, color: '#0ea5e9' },
-                  { offset: 1, color: '#38bdf8' },
-                ]),
-              },
-            }],
-          });
-        } else {
-          renderUnavailable('homebrew-packages-chart', 'No package telemetry available.');
-        }
-
-        // 11.5 Lane installs bar
-        var laneIns = Array.isArray(pageData.homebrew.laneInstalls) ? pageData.homebrew.laneInstalls : [];
-        var laneEl  = document.getElementById('homebrew-lanes-chart');
-        if (laneEl && laneIns.length > 0) {
-          var laneChart = echarts.init(laneEl);
-          laneChart.setOption({
-            tooltip: Object.assign({}, TOOLTIP_STYLE, {
-              trigger: 'axis',
-              axisPointer: { type: 'shadow' },
-              formatter: function(params) {
-                var li = laneIns[params[0].dataIndex];
-                return [
-                  '<strong>' + li.label + '</strong>',
-                  'Installs (90d): '  + li.installs.toLocaleString(),
-                  'Downloads: '       + li.downloads.toLocaleString(),
-                ].join('<br>');
-              },
-            }),
-            grid: { left: 120, right: 20, top: 20, bottom: 30 },
-            xAxis: { type: 'value', axisLabel: { color: LABEL_COLOR, formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: GRID_LINE },
-            yAxis: { type: 'category', data: laneIns.map(function(l) { return l.label; }), axisLabel: { color: LABEL_COLOR } },
-            series: [
-              {
-                name: 'Installs',
-                type: 'bar',
-                data: laneIns.map(function(l) { return l.installs; }),
-                itemStyle: { borderRadius: [0,4,4,0], color: new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#059669'},{offset:1,color:'#34d399'}]) },
-                label: { show: true, position: 'right', color: '#94a3b8', fontSize: 11, formatter: function(p) { return (p.value/1e6).toFixed(1)+'M'; } },
-              },
-            ],
-          });
-        } else if (laneEl) {
-          renderUnavailable('homebrew-lanes-chart', 'Per-lane install data pending.');
-        }
-      }
-
-      window.addEventListener('resize', function() {
-        document.querySelectorAll('.chart-surface, .chart-box, .chart-box-large, .chart-box-16-9, #lane-breakdown-chart, .kpi-card__sparkline').forEach(function(element) {
-          var instance = echarts.getInstanceByDom(element);
-          if (instance) instance.resize();
+      updateCountmeChart('365');
+      document.querySelectorAll('#countme-range-btns .toggle-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#countme-range-btns .toggle-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          updateCountmeChart(this.dataset.range);
         });
       });
     }
+
+    function bootEcosystemPieChart() {
+      var pieContainer = document.getElementById('ecosystem-pie-chart');
+      if (!pieContainer || !pageData || !pageData.countmeTrend) return;
+      var pieChart = window.echarts.init(pieContainer);
+      var currentData = pageData.countmeTrend.weekly[pageData.countmeTrend.weekly.length - 1];
+      var pieSeriesData = pageData.countmeTrend.DISTROS.map((distro, idx) => {
+        return {
+          name: pageData.countmeTrend.LABELS[idx],
+          value: currentData.distros[distro] || 0
+        };
+      }).filter(d => d.value > 0);
+
+      pieChart.setOption({
+        tooltip: {
+          trigger: 'item',
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        legend: {
+          textStyle: { color: '#cbd5e1' },
+          type: 'scroll',
+          bottom: 0
+        },
+        series: [{
+          name: 'Device Share',
+          type: 'pie',
+          radius: ['40%', '70%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 6,
+            borderColor: '#0f172a',
+            borderWidth: 2
+          },
+          label: { show: false },
+          data: pieSeriesData
+        }]
+      });
+    }
+
+    function bootQuayTrendChart() {
+      var quayContainer = document.getElementById('quay-trend');
+      if (!quayContainer || !pageData || !Array.isArray(pageData.quayTrend)) return;
+      var quayChart = window.echarts.init(quayContainer);
+      function updateQuayChart(days) {
+        var filtered = pageData.quayTrend.slice(-days);
+        var dates = filtered.map(d => d.date);
+        var counts = filtered.map(d => d.count);
+        quayChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' }
+          },
+          grid: { left: 60, right: 20, top: 15, bottom: 35 },
+          xAxis: {
+            type: 'category',
+            data: dates,
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: [{
+            name: 'Pulls',
+            type: 'line',
+            data: counts,
+            showSymbol: false,
+            smooth: true,
+            itemStyle: { color: '#38bdf8' },
+            lineStyle: { width: 2 },
+            areaStyle: {
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgba(56, 189, 248, 0.25)' },
+                  { offset: 1, color: 'rgba(56, 189, 248, 0)' }
+                ]
+              }
+            }
+          }]
+        });
+      }
+      updateQuayChart(90);
+      document.querySelectorAll('#quay-trend-range-btns .toggle-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#quay-trend-range-btns .toggle-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          updateQuayChart(parseInt(this.dataset.range, 10));
+        });
+      });
+    }
+
+    function bootLaneBreakdownChart() {
+      var laneBreakdownContainer = document.getElementById('lane-breakdown-chart');
+      if (!laneBreakdownContainer || !pageData || !Array.isArray(pageData.lanesCoverage)) return;
+      var breakdownChart = window.echarts.init(laneBreakdownContainer);
+      var labels = pageData.lanesCoverage.map(function(l) { return l.label; });
+      var pullsData = pageData.lanesCoverage.map(function(l) { return l.pullCount !== null ? l.pullCount : 0; });
+      var devicesData = pageData.lanesCoverage.map(function(l) { return l.countmeActiveDevices !== null ? l.countmeActiveDevices : 0; });
+      
+      breakdownChart.setOption({
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        legend: {
+          textStyle: { color: '#cbd5e1' },
+          bottom: 0
+        },
+        grid: { left: 140, right: 30, top: 20, bottom: 45 },
+        xAxis: {
+          type: 'value',
+          axisLabel: { color: '#94a3b8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: labels,
+          axisLabel: { color: '#94a3b8' }
+        },
+        series: [
+          {
+            name: 'Registry Pulls',
+            type: 'bar',
+            data: pullsData,
+            itemStyle: { color: '#38bdf8', borderRadius: [0, 4, 4, 0] }
+          },
+          {
+            name: 'Active Devices',
+            type: 'bar',
+            data: devicesData,
+            itemStyle: { color: '#a78bfa', borderRadius: [0, 4, 4, 0] }
+          }
+        ]
+      });
+    }
+
+    function bootOsVersionChart() {
+      var osContainer = document.getElementById('os-version');
+      if (!osContainer || !pageData || !pageData.osVersion) return;
+      var osChart = window.echarts.init(osContainer);
+      osChart.setOption({
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        grid: { left: 70, right: 20, top: 15, bottom: 35 },
+        xAxis: {
+          type: 'value',
+          axisLabel: { color: '#94a3b8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: pageData.osVersion.labels,
+          axisLabel: { color: '#94a3b8' }
+        },
+        series: [{
+          name: 'Devices',
+          type: 'bar',
+          data: pageData.osVersion.values,
+          itemStyle: { color: '#a78bfa', borderRadius: [0, 4, 4, 0] }
+        }]
+      });
+    }
+
+    function bootIndividualDistroChart(distro) {
+      const el = document.getElementById(`${distro}-trend-chart`);
+      if (!el || !pageData || !pageData.countmeTrend) return;
+      const distroChart = window.echarts.init(el);
+      const color = chartColorPalette[distro] || '#6366f1';
+
+      function updateDistroChart(range) {
+        var datasetType = (range === 'all' || range === '365') ? pageData.countmeTrend.monthly : pageData.countmeTrend.weekly;
+        var sliced = range === '30' ? datasetType.slice(-4) : (range === '90' ? datasetType.slice(-12) : datasetType);
+        var dates = sliced.map(d => d.week_start);
+        var counts = sliced.map(d => d.distros[distro] || 0);
+
+        distroChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' }
+          },
+          grid: { left: 50, right: 15, top: 15, bottom: 30 },
+          xAxis: {
+            type: 'category',
+            data: dates,
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: [{
+            name: 'Active Devices',
+            type: 'line',
+            data: counts,
+            showSymbol: false,
+            smooth: true,
+            itemStyle: { color: color },
+            lineStyle: { width: 2 },
+            areaStyle: {
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: color + '25' },
+                  { offset: 1, color: color + '00' }
+                ]
+              }
+            }
+          }]
+        }, true);
+      }
+
+      updateDistroChart('365');
+      document.querySelectorAll(`#${distro}-range-btns .toggle-btn`).forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll(`#${distro}-range-btns .toggle-btn`).forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          updateDistroChart(this.dataset.range);
+        });
+      });
+    }
+
+    function bootLegacyCoverageChart() {
+      var coverageContainer = document.getElementById('adoption-coverage-chart');
+      if (!coverageContainer || !pageData || !Array.isArray(pageData.lanesCoverage)) return;
+      var lanesCoverage = pageData.lanesCoverage;
+      var lanes = lanesCoverage.map(function(l) { return l.label; });
+      var pullData = lanesCoverage.map(function(l) { return l.hasPullData ? 1 : 0; });
+      var countmeData = lanesCoverage.map(function(l) { return l.hasCountmeData ? 1 : 0; });
+      var coverageChart = window.echarts.init(coverageContainer);
+      coverageChart.setOption({
+        aria: { enabled: true },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' },
+          formatter: function(params) {
+            var lane = lanesCoverage[params[0].dataIndex];
+            return [
+              '<strong>' + lane.label + '</strong>',
+              'Pull data: ' + (lane.hasPullData ? 'available' : 'pending'),
+              'Countme data: ' + (lane.hasCountmeData ? 'available' : 'pending'),
+              'State: ' + lane.state,
+            ].join('<br>');
+          },
+        },
+        legend: {
+          textStyle: { color: '#cbd5f5' },
+          data: ['Pull data', 'Countme data'],
+        },
+        grid: { left: 140, right: 20, top: 40, bottom: 20 },
+        xAxis: {
+          type: 'value',
+          max: 1,
+          axisLabel: {
+            color: '#cbd5f5',
+            formatter: function(v) { return v === 1 ? 'available' : 'pending'; },
+          },
+        },
+        yAxis: {
+          type: 'category',
+          data: lanes,
+          axisLabel: { color: '#cbd5f5' },
+        },
+        series: [
+          {
+            name: 'Pull data',
+            type: 'bar',
+            data: pullData,
+            itemStyle: { color: '#38bdf8' },
+          },
+          {
+            name: 'Countme data',
+            type: 'bar',
+            data: countmeData,
+            itemStyle: { color: '#22c55e' },
+          },
+        ],
+      });
+    }
+
+    function bootLegacyTrustChart() {
+      var trustContainer = document.getElementById('adoption-trust-chart');
+      if (!trustContainer || !pageData || !Array.isArray(pageData.trustCoverage)) return;
+      var trustCoverage = pageData.trustCoverage;
+      var variants = trustCoverage.map(function(c) { return c.variant; });
+      var sbomData = trustCoverage.map(function(c) { return c.sbom; });
+      var cveData = trustCoverage.map(function(c) { return c.cveScan; });
+      var cosignData = trustCoverage.map(function(c) { return c.cosign; });
+      var trustChart = window.echarts.init(trustContainer);
+      trustChart.setOption({
+        aria: { enabled: true },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' },
+          formatter: function(params) {
+            var card = trustCoverage[params[0].dataIndex];
+            return [
+              '<strong>' + card.variant + '</strong>',
+              'Org: ' + (card.org || 'unknown'),
+              'SBOM: ' + (card.sbom ? 'published' : 'not published'),
+              'CVE scan: ' + (card.cveScan ? 'published' : 'not published'),
+              'Cosign: ' + (card.cosign ? 'published' : 'not published'),
+            ].join('<br>');
+          },
+        },
+        legend: {
+          textStyle: { color: '#cbd5f5' },
+          data: ['SBOM', 'CVE scan', 'Cosign'],
+        },
+        grid: { left: 80, right: 20, top: 40, bottom: 20 },
+        xAxis: {
+          type: 'category',
+          data: variants,
+          axisLabel: { color: '#cbd5f5', rotate: 15 },
+        },
+        yAxis: {
+          type: 'value',
+          max: 1,
+          axisLabel: {
+            color: '#cbd5f5',
+            formatter: function(v) { return v === 1 ? 'yes' : 'no'; },
+          },
+        },
+        series: [
+          {
+            name: 'SBOM',
+            type: 'bar',
+            data: sbomData,
+            itemStyle: { color: '#a78bfa' },
+          },
+          {
+            name: 'CVE scan',
+            type: 'bar',
+            data: cveData,
+            itemStyle: { color: '#f59e0b' },
+          },
+          {
+            name: 'Cosign',
+            type: 'bar',
+            data: cosignData,
+            itemStyle: { color: '#22c55e' },
+          },
+        ],
+      });
+    }
+
+    function bootHomebrewTapInstallsChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var tapComp = Array.isArray(pageData.homebrew.tapComparison) ? pageData.homebrew.tapComparison : [];
+      var tcEl = document.getElementById('tap-installs-chart');
+      if (!tcEl) return;
+      if (tapComp.length > 0) {
+        var tcChart = window.echarts.init(tcEl);
+        tcChart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' },
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var out = '<strong>' + params[0].axisValue + '</strong><br>';
+              params.forEach(function(p) {
+                out += p.marker + ' ' + p.seriesName + ': <strong>' + p.value.toLocaleString() + '</strong><br>';
+              });
+              return out;
+            }
+          },
+          legend: { data: ['90d Installs', 'Downloads', 'Packages'], textStyle: { color: '#cbd5f5' }, top: 0 },
+          grid: { left: 70, right: 20, top: 40, bottom: 50 },
+          xAxis: {
+            type: 'category',
+            data: tapComp.map(function(t) { return t.name; }),
+            axisLabel: { color: '#cbd5f5', rotate: 15 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+          },
+          yAxis: { type: 'value', axisLabel: { color: '#cbd5f5', formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          series: [
+            { name: '90d Installs', type: 'bar', data: tapComp.map(function(t) { return t.installs; }), itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] } },
+            { name: 'Downloads',   type: 'bar', data: tapComp.map(function(t) { return t.downloads; }), itemStyle: { color: '#818cf8', borderRadius: [4,4,0,0] } },
+            { name: 'Packages',    type: 'bar', data: tapComp.map(function(t) { return t.packages; }), itemStyle: { color: '#fb923c', borderRadius: [4,4,0,0] } },
+          ],
+        });
+      } else {
+        renderUnavailable('tap-installs-chart', 'Tap analytics data pending.');
+      }
+    }
+
+    function bootHomebrewPkgTypeChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var pts = Array.isArray(pageData.homebrew.packageTypeSplit) ? pageData.homebrew.packageTypeSplit : [];
+      var ptEl = document.getElementById('pkg-type-chart');
+      if (!ptEl) return;
+      if (pts.length > 0) {
+        var ptChart = window.echarts.init(ptEl);
+        ptChart.setOption({
+          tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' }, trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: { data: ['Formula', 'Cask'], textStyle: { color: '#cbd5f5' }, top: 0 },
+          grid: { left: 80, right: 20, top: 36, bottom: 50 },
+          xAxis: { type: 'category', data: pts.map(function(t) { return t.name; }), axisLabel: { color: '#cbd5f5', rotate: 10 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+          yAxis: { type: 'value', axisLabel: { color: '#cbd5f5' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          series: [
+            { name: 'Formula', type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.formula; }), itemStyle: { color: '#22d3ee' } },
+            { name: 'Cask',    type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.cask; }),    itemStyle: { color: '#f472b6', borderRadius: [4,4,0,0] } },
+          ],
+        });
+      } else {
+        renderUnavailable('pkg-type-chart', 'Package type breakdown pending.');
+      }
+    }
+
+    function bootHomebrewCoverageDonutChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var donut = Array.isArray(pageData.homebrew.coverageDonut) ? pageData.homebrew.coverageDonut : [];
+      var dnEl = document.getElementById('coverage-donut-chart');
+      if (!dnEl) return;
+      if (donut.length > 0) {
+        var dnChart = window.echarts.init(dnEl);
+        dnChart.setOption({
+          tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' }, trigger: 'item', formatter: '{b}: {c} lanes ({d}%)' },
+          legend: { orient: 'horizontal', bottom: 4, textStyle: { color: '#cbd5f5' } },
+          series: [{
+            name: 'Lane coverage',
+            type: 'pie',
+            radius: ['45%', '70%'],
+            center: ['50%', '45%'],
+            data: donut,
+            label: { color: '#e2e8f0', fontSize: 11 },
+            emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,.5)' } },
+          }],
+        });
+      } else {
+        renderUnavailable('coverage-donut-chart', 'Coverage data pending.');
+      }
+    }
+
+    function bootHomebrewPackagesChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var topPkgs = Array.isArray(pageData.homebrew.topPackages) ? pageData.homebrew.topPackages : [];
+      var pkgsEl  = document.getElementById('homebrew-packages-chart');
+      if (!pkgsEl) return;
+      if (topPkgs.length > 0) {
+        var revPkgs = topPkgs.slice().reverse();
+        var pkgChart = window.echarts.init(pkgsEl);
+        pkgChart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' },
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var idx  = params[0].dataIndex;
+              var pkg  = revPkgs[idx];
+              return [
+                '<strong>' + pkg.name + '</strong>',
+                'Tap: '              + (pkg.tap      || 'Unknown'),
+                'Installs (90d): '   + (pkg.installs !== null ? pkg.installs.toLocaleString() : 'Unavailable'),
+                'Downloads: '        + (pkg.downloads !== null ? pkg.downloads.toLocaleString() : 'Unavailable'),
+              ].join('<br>');
+            },
+          },
+          grid: { left: 110, right: 25, top: 20, bottom: 35 },
+          xAxis: { type: 'value', axisLabel: { color: '#cbd5f5', formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          yAxis: { type: 'category', data: revPkgs.map(function(p) { return p.name; }), axisLabel: { color: '#cbd5f5' } },
+          series: [{
+            name: 'Installs',
+            type: 'bar',
+            data: revPkgs.map(function(p) { return p.installs; }),
+            itemStyle: {
+              borderRadius: [0, 4, 4, 0],
+              color: new window.echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0, color: '#0ea5e9' },
+                { offset: 1, color: '#38bdf8' },
+              ]),
+            },
+          }],
+        });
+      } else {
+        renderUnavailable('homebrew-packages-chart', 'No package telemetry available.');
+      }
+    }
+
+    function bootHomebrewLanesChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var laneIns = Array.isArray(pageData.homebrew.laneInstalls) ? pageData.homebrew.laneInstalls : [];
+      var laneEl  = document.getElementById('homebrew-lanes-chart');
+      if (!laneEl) return;
+      if (laneIns.length > 0) {
+        var laneChart = window.echarts.init(laneEl);
+        laneChart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' },
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var li = laneIns[params[0].dataIndex];
+              return [
+                '<strong>' + li.label + '</strong>',
+                'Installs (90d): '  + li.installs.toLocaleString(),
+                'Downloads: '       + li.downloads.toLocaleString(),
+              ].join('<br>');
+            },
+          },
+          grid: { left: 120, right: 20, top: 20, bottom: 30 },
+          xAxis: { type: 'value', axisLabel: { color: '#cbd5f5', formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          yAxis: { type: 'category', data: laneIns.map(function(l) { return l.label; }), axisLabel: { color: '#cbd5f5' } },
+          series: [
+            {
+              name: 'Installs',
+              type: 'bar',
+              data: laneIns.map(function(l) { return l.installs; }),
+              itemStyle: { borderRadius: [0,4,4,0], color: new window.echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#059669'},{offset:1,color:'#34d399'}]) },
+              label: { show: true, position: 'right', color: '#94a3b8', fontSize: 11, formatter: function(p) { return (p.value/1e6).toFixed(1)+'M'; } },
+            },
+          ],
+        });
+      } else {
+        renderUnavailable('homebrew-lanes-chart', 'Per-lane install data pending.');
+      }
+    }
+
+    function setupLazyLoading() {
+      function lazyInit(elementId, bootFn) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        if (typeof IntersectionObserver !== 'undefined') {
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                bootFn();
+                observer.unobserve(el);
+              }
+            });
+          }, { rootMargin: '100px' });
+          observer.observe(el);
+        } else {
+          bootFn();
+        }
+      }
+
+      lazyInit('cumulative-installations-chart', bootCumulativeInstallationsChart);
+      lazyInit('adoption-sankey-chart', bootAdoptionSankeyChart);
+      lazyInit('countme-trend-chart', bootCountmeTrendChart);
+      lazyInit('ecosystem-pie-chart', bootEcosystemPieChart);
+      lazyInit('quay-trend', bootQuayTrendChart);
+      lazyInit('lane-breakdown-chart', bootLaneBreakdownChart);
+      lazyInit('os-version', bootOsVersionChart);
+      
+      // Individual distro charts
+      lazyInit('bazzite-trend-chart', function() { bootIndividualDistroChart('bazzite'); });
+      lazyInit('bluefin-trend-chart', function() { bootIndividualDistroChart('bluefin'); });
+      lazyInit('aurora-trend-chart', function() { bootIndividualDistroChart('aurora'); });
+
+      // Legacy containers for test compatibility
+      lazyInit('adoption-coverage-chart', bootLegacyCoverageChart);
+      lazyInit('adoption-trust-chart', bootLegacyTrustChart);
+
+      // Homebrew charts
+      lazyInit('tap-installs-chart', bootHomebrewTapInstallsChart);
+      lazyInit('pkg-type-chart', bootHomebrewPkgTypeChart);
+      lazyInit('coverage-donut-chart', bootHomebrewCoverageDonutChart);
+      lazyInit('homebrew-packages-chart', bootHomebrewPackagesChart);
+      lazyInit('homebrew-lanes-chart', bootHomebrewLanesChart);
+    }
+
+    function waitForCharts(attempt) {
+      if (attempt === undefined) attempt = 0;
+      if (window.echarts) {
+        bootSparklines();
+        setupLazyLoading();
+        return;
+      }
+      if (attempt > 40) {
+        renderUnavailable('cumulative-installations-chart', 'ECharts failed to load. Table below remains the source of truth.');
+        renderUnavailable('adoption-sankey-chart', 'Sankey chart unavailable because the chart runtime did not load.');
+        return;
+      }
+      window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
+    }
+
+    window.addEventListener('resize', function() {
+      document.querySelectorAll('.chart-surface, .chart-box, .chart-box-large, .chart-box-16-9, #lane-breakdown-chart, .kpi-card__sparkline').forEach(function(element) {
+        var instance = window.echarts.getInstanceByDom(element);
+        if (instance) instance.resize();
+      });
+    });
 
     waitForCharts();
   </script>

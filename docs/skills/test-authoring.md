@@ -265,6 +265,32 @@ See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
 - Omission of `behave` from the VM pip install block for non-system suites inside `run-gnome-tests.yaml` — results in exit code 127 ("command not found") at suite run-time
 - Empty behave environment hooks (like `before_scenario`, `after_scenario`) that do nothing in `environment.py` — dead boilerplate; delete them so the file is clean
 
+### 11. Containerized E2E Testing (Preferred for Userland/GUI Suites)
+
+For standard application and GNOME Shell BDD testing (smoke, developer, software), we run tests directly inside a non-privileged Kubernetes pod built from the target bootc OCI image. This bypasses KubeVirt VM overhead and speeds up scheduling.
+
+#### Core Containerized Testing Rules:
+1. **Lightweight D-Bus Bootstrap:** Do not run a full systemd inside the pod as PID 1. Instead, wrap execution in `dbus-run-session` to manage the session bus and Wayland display automatically:
+   ```bash
+   dbus-run-session -- qecore-headless --session-type wayland --session-desktop gnome /tmp/run-behave.sh
+   ```
+2. **Minimal Pod Security Context:** Never run containerized e2e test pods in privileged mode. Use standard non-root settings:
+   ```yaml
+   securityContext:
+     runAsUser: 1000
+     runAsGroup: 1000
+     allowPrivilegeEscalation: false
+     capabilities:
+       drop: [ALL]
+   ```
+3. **Required Pod Volumes:**
+   - `xrd`: `emptyDir` mounted at `/run/user/1000` (XDG_RUNTIME_DIR location).
+   - `shm`: `emptyDir` with `medium: Memory` mounted at `/dev/shm` (POSIX shared memory for Wayland/Mutter software rendering).
+   - `home`: `emptyDir` mounted at `/home/bluefin-test` (writable home directory).
+4. **Required Environment Enforcements:**
+   - `LIBGL_ALWAYS_SOFTWARE=1` and `GALLIUM_DRIVER=llvmpipe` (forces CPU software rendering, eliminating GPU/DRM host dependency).
+   - `XDG_SESSION_TYPE=wayland` and `XDG_SESSION_DESKTOP=gnome` (enforces correct session type).
+
 ## Verification
 
 Before marking a test change done:

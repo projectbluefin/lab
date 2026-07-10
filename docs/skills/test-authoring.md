@@ -284,10 +284,11 @@ For standard application and GNOME Shell BDD testing (smoke, developer, software
        drop: [ALL]
    ```
 3. **Required Pod Volumes:**
-   - `xrd`: `emptyDir` mounted at `/run/user/1000` (XDG_RUNTIME_DIR location).
    - `shm`: `emptyDir` with `medium: Memory` mounted at `/dev/shm` (POSIX shared memory for Wayland/Mutter software rendering).
    - `home`: `emptyDir` mounted at `/home/bluefin-test` (writable home directory).
-4. **Required Environment Enforcements:**
+4. **XDG_RUNTIME_DIR & dbus ownership (CRITICAL):** When a pod runs as non-root (UID 1000), mounting an `emptyDir` volume directly at `/run/user/1000` results in the directory being owned by `root` (UID 0). This causes `dbus-run-session` to crash immediately. To solve this, always configure `XDG_RUNTIME_DIR` to a subdirectory inside `/home/bluefin-test` (e.g. `/home/bluefin-test/run`), create and `chmod 700` it in your start script, and set both `DBUS_SESSION_BUS_ADDRESS` and `AT_SPI_BUS_ADDRESS` to `unix:path=/home/bluefin-test/run/bus`.
+5. **Python Pip Bootstrapping:** Minimal ostree/bootc container images do not pre-install Python's `pip` module. You must bootstrap `pip` under `/home/bluefin-test/.local/bin` using `python3 -m ensurepip --user` or falling back to fetching `get-pip.py` on-the-fly before invoking `pip install`.
+6. **Required Environment Enforcements:**
    - `LIBGL_ALWAYS_SOFTWARE=1` and `GALLIUM_DRIVER=llvmpipe` (forces CPU software rendering, eliminating GPU/DRM host dependency).
    - `XDG_SESSION_TYPE=wayland` and `XDG_SESSION_DESKTOP=gnome` (enforces correct session type).
 

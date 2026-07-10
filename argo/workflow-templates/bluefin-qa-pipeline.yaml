@@ -167,6 +167,7 @@ spec:
       - name: vm-memory
     steps:
     - - name: provision
+        when: "{{inputs.parameters.suite}} == system"
         templateRef:
           name: provision-bluefin-vm
           template: provision-vm
@@ -180,7 +181,27 @@ spec:
             value: "{{inputs.parameters.namespace}}"
           - name: vm-memory
             value: "{{inputs.parameters.vm-memory}}"
-    - - name: run-tests
+    - - name: run-tests-container
+        when: "{{inputs.parameters.suite}} != system"
+        templateRef:
+          name: run-container-tests
+          template: run-container-tests
+        arguments:
+          parameters:
+          - name: image
+            value: "ghcr.io/projectbluefin/{{inputs.parameters.variant}}"
+          - name: image-tag
+            value: "{{inputs.parameters.image-tag}}"
+          - name: suite
+            value: "{{inputs.parameters.suite}}"
+          - name: variant
+            value: "{{inputs.parameters.variant}}"
+          - name: branch
+            value: "{{inputs.parameters.branch}}"
+          - name: behave-tags
+            value: ""
+      - name: run-tests-vm
+        when: "{{inputs.parameters.suite}} == system"
         templateRef:
           name: run-gnome-tests
           template: run-gnome-tests
@@ -199,6 +220,7 @@ spec:
           - name: containerdisk-tag
             value: "{{inputs.parameters.containerdisk-tag}}"
     - - name: teardown
+        when: "{{inputs.parameters.suite}} == system"
         templateRef:
           name: teardown-bluefin-vm
           template: teardown-vm

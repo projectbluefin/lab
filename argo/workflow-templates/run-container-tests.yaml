@@ -1,0 +1,241 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-container-tests
+  namespace: argo
+  annotations:
+    description: |
+      Runs GNOME/Wayland BDD tests (smoke, developer, software) directly inside
+      a Kubernetes pod built from the target bootc image, bypassing KubeVirt
+      virtualization. Uses dbus-run-session + qecore-headless for high-speed,
+      low-memory software-rendered e2e desktop testing.
+  labels:
+    app.kubernetes.io/component: test-runner
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  templates:
+  - name: run-container-tests
+    activeDeadlineSeconds: 3600
+    inputs:
+      parameters:
+      - name: image
+        value: "ghcr.io/projectbluefin/bluefin"
+      - name: image-tag
+        value: "testing"
+      - name: suite
+        value: "smoke"
+      - name: variant
+        value: "bluefin"
+      - name: branch
+        value: "main"
+      - name: behave-tags
+        value: ""
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/results/result-summary.txt
+          default: "No results generated"
+    initContainers:
+    - name: git-sync
+      image: cgr.dev/chainguard/git:latest
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      volumeMounts:
+      - mountPath: /workspace
+        name: workspace
+      command: [sh, -c]
+      args:
+      - |
+        set -euo pipefail
+        rm -rf /workspace/lab
+        for attempt in 1 2 3; do
+          if git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
+              https://github.com/projectbluefin/lab \
+              /workspace/lab 2>&1; then
+            echo "Synced lab @ {{inputs.parameters.branch}} (attempt ${attempt})"
+            exit 0
+          fi
+          rm -rf /workspace/lab
+          sleep 5
+        done
+        exit 1
+    container:
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        # Software rendering does not require root or CAP_SYS_ADMIN. Run as non-root (1000).
+        runAsUser: 1000
+        runAsGroup: 1000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      env:
+      - name: SUITE
+        value: "{{inputs.parameters.suite}}"
+      - name: VARIANT
+        value: "{{inputs.parameters.variant}}"
+      - name: BEHAVE_TAGS
+        value: "{{inputs.parameters.behave-tags}}"
+      - name: HOME
+        value: /home/bluefin-test
+      - name: XDG_RUNTIME_DIR
+        value: /run/user/1000
+      - name: DBUS_SESSION_BUS_ADDRESS
+        value: unix:path=/run/user/1000/bus
+      - name: AT_SPI_BUS_ADDRESS
+        value: unix:path=/run/user/1000/bus
+      - name: XDG_SESSION_TYPE
+        value: wayland
+      - name: XDG_SESSION_DESKTOP
+        value: gnome
+      - name: GDK_BACKEND=wayland
+        value: "1"
+      - name: CLUTTER_BACKEND
+        value: wayland
+      - name: LIBGL_ALWAYS_SOFTWARE
+        value: "1"
+      - name: GALLIUM_DRIVER
+        value: llvmpipe
+      - name: LANG
+        value: C.UTF-8
+      - name: LC_ALL
+        value: C.UTF-8
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: github-token
+            key: token
+            optional: true
+      volumeMounts:
+      - mountPath: /workspace
+        name: workspace
+      - mountPath: /run/user/1000
+        name: xrd
+      - mountPath: /dev/shm
+        name: shm
+      - mountPath: /home/bluefin-test
+        name: home
+      command: [bash, -c]
+      args:
+      - |
+        set -euo pipefail
+        mkdir -p /tmp/results /home/bluefin-test/.local/bin
+        export PATH="/home/bluefin-test/.local/bin:${PATH}"
+
+        echo "Installing Python dependencies (behave, qecore, dogtail)..." >&2
+        python3 -m pip install --quiet --user qecore dogtail behave 2>&1 || {
+          echo "Warning: Pip installation returned warning/error, checking if packages work" >&2
+        }
+
+        # Add symlinks for qecore commands
+        for f in /home/bluefin-test/.local/bin/qecore_*; do
+          if [ -f "$f" ]; then
+            ln -sf "$f" /home/bluefin-test/.local/bin/$(basename "$f")
+          fi
+        done
+
+        # Write runner script
+        cat >/tmp/run-behave.sh <<'EOF'
+        #!/bin/bash
+        set -euo pipefail
+        export PATH="/home/bluefin-test/.local/bin:${PATH}"
+        export PYTHONPATH="/workspace/lab"
+
+        echo "Waiting for GNOME Shell AT-SPI to start..." >&2
+        python3 /workspace/lab/tests/shared/wait_for_shell.py
+
+        echo "Starting ponytail daemon..." >&2
+        /usr/libexec/gnome-ponytail-daemon &
+        sleep 2
+
+        echo "Executing behave suite..." >&2
+        TAGS_ARG="--tags ~@wip"
+        if [[ -n "${BEHAVE_TAGS}" ]]; then
+          TAGS_ARG="${BEHAVE_TAGS}"
+        fi
+
+        BEHAVE_RC=0
+        python3 -m behave /workspace/lab/tests/${SUITE}/features/ \
+          --format json.pretty \
+          --outfile /tmp/results/results.json \
+          --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
+
+        echo "${BEHAVE_RC}" > /tmp/results/behave-rc.txt
+        EOF
+        chmod +x /tmp/run-behave.sh
+
+        echo "Bootstrapping dbus-run-session + qecore-headless..." >&2
+        dbus-run-session -- qecore-headless \
+          --session-type wayland \
+          --session-desktop gnome \
+          /tmp/run-behave.sh
+
+        BEHAVE_RC=$(cat /tmp/results/behave-rc.txt 2>/dev/null || echo "1")
+
+        # Push back results if GITHUB_TOKEN is present
+        if [[ -n "${GITHUB_TOKEN:-}" && -f /tmp/results/results.json ]]; then
+          echo "Publishing containerized test results back to repo..." >&2
+          rm -rf /tmp/lab-code
+          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+          
+          # Derive image slug for website
+          IMG_SLUG="bluefin-testing"
+          if [[ "${VARIANT}" == *"lts"* ]]; then
+            IMG_SLUG="bluefin-lts-testing"
+          fi
+          
+          python3 /tmp/lab-code/scripts/publish_test_results.py \
+            /tmp/results/results.json \
+            "${IMG_SLUG}" \
+            "${SUITE}" \
+            "{{workflow.name}}" \
+            "${GITHUB_TOKEN}" || echo "Warning: failed to publish test results" >&2
+        else
+          echo "No GITHUB_TOKEN or missing results.json - skipping publication" >&2
+        fi
+
+        # Persist results to ghost host volume if mounted (for historical collection)
+        RESULT_DIR="/var/mnt/ghost-data/test-results/{{workflow.name}}/${SUITE}"
+        mkdir -p "${RESULT_DIR}"
+        cp -r /tmp/results/. "${RESULT_DIR}/" 2>/dev/null || true
+
+        # Write final result summary
+        python3 -c "
+        import json
+        try:
+            data = json.load(open('/tmp/results/results.json'))
+            failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
+            total  = sum(len(f.get('elements',[])) for f in data)
+            summary = f'{total - failed}/{total} scenarios passed'
+            open('/tmp/results/result-summary.txt', 'w').write(summary)
+            print(summary)
+        except Exception:
+            open('/tmp/results/result-summary.txt', 'w').write('Execution failed')
+            print('results.json not found')
+        "
+
+        exit "${BEHAVE_RC}"
+    volumes:
+    - name: workspace
+      emptyDir: {}
+    - name: xrd
+      emptyDir: {}
+    - name: shm
+      emptyDir:
+        medium: Memory
+    - name: home
+      emptyDir: {}

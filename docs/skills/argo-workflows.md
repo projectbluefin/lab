@@ -852,6 +852,18 @@ when the artifact is missing or when the upstream source digest changed. This co
 wipes, registry migration, and manual Zot cleanup without waiting for a separate recovery
 step.
 
+### 24. Configure registries mirror before running podman build inside workflow containers
+
+When running `podman build` or other image operations (like `podman push`) inside a privileged Argo workflow container, you must configure any custom registries mirror files (such as `/etc/containers/registries.conf.d/bluefin-local-zot.conf` to hook up the local Zot pull-through cache) BEFORE executing those container operations. 
+
+If custom registry mirrors are written *after* building/pushing, the container engine inside the pod will bypass the local hot cache, making expensive network calls to the external internet registries (e.g. GHCR, Quay) every build, which significantly degrades performance.
+
+**Correct order of execution:**
+1. Configure containers-storage graphroot.
+2. Write registry mirror configuration files under `/etc/containers/registries.conf.d/`.
+3. Run container build operations (e.g., `podman build --tls-verify=false -t ...`).
+4. Run container push operations (e.g., `podman push ...`).
+
 ## Common Rationalizations
 
 | "The sub-template will see workflow.parameters directly." | It will not. Argo Workflows scopes parameters per-template. Always pass explicitly. |

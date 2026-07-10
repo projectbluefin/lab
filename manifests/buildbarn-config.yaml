@@ -155,8 +155,13 @@ data:
           platformKeyExtractor: { action: {} },
           invocationKeyExtractors: [{ toolInvocationId: {} }],
           initialSizeClassAnalyzer: {
-            defaultExecutionTimeout: '1800s',
-            maximumExecutionTimeout: '7200s',
+            // BST clients send no explicit action timeout, so the default is
+            // the effective cap. 30m killed every big compile (gcc-stage1,
+            // llvm, webkit are 1-4h actions) — the "RE build dies ~30min in"
+            // pattern during the dakota:testing outage. 6h default / 8h max
+            // matches the dakota CI job budget.
+            defaultExecutionTimeout: '21600s',
+            maximumExecutionTimeout: '28800s',
           },
         },
       },

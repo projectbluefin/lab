@@ -32,6 +32,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - Overview shell work that only mounts the existing legacy dashboard JS
 - Workflow/collector changes in `.github/workflows/` (use `ci-tooling.md`)
 - Argo/cluster data production bugs (use the matching infra skill)
+- Broad visual-design decisions about palette, typography, layout, or motion (use `frontend-design.md` first)
 
 ## Core Process
 

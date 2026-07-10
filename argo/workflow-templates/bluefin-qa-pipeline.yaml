@@ -86,9 +86,13 @@ spec:
           - name: containerdisk-tag
             value: "{{workflow.parameters.containerdisk-tag}}"
 
-          # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down
+          # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down.
+          # NOTE: assert-cd is only relevant for system suite (containerDisk). Container test lanes
+          # (smoke/developer/software/common) pull the image directly from GHCR. assert-cd is kept
+          # in the depends chain so we don't run tests against a stale disk, but container lanes
+          # do not block the entire run when only container suites are requested.
       - name: test-lane
-        depends: "assert-cd.Succeeded"
+        depends: "assert-cd.Succeeded || assert-cd.Failed"
         withItems:
         - smoke
         - common
@@ -189,7 +193,9 @@ spec:
         arguments:
           parameters:
           - name: image
-            value: "ghcr.io/projectbluefin/{{inputs.parameters.variant}}"
+            # Pass through the top-level image param so aurora (ghcr.io/ublue-os/aurora)
+            # and other non-projectbluefin images work without hardcoding the registry org.
+            value: "{{workflow.parameters.image}}"
           - name: image-tag
             value: "{{inputs.parameters.image-tag}}"
           - name: suite

@@ -183,13 +183,23 @@ spec:
           echo "Publishing containerized test results back to repo..." >&2
           rm -rf /tmp/lab-code
           git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
-          
-          # Derive image slug for website
-          IMG_SLUG="bluefin-testing"
-          if [[ "${VARIANT}" == *"lts"* ]]; then
-            IMG_SLUG="bluefin-lts-testing"
-          fi
-          
+          # Derive image slug for website results JSON.
+          # Convention matches run-gnome-tests.yaml:
+          #   bluefin:testing     -> bluefin-testing
+          #   bluefin:lts-testing -> bluefin-lts-testing (VARIANT contains 'lts')
+          #   aurora:testing      -> aurora-testing      (VARIANT=aurora, image-tag=testing)
+          #   dakota:testing      -> dakota-testing
+          #   bazzite:testing     -> bazzite-testing
+          IMAGE_TAG="{{inputs.parameters.image-tag}}"
+          case "${VARIANT}" in
+            aurora|bazzite|dakota)
+              IMG_SLUG="${VARIANT}-${IMAGE_TAG}" ;;
+            *lts*)
+              IMG_SLUG="bluefin-lts-${IMAGE_TAG}" ;;
+            *)
+              IMG_SLUG="bluefin-${IMAGE_TAG}" ;;
+          esac
+
           python3 /tmp/lab-code/scripts/publish_test_results.py \
             /tmp/results/results.json \
             "${IMG_SLUG}" \

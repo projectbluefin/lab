@@ -1,0 +1,1992 @@
+import { n as __exportAll, t as $$SiteLayout } from "./SiteLayout_DhqJu2sp.mjs";
+import { C as createComponent, _ as addAttribute, a as Fragment, b as unescapeHTML, d as renderTemplate, h as maybeRenderHead, i as renderComponent } from "./server_Dx5UOJVp.mjs";
+import { t as serializeJsonScript } from "./json-script_Du4eXlRK.mjs";
+//#region src/scripts/builds-charts.js?url
+var builds_charts_default = "/_astro/builds-charts.DA1MlS1z.js";
+var builds_matrix_default = {
+	schema_version: "v1",
+	_meta: {
+		"page": "builds",
+		"description": "Collector-derived contract for the OS image Builds page.",
+		"generated_at": "2026-07-10T15:58:31Z",
+		"starter_artifact": false,
+		"status": "partial"
+	},
+	summary_metrics: [
+		{
+			"id": "build_pipelines_tracked",
+			"label": "Build pipelines tracked",
+			"value": 17,
+			"unit": "count",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/lab/blob/main/scripts/generate_page_datasets.py",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Count entries in BUILD_PIPELINE_CATALOG."
+		},
+		{
+			"id": "build_pipelines_with_history",
+			"label": "Pipelines with published run history",
+			"value": 12,
+			"unit": "count",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/factory-stats.json",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Count rows whose factory-stats.json image_builds entry is non-empty."
+		},
+		{
+			"id": "build_runs_tracked",
+			"label": "Runs in tracked history",
+			"value": 165,
+			"unit": "count",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/lab/blob/main/docs/data/factory-stats.json",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Sum of history_points length across all rows (capped at 20 runs per pipeline)."
+		}
+	],
+	rows: [
+		{
+			"id": "bluefin-stable",
+			"display_name": "Bluefin — stable",
+			"description": "Bluefin main-branch image build (published as the :stable tag).",
+			"source": "github-actions",
+			"last_run": {
+				"id": "29085931955",
+				"overall": "passed",
+				"started_at": "2026-07-10T10:18:46Z",
+				"finished_at": "2026-07-10T11:09:29Z",
+				"duration_min": 51,
+				"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29085931955",
+				"branch": "main"
+			},
+			"history_points": [
+				{
+					"id": "28511090090",
+					"overall": "passed",
+					"started_at": "2026-07-01T10:30:16Z",
+					"finished_at": "2026-07-01T10:54:30Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28511090090",
+					"branch": "main"
+				},
+				{
+					"id": "28521149112",
+					"overall": "passed",
+					"started_at": "2026-07-01T13:28:49Z",
+					"finished_at": "2026-07-01T13:51:28Z",
+					"duration_min": 23,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28521149112",
+					"branch": "main"
+				},
+				{
+					"id": "28530789794",
+					"overall": "passed",
+					"started_at": "2026-07-01T16:00:49Z",
+					"finished_at": "2026-07-01T16:41:30Z",
+					"duration_min": 41,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28530789794",
+					"branch": "main"
+				},
+				{
+					"id": "28540290902",
+					"overall": "passed",
+					"started_at": "2026-07-01T18:50:06Z",
+					"finished_at": "2026-07-01T19:16:47Z",
+					"duration_min": 27,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28540290902",
+					"branch": "main"
+				},
+				{
+					"id": "28582369237",
+					"overall": "passed",
+					"started_at": "2026-07-02T10:12:33Z",
+					"finished_at": "2026-07-02T10:58:05Z",
+					"duration_min": 46,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28582369237",
+					"branch": "main"
+				},
+				{
+					"id": "28591277229",
+					"overall": "passed",
+					"started_at": "2026-07-02T12:49:25Z",
+					"finished_at": "2026-07-02T13:14:15Z",
+					"duration_min": 25,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28591277229",
+					"branch": "main"
+				},
+				{
+					"id": "28653712637",
+					"overall": "passed",
+					"started_at": "2026-07-03T10:09:27Z",
+					"finished_at": "2026-07-03T11:07:20Z",
+					"duration_min": 58,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28653712637",
+					"branch": "main"
+				},
+				{
+					"id": "28677937752",
+					"overall": "passed",
+					"started_at": "2026-07-03T18:38:56Z",
+					"finished_at": "2026-07-03T19:01:28Z",
+					"duration_min": 23,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28677937752",
+					"branch": "main"
+				},
+				{
+					"id": "28694823687",
+					"overall": "passed",
+					"started_at": "2026-07-04T04:24:47Z",
+					"finished_at": "2026-07-04T05:15:19Z",
+					"duration_min": 51,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28694823687",
+					"branch": "main"
+				},
+				{
+					"id": "28702521958",
+					"overall": "passed",
+					"started_at": "2026-07-04T09:53:09Z",
+					"finished_at": "2026-07-04T10:24:42Z",
+					"duration_min": 32,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28702521958",
+					"branch": "main"
+				},
+				{
+					"id": "28729591749",
+					"overall": "passed",
+					"started_at": "2026-07-05T04:34:07Z",
+					"finished_at": "2026-07-05T05:18:05Z",
+					"duration_min": 44,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28729591749",
+					"branch": "main"
+				},
+				{
+					"id": "28736984363",
+					"overall": "passed",
+					"started_at": "2026-07-05T09:58:39Z",
+					"finished_at": "2026-07-05T10:23:08Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28736984363",
+					"branch": "main"
+				},
+				{
+					"id": "28785894951",
+					"overall": "passed",
+					"started_at": "2026-07-06T10:44:59Z",
+					"finished_at": "2026-07-06T11:36:46Z",
+					"duration_min": 52,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28785894951",
+					"branch": "main"
+				},
+				{
+					"id": "28815350924",
+					"overall": "passed",
+					"started_at": "2026-07-06T18:49:32Z",
+					"finished_at": "2026-07-06T19:35:07Z",
+					"duration_min": 46,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28815350924",
+					"branch": "main"
+				},
+				{
+					"id": "28858947509",
+					"overall": "passed",
+					"started_at": "2026-07-07T10:19:42Z",
+					"finished_at": "2026-07-07T11:08:19Z",
+					"duration_min": 49,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28858947509",
+					"branch": "main"
+				},
+				{
+					"id": "28934111608",
+					"overall": "passed",
+					"started_at": "2026-07-08T09:59:14Z",
+					"finished_at": "2026-07-08T10:41:39Z",
+					"duration_min": 42,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28934111608",
+					"branch": "main"
+				},
+				{
+					"id": "28943708412",
+					"overall": "passed",
+					"started_at": "2026-07-08T12:47:03Z",
+					"finished_at": "2026-07-08T13:10:50Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28943708412",
+					"branch": "main"
+				},
+				{
+					"id": "28956590127",
+					"overall": "passed",
+					"started_at": "2026-07-08T15:56:09Z",
+					"finished_at": "2026-07-08T16:40:15Z",
+					"duration_min": 44,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28956590127",
+					"branch": "main"
+				},
+				{
+					"id": "29011311589",
+					"overall": "passed",
+					"started_at": "2026-07-09T10:21:07Z",
+					"finished_at": "2026-07-09T11:10:55Z",
+					"duration_min": 50,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29011311589",
+					"branch": "main"
+				},
+				{
+					"id": "29085931955",
+					"overall": "passed",
+					"started_at": "2026-07-10T10:18:46Z",
+					"finished_at": "2026-07-10T11:09:29Z",
+					"duration_min": 51,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29085931955",
+					"branch": "main"
+				}
+			],
+			"success_rate": 100,
+			"avg_duration_min": 38.8,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/bluefin/actions/runs/29085931955",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/bluefin/blob/main/.github/workflows/build-image-testing.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-stable'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin."
+		},
+		{
+			"id": "bluefin-testing",
+			"display_name": "Bluefin — testing",
+			"description": "Bluefin testing-branch image build (published as the :testing tag).",
+			"source": "github-actions",
+			"last_run": {
+				"id": "29085858860",
+				"overall": "passed",
+				"started_at": "2026-07-10T10:17:19Z",
+				"finished_at": "2026-07-10T10:58:37Z",
+				"duration_min": 41,
+				"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29085858860",
+				"branch": "testing"
+			},
+			"history_points": [
+				{
+					"id": "28521067129",
+					"overall": "passed",
+					"started_at": "2026-07-01T13:27:33Z",
+					"finished_at": "2026-07-01T13:57:11Z",
+					"duration_min": 30,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28521067129",
+					"branch": "testing"
+				},
+				{
+					"id": "28530691550",
+					"overall": "passed",
+					"started_at": "2026-07-01T15:59:12Z",
+					"finished_at": "2026-07-01T16:53:55Z",
+					"duration_min": 55,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28530691550",
+					"branch": "testing"
+				},
+				{
+					"id": "28540208805",
+					"overall": "passed",
+					"started_at": "2026-07-01T18:48:36Z",
+					"finished_at": "2026-07-01T19:24:55Z",
+					"duration_min": 36,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28540208805",
+					"branch": "testing"
+				},
+				{
+					"id": "28582294986",
+					"overall": "pending",
+					"started_at": "2026-07-02T10:11:10Z",
+					"finished_at": "2026-07-02T10:11:24Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28582294986",
+					"branch": "testing"
+				},
+				{
+					"id": "28582297518",
+					"overall": "passed",
+					"started_at": "2026-07-02T10:11:13Z",
+					"finished_at": "2026-07-02T10:59:44Z",
+					"duration_min": 49,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28582297518",
+					"branch": "testing"
+				},
+				{
+					"id": "28591197043",
+					"overall": "passed",
+					"started_at": "2026-07-02T12:48:09Z",
+					"finished_at": "2026-07-02T13:13:38Z",
+					"duration_min": 25,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28591197043",
+					"branch": "testing"
+				},
+				{
+					"id": "28653651159",
+					"overall": "passed",
+					"started_at": "2026-07-03T10:08:13Z",
+					"finished_at": "2026-07-03T10:55:09Z",
+					"duration_min": 47,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28653651159",
+					"branch": "testing"
+				},
+				{
+					"id": "28677889183",
+					"overall": "passed",
+					"started_at": "2026-07-03T18:37:40Z",
+					"finished_at": "2026-07-03T19:03:52Z",
+					"duration_min": 26,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28677889183",
+					"branch": "testing"
+				},
+				{
+					"id": "28694796691",
+					"overall": "passed",
+					"started_at": "2026-07-04T04:23:35Z",
+					"finished_at": "2026-07-04T05:13:22Z",
+					"duration_min": 50,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28694796691",
+					"branch": "testing"
+				},
+				{
+					"id": "28702487258",
+					"overall": "passed",
+					"started_at": "2026-07-04T09:51:38Z",
+					"finished_at": "2026-07-04T10:13:40Z",
+					"duration_min": 22,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28702487258",
+					"branch": "testing"
+				},
+				{
+					"id": "28729566646",
+					"overall": "passed",
+					"started_at": "2026-07-05T04:32:53Z",
+					"finished_at": "2026-07-05T05:16:31Z",
+					"duration_min": 44,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28729566646",
+					"branch": "testing"
+				},
+				{
+					"id": "28736947187",
+					"overall": "passed",
+					"started_at": "2026-07-05T09:57:06Z",
+					"finished_at": "2026-07-05T10:21:24Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28736947187",
+					"branch": "testing"
+				},
+				{
+					"id": "28785777746",
+					"overall": "passed",
+					"started_at": "2026-07-06T10:42:49Z",
+					"finished_at": "2026-07-06T11:19:52Z",
+					"duration_min": 37,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28785777746",
+					"branch": "testing"
+				},
+				{
+					"id": "28815272496",
+					"overall": "passed",
+					"started_at": "2026-07-06T18:48:09Z",
+					"finished_at": "2026-07-06T19:29:35Z",
+					"duration_min": 41,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28815272496",
+					"branch": "testing"
+				},
+				{
+					"id": "28858862733",
+					"overall": "passed",
+					"started_at": "2026-07-07T10:18:07Z",
+					"finished_at": "2026-07-07T10:57:40Z",
+					"duration_min": 40,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28858862733",
+					"branch": "testing"
+				},
+				{
+					"id": "28934031439",
+					"overall": "passed",
+					"started_at": "2026-07-08T09:57:51Z",
+					"finished_at": "2026-07-08T10:50:57Z",
+					"duration_min": 53,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28934031439",
+					"branch": "testing"
+				},
+				{
+					"id": "28943613558",
+					"overall": "passed",
+					"started_at": "2026-07-08T12:45:32Z",
+					"finished_at": "2026-07-08T13:13:16Z",
+					"duration_min": 28,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28943613558",
+					"branch": "testing"
+				},
+				{
+					"id": "28956502140",
+					"overall": "passed",
+					"started_at": "2026-07-08T15:54:51Z",
+					"finished_at": "2026-07-08T17:07:34Z",
+					"duration_min": 73,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/28956502140",
+					"branch": "testing"
+				},
+				{
+					"id": "29011217639",
+					"overall": "passed",
+					"started_at": "2026-07-09T10:19:27Z",
+					"finished_at": "2026-07-09T11:07:31Z",
+					"duration_min": 48,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29011217639",
+					"branch": "testing"
+				},
+				{
+					"id": "29085858860",
+					"overall": "passed",
+					"started_at": "2026-07-10T10:17:19Z",
+					"finished_at": "2026-07-10T10:58:37Z",
+					"duration_min": 41,
+					"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29085858860",
+					"branch": "testing"
+				}
+			],
+			"success_rate": 100,
+			"avg_duration_min": 40.5,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/bluefin/actions/runs/29085858860",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/bluefin/blob/main/.github/workflows/build-image-testing.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-testing'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin."
+		},
+		{
+			"id": "bluefin-next",
+			"display_name": "Bluefin — next (sealed)",
+			"description": "Bluefin sealed/next preview image build.",
+			"source": "github-actions",
+			"last_run": {
+				"id": "26990564509",
+				"overall": "fail",
+				"started_at": "2026-06-05T01:52:32Z",
+				"finished_at": "2026-06-05T02:13:47Z",
+				"duration_min": 21,
+				"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/26990564509",
+				"branch": "next"
+			},
+			"history_points": [{
+				"id": "26990564509",
+				"overall": "fail",
+				"started_at": "2026-06-05T01:52:32Z",
+				"finished_at": "2026-06-05T02:13:47Z",
+				"duration_min": 21,
+				"run_url": "https://github.com/projectbluefin/bluefin/actions/runs/26990564509",
+				"branch": "next"
+			}],
+			"success_rate": 0,
+			"avg_duration_min": 21,
+			"runs_tracked": 1,
+			"ci_url": "https://github.com/projectbluefin/bluefin/actions/runs/26990564509",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/bluefin/blob/main/.github/workflows/build-image-next.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-next'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin."
+		},
+		{
+			"id": "bluefin-lts-stable",
+			"display_name": "Bluefin LTS — stable",
+			"description": "Bluefin LTS main-branch image build (published as the :stable tag).",
+			"source": "github-actions",
+			"last_run": {
+				"id": "28030661542",
+				"overall": "passed",
+				"started_at": "2026-06-23T13:42:15Z",
+				"finished_at": "2026-06-23T14:05:54Z",
+				"duration_min": 24,
+				"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28030661542",
+				"branch": "main"
+			},
+			"history_points": [
+				{
+					"id": "27914759230",
+					"overall": "pending",
+					"started_at": "2026-06-21T19:17:07Z",
+					"finished_at": "2026-06-21T19:32:00Z",
+					"duration_min": 15,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27914759230",
+					"branch": "main"
+				},
+				{
+					"id": "27914761611",
+					"overall": "pending",
+					"started_at": "2026-06-21T19:17:12Z",
+					"finished_at": "2026-06-21T19:18:19Z",
+					"duration_min": 1,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27914761611",
+					"branch": "main"
+				},
+				{
+					"id": "27914787759",
+					"overall": "pending",
+					"started_at": "2026-06-21T19:18:18Z",
+					"finished_at": "2026-06-21T19:20:18Z",
+					"duration_min": 2,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27914787759",
+					"branch": "main"
+				},
+				{
+					"id": "27914835094",
+					"overall": "pending",
+					"started_at": "2026-06-21T19:20:17Z",
+					"finished_at": "2026-06-21T19:30:01Z",
+					"duration_min": 10,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27914835094",
+					"branch": "main"
+				},
+				{
+					"id": "27915072223",
+					"overall": "passed",
+					"started_at": "2026-06-21T19:30:00Z",
+					"finished_at": "2026-06-21T19:47:53Z",
+					"duration_min": 18,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27915072223",
+					"branch": "main"
+				},
+				{
+					"id": "27915739687",
+					"overall": "pending",
+					"started_at": "2026-06-21T19:57:05Z",
+					"finished_at": "2026-06-21T20:14:02Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27915739687",
+					"branch": "main"
+				},
+				{
+					"id": "27916010568",
+					"overall": "pending",
+					"started_at": "2026-06-21T20:07:32Z",
+					"finished_at": "2026-06-21T20:12:05Z",
+					"duration_min": 5,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27916010568",
+					"branch": "main"
+				},
+				{
+					"id": "27916122208",
+					"overall": "passed",
+					"started_at": "2026-06-21T20:12:04Z",
+					"finished_at": "2026-06-21T20:31:45Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27916122208",
+					"branch": "main"
+				},
+				{
+					"id": "27920420706",
+					"overall": "pending",
+					"started_at": "2026-06-21T23:07:39Z",
+					"finished_at": "2026-06-21T23:24:07Z",
+					"duration_min": 16,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27920420706",
+					"branch": "main"
+				},
+				{
+					"id": "27920421650",
+					"overall": "pending",
+					"started_at": "2026-06-21T23:07:42Z",
+					"finished_at": "2026-06-21T23:10:02Z",
+					"duration_min": 2,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27920421650",
+					"branch": "main"
+				},
+				{
+					"id": "27920474987",
+					"overall": "pending",
+					"started_at": "2026-06-21T23:10:01Z",
+					"finished_at": "2026-06-21T23:13:04Z",
+					"duration_min": 3,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27920474987",
+					"branch": "main"
+				},
+				{
+					"id": "27920548940",
+					"overall": "pending",
+					"started_at": "2026-06-21T23:13:03Z",
+					"finished_at": "2026-06-21T23:15:07Z",
+					"duration_min": 2,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27920548940",
+					"branch": "main"
+				},
+				{
+					"id": "27920597669",
+					"overall": "pending",
+					"started_at": "2026-06-21T23:15:06Z",
+					"finished_at": "2026-06-21T23:15:48Z",
+					"duration_min": 1,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27920597669",
+					"branch": "main"
+				},
+				{
+					"id": "27920613757",
+					"overall": "pending",
+					"started_at": "2026-06-21T23:15:47Z",
+					"finished_at": "2026-06-21T23:42:11Z",
+					"duration_min": 26,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27920613757",
+					"branch": "main"
+				},
+				{
+					"id": "27921009667",
+					"overall": "pending",
+					"started_at": "2026-06-21T23:32:13Z",
+					"finished_at": "2026-06-21T23:37:43Z",
+					"duration_min": 6,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27921009667",
+					"branch": "main"
+				},
+				{
+					"id": "27921141436",
+					"overall": "passed",
+					"started_at": "2026-06-21T23:37:40Z",
+					"finished_at": "2026-06-22T00:06:50Z",
+					"duration_min": 29,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27921141436",
+					"branch": "main"
+				},
+				{
+					"id": "27923359474",
+					"overall": "pending",
+					"started_at": "2026-06-22T01:03:32Z",
+					"finished_at": "2026-06-22T01:24:09Z",
+					"duration_min": 21,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27923359474",
+					"branch": "main"
+				},
+				{
+					"id": "27923420060",
+					"overall": "pending",
+					"started_at": "2026-06-22T01:05:35Z",
+					"finished_at": "2026-06-22T01:11:09Z",
+					"duration_min": 6,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27923420060",
+					"branch": "main"
+				},
+				{
+					"id": "27923581059",
+					"overall": "passed",
+					"started_at": "2026-06-22T01:11:08Z",
+					"finished_at": "2026-06-22T01:44:04Z",
+					"duration_min": 33,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/27923581059",
+					"branch": "main"
+				},
+				{
+					"id": "28030661542",
+					"overall": "passed",
+					"started_at": "2026-06-23T13:42:15Z",
+					"finished_at": "2026-06-23T14:05:54Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28030661542",
+					"branch": "main"
+				}
+			],
+			"success_rate": 100,
+			"avg_duration_min": 24.8,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28030661542",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-regular.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-stable'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
+		},
+		{
+			"id": "bluefin-lts-testing",
+			"display_name": "Bluefin LTS — testing",
+			"description": "Bluefin LTS testing-branch image build (published as the :testing tag).",
+			"source": "github-actions",
+			"last_run": {
+				"id": "28956513947",
+				"overall": "passed",
+				"started_at": "2026-07-08T15:55:02Z",
+				"finished_at": "2026-07-08T16:14:54Z",
+				"duration_min": 20,
+				"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28956513947",
+				"branch": "testing"
+			},
+			"history_points": [
+				{
+					"id": "28486127104",
+					"overall": "passed",
+					"started_at": "2026-07-01T01:00:30Z",
+					"finished_at": "2026-07-01T01:22:37Z",
+					"duration_min": 22,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28486127104",
+					"branch": "testing"
+				},
+				{
+					"id": "28489139340",
+					"overall": "passed",
+					"started_at": "2026-07-01T02:22:37Z",
+					"finished_at": "2026-07-01T02:41:12Z",
+					"duration_min": 19,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28489139340",
+					"branch": "testing"
+				},
+				{
+					"id": "28530699984",
+					"overall": "passed",
+					"started_at": "2026-07-01T15:59:21Z",
+					"finished_at": "2026-07-01T16:20:00Z",
+					"duration_min": 21,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28530699984",
+					"branch": "testing"
+				},
+				{
+					"id": "28689779316",
+					"overall": "passed",
+					"started_at": "2026-07-04T00:48:47Z",
+					"finished_at": "2026-07-04T01:08:15Z",
+					"duration_min": 19,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28689779316",
+					"branch": "testing"
+				},
+				{
+					"id": "28694794501",
+					"overall": "passed",
+					"started_at": "2026-07-04T04:23:29Z",
+					"finished_at": "2026-07-04T04:41:57Z",
+					"duration_min": 18,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28694794501",
+					"branch": "testing"
+				},
+				{
+					"id": "28716753031",
+					"overall": "passed",
+					"started_at": "2026-07-04T19:11:29Z",
+					"finished_at": "2026-07-04T19:38:58Z",
+					"duration_min": 27,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28716753031",
+					"branch": "testing"
+				},
+				{
+					"id": "28729566763",
+					"overall": "passed",
+					"started_at": "2026-07-05T04:32:53Z",
+					"finished_at": "2026-07-05T04:53:33Z",
+					"duration_min": 21,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28729566763",
+					"branch": "testing"
+				},
+				{
+					"id": "28804151083",
+					"overall": "pending",
+					"started_at": "2026-07-06T15:45:32Z",
+					"finished_at": "2026-07-06T16:09:42Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28804151083",
+					"branch": "testing"
+				},
+				{
+					"id": "28804227790",
+					"overall": "passed",
+					"started_at": "2026-07-06T15:46:46Z",
+					"finished_at": "2026-07-06T16:28:27Z",
+					"duration_min": 42,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28804227790",
+					"branch": "testing"
+				},
+				{
+					"id": "28807745932",
+					"overall": "passed",
+					"started_at": "2026-07-06T16:42:37Z",
+					"finished_at": "2026-07-06T17:01:31Z",
+					"duration_min": 19,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28807745932",
+					"branch": "testing"
+				},
+				{
+					"id": "28809706556",
+					"overall": "fail",
+					"started_at": "2026-07-06T17:15:10Z",
+					"finished_at": "2026-07-06T17:15:11Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28809706556",
+					"branch": "testing"
+				},
+				{
+					"id": "28809807658",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:16:51Z",
+					"finished_at": "2026-07-06T17:36:12Z",
+					"duration_min": 19,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28809807658",
+					"branch": "testing"
+				},
+				{
+					"id": "28810091055",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:21:45Z",
+					"finished_at": "2026-07-06T17:55:41Z",
+					"duration_min": 34,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28810091055",
+					"branch": "testing"
+				},
+				{
+					"id": "28811292629",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:41:53Z",
+					"finished_at": "2026-07-06T17:44:33Z",
+					"duration_min": 3,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28811292629",
+					"branch": "testing"
+				},
+				{
+					"id": "28811452893",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:44:32Z",
+					"finished_at": "2026-07-06T17:48:49Z",
+					"duration_min": 4,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28811452893",
+					"branch": "testing"
+				},
+				{
+					"id": "28811705018",
+					"overall": "passed",
+					"started_at": "2026-07-06T17:48:48Z",
+					"finished_at": "2026-07-06T18:21:12Z",
+					"duration_min": 32,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28811705018",
+					"branch": "testing"
+				},
+				{
+					"id": "28813696988",
+					"overall": "passed",
+					"started_at": "2026-07-06T18:22:11Z",
+					"finished_at": "2026-07-06T18:43:05Z",
+					"duration_min": 21,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28813696988",
+					"branch": "testing"
+				},
+				{
+					"id": "28815273366",
+					"overall": "passed",
+					"started_at": "2026-07-06T18:48:11Z",
+					"finished_at": "2026-07-06T19:05:24Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28815273366",
+					"branch": "testing"
+				},
+				{
+					"id": "28816882219",
+					"overall": "passed",
+					"started_at": "2026-07-06T19:15:07Z",
+					"finished_at": "2026-07-06T19:35:18Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28816882219",
+					"branch": "testing"
+				},
+				{
+					"id": "28956513947",
+					"overall": "passed",
+					"started_at": "2026-07-08T15:55:02Z",
+					"finished_at": "2026-07-08T16:14:54Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28956513947",
+					"branch": "testing"
+				}
+			],
+			"success_rate": 93.3,
+			"avg_duration_min": 21.2,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28956513947",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-regular.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-testing'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
+		},
+		{
+			"id": "bluefin-lts-hwe",
+			"display_name": "Bluefin LTS HWE",
+			"description": "Bluefin LTS build with the Hardware Enablement (HWE) kernel.",
+			"source": "github-actions",
+			"last_run": {
+				"id": "28412906300",
+				"overall": "passed",
+				"started_at": "2026-06-30T00:57:52Z",
+				"finished_at": "2026-06-30T01:18:52Z",
+				"duration_min": 21,
+				"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28412906300",
+				"branch": "testing"
+			},
+			"history_points": [
+				{
+					"id": "28139635397",
+					"overall": "passed",
+					"started_at": "2026-06-25T00:57:01Z",
+					"finished_at": "2026-06-25T01:16:44Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28139635397",
+					"branch": "renovate/quay.io-centos-bootc-centos-bootc-c10s"
+				},
+				{
+					"id": "28139666781",
+					"overall": "pending",
+					"started_at": "2026-06-25T00:57:59Z",
+					"finished_at": "2026-06-25T01:24:16Z",
+					"duration_min": 26,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28139666781",
+					"branch": "testing"
+				},
+				{
+					"id": "28139668849",
+					"overall": "pending",
+					"started_at": "2026-06-25T00:58:03Z",
+					"finished_at": "2026-06-25T01:58:53Z",
+					"duration_min": 61,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28139668849",
+					"branch": "testing"
+				},
+				{
+					"id": "28147045954",
+					"overall": "passed",
+					"started_at": "2026-06-25T04:32:55Z",
+					"finished_at": "2026-06-25T04:49:42Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28147045954",
+					"branch": "renovate/ghcr.io-projectbluefin-common-latest"
+				},
+				{
+					"id": "28147075690",
+					"overall": "passed",
+					"started_at": "2026-06-25T04:33:46Z",
+					"finished_at": "2026-06-25T04:58:06Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28147075690",
+					"branch": "testing"
+				},
+				{
+					"id": "28190612425",
+					"overall": "passed",
+					"started_at": "2026-06-25T18:08:14Z",
+					"finished_at": "2026-06-25T18:29:22Z",
+					"duration_min": 21,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28190612425",
+					"branch": "testing"
+				},
+				{
+					"id": "28210270530",
+					"overall": "passed",
+					"started_at": "2026-06-26T00:58:56Z",
+					"finished_at": "2026-06-26T01:16:15Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28210270530",
+					"branch": "renovate/quay.io-centos-bootc-centos-bootc-c10s"
+				},
+				{
+					"id": "28210301451",
+					"overall": "passed",
+					"started_at": "2026-06-26T00:59:54Z",
+					"finished_at": "2026-06-26T01:18:30Z",
+					"duration_min": 19,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28210301451",
+					"branch": "testing"
+				},
+				{
+					"id": "28273591606",
+					"overall": "passed",
+					"started_at": "2026-06-27T00:55:57Z",
+					"finished_at": "2026-06-27T01:12:42Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28273591606",
+					"branch": "renovate/quay.io-centos-bootc-centos-bootc-c10s"
+				},
+				{
+					"id": "28273617889",
+					"overall": "passed",
+					"started_at": "2026-06-27T00:56:56Z",
+					"finished_at": "2026-06-27T01:14:30Z",
+					"duration_min": 18,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28273617889",
+					"branch": "testing"
+				},
+				{
+					"id": "28302369543",
+					"overall": "passed",
+					"started_at": "2026-06-27T21:30:37Z",
+					"finished_at": "2026-06-27T21:49:02Z",
+					"duration_min": 18,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28302369543",
+					"branch": "renovate/ghcr.io-projectbluefin-common-latest"
+				},
+				{
+					"id": "28302392631",
+					"overall": "passed",
+					"started_at": "2026-06-27T21:31:32Z",
+					"finished_at": "2026-06-27T21:50:16Z",
+					"duration_min": 19,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28302392631",
+					"branch": "testing"
+				},
+				{
+					"id": "28306992390",
+					"overall": "passed",
+					"started_at": "2026-06-28T00:58:31Z",
+					"finished_at": "2026-06-28T01:14:33Z",
+					"duration_min": 16,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28306992390",
+					"branch": "renovate/quay.io-centos-bootc-centos-bootc-c10s"
+				},
+				{
+					"id": "28307009748",
+					"overall": "passed",
+					"started_at": "2026-06-28T00:59:23Z",
+					"finished_at": "2026-06-28T01:29:13Z",
+					"duration_min": 30,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28307009748",
+					"branch": "testing"
+				},
+				{
+					"id": "28311511008",
+					"overall": "passed",
+					"started_at": "2026-06-28T04:37:30Z",
+					"finished_at": "2026-06-28T04:54:05Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28311511008",
+					"branch": "renovate/ghcr.io-ublue-os-brew-latest"
+				},
+				{
+					"id": "28311528779",
+					"overall": "passed",
+					"started_at": "2026-06-28T04:38:25Z",
+					"finished_at": "2026-06-28T04:55:27Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28311528779",
+					"branch": "testing"
+				},
+				{
+					"id": "28342141374",
+					"overall": "passed",
+					"started_at": "2026-06-29T00:59:44Z",
+					"finished_at": "2026-06-29T01:17:22Z",
+					"duration_min": 18,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28342141374",
+					"branch": "renovate/quay.io-centos-bootc-centos-bootc-c10s"
+				},
+				{
+					"id": "28342170898",
+					"overall": "passed",
+					"started_at": "2026-06-29T01:00:40Z",
+					"finished_at": "2026-06-29T01:21:47Z",
+					"duration_min": 21,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28342170898",
+					"branch": "testing"
+				},
+				{
+					"id": "28412873720",
+					"overall": "passed",
+					"started_at": "2026-06-30T00:56:56Z",
+					"finished_at": "2026-06-30T01:13:34Z",
+					"duration_min": 17,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28412873720",
+					"branch": "renovate/quay.io-centos-bootc-centos-bootc-c10s"
+				},
+				{
+					"id": "28412906300",
+					"overall": "passed",
+					"started_at": "2026-06-30T00:57:52Z",
+					"finished_at": "2026-06-30T01:18:52Z",
+					"duration_min": 21,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28412906300",
+					"branch": "testing"
+				}
+			],
+			"success_rate": 100,
+			"avg_duration_min": 19.3,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28412906300",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-regular-hwe.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-hwe'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
+		},
+		{
+			"id": "bluefin-lts-nvidia",
+			"display_name": "Bluefin LTS Nvidia",
+			"description": "Bluefin LTS build with proprietary Nvidia driver layering.",
+			"source": "github-actions",
+			"last_run": {
+				"id": "28956513999",
+				"overall": "passed",
+				"started_at": "2026-07-08T15:55:02Z",
+				"finished_at": "2026-07-08T16:23:40Z",
+				"duration_min": 29,
+				"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28956513999",
+				"branch": "testing"
+			},
+			"history_points": [
+				{
+					"id": "28694775763",
+					"overall": "passed",
+					"started_at": "2026-07-04T04:22:39Z",
+					"finished_at": "2026-07-04T04:42:46Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28694775763",
+					"branch": "renovate/ghcr.io-projectbluefin-common-latest"
+				},
+				{
+					"id": "28694794517",
+					"overall": "passed",
+					"started_at": "2026-07-04T04:23:30Z",
+					"finished_at": "2026-07-04T04:46:06Z",
+					"duration_min": 23,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28694794517",
+					"branch": "testing"
+				},
+				{
+					"id": "28716753048",
+					"overall": "passed",
+					"started_at": "2026-07-04T19:11:29Z",
+					"finished_at": "2026-07-04T19:36:09Z",
+					"duration_min": 25,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28716753048",
+					"branch": "testing"
+				},
+				{
+					"id": "28729551189",
+					"overall": "passed",
+					"started_at": "2026-07-05T04:32:06Z",
+					"finished_at": "2026-07-05T04:52:17Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28729551189",
+					"branch": "renovate/ghcr.io-ublue-os-brew-latest"
+				},
+				{
+					"id": "28729566789",
+					"overall": "passed",
+					"started_at": "2026-07-05T04:32:53Z",
+					"finished_at": "2026-07-05T04:54:56Z",
+					"duration_min": 22,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28729566789",
+					"branch": "testing"
+				},
+				{
+					"id": "28804153699",
+					"overall": "pending",
+					"started_at": "2026-07-06T15:45:35Z",
+					"finished_at": "2026-07-06T16:11:45Z",
+					"duration_min": 26,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28804153699",
+					"branch": "testing"
+				},
+				{
+					"id": "28804232413",
+					"overall": "passed",
+					"started_at": "2026-07-06T15:46:50Z",
+					"finished_at": "2026-07-06T16:34:24Z",
+					"duration_min": 48,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28804232413",
+					"branch": "testing"
+				},
+				{
+					"id": "28807746035",
+					"overall": "passed",
+					"started_at": "2026-07-06T16:42:37Z",
+					"finished_at": "2026-07-06T17:10:55Z",
+					"duration_min": 28,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28807746035",
+					"branch": "testing"
+				},
+				{
+					"id": "28809706331",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:15:10Z",
+					"finished_at": "2026-07-06T17:44:37Z",
+					"duration_min": 29,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28809706331",
+					"branch": "testing"
+				},
+				{
+					"id": "28809807648",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:16:51Z",
+					"finished_at": "2026-07-06T17:21:47Z",
+					"duration_min": 5,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28809807648",
+					"branch": "testing"
+				},
+				{
+					"id": "28810091018",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:21:45Z",
+					"finished_at": "2026-07-06T17:41:54Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28810091018",
+					"branch": "testing"
+				},
+				{
+					"id": "28811292569",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:41:53Z",
+					"finished_at": "2026-07-06T17:44:33Z",
+					"duration_min": 3,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28811292569",
+					"branch": "testing"
+				},
+				{
+					"id": "28811452859",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:44:32Z",
+					"finished_at": "2026-07-06T18:06:19Z",
+					"duration_min": 22,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28811452859",
+					"branch": "testing"
+				},
+				{
+					"id": "28811704937",
+					"overall": "pending",
+					"started_at": "2026-07-06T17:48:48Z",
+					"finished_at": "2026-07-06T18:27:53Z",
+					"duration_min": 39,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28811704937",
+					"branch": "testing"
+				},
+				{
+					"id": "28813697069",
+					"overall": "pending",
+					"started_at": "2026-07-06T18:22:11Z",
+					"finished_at": "2026-07-06T18:49:02Z",
+					"duration_min": 27,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28813697069",
+					"branch": "testing"
+				},
+				{
+					"id": "28815215967",
+					"overall": "passed",
+					"started_at": "2026-07-06T18:47:10Z",
+					"finished_at": "2026-07-06T19:08:41Z",
+					"duration_min": 22,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28815215967",
+					"branch": "renovate/ghcr.io-projectbluefin-common-latest"
+				},
+				{
+					"id": "28815273422",
+					"overall": "passed",
+					"started_at": "2026-07-06T18:48:11Z",
+					"finished_at": "2026-07-06T19:12:22Z",
+					"duration_min": 24,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28815273422",
+					"branch": "testing"
+				},
+				{
+					"id": "28816882352",
+					"overall": "passed",
+					"started_at": "2026-07-06T19:15:07Z",
+					"finished_at": "2026-07-06T19:35:33Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28816882352",
+					"branch": "testing"
+				},
+				{
+					"id": "28956449045",
+					"overall": "passed",
+					"started_at": "2026-07-08T15:54:04Z",
+					"finished_at": "2026-07-08T16:14:07Z",
+					"duration_min": 20,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28956449045",
+					"branch": "renovate/ghcr.io-ublue-os-brew-latest"
+				},
+				{
+					"id": "28956513999",
+					"overall": "passed",
+					"started_at": "2026-07-08T15:55:02Z",
+					"finished_at": "2026-07-08T16:23:40Z",
+					"duration_min": 29,
+					"run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28956513999",
+					"branch": "testing"
+				}
+			],
+			"success_rate": 100,
+			"avg_duration_min": 25.1,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28956513999",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/bluefin-lts/blob/main/.github/workflows/build-nvidia.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bluefin-lts-nvidia'], populated by a live GitHub Actions workflow-runs query against projectbluefin/bluefin-lts."
+		},
+		{
+			"id": "dakota",
+			"display_name": "Dakota",
+			"description": "Dakota bootc image build (x86_64), published to ghcr.io/projectbluefin/dakota.",
+			"source": "github-actions",
+			"last_run": {
+				"id": "29096973462",
+				"overall": "running",
+				"started_at": "2026-07-10T13:41:05Z",
+				"finished_at": null,
+				"duration_min": null,
+				"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29096973462",
+				"branch": "testing"
+			},
+			"history_points": [
+				{
+					"id": "28915830056",
+					"overall": "pending",
+					"started_at": "2026-07-08T03:42:46Z",
+					"finished_at": "2026-07-08T08:43:43Z",
+					"duration_min": 301,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28915830056",
+					"branch": "testing"
+				},
+				{
+					"id": "28916120711",
+					"overall": "pending",
+					"started_at": "2026-07-08T03:50:47Z",
+					"finished_at": "2026-07-08T06:58:28Z",
+					"duration_min": 188,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28916120711",
+					"branch": "testing"
+				},
+				{
+					"id": "28929745143",
+					"overall": "pending",
+					"started_at": "2026-07-08T08:45:47Z",
+					"finished_at": "2026-07-08T08:48:33Z",
+					"duration_min": 3,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28929745143",
+					"branch": "testing"
+				},
+				{
+					"id": "28930353531",
+					"overall": "pending",
+					"started_at": "2026-07-08T08:56:09Z",
+					"finished_at": "2026-07-08T08:57:47Z",
+					"duration_min": 2,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28930353531",
+					"branch": "testing"
+				},
+				{
+					"id": "28930480695",
+					"overall": "pending",
+					"started_at": "2026-07-08T08:58:19Z",
+					"finished_at": "2026-07-08T11:55:45Z",
+					"duration_min": 177,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28930480695",
+					"branch": "testing"
+				},
+				{
+					"id": "28940701803",
+					"overall": "pending",
+					"started_at": "2026-07-08T11:56:36Z",
+					"finished_at": "2026-07-08T14:06:04Z",
+					"duration_min": 129,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28940701803",
+					"branch": "testing"
+				},
+				{
+					"id": "28946870403",
+					"overall": "pending",
+					"started_at": "2026-07-08T13:36:13Z",
+					"finished_at": "2026-07-08T21:17:02Z",
+					"duration_min": 461,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28946870403",
+					"branch": "testing"
+				},
+				{
+					"id": "28978922385",
+					"overall": "pending",
+					"started_at": "2026-07-08T22:03:56Z",
+					"finished_at": "2026-07-09T08:15:11Z",
+					"duration_min": 611,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28978922385",
+					"branch": "testing"
+				},
+				{
+					"id": "29004208914",
+					"overall": "pending",
+					"started_at": "2026-07-09T08:16:40Z",
+					"finished_at": "2026-07-09T08:20:51Z",
+					"duration_min": 4,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29004208914",
+					"branch": "testing"
+				},
+				{
+					"id": "29004480284",
+					"overall": "pending",
+					"started_at": "2026-07-09T08:21:43Z",
+					"finished_at": "2026-07-09T09:28:29Z",
+					"duration_min": 67,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29004480284",
+					"branch": "testing"
+				},
+				{
+					"id": "29008317286",
+					"overall": "pending",
+					"started_at": "2026-07-09T09:28:39Z",
+					"finished_at": "2026-07-09T17:31:08Z",
+					"duration_min": 482,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29008317286",
+					"branch": "testing"
+				},
+				{
+					"id": "29023363171",
+					"overall": "pending",
+					"started_at": "2026-07-09T13:56:59Z",
+					"finished_at": "2026-07-09T17:30:50Z",
+					"duration_min": 214,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29023363171",
+					"branch": "testing"
+				},
+				{
+					"id": "29037334809",
+					"overall": "pending",
+					"started_at": "2026-07-09T17:31:20Z",
+					"finished_at": "2026-07-09T19:57:09Z",
+					"duration_min": 146,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29037334809",
+					"branch": "testing"
+				},
+				{
+					"id": "29046270746",
+					"overall": "pending",
+					"started_at": "2026-07-09T19:59:00Z",
+					"finished_at": "2026-07-09T19:59:47Z",
+					"duration_min": 1,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29046270746",
+					"branch": "testing"
+				},
+				{
+					"id": "29046309790",
+					"overall": "pending",
+					"started_at": "2026-07-09T19:59:41Z",
+					"finished_at": "2026-07-09T22:46:17Z",
+					"duration_min": 167,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29046309790",
+					"branch": "testing"
+				},
+				{
+					"id": "29055521518",
+					"overall": "pending",
+					"started_at": "2026-07-09T22:47:02Z",
+					"finished_at": "2026-07-09T23:32:56Z",
+					"duration_min": 46,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29055521518",
+					"branch": "testing"
+				},
+				{
+					"id": "29057660433",
+					"overall": "pending",
+					"started_at": "2026-07-09T23:33:05Z",
+					"finished_at": "2026-07-10T07:18:53Z",
+					"duration_min": 466,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29057660433",
+					"branch": "testing"
+				},
+				{
+					"id": "29076601909",
+					"overall": "pending",
+					"started_at": "2026-07-10T07:24:51Z",
+					"finished_at": "2026-07-10T12:32:37Z",
+					"duration_min": 308,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29076601909",
+					"branch": "testing"
+				},
+				{
+					"id": "29093568343",
+					"overall": "running",
+					"started_at": "2026-07-10T12:44:37Z",
+					"finished_at": null,
+					"duration_min": null,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29093568343",
+					"branch": "testing"
+				},
+				{
+					"id": "29096973462",
+					"overall": "running",
+					"started_at": "2026-07-10T13:41:05Z",
+					"finished_at": null,
+					"duration_min": null,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29096973462",
+					"branch": "testing"
+				}
+			],
+			"success_rate": null,
+			"avg_duration_min": null,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/dakota/actions/runs/29096973462",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/dakota/blob/main/.github/workflows/build.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['dakota'], populated by a live GitHub Actions workflow-runs query against projectbluefin/dakota."
+		},
+		{
+			"id": "dakota-aarch64",
+			"display_name": "Dakota (aarch64)",
+			"description": "Dakota bootc image build for the aarch64 architecture.",
+			"source": "github-actions",
+			"last_run": {
+				"id": "29092908138",
+				"overall": "pending",
+				"started_at": "2026-07-10T12:32:43Z",
+				"finished_at": "2026-07-10T12:32:44Z",
+				"duration_min": 0,
+				"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29092908138",
+				"branch": "testing"
+			},
+			"history_points": [
+				{
+					"id": "28908673359",
+					"overall": "pending",
+					"started_at": "2026-07-08T00:34:45Z",
+					"finished_at": "2026-07-08T00:34:47Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28908673359",
+					"branch": "testing"
+				},
+				{
+					"id": "28915897868",
+					"overall": "pending",
+					"started_at": "2026-07-08T03:44:37Z",
+					"finished_at": "2026-07-08T03:44:47Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28915897868",
+					"branch": "testing"
+				},
+				{
+					"id": "28923856334",
+					"overall": "pending",
+					"started_at": "2026-07-08T06:58:34Z",
+					"finished_at": "2026-07-08T06:58:43Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28923856334",
+					"branch": "testing"
+				},
+				{
+					"id": "28929630070",
+					"overall": "pending",
+					"started_at": "2026-07-08T08:43:49Z",
+					"finished_at": "2026-07-08T08:43:56Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28929630070",
+					"branch": "testing"
+				},
+				{
+					"id": "28929908588",
+					"overall": "pending",
+					"started_at": "2026-07-08T08:48:39Z",
+					"finished_at": "2026-07-08T08:48:48Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28929908588",
+					"branch": "testing"
+				},
+				{
+					"id": "28930454858",
+					"overall": "pending",
+					"started_at": "2026-07-08T08:57:53Z",
+					"finished_at": "2026-07-08T08:57:54Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28930454858",
+					"branch": "testing"
+				},
+				{
+					"id": "28940658973",
+					"overall": "pending",
+					"started_at": "2026-07-08T11:55:52Z",
+					"finished_at": "2026-07-08T11:56:00Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28940658973",
+					"branch": "testing"
+				},
+				{
+					"id": "28948912176",
+					"overall": "pending",
+					"started_at": "2026-07-08T14:06:12Z",
+					"finished_at": "2026-07-08T14:06:23Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28948912176",
+					"branch": "testing"
+				},
+				{
+					"id": "28976359083",
+					"overall": "pending",
+					"started_at": "2026-07-08T21:17:08Z",
+					"finished_at": "2026-07-08T21:17:09Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/28976359083",
+					"branch": "testing"
+				},
+				{
+					"id": "29004133133",
+					"overall": "pending",
+					"started_at": "2026-07-09T08:15:17Z",
+					"finished_at": "2026-07-09T08:15:27Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29004133133",
+					"branch": "testing"
+				},
+				{
+					"id": "29004439119",
+					"overall": "pending",
+					"started_at": "2026-07-09T08:20:57Z",
+					"finished_at": "2026-07-09T08:20:58Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29004439119",
+					"branch": "testing"
+				},
+				{
+					"id": "29008313892",
+					"overall": "pending",
+					"started_at": "2026-07-09T09:28:35Z",
+					"finished_at": "2026-07-09T09:28:36Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29008313892",
+					"branch": "testing"
+				},
+				{
+					"id": "29037313290",
+					"overall": "pending",
+					"started_at": "2026-07-09T17:30:57Z",
+					"finished_at": "2026-07-09T17:30:58Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29037313290",
+					"branch": "testing"
+				},
+				{
+					"id": "29037330352",
+					"overall": "pending",
+					"started_at": "2026-07-09T17:31:15Z",
+					"finished_at": "2026-07-09T17:31:24Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29037330352",
+					"branch": "testing"
+				},
+				{
+					"id": "29046170935",
+					"overall": "pending",
+					"started_at": "2026-07-09T19:57:15Z",
+					"finished_at": "2026-07-09T19:57:16Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29046170935",
+					"branch": "testing"
+				},
+				{
+					"id": "29046322440",
+					"overall": "pending",
+					"started_at": "2026-07-09T19:59:54Z",
+					"finished_at": "2026-07-09T20:00:04Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29046322440",
+					"branch": "testing"
+				},
+				{
+					"id": "29055492164",
+					"overall": "pending",
+					"started_at": "2026-07-09T22:46:22Z",
+					"finished_at": "2026-07-09T22:46:24Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29055492164",
+					"branch": "testing"
+				},
+				{
+					"id": "29057658255",
+					"overall": "pending",
+					"started_at": "2026-07-09T23:33:02Z",
+					"finished_at": "2026-07-09T23:33:03Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29057658255",
+					"branch": "testing"
+				},
+				{
+					"id": "29076305763",
+					"overall": "pending",
+					"started_at": "2026-07-10T07:18:58Z",
+					"finished_at": "2026-07-10T07:18:59Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29076305763",
+					"branch": "testing"
+				},
+				{
+					"id": "29092908138",
+					"overall": "pending",
+					"started_at": "2026-07-10T12:32:43Z",
+					"finished_at": "2026-07-10T12:32:44Z",
+					"duration_min": 0,
+					"run_url": "https://github.com/projectbluefin/dakota/actions/runs/29092908138",
+					"branch": "testing"
+				}
+			],
+			"success_rate": null,
+			"avg_duration_min": null,
+			"runs_tracked": 20,
+			"ci_url": "https://github.com/projectbluefin/dakota/actions/runs/29092908138",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/dakota/blob/main/.github/workflows/build-aarch64.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['dakota-aarch64'], populated by a live GitHub Actions workflow-runs query against projectbluefin/dakota."
+		},
+		{
+			"id": "cosmic-stable",
+			"display_name": "COSMIC — stable",
+			"description": "COSMIC desktop OCI image built in-cluster via the cosmic-build-pipeline Argo WorkflowTemplate (BST build, exported to local Zot :30500).",
+			"source": "argo",
+			"last_run": {
+				"id": "cosmic-build-pipeline-hv6sj",
+				"overall": "fail",
+				"started_at": "2026-07-04T02:04:44Z",
+				"finished_at": "2026-07-04T02:51:07Z",
+				"duration_min": 46,
+				"run_url": "http://192.168.1.102:32746/workflows/argo/cosmic-build-pipeline-hv6sj",
+				"branch": null
+			},
+			"history_points": [{
+				"id": "cosmic-build-pipeline-hv6sj",
+				"overall": "fail",
+				"started_at": "2026-07-04T02:04:44Z",
+				"finished_at": "2026-07-04T02:51:07Z",
+				"duration_min": 46,
+				"run_url": "http://192.168.1.102:32746/workflows/argo/cosmic-build-pipeline-hv6sj",
+				"branch": null
+			}],
+			"success_rate": 0,
+			"avg_duration_min": 46,
+			"runs_tracked": 1,
+			"ci_url": "http://192.168.1.102:32746/workflows/argo/cosmic-build-pipeline-hv6sj",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/lab/blob/main/argo/workflow-templates/cosmic-build-pipeline.yaml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json build_history['cosmic-build-pipeline'], populated by live Argo workflow scraping against the cluster."
+		},
+		{
+			"id": "cosmic-nvidia",
+			"display_name": "COSMIC — Nvidia",
+			"description": "COSMIC desktop OCI image with proprietary Nvidia driver layering, built in parallel with cosmic-stable by the cosmic-build-pipeline.",
+			"source": "argo",
+			"last_run": {
+				"id": "cosmic-build-pipeline-hv6sj",
+				"overall": "fail",
+				"started_at": "2026-07-04T02:04:44Z",
+				"finished_at": "2026-07-04T02:51:07Z",
+				"duration_min": 46,
+				"run_url": "http://192.168.1.102:32746/workflows/argo/cosmic-build-pipeline-hv6sj",
+				"branch": null
+			},
+			"history_points": [{
+				"id": "cosmic-build-pipeline-hv6sj",
+				"overall": "fail",
+				"started_at": "2026-07-04T02:04:44Z",
+				"finished_at": "2026-07-04T02:51:07Z",
+				"duration_min": 46,
+				"run_url": "http://192.168.1.102:32746/workflows/argo/cosmic-build-pipeline-hv6sj",
+				"branch": null
+			}],
+			"success_rate": 0,
+			"avg_duration_min": 46,
+			"runs_tracked": 1,
+			"ci_url": "http://192.168.1.102:32746/workflows/argo/cosmic-build-pipeline-hv6sj",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/lab/blob/main/argo/workflow-templates/cosmic-build-pipeline.yaml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json build_history['cosmic-build-pipeline'], populated by live Argo workflow scraping against the cluster."
+		},
+		{
+			"id": "cosmic-qa",
+			"display_name": "COSMIC — QA pipeline",
+			"description": "End-to-end COSMIC QA pipeline: smoke, developer, and system suites run against a KubeVirt VM provisioned from the local Zot containerDisk.",
+			"source": "argo",
+			"last_run": {
+				"id": "cosmic-qa-pipeline-4gz7b",
+				"overall": "fail",
+				"started_at": "2026-07-04T02:51:27Z",
+				"finished_at": "2026-07-04T02:51:45Z",
+				"duration_min": 0,
+				"run_url": "http://192.168.1.102:32746/workflows/argo/cosmic-qa-pipeline-4gz7b",
+				"branch": null
+			},
+			"history_points": [{
+				"id": "cosmic-qa-pipeline-bcg7f",
+				"overall": "fail",
+				"started_at": "2026-07-04T02:02:24Z",
+				"finished_at": "2026-07-04T02:02:44Z",
+				"duration_min": 0,
+				"run_url": "http://192.168.1.102:32746/workflows/argo/cosmic-qa-pipeline-bcg7f",
+				"branch": null
+			}, {
+				"id": "cosmic-qa-pipeline-4gz7b",
+				"overall": "fail",
+				"started_at": "2026-07-04T02:51:27Z",
+				"finished_at": "2026-07-04T02:51:45Z",
+				"duration_min": 0,
+				"run_url": "http://192.168.1.102:32746/workflows/argo/cosmic-qa-pipeline-4gz7b",
+				"branch": null
+			}],
+			"success_rate": 0,
+			"avg_duration_min": 0,
+			"runs_tracked": 2,
+			"ci_url": "http://192.168.1.102:32746/workflows/argo/cosmic-qa-pipeline-4gz7b",
+			"state": "available",
+			"state_reason": null,
+			"source_url": "https://github.com/projectbluefin/lab/blob/main/argo/workflow-templates/cosmic-qa-pipeline.yaml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json build_history['cosmic-qa-pipeline'], populated by live Argo workflow scraping against the cluster."
+		},
+		{
+			"id": "snosi-latest",
+			"display_name": "Snosi — latest",
+			"description": "Snosi (Snow OS) image build on the latest branch, published to ghcr.io/frostyard/snow.",
+			"source": "github-actions",
+			"last_run": null,
+			"history_points": [],
+			"success_rate": null,
+			"avg_duration_min": null,
+			"runs_tracked": 0,
+			"ci_url": "https://github.com/frostyard/snow/actions/workflows/build.yml",
+			"state": "unavailable",
+			"state_reason": "No GitHub Actions run has been published yet for this workflow/branch combination, or the GitHub API request failed on the last collector run.",
+			"source_url": "https://github.com/frostyard/snow/blob/main/.github/workflows/build.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['snosi-latest'], populated by a live GitHub Actions workflow-runs query against frostyard/snow."
+		},
+		{
+			"id": "aurora-stable",
+			"display_name": "Aurora — stable",
+			"description": "Aurora main-branch image build (published as the :stable tag).",
+			"source": "github-actions",
+			"last_run": null,
+			"history_points": [],
+			"success_rate": null,
+			"avg_duration_min": null,
+			"runs_tracked": 0,
+			"ci_url": "https://github.com/ublue-os/aurora/actions/workflows/build_ublue.yml",
+			"state": "unavailable",
+			"state_reason": "No GitHub Actions run has been published yet for this workflow/branch combination, or the GitHub API request failed on the last collector run.",
+			"source_url": "https://github.com/ublue-os/aurora/blob/main/.github/workflows/build_ublue.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['aurora-stable'], populated by a live GitHub Actions workflow-runs query against ublue-os/aurora."
+		},
+		{
+			"id": "aurora-testing",
+			"display_name": "Aurora — testing",
+			"description": "Aurora testing-branch image build (published as the :testing tag).",
+			"source": "github-actions",
+			"last_run": null,
+			"history_points": [],
+			"success_rate": null,
+			"avg_duration_min": null,
+			"runs_tracked": 0,
+			"ci_url": "https://github.com/ublue-os/aurora/actions/workflows/build_ublue.yml",
+			"state": "unavailable",
+			"state_reason": "No GitHub Actions run has been published yet for this workflow/branch combination, or the GitHub API request failed on the last collector run.",
+			"source_url": "https://github.com/ublue-os/aurora/blob/main/.github/workflows/build_ublue.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['aurora-testing'], populated by a live GitHub Actions workflow-runs query against ublue-os/aurora."
+		},
+		{
+			"id": "bazzite-stable",
+			"display_name": "Bazzite — stable",
+			"description": "Bazzite main-branch image build (published as the stable release tag).",
+			"source": "github-actions",
+			"last_run": null,
+			"history_points": [],
+			"success_rate": null,
+			"avg_duration_min": null,
+			"runs_tracked": 0,
+			"ci_url": "https://github.com/ublue-os/bazzite/actions/workflows/build_ublue.yml",
+			"state": "unavailable",
+			"state_reason": "No GitHub Actions run has been published yet for this workflow/branch combination, or the GitHub API request failed on the last collector run.",
+			"source_url": "https://github.com/ublue-os/bazzite/blob/main/.github/workflows/build_ublue.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bazzite-stable'], populated by a live GitHub Actions workflow-runs query against ublue-os/bazzite."
+		},
+		{
+			"id": "bazzite-testing",
+			"display_name": "Bazzite — testing",
+			"description": "Bazzite testing-branch image build (published as the :testing tag).",
+			"source": "github-actions",
+			"last_run": null,
+			"history_points": [],
+			"success_rate": null,
+			"avg_duration_min": null,
+			"runs_tracked": 0,
+			"ci_url": "https://github.com/ublue-os/bazzite/actions/workflows/build_ublue.yml",
+			"state": "unavailable",
+			"state_reason": "No GitHub Actions run has been published yet for this workflow/branch combination, or the GitHub API request failed on the last collector run.",
+			"source_url": "https://github.com/ublue-os/bazzite/blob/main/.github/workflows/build_ublue.yml",
+			"collected_at": "2026-07-10T15:58:31Z",
+			"derivation": "Join BUILD_PIPELINE_CATALOG with docs/data/factory-stats.json image_builds['bazzite-testing'], populated by a live GitHub Actions workflow-runs query against ublue-os/bazzite."
+		}
+	]
+};
+//#endregion
+//#region src/pages/builds.astro
+var builds_exports = /* @__PURE__ */ __exportAll({
+	default: () => $$Builds,
+	file: () => $$file,
+	url: () => $$url
+});
+var $$Builds = createComponent(($$result, $$props, $$slots) => {
+	const contract = builds_matrix_default;
+	const baseUrl = "/";
+	const rows = contract.rows;
+	const availableRows = rows.filter((row) => row.state === "available");
+	const unavailableRows = rows.filter((row) => row.state !== "available");
+	const formatUtc = (value) => value ? new Date(value).toLocaleString("en-US", {
+		dateStyle: "medium",
+		timeStyle: "short",
+		timeZone: "UTC"
+	}) + " UTC" : "Never";
+	const statusPill = (overall) => {
+		if (overall === "passed") return {
+			label: "passed",
+			tone: "passed"
+		};
+		if (overall === "fail") return {
+			label: "failed",
+			tone: "failed"
+		};
+		if (overall === "running" || overall === "pending") return {
+			label: overall,
+			tone: "pending"
+		};
+		return {
+			label: "unavailable",
+			tone: "unavailable"
+		};
+	};
+	const payloadJson = serializeJsonScript({
+		generatedAt: contract._meta.generated_at,
+		rows: rows.map((row) => ({
+			id: row.id,
+			display_name: row.display_name,
+			source: row.source ?? "github-actions",
+			success_rate: row.success_rate,
+			avg_duration_min: row.avg_duration_min,
+			runs_tracked: row.runs_tracked,
+			history_points: row.history_points
+		}))
+	});
+	return renderTemplate`${renderComponent($$result, "SiteLayout", $$SiteLayout, {
+		"title": "Builds",
+		"description": "Real OS image build pipelines for Bluefin, Bluefin LTS, and Dakota: last run, duration trend, and evidence links straight from GitHub Actions.",
+		"current": "builds",
+		"data-astro-cid-sod5wth2": true
+	}, { "default": ($$result2) => renderTemplate`${maybeRenderHead($$result2)}<div class="dashboard-header" data-astro-cid-sod5wth2><h1 data-astro-cid-sod5wth2>Builds</h1><div class="meta-bar" data-astro-cid-sod5wth2><span data-astro-cid-sod5wth2>Updated ${formatUtc(contract._meta.generated_at)}</span><span data-astro-cid-sod5wth2>Source: GitHub Actions (GA) + Argo Workflows (cluster)</span><span data-astro-cid-sod5wth2>Status: <span style="color: #fbbf24;" data-astro-cid-sod5wth2>${contract._meta.status}</span></span><a${addAttribute(`${baseUrl}data/builds-matrix.json`, "href")} data-astro-cid-sod5wth2>Raw dataset ↗</a></div></div><h2 class="section-title" data-astro-cid-sod5wth2>Builds at a Glance</h2><div class="kpi-grid" data-astro-cid-sod5wth2>${contract.summary_metrics.map((metric) => renderTemplate`<div class="kpi-card" data-astro-cid-sod5wth2><div class="kpi-card__title" data-astro-cid-sod5wth2>${metric.label}</div><div class="kpi-card__value" data-astro-cid-sod5wth2>${metric.value}</div><div class="kpi-card__sub" data-astro-cid-sod5wth2>${metric.unit}</div></div>`)}</div><h2 class="section-title" data-astro-cid-sod5wth2>Reliability Overview</h2><div class="builds-table-card" style="margin-bottom: 2rem;" data-astro-cid-sod5wth2><div id="builds-chart-overview" style="width: 100%; height: 320px;" role="img" aria-label="Pipeline reliability overview chart" data-astro-cid-sod5wth2></div></div><h2 class="section-title" data-astro-cid-sod5wth2>Pipelines</h2><div class="builds-table-card" data-astro-cid-sod5wth2><div class="table-scroll" data-astro-cid-sod5wth2><table class="builds-table" data-astro-cid-sod5wth2><thead data-astro-cid-sod5wth2><tr data-astro-cid-sod5wth2><th scope="col" data-astro-cid-sod5wth2>Pipeline</th><th scope="col" data-astro-cid-sod5wth2>Source</th><th scope="col" data-astro-cid-sod5wth2>Last run</th><th scope="col" data-astro-cid-sod5wth2>Duration</th><th scope="col" data-astro-cid-sod5wth2>Success rate</th><th scope="col" data-astro-cid-sod5wth2>Trend (${`last 20 runs`})</th><th scope="col" data-astro-cid-sod5wth2>Evidence</th></tr></thead><tbody data-astro-cid-sod5wth2>${rows.map((row) => {
+		const pill = statusPill(row.last_run?.overall);
+		const sourceLabel = row.source === "argo" ? "Argo" : "GitHub Actions";
+		const sourceBadgeStyle = row.source === "argo" ? "background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3);" : "background: rgba(125,211,252,0.1); color: #7dd3fc; border: 1px solid rgba(125,211,252,0.2);";
+		return renderTemplate`<tr${addAttribute([row.state !== "available" && "unavailable-row"], "class:list")} data-astro-cid-sod5wth2><td data-astro-cid-sod5wth2><div class="builds-table__name" data-astro-cid-sod5wth2>${row.display_name}</div><div class="builds-table__desc" data-astro-cid-sod5wth2>${row.description}</div></td><td data-astro-cid-sod5wth2><span${addAttribute(`${sourceBadgeStyle} border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.7rem; font-weight: 700;`, "style")} data-astro-cid-sod5wth2>${sourceLabel}</span></td><td data-astro-cid-sod5wth2>${row.last_run ? renderTemplate`${renderComponent($$result2, "Fragment", Fragment, {}, { "default": ($$result3) => renderTemplate`<span${addAttribute(`pill pill--${pill.tone}`, "class")} data-astro-cid-sod5wth2>${pill.label}</span><div style="margin-top: 0.35rem; font-size: 0.75rem; color: #64748b;" data-astro-cid-sod5wth2>${formatUtc(row.last_run.started_at)}</div>` })}` : renderTemplate`<span class="pill pill--unavailable" data-astro-cid-sod5wth2>unavailable</span>`}</td><td data-astro-cid-sod5wth2>${row.avg_duration_min !== null ? `${row.avg_duration_min} min avg` : "—"}</td><td data-astro-cid-sod5wth2>${row.success_rate !== null ? `${row.success_rate}%` : "—"}</td><td class="sparkline-cell" data-astro-cid-sod5wth2><div${addAttribute(`sparkline-${row.id}`, "id")} style="width: 100%; height: 100%;" role="img"${addAttribute(`Duration trend for ${row.display_name}`, "aria-label")} data-astro-cid-sod5wth2></div></td><td data-astro-cid-sod5wth2><a class="evidence-link"${addAttribute(row.source_url, "href")} target="_blank" rel="noreferrer" data-astro-cid-sod5wth2>Workflow source ↗</a>${row.ci_url && renderTemplate`${renderComponent($$result2, "Fragment", Fragment, {}, { "default": ($$result3) => renderTemplate`<br data-astro-cid-sod5wth2><a class="evidence-link"${addAttribute(row.ci_url, "href")} target="_blank" rel="noreferrer" data-astro-cid-sod5wth2>${row.source === "argo" ? "Last run on Argo UI ↗" : "Last run on GitHub ↗"}</a>` })}`}${row.state !== "available" && renderTemplate`<p style="font-size: 0.72rem; color: #64748b; margin: 0.35rem 0 0 0;" data-astro-cid-sod5wth2>${row.state_reason}</p>`}</td></tr>`;
+	})}</tbody></table></div></div><div class="integrity-panel" data-astro-cid-sod5wth2><h4 data-astro-cid-sod5wth2>Data Integrity Posture</h4><ul class="integrity-list" data-astro-cid-sod5wth2><li data-astro-cid-sod5wth2><strong data-astro-cid-sod5wth2>${availableRows.length}</strong> of <strong data-astro-cid-sod5wth2>${rows.length}</strong> tracked pipelines have at least one published run.</li><li data-astro-cid-sod5wth2><strong data-astro-cid-sod5wth2>${unavailableRows.length}</strong> pipelines have no published GitHub Actions run yet for their tracked branch.</li></ul><a${addAttribute(`${baseUrl}data/builds-matrix.json`, "href")} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;" data-astro-cid-sod5wth2>Open raw dataset ↗</a></div><script type="application/json" id="builds-chart-data">${unescapeHTML(payloadJson)}<\/script><script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"><\/script><script${addAttribute(builds_charts_default, "src")} defer data-cfasync="false"><\/script>` })}`;
+}, "/var/home/jorge/src/lab/src/pages/builds.astro", void 0);
+var $$file = "/var/home/jorge/src/lab/src/pages/builds.astro";
+var $$url = "/builds/";
+//#endregion
+//#region \0virtual:astro:page:src/pages/builds@_@astro
+var page = () => builds_exports;
+//#endregion
+export { page };

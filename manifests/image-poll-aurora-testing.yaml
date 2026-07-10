@@ -1,5 +1,5 @@
-# CronWorkflow: polls ghcr.io/ublue-os/aurora:testing hourly.
-# Triggers bluefin-qa-pipeline (system suite only — aurora uses KDE)
+# CronWorkflow: polls ghcr.io/ublue-os/aurora:testing every 3 hours.
+# Triggers bluefin-qa-pipeline (system + smoke + developer + software suites)
 # only when OCI digest changes vs ConfigMap state.
 # Replaces nightly-aurora (time-based) with digest-triggered polling.
 apiVersion: argoproj.io/v1alpha1
@@ -39,7 +39,7 @@ spec:
         - name: namespace
           value: "aurora-test"
         - name: suites
-          value: "system"
+          value: "smoke,developer,software,system"
         - name: vm-memory
           value: "8Gi"
         - name: variant

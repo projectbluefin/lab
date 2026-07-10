@@ -73,6 +73,31 @@ const formatDuration = (seconds?: number) => {
   const remainingSeconds = Math.round(seconds % 60);
   return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
 };
+
+const history = row.details?.history || [];
+const passRates = history.map((h) => {
+  const scenarios = h.scenarios;
+  const failed = h.failed;
+  return scenarios > 0 ? Number((((scenarios - failed) / scenarios) * 100).toFixed(2)) : null;
+}).filter((r): r is number => r !== null);
+
+const avgPassRate = passRates.length ? Math.round(passRates.reduce((a, b) => a + b, 0) / passRates.length) : null;
+const maxFailed = history.length ? Math.max(...history.map(h => h.failed)) : 0;
+const failureDelta = history.length >= 2 ? history[0].failed - history[1].failed : null;
+
+const streakCount = (() => {
+  if (!history.length) return { status: 'passed', count: 0 };
+  const targetStatus = history[0].status;
+  let count = 0;
+  for (const entry of history) {
+    if (entry.status === targetStatus) {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return { status: targetStatus, count };
+})();
 ---
 
 <style>
@@ -384,19 +409,131 @@ const formatDuration = (seconds?: number) => {
   .success-run-meta strong {
     color: #cbd5e1;
   }
+
+  /* Scoped summary styles for high visual density */
+  .detail-card__header-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.45rem;
+    flex-wrap: wrap;
+  }
+  .header-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.12rem 0.4rem;
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+    text-transform: capitalize;
+  }
+  .header-badge--branch {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.2);
+  }
+  .header-badge--mode {
+    background: rgba(168, 85, 247, 0.12);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.2);
+  }
+  .header-badge--scenarios {
+    background: rgba(255, 255, 255, 0.05);
+    color: #cbd5e1;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .header-badge--runs {
+    background: rgba(249, 115, 22, 0.12);
+    color: #fb923c;
+    border: 1px solid rgba(249, 115, 22, 0.2);
+  }
+  .header-badge--time {
+    color: #64748b;
+    font-size: 0.68rem;
+    margin-left: 0.25rem;
+  }
+
+  /* Mini progress bar on collapsed card summary */
+  .mini-progress-bar-container {
+    width: 80px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 0.25rem;
+  }
+  .mini-progress-bar {
+    height: 100%;
+    border-radius: 999px;
+  }
+
+  /* History stats grid */
+  .timeline-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: 0.75rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 0.75rem;
+  }
+  .timeline-stat-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .timeline-stat-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+  }
+  .timeline-stat-value {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #cbd5e1;
+  }
+  .timeline-stat-value.value--passed { color: #10b981; }
+  .timeline-stat-value.value--failed { color: #f43f5e; }
 </style>
 
 <details id={row.id} class="detail-card" open={row.state === 'available'} data-test-card data-test-id={row.id} data-test-variant={row.variant} data-test-suite={row.suite} data-test-status={row.state === 'available' ? row.result_status : 'unavailable'}>
   <summary>
-    <div>
+    <div style="flex: 1; min-width: 0;">
       <p class="detail-card__eyebrow">{row.variant} · {row.suite}</p>
       <h3>{row.id}</h3>
+      <div class="detail-card__header-meta">
+        <span class="header-badge header-badge--branch">{row.branch}</span>
+        <span class="header-badge header-badge--mode">{row.suite === 'system' ? 'KubeVirt VM' : 'Container'}</span>
+        {row.state === 'available' && (
+          <>
+            <span class="header-badge header-badge--scenarios">{row.scenarios_total} scenarios</span>
+            <span class="header-badge header-badge--runs">{row.history_points} runs</span>
+            <span class="header-badge header-badge--time">
+              Last run: {row.last_run ? new Date(row.last_run).toLocaleDateString() : 'Awaiting Run'}
+            </span>
+          </>
+        )}
+      </div>
     </div>
-    <div class="detail-card__summary">
+    <div class="detail-card__summary" style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
       <span class={`pill pill--${row.state === 'available' ? row.result_status : 'unavailable'}`}>
         {row.state === 'available' ? row.result_status : 'unavailable'}
       </span>
-      <strong>{row.pass_rate !== null ? `${row.pass_rate}%` : 'No pass rate'}</strong>
+      <strong>{row.pass_rate !== null ? `${row.pass_rate}%` : '—'}</strong>
+      {row.pass_rate !== null && (
+        <div class="mini-progress-bar-container">
+          <div
+            class="mini-progress-bar"
+            style={`width: ${row.pass_rate}%; background: ${
+              row.pass_rate >= 90
+                ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                : row.pass_rate >= 60
+                  ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                  : 'linear-gradient(90deg, #ef4444, #f87171)'
+            };`}
+          />
+        </div>
+      )}
     </div>
   </summary>
 
@@ -522,27 +659,52 @@ const formatDuration = (seconds?: number) => {
 
         {/* ── Historical Dot-Timeline ── */}
         {row.details?.history?.length ? (
-          <div class="history-timeline">
-            <span class="timeline-label">Execution Timeline (Last 15 Runs)</span>
-            <div class="timeline-dots">
-              {[...row.details.history].reverse().map((entry) => {
-                const rate = detailPassRate(entry.scenarios, entry.failed);
-                const runTimestamp = entry.run_date || (entry as any).run;
-                const formattedDate = runTimestamp ? new Date(runTimestamp).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                }) : 'Unknown Date';
-                const durationText = entry.duration_seconds ? ` | Duration: ${formatDuration(entry.duration_seconds)}` : '';
-                const tooltip = `Workflow: ${entry.workflow_name || 'Manual'} | Pass Rate: ${rate !== null ? `${rate}%` : '—'} | Failed: ${entry.failed}/${entry.scenarios}${durationText} | ${formattedDate}`;
-                return (
-                  <span 
-                    class:list={['dot', entry.status === 'passed' ? 'passed' : 'failed']} 
-                    data-tooltip={tooltip}
-                  />
-                );
-              })}
+          <div class="history-timeline" style="flex-direction: column; align-items: stretch; gap: 0.75rem;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; width: 100%;">
+              <span class="timeline-label">Execution Timeline (Last 15 Runs)</span>
+              <div class="timeline-dots">
+                {[...row.details.history].reverse().map((entry) => {
+                  const rate = detailPassRate(entry.scenarios, entry.failed);
+                  const runTimestamp = entry.run_date || (entry as any).run;
+                  const formattedDate = runTimestamp ? new Date(runTimestamp).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }) : 'Unknown Date';
+                  const durationText = entry.duration_seconds ? ` | Duration: ${formatDuration(entry.duration_seconds)}` : '';
+                  const tooltip = `Workflow: ${entry.workflow_name || 'Manual'} | Pass Rate: ${rate !== null ? `${rate}%` : '—'} | Failed: ${entry.failed}/${entry.scenarios}${durationText} | ${formattedDate}`;
+                  return (
+                    <span 
+                      class:list={['dot', entry.status === 'passed' ? 'passed' : 'failed']} 
+                      data-tooltip={tooltip}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            <div class="timeline-stats-grid">
+              <div class="timeline-stat-item">
+                <span class="timeline-stat-label">Avg Pass Rate</span>
+                <span class="timeline-stat-value">{avgPassRate !== null ? `${avgPassRate}%` : '—'}</span>
+              </div>
+              <div class="timeline-stat-item">
+                <span class="timeline-stat-label">Active Streak</span>
+                <span class:list={['timeline-stat-value', streakCount.status === 'passed' ? 'value--passed' : 'value--failed']}>
+                  {streakCount.count} {streakCount.status === 'passed' ? 'passes' : 'failures'}
+                </span>
+              </div>
+              <div class="timeline-stat-item">
+                <span class="timeline-stat-label">Peak Failures</span>
+                <span class="timeline-stat-value">{maxFailed} failed</span>
+              </div>
+              <div class="timeline-stat-item">
+                <span class="timeline-stat-label">Latest Delta</span>
+                <span class:list={['timeline-stat-value', failureDelta !== null && failureDelta > 0 ? 'value--failed' : (failureDelta !== null && failureDelta < 0 ? 'value--passed' : '')]}>
+                  {failureDelta === null ? '—' : (failureDelta > 0 ? `+${failureDelta} fails` : (failureDelta < 0 ? `${failureDelta} fails` : 'No change'))}
+                </span>
+              </div>
             </div>
           </div>
         ) : null}

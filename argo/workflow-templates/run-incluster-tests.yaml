@@ -103,6 +103,13 @@ spec:
       - name: BRANCH
         value: '{{inputs.parameters.branch}}'
       image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
       name: git-sync
       volumeMounts:
       - mountPath: /workspace

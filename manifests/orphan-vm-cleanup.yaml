@@ -49,8 +49,11 @@ spec:
                   -o jsonpath='{.metadata.labels.argo-workflow}' 2>/dev/null || true)
                 if [[ -n "${WF_LABEL}" ]]; then
                   if kubectl get workflow "${WF_LABEL}" -n argo &>/dev/null; then
-                    echo "SKIP ${NS}/${VM}: workflow ${WF_LABEL} still active" >&2
-                    continue
+                    PHASE=$(kubectl get workflow "${WF_LABEL}" -n argo -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                    if [[ "${PHASE}" != "Succeeded" && "${PHASE}" != "Failed" && "${PHASE}" != "Error" ]]; then
+                      echo "SKIP ${NS}/${VM}: workflow ${WF_LABEL} still active (phase: ${PHASE})" >&2
+                      continue
+                    fi
                   fi
                 fi
                 echo "DELETE orphan: ${NS}/${VM}" >&2

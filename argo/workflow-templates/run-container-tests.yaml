@@ -28,6 +28,13 @@ spec:
         value: "bluefin"
       - name: branch
         value: "main"
+        # testsuite-repo: canonical test repo. Override only for forks.
+      - name: testsuite-repo
+        value: "https://github.com/projectbluefin/testsuite"
+        # testsuite-branch: branch to clone from projectbluefin/testsuite.
+        # Use 'main' for nightly runs; set to a PR branch for end-to-end PR testing.
+      - name: testsuite-branch
+        value: "main"
       - name: behave-tags
         value: ""
     outputs:
@@ -53,10 +60,16 @@ spec:
       args:
       - |
         set -euo pipefail
-        # cgr.dev/chainguard/git has no rm, but we don't need it as workspace is a fresh emptyDir
-        git clone --depth 1 --branch "{{inputs.parameters.branch}}" \
-            https://github.com/projectbluefin/lab \
-            /workspace/lab
+        # Clone projectbluefin/testsuite — the canonical home for all Bluefin image tests.
+        # Falls back to main if the requested branch doesn't exist (PR branch testing).
+        TSREPO="{{inputs.parameters.testsuite-repo}}"
+        TSBRANCH="{{inputs.parameters.testsuite-branch}}"
+        if git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}" /workspace/testsuite 2>/dev/null; then
+          echo "Cloned testsuite @ ${TSBRANCH}"
+        else
+          echo "Branch ${TSBRANCH} not found, falling back to main" >&2
+          git clone --depth 1 "${TSREPO}" /workspace/testsuite
+        fi
     container:
       image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
       imagePullPolicy: IfNotPresent
@@ -145,10 +158,11 @@ spec:
         #!/bin/bash
         set -euo pipefail
         export PATH="/home/bluefin-test/.local/bin:${PATH}"
-        export PYTHONPATH="/workspace/lab"
+        # testsuite uses its own PYTHONPATH root so 'tests.shared.*' imports resolve.
+        export PYTHONPATH="/workspace/testsuite"
 
         echo "Waiting for GNOME Shell AT-SPI to start..." >&2
-        python3 /workspace/lab/tests/shared/wait_for_shell.py
+        python3 /workspace/testsuite/tests/shared/wait_for_shell.py
 
         echo "Starting ponytail daemon..." >&2
         /usr/libexec/gnome-ponytail-daemon &
@@ -161,7 +175,7 @@ spec:
         fi
 
         BEHAVE_RC=0
-        python3 -m behave /workspace/lab/tests/${SUITE}/features/ \
+        python3 -m behave /workspace/testsuite/tests/${SUITE}/features/ \
           --format json.pretty \
           --outfile /tmp/results/results.json \
           --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
@@ -188,11 +202,12 @@ spec:
           #   bluefin:testing     -> bluefin-testing
           #   bluefin:lts-testing -> bluefin-lts-testing (VARIANT contains 'lts')
           #   aurora:testing      -> aurora-testing      (VARIANT=aurora, image-tag=testing)
+          #   snosi:latest        -> snosi-latest        (VARIANT=snosi, image-tag=latest)
           #   dakota:testing      -> dakota-testing
           #   bazzite:testing     -> bazzite-testing
           IMAGE_TAG="{{inputs.parameters.image-tag}}"
           case "${VARIANT}" in
-            aurora|bazzite|dakota)
+            aurora|bazzite|dakota|snosi)
               IMG_SLUG="${VARIANT}-${IMAGE_TAG}" ;;
             *lts*)
               IMG_SLUG="bluefin-lts-${IMAGE_TAG}" ;;

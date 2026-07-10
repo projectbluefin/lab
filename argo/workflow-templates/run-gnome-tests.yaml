@@ -436,13 +436,14 @@ spec:
         # Derive image slug for screenshot tag and results JSON push.
         # Convention: testing -> bluefin-testing, lts-testing -> bluefin-lts-testing,
         # bazzite-testing -> bazzite-testing, aurora-testing -> aurora-testing,
-        # dakota-testing -> dakota-testing.
+        # dakota-testing -> dakota-testing, snosi-latest -> snosi-latest.
         VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
         case "${VARIANT_TAG}" in
           lts-*)     IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
           dakota-*)  IMG_SLUG="${VARIANT_TAG}" ;;
           bazzite-*) IMG_SLUG="${VARIANT_TAG}" ;;
           aurora-*)  IMG_SLUG="${VARIANT_TAG}" ;;
+          snosi-*)   IMG_SLUG="${VARIANT_TAG}" ;;
           *)         IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
         esac
 

@@ -64,6 +64,10 @@ spec:
       value: ""
     - name: vm-memory
       value: "8Gi"
+      # Branch of projectbluefin/testsuite to clone for container test lanes.
+      # Default 'main'. Override to test a testsuite PR branch without merging.
+    - name: testsuite-branch
+      value: "main"
 
   # ── pipeline DAG ─────────────────────────────────────────────────────────────
   templates:
@@ -122,6 +126,8 @@ spec:
             value: "{{workflow.parameters.ssh-key-secret}}"
           - name: branch
             value: "{{workflow.parameters.branch}}"
+          - name: testsuite-branch
+            value: "{{workflow.parameters.testsuite-branch}}"
           - name: vm-memory
             value: "{{workflow.parameters.vm-memory}}"
 
@@ -168,6 +174,7 @@ spec:
       - name: variant
       - name: ssh-key-secret
       - name: branch
+      - name: testsuite-branch
       - name: vm-memory
     steps:
     - - name: provision
@@ -204,6 +211,8 @@ spec:
             value: "{{inputs.parameters.variant}}"
           - name: branch
             value: "{{inputs.parameters.branch}}"
+          - name: testsuite-branch
+            value: "{{inputs.parameters.testsuite-branch}}"
           - name: behave-tags
             value: ""
       - name: run-tests-vm

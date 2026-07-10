@@ -346,35 +346,34 @@ spec:
 
         printf '%s\n' \
           '#!/bin/bash' \
-          'args=()' \
-          'for arg in "$@"; do' \
-          '  if [ "$arg" = "--filesystem" ]; then' \
-          '    args+=("--device")' \
-          '  elif [ "$arg" = "/" ] && [ "${args[-1]}" = "--device" ]; then' \
-          '    loop_dev=$(ls /dev/loop*p3 2>/dev/null | head -n 1 | sed "s/p3$//")' \
-          '    if [ -z "$loop_dev" ]; then' \
-          '      loop_dev="/dev/loop0"' \
-          '    fi' \
-          '    args+=("$loop_dev")' \
-          '  else' \
-          '    args+=("$arg")' \
+          'if [[ "$*" == *"-J"* ]] && [[ "$*" == *"--output=SOURCE,FSTYPE,OPTIONS,UUID"* ]]; then' \
+          '  path="${@: -1}"' \
+          '  loop_dev=$(ls /dev/loop*p3 2>/dev/null | head -n 1 | sed "s/p3$//")' \
+          '  if [ -z "$loop_dev" ]; then' \
+          '    loop_dev="/dev/loop0"' \
           '  fi' \
-          'done' \
-          'exec -a bootupctl /usr/bin/bootupctl.orig "${args[@]}"' \
-          > "${BOOTABLE_CTX}/bootupctl-wrapper"
+          '  if [ "$path" = "/boot" ]; then' \
+          '    echo "{\"filesystems\": [{\"source\": \"${loop_dev}p2\", \"fstype\": \"vfat\", \"options\": \"rw,relatime\", \"uuid\": \"1234-5678\"}]}"' \
+          '  else' \
+          '    echo "{\"filesystems\": [{\"source\": \"${loop_dev}p3\", \"fstype\": \"btrfs\", \"options\": \"rw,relatime,subvol=/\", \"uuid\": \"7ae86aa6-e733-41e6-bed7-7fda4b6f4e9b\"}]}"' \
+          '  fi' \
+          'else' \
+          '  exec /usr/sbin/findmnt.orig "$@"' \
+          'fi' \
+          > "${BOOTABLE_CTX}/findmnt-wrapper"
 
         printf '%s\n' \
           "FROM ${IMAGE}" \
           "LABEL containers.bootc=1" \
           'RUN set -eux; kver=$(basename /usr/lib/modules/*); test -e "/usr/lib/modules/${kver}/vmlinuz" || cp /boot/vmlinuz "/usr/lib/modules/${kver}/vmlinuz"' \
-          'COPY bootupctl-wrapper /tmp/bootupctl-wrapper' \
+          'COPY findmnt-wrapper /tmp/findmnt-wrapper' \
           'RUN set -eux; \' \
-          '    if [ -f /usr/bin/bootupctl ]; then \' \
-          '        mv /usr/bin/bootupctl /usr/bin/bootupctl.orig; \' \
-          '        mv /tmp/bootupctl-wrapper /usr/bin/bootupctl; \' \
-          '        chmod +x /usr/bin/bootupctl; \' \
+          '    if [ -f /usr/sbin/findmnt ]; then \' \
+          '        mv /usr/sbin/findmnt /usr/sbin/findmnt.orig; \' \
+          '        mv /tmp/findmnt-wrapper /usr/sbin/findmnt; \' \
+          '        chmod +x /usr/sbin/findmnt; \' \
           '    else \' \
-          '        rm -f /tmp/bootupctl-wrapper; \' \
+          '        rm -f /tmp/findmnt-wrapper; \' \
           '    fi' \
           > "${BOOTABLE_CTX}/Containerfile"
         echo "[BUILD] deriving bootable source image ${BOOTABLE_IMAGE_LOCAL}"
@@ -384,6 +383,24 @@ spec:
         cat > /etc/containers/registries.conf.d/bluefin-local-zot.conf <<'EOF'
         [[registry]]
         location = "192.168.1.102:30500"
+        insecure = true
+
+        [[registry]]
+        location = "ghcr.io"
+        [[registry.mirror]]
+        location = "192.168.1.102:30501/ghcr"
+        insecure = true
+
+        [[registry]]
+        location = "quay.io"
+        [[registry.mirror]]
+        location = "192.168.1.102:30501/quay"
+        insecure = true
+
+        [[registry]]
+        location = "docker.io"
+        [[registry.mirror]]
+        location = "192.168.1.102:30501/docker"
         insecure = true
         EOF
         SOURCE_IMGREF="docker://${BOOTABLE_IMAGE_REMOTE}"
@@ -444,10 +461,10 @@ spec:
               fi
               SSHD_ENABLED=true
 
-              # Restore original bootupctl binary if wrapper exists
-              if [ -f "${DEPLOY_DIR}/usr/bin/bootupctl.orig" ]; then
-                mv "${DEPLOY_DIR}/usr/bin/bootupctl.orig" "${DEPLOY_DIR}/usr/bin/bootupctl"
-                echo "[POST-INSTALL] Original bootupctl binary restored in ${DEPLOY_DIR}"
+              # Restore original findmnt binary if wrapper exists
+              if [ -f "${DEPLOY_DIR}/usr/sbin/findmnt.orig" ]; then
+                mv "${DEPLOY_DIR}/usr/sbin/findmnt.orig" "${DEPLOY_DIR}/usr/sbin/findmnt"
+                echo "[POST-INSTALL] Original findmnt binary restored in ${DEPLOY_DIR}"
               fi
 
               umount "${SYSROOT}"

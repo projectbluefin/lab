@@ -41,7 +41,7 @@ metadata:
 ## Ethernet mode (USB4 data plane down)
 
 When the ghost<->exo-0 USB4 link is down (see RUNBOOK), all cross-node traffic
-rides 1GbE. The cluster stays good at ingesting BST builds via:
+rides 2.5GbE. The cluster stays good at ingesting BST builds via:
 
 - **Node-local CAS read cache**: `manifests/buildbarn-config.yaml` worker.jsonnet
   wraps the shared sharded CAS in `readCaching` — `fast` = `local` disk cache on

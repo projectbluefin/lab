@@ -478,11 +478,25 @@ activeDeadlineSeconds: 3600   # 1h for containerdisk, 7200 for knuckle
 
 **VMs float to any KubeVirt-capable node** — no `nodeSelector: kubernetes.io/hostname: ghost` in VM specs. The registry-mirror-config DaemonSet writes the Zot HTTP registry config to all nodes.
 
-### 16. GitHub Contents API write-back — curl+jq only
+### 16. GitHub Contents API or Standalone Git Push-back — Prefer Standalone Python for Complex Files
 
-When a workflow pod needs to push a file to a GitHub repo (e.g. Pages results JSON), use `curl` + `jq` inside the bash script. Never use inline Python (`python3 -c "..."`) — colons and quotes in Python code break YAML block scalar parsing and produce ArgoCD `ManifestGenerationError`.
+When a workflow pod needs to push a simple file to a GitHub repo, use `curl` + `jq` inside the bash script (Contents API).
 
-**Pattern (verified against Context7 `/websites/github_en_rest`):**
+However, for complex updates (such as parsing BDD/behave test results, merging with historical runs, and capping the history), **never use inline python or complex inline bash blocks**. Instead, extract the logic into a **standalone Python script** inside the repository (e.g. `scripts/publish_test_results.py`), clone the repository dynamically within the container using `GITHUB_TOKEN`, and run the script locally to perform a standard git transaction (`git clone` → update → `git commit` → `git push`).
+
+**Pattern for Standalone Git Push-back:**
+```yaml
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+          echo "Publishing test results back to lab repository..." >&2
+          rm -rf /tmp/lab-code
+          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+          python3 /tmp/lab-code/scripts/publish_test_results.py /tmp/results/results.json "${IMG_SLUG}" "${SUITE}" "{{workflow.name}}" "${GITHUB_TOKEN}" || echo "Warning: failed to publish test results" >&2
+        else
+          echo "No GITHUB_TOKEN - skipping test results publication" >&2
+        fi
+```
+
+**Contents API Pattern (for simple single-file writes, verified against Context7 `/websites/github_en_rest`):**
 ```bash
 # GET current file sha (required for updates)
 CURRENT=$(curl -sf \

@@ -327,7 +327,7 @@ spec:
           # Distributed remote execution only when the detect-build-mode step
           # selected it AND this is the first attempt. Retries force cache-only:
           # the common retry cause is the USB4 link dropping mid-build, and RE
-          # input-root fan-out over 1GbE saturates the LAN. Everything already
+          # input-root fan-out over 2.5GbE saturates the LAN. Everything already
           # built is in the Buildbarn cache, so the cache-only retry is cheap.
           MODE="{{inputs.parameters.mode}}"
           ATTEMPT="{{retries}}"

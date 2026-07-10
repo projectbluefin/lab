@@ -474,6 +474,16 @@ spec:
         fi
 
 
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+          echo "Publishing test results back to lab repository..." >&2
+          rm -rf /tmp/lab-code
+          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+          python3 /tmp/lab-code/scripts/publish_test_results.py /tmp/results/results.json "${IMG_SLUG}" "${SUITE}" "{{workflow.name}}" "${GITHUB_TOKEN}" || echo "Warning: failed to publish test results" >&2
+        else
+          echo "No GITHUB_TOKEN - skipping test results publication" >&2
+        fi
+
+
         echo "Done. Results in /tmp/results/" >&2
         # Print full results JSON to stderr — captured by Loki and Argo MCP get_workflow_logs
         if [[ -f /tmp/results/results.json ]]; then

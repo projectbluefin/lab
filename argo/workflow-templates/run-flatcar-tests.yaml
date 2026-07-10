@@ -103,6 +103,17 @@ spec:
           --no-capture \
           ${TAGS_ARG} || BEHAVE_RC=$?
 
+
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+          echo "Publishing flatcar test results back to lab repository..." >&2
+          rm -rf /tmp/lab-code
+          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+          python3 /tmp/lab-code/scripts/publish_test_results.py /tmp/results/results.json "flatcar-testing" "flatcar" "{{workflow.name}}" "${GITHUB_TOKEN}" || echo "Warning: failed to publish test results" >&2
+        else
+          echo "No GITHUB_TOKEN - skipping test results publication" >&2
+        fi
+
+
         python3 -c "
         import json
         try:

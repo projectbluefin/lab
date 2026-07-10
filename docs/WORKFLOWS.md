@@ -57,7 +57,7 @@
   enables remote execution only when both ghost and exo-0 report
   `lab.projectbluefin.io/usb4-link=up`; otherwise the lane falls back to
   cache-only mode over ethernet. Retries always force cache-only so a transient
-  link drop does not saturate 1GbE.
+  link drop does not saturate 2.5GbE.
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
@@ -147,7 +147,7 @@ Buildbarn's runner deliberately does not grant. For Dakota, the BuildStream lane
 uses the shared Buildbarn cache path for artifact writes and only opts into remote
 execution when the USB4 data-plane is confirmed up; if the link is down or a
 retry happens, it falls back to the low-concurrency, cache-only path so the
-cluster stays usable over 1GbE.
+cluster stays usable over 2.5GbE.
 
 ## Cache Warming (Pollers)
 

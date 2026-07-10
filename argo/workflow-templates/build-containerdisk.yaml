@@ -384,7 +384,7 @@ spec:
           '    echo "{\"filesystems\": [{\"source\": \"${loop_dev}p3\", \"fstype\": \"btrfs\", \"options\": \"rw,relatime,subvol=/\", \"uuid\": \"7ae86aa6-e733-41e6-bed7-7fda4b6f4e9b\"}]}"' \
           '  fi' \
           'else' \
-          '  exec /usr/sbin/findmnt.orig "$@"' \
+          '  exec "${0}.orig" "$@"' \
           'fi' \
           > "${BOOTABLE_CTX}/findmnt-wrapper"
 
@@ -394,19 +394,26 @@ spec:
           'RUN set -eux; kver=$(basename /usr/lib/modules/*); test -e "/usr/lib/modules/${kver}/vmlinuz" || cp /boot/vmlinuz "/usr/lib/modules/${kver}/vmlinuz"' \
           'COPY findmnt-wrapper /tmp/findmnt-wrapper' \
           'RUN set -eux; \' \
-          '    if [ -f /usr/sbin/findmnt ]; then \' \
-          '        mv /usr/sbin/findmnt /usr/sbin/findmnt.orig; \' \
-          '        ln -sf /usr/sbin/findmnt.orig /usr/bin/findmnt.orig; \' \
-          '        ln -sf /usr/sbin/findmnt.orig /bin/findmnt.orig; \' \
-          '        ln -sf /usr/sbin/findmnt.orig /sbin/findmnt.orig; \' \
-          '        mv /tmp/findmnt-wrapper /usr/sbin/findmnt; \' \
-          '        chmod +x /usr/sbin/findmnt; \' \
-          '        ln -sf /usr/sbin/findmnt /usr/bin/findmnt; \' \
-          '        ln -sf /usr/sbin/findmnt /bin/findmnt; \' \
-          '        ln -sf /usr/sbin/findmnt /sbin/findmnt; \' \
+          '    CANONICAL_PATHS=""; \' \
+          '    for p in /usr/bin/findmnt /usr/sbin/findmnt /bin/findmnt /sbin/findmnt; do \' \
+          '        if [ -f "$p" ]; then \' \
+          '            CAN_PATH=$(readlink -f "$p"); \' \
+          '            if [[ " ${CANONICAL_PATHS} " != *" ${CAN_PATH} "* ]]; then \' \
+          '                CANONICAL_PATHS="${CANONICAL_PATHS} ${CAN_PATH}"; \' \
+          '            fi; \' \
+          '        fi; \' \
+          '    done; \' \
+          '    if [ -n "${CANONICAL_PATHS}" ]; then \' \
+          '        for CAN_PATH in ${CANONICAL_PATHS}; do \' \
+          '            mv "${CAN_PATH}" "${CAN_PATH}.orig"; \' \
+          '            cp /tmp/findmnt-wrapper "${CAN_PATH}"; \' \
+          '            chmod +x "${CAN_PATH}"; \' \
+          '            echo "findmnt wrapper installed at ${CAN_PATH}"; \' \
+          '        done; \' \
           '    else \' \
-          '        rm -f /tmp/findmnt-wrapper; \' \
-          '    fi' \
+          '        echo "findmnt binary not found, skipping wrapper"; \' \
+          '    fi; \' \
+          '    rm -f /tmp/findmnt-wrapper' \
           > "${BOOTABLE_CTX}/Containerfile"
         echo "[BUILD] deriving bootable source image ${BOOTABLE_IMAGE_LOCAL}"
         podman build --tls-verify=false -t "${BOOTABLE_IMAGE_LOCAL}" -f "${BOOTABLE_CTX}/Containerfile" "${BOOTABLE_CTX}"
@@ -469,16 +476,13 @@ spec:
               fi
               SSHD_ENABLED=true
 
-              # Restore original findmnt binary if wrapper exists
-              if [ -f "${DEPLOY_DIR}/usr/sbin/findmnt.orig" ]; then
-                mv "${DEPLOY_DIR}/usr/sbin/findmnt.orig" "${DEPLOY_DIR}/usr/sbin/findmnt"
-                rm -f "${DEPLOY_DIR}/usr/bin/findmnt.orig" "${DEPLOY_DIR}/bin/findmnt.orig" "${DEPLOY_DIR}/sbin/findmnt.orig"
-                rm -f "${DEPLOY_DIR}/usr/bin/findmnt" "${DEPLOY_DIR}/bin/findmnt" "${DEPLOY_DIR}/sbin/findmnt"
-                cp "${DEPLOY_DIR}/usr/sbin/findmnt" "${DEPLOY_DIR}/usr/bin/findmnt"
-                cp "${DEPLOY_DIR}/usr/sbin/findmnt" "${DEPLOY_DIR}/bin/findmnt"
-                cp "${DEPLOY_DIR}/usr/sbin/findmnt" "${DEPLOY_DIR}/sbin/findmnt"
-                echo "[POST-INSTALL] Original findmnt binary restored in ${DEPLOY_DIR}"
-              fi
+              # Restore original findmnt binaries by finding all findmnt.orig in the deployed system root
+              echo "[POST-INSTALL] Restoring original findmnt binaries..."
+              find "${DEPLOY_DIR}" -name "findmnt.orig" | while read -r orig_file; do
+                base_dir=$(dirname "${orig_file}")
+                mv "${orig_file}" "${base_dir}/findmnt"
+                echo "[POST-INSTALL] Restored findmnt in ${base_dir}"
+              done
 
               umount "${SYSROOT}"
               break

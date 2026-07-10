@@ -111,9 +111,9 @@ spec:
                 # This guarantees DNS queries are immune to any USB4 interface state or table 40.
                 for proto in udp tcp; do
                   for porttype in dport sport; do
-                    if ! nsenter -t 1 -n -- ip rule show | grep -F "5208:" | grep -q "${proto} ${porttype} 53"; then
+                    if ! nsenter -t 1 -m -n -- /usr/sbin/ip rule show | grep -F "5208:" | grep -q "${proto} ${porttype} 53"; then
                       echo "Applying persistent SRE DNS routing override: ${proto} ${porttype} 53 via main table"
-                      nsenter -t 1 -n -- ip rule add ipproto ${proto} ${porttype} 53 lookup main pref 5208 || true
+                      nsenter -t 1 -m -n -- /usr/sbin/ip rule add ipproto ${proto} ${porttype} 53 lookup main pref 5208 || true
                     fi
                   done
                 done

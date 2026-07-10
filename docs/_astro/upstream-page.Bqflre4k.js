@@ -259,10 +259,21 @@ function initBracketsChart(model) {
   return chart;
 }
 
+function computeHeatmapMax(data) {
+  const values = data.map((point) => point[1]).filter((n) => Number.isFinite(n));
+  if (values.length === 0) return 24;
+  const sorted = [...values].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  // Anchor the gradient so the median sits around 40% intensity instead of
+  // near the top, preventing routine intake density from looking maxed out.
+  return Math.max(10, Math.round(median * 2.5));
+}
+
 function initPollerHeatmapChart(model) {
   const element = document.getElementById('upstream-poller-heatmap-chart');
   if (!element || !model.charts.pollerHeatmap) return null;
 
+  const data = model.charts.pollerHeatmap.data;
   const chart = echarts.init(element);
   chart.setOption({
     backgroundColor: 'transparent',
@@ -280,7 +291,7 @@ function initPollerHeatmapChart(model) {
     },
     visualMap: {
       min: 0,
-      max: 24,
+      max: computeHeatmapMax(data),
       type: 'continuous',
       orient: 'horizontal',
       left: 'center',

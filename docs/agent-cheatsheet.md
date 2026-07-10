@@ -338,6 +338,12 @@ Expected steady state:
 When no jobs are queued, `arc-runners` namespace is empty — that is correct.
 Runners are ephemeral and only exist while a job is running.
 
+`ghost-runners` uses **container mode (`type: kubernetes`)**: the runner
+controller/listener pod is small, and each GitHub Actions job runs as a separate
+Kubernetes pod. Heavy work should be submitted to the cluster as an Argo
+Workflow; that keeps the runner tiny while the actual build pods use full
+cluster resources.
+
 **Check ARC is healthy:**
 ```bash
 kubectl get pods -n arc-systems
@@ -348,7 +354,15 @@ Expected: `arc-systems-gha-rs-controller-*` Running + `ghost-runners-*-listener`
 ```bash
 kubectl get autoscalingrunnersets -n arc-runners
 ```
-Expected: `ghost-runners` with MINIMUM=0 MAXIMUM=4.
+Expected: `ghost-runners` with MINIMUM=0 MAXIMUM=6.
+
+**Check container-mode job pods:**
+```bash
+kubectl get pods -n arc-runners -w
+```
+A small ephemeral runner pod appears first; when a job runs, a second pod
+(the step/job pod) is created from the `container:` image declared in the
+workflow.
 
 **If listener is missing** (arc-systems has only the controller pod, no listener):
 1. Check controller logs: `kubectl logs -n arc-systems <controller-pod>`
@@ -357,9 +371,16 @@ Expected: `ghost-runners` with MINIMUM=0 MAXIMUM=4.
 3. If error is GitHub API auth failure: check `arc-github-secret` exists in `arc-runners`.
 
 **Trigger a workflow using ARC:**
-Add `runs-on: ghost-runners` to any projectbluefin workflow. A listener pod and
-ephemeral runner pod will appear in `arc-systems` and `arc-runners` respectively
-for the duration of the job.
+Add `runs-on: ghost-runners` and a `container:` block to any projectbluefin workflow.
+A listener pod and ephemeral runner pod will appear in `arc-systems` and
+`arc-runners` respectively. Example: `.github/workflows/example-container-mode-build.yml`.
+
+**Writing a container-mode job:**
+- The job **must** declare `container:`; without it the runner will fail.
+- Keep the step container image small-to-medium. Offload heavy builds to Argo
+  Workflows using `argo submit --from workflowtemplate/<name> --wait`.
+- The runner service account (`arc-runner-workflow-submitter`) can create and
+  watch workflows in the `argo` namespace.
 
 **ArgoCD Applications for ARC** (stored in `argocd/`, applied manually once):
 - `arc-systems` — controller (gha-runner-scale-set-controller 0.9.3)

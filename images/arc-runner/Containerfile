@@ -6,14 +6,21 @@ FROM ghcr.io/actions/actions-runner:latest
 
 USER root
 
-# Install bluefin CI toolchain: buildah, skopeo, cosign, oras, argo CLI
+# Install bluefin CI toolchain: buildah, skopeo, cosign, oras, argo CLI, kubectl, jq
 # Using apt (actions-runner base is Ubuntu); these are the tools currently installed per-job.
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends \
       buildah \
       skopeo \
       curl \
+      jq \
     && rm -rf /var/lib/apt/lists/*
+
+# kubectl (for cluster operations and debugging from ARC jobs)
+RUN curl -sSfL \
+      https://dl.k8s.io/release/$(curl -sSfL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl \
+      -o /usr/local/bin/kubectl && \
+    chmod +x /usr/local/bin/kubectl
 
 # cosign (no apt package in Ubuntu LTS)
 RUN curl -sSfL \

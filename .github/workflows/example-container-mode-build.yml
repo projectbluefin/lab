@@ -1,0 +1,45 @@
+name: Example — container-mode ARC runner on Ghost
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Dakota ref to warm"
+        required: true
+        default: "testing"
+      element:
+        description: "BST element to build"
+        required: true
+        default: "oci/bluefin.bst"
+
+# Container mode requires a container: block on every job. The runner pod is
+# tiny; heavy work is submitted to the cluster as an Argo Workflow so the
+# actual build pods get full cluster resources.
+jobs:
+  warm-bst-cache:
+    runs-on: ghost-runners
+    container:
+      image: ghcr.io/projectbluefin/arc-runner:latest
+    steps:
+      - name: Submit BST warm-cache build to the cluster
+        run: |
+          argo submit -n argo \
+            --from workflowtemplate/dakota-buildstream-warm-cache \
+            -p ref="${{ github.event.inputs.ref }}" \
+            -p element="${{ github.event.inputs.element }}" \
+            --wait
+
+  # This job shows a lightweight step that runs entirely inside the small
+  # ARC step container without touching cluster-heavy resources.
+  inspect-tooling:
+    runs-on: ghost-runners
+    container:
+      image: ghcr.io/projectbluefin/arc-runner:latest
+    steps:
+      - name: Verify tooling available in the step container
+        run: |
+          argo version --short
+          kubectl version --client
+          buildah --version
+          skopeo --version
+          jq --version

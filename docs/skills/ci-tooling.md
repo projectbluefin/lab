@@ -8,6 +8,7 @@ metadata:
   context7-sources:
     - /websites/github_en_actions
     - /websites/github_en_rest
+    - /tailscale/tailscale
 ---
 
 # CI Tooling — GitHub Actions in lab
@@ -50,6 +51,8 @@ metadata:
 18. **Build-time assertions must handle environment drift**: if a test asserts presence of specific live data (e.g. `:30501` registry port), but the build environment differs from the test environment (GitHub runners → no homelab network access), the assertion will always fail. Instead: allow the code to handle missing data gracefully (e.g. fallback rendering), and update the assertion to accept both the live path and the fallback path. This prevents false CI failures that don't reflect real code bugs.
 19. **Prefer the Kubernetes API server's service/pod proxy subresource over new NodePorts/manifests** when a collector needs to reach a ClusterIP-only service or a pod's non-Service-exposed diagnostics port: `kubectl get --raw "/api/v1/namespaces/<ns>/services/<svc>:<port>/proxy/<path>"` or `.../pods/<pod>:<port>/proxy/<path>`. This routes through the API server the runner already reaches (the same reachability `kubectl get nodes` relies on), so no cluster manifest changes are needed to expose a new metrics/status endpoint.
 20. When a data source has no direct "value used" gauge (e.g. Buildbarn's block-device-backed storage, which preallocates fixed-size blocks on disk regardless of logical fill), derive an estimate from available counters (e.g. `allocations_total - releases_total` × known block size) and say so explicitly in the row's `derivation` field. Never silently report a physical-allocation number as if it were logical usage.
+21. **Use a dedicated CI-only Tailscale tailnet to bridge GitHub-hosted runners into the homelab only for best-effort seeding jobs**, never for required product gates. The production tailnet must remain separate. Pin `tailscale/github-action` to a SHA, use an OAuth client scoped to `auth_keys` write and a dedicated tag (e.g. `tag:ci-cache-seeder`), and start the runner with `--accept-routes=false --ssh=false`. Tag the runner hostname deterministically so Ghost can push to it via MagicDNS. Authenticate each seed request with a short-lived signed JWT and verify it on Ghost together with the Tailscale peer tag via `tailscale whois`. Keep the upstream cache signing key on the runner only; Ghost pushes artifacts to the runner's local cache unsigned, and the runner alone signs and pushes to the upstream cache. Wrap every seeding step and the whole job in `continue-on-error: true`, set explicit `timeout-minutes`, and run teardown with `if: always()` so any Tailscale, network, or cache failure leaves the parent workflow green.
+22. **Use ARC container mode (`type: kubernetes`) to keep the runner controller small while heavy work runs in separate cluster pods.** Each workflow job must declare a `container:` image. Offload CPU/memory-intensive work (BST builds, large container builds) to existing Argo WorkflowTemplates via `argo submit --from workflowtemplate/<name> --wait` rather than running it directly in the small step container. Grant the runner service account only the RBAC it needs to create and watch workflows in the target namespace.
 
 ## Common Rationalizations
 
@@ -76,6 +79,14 @@ metadata:
 - **Tests fail in CI but pass locally** — the test environment diverges from runner environment (e.g. expects homelab LAN data that GitHub runners cannot reach). Without fallback handling and environment-aware assertions, this creates phantom CI failures that don't reflect real bugs.
 - A new NodePort or Ingress manifest is proposed just to let a collector reach a service/pod that already has a ClusterIP or a diagnostics port — the API server proxy subresource reaches it without new cluster state.
 - A dashboard row reports "bytes used" for storage that is actually a fixed-size preallocated block device, without noting the value is a derived estimate.
+- A Tailscale-bridged seeding job is marked as a required status check or lacks `continue-on-error`, allowing a transient VPN/cache failure to block the main workflow.
+- The private cluster (Ghost) is given the upstream cache signing key instead of pushing artifacts unsigned to an ephemeral runner that signs independently.
+- A seeding workflow joins the production/home tailnet instead of a dedicated CI tailnet, exposing cluster nodes to an untrusted GitHub-hosted runner.
+- Seed requests to Ghost are authenticated with a static bearer token instead of a short-lived signed JWT and Tailscale peer identity.
+- **Tailscale is chosen before confirming that ghcr.io/OCI cannot serve BuildStream artifacts and that an on-cluster ARC runner (`runs-on: ghost-runners`) is not sufficient.**
+- A container-mode ARC job targets `ghost-runners` without a `container:` block, causing the runner to fail immediately.
+- Heavy builds run directly inside a small ARC step container instead of being submitted to an Argo Workflow, leading to OOM or CPU throttling.
+- The ARC runner service account is given broad cluster-admin permissions instead of a namespace-scoped Role for workflow submission.
 
 ## Verification
 
@@ -96,3 +107,13 @@ metadata:
 - [ ] Concurrency blocks are added to git-mutating workflows to secure the git-push transaction.
 - [ ] Collectors reaching ClusterIP-only services or pod-only diagnostics ports use `kubectl get --raw .../proxy/...` instead of adding new NodePorts/manifests.
 - [ ] Derived/estimated usage numbers (no direct source gauge) state the derivation formula and inputs in the row's `derivation` field.
+- [ ] Tailscale-bridged seeding jobs use OAuth client + dedicated tag, ephemeral nodes, and `continue-on-error` on both the job and every seeding step.
+- [ ] The runner joins a dedicated CI tailnet, not the production tailnet, and starts with `--accept-routes=false --ssh=false`.
+- [ ] Seed requests to Ghost are signed JWTs verified for signature, expiry, and claim consistency, plus Tailscale peer tag via `tailscale whois`.
+- [ ] Upstream cache signing credentials are stored only in GitHub Secrets and are never copied to or referenced from Ghost.
+- [ ] Seeding job teardown runs `if: always()` with `continue-on-error: true` and explicitly logs out of Tailscale / stops local services.
+- [ ] Simpler alternatives (ARC runner on Ghost, pure GitHub Actions cron build) were ruled out before adding a Tailscale bridge.
+- [ ] ARC container-mode jobs declare a `container:` image and the runner controller pod requests small resources (<=1 CPU / <=1 Gi).
+- [ ] Heavy ARC jobs submit Argo Workflows rather than executing the heavy work inside the step container.
+- [ ] The ARC runner service account has a namespace-scoped Role for workflow submission, not cluster-admin.
+- [ ] A test container-mode workflow completes and produces the expected build artifact or cache seed.

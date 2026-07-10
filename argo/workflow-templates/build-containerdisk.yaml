@@ -360,6 +360,14 @@ spec:
         SOURCE_IMGREF="docker://${BOOTABLE_IMAGE_REMOTE}"
         echo "[BUILD] SOURCE_IMGREF=${SOURCE_IMGREF}"
 
+        # Inject bootupd config to skip boot partition UUID writing.
+        # Works around the findmnt bug on btrfs subvolumes inside bubblewrap container setup:
+        # inspect_filesystem / findmnt returns ENOENT (os error 2) because / is a btrfs subvolume.
+        # skip-boot-uuid=true uses --with-static-configs instead of --write-uuid, avoiding the check completely.
+        mkdir -p /etc/bootc/install
+        printf '[install.bootupd]\nskip-boot-uuid = true\n' > /etc/bootc/install/05-custom.toml
+        echo "[BUILD] Injected bootupd config to skip-boot-uuid"
+
         bootc install to-disk \
           ${FS_ARG} \
           --source-imgref "${SOURCE_IMGREF}" \

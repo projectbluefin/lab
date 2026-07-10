@@ -346,147 +346,151 @@ const formatDuration = (seconds?: number) => {
   </summary>
 
   <div class="detail-card__body">
-    <div class="detail-grid">
-      <article>
-        <h4>Latest run</h4>
-        <dl>
-          <div>
-            <dt>Branch</dt>
-            <dd>{row.branch}</dd>
-          </div>
-          <div>
-            <dt>Architecture</dt>
-            <dd>
-              <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">x86_64</span>
-              <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">aarch64</span>
-            </dd>
-          </div>
-          <div>
-            <dt>Execution Mode</dt>
-            <dd>
-              {row.suite === 'system' ? (
-                <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2);">KubeVirt VM</span>
-              ) : (
-                <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container Pod</span>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Last run</dt>
-            <dd>{row.last_run ? new Date(row.last_run).toLocaleString() : 'Unavailable'}</dd>
-          </div>
-          {row.details?.duration_seconds !== undefined && row.details.duration_seconds > 0 && (
-            <div>
-              <dt>Run duration</dt>
-              <dd>{formatDuration(row.details.duration_seconds)}</dd>
-            </div>
-          )}
-          <div>
-            <dt>Scenarios</dt>
-            <dd>{row.scenarios_total}</dd>
-          </div>
-          <div>
-            <dt>Failed scenarios</dt>
-            <dd>{row.scenarios_failed}</dd>
-          </div>
-          <div>
-            <dt>History points</dt>
-            <dd>{row.history_points}</dd>
-          </div>
-        </dl>
-      </article>
-
-      <article>
-        <h4>Evidence links</h4>
-        <ul class="evidence-list">
-          <li><a href={`../${row.results_path}`}>{row.results_path}</a></li>
-          <li><a href={row.source_url} rel="noreferrer" target="_blank">Source JSON on GitHub</a></li>
-          {row.screenshot_url && <li><a href={row.screenshot_url} rel="noreferrer" target="_blank">Latest screenshot</a></li>}
-          {row.workflow_name && workflowHref(row.workflow_name) && (
-            <li><a href={workflowHref(row.workflow_name)!} rel="noreferrer" target="_blank">Workflow: {row.workflow_name}</a></li>
-          )}
-        </ul>
-      </article>
-    </div>
-
-    {/* ── Visual Evidence Gallery ── */}
-    <div class="screenshot-gallery">
-      <h4>Visual Evidence</h4>
-      {hasScreenshot ? (
-        <div class="screenshot-card">
-          <a href={row.screenshot_url!} target="_blank" rel="noreferrer" class="screenshot-link">
-            <img
-              src={row.screenshot_url!}
-              alt={`UI screenshot for ${row.id} — ${row.suite} suite on ${row.variant}`}
-              class="screenshot-img"
-              loading="lazy"
-              decoding="async"
-            />
-            <div class="screenshot-overlay">
-              <span>↗ Full size</span>
-            </div>
-          </a>
-          <div class="screenshot-caption">
-            <span class={`pill pill--${row.result_status}`}>{row.result_status}</span>
-            <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.5rem;">
-              {row.suite} · {row.variant} · {row.last_run ? new Date(row.last_run).toLocaleDateString() : 'Awaiting Run'}
-            </span>
-          </div>
-        </div>
-      ) : (
-        <div class="screenshot-placeholder">
-          <div class="screenshot-placeholder__content">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="placeholder-icon"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-            <h5>{row.suite === 'system' ? 'No Screenshot Captured Yet' : 'Non-Virtual Evidence Captured'}</h5>
-            <p>
-              {row.suite === 'system' ? (
-                <span>The <strong>{row.suite}</strong> suite runs automated platform-contract BDD tests inside an ephemeral KubeVirt VM. A screenshot of the desktop session is captured via Wayland on successful execution.</span>
-              ) : (
-                <span>The <strong>{row.suite}</strong> suite runs automated desktop/app BDD tests inside a non-privileged, software-rendered Kubernetes Container Pod. Real-time CLI logs provide complete execution evidence.</span>
-              )}
-            </p>
-            <div class="placeholder-meta">
-              <span>Target: {row.variant} ({row.branch})</span>
-              <span>Run command: <code>just run-tests-tag {row.branch === 'testing' ? 'testing' : 'stable'}</code></span>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-
-    {/* ── Historical Dot-Timeline ── */}
-    {row.details?.history?.length ? (
-      <div class="history-timeline">
-        <span class="timeline-label">Execution Timeline (Last 15 Runs)</span>
-        <div class="timeline-dots">
-          {[...row.details.history].reverse().map((entry) => {
-            const rate = detailPassRate(entry.scenarios, entry.failed);
-            const formattedDate = new Date(entry.run_date).toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            });
-            const durationText = entry.duration_seconds ? ` | Duration: ${formatDuration(entry.duration_seconds)}` : '';
-            const tooltip = `Workflow: ${entry.workflow_name || 'Manual'} | Pass Rate: ${rate !== null ? `${rate}%` : '—'} | Failed: ${entry.failed}/${entry.scenarios}${durationText} | ${formattedDate}`;
-            return (
-              <span 
-                class:list={['dot', entry.status === 'passed' ? 'passed' : 'failed']} 
-                data-tooltip={tooltip}
-              />
-            );
-          })}
-        </div>
-      </div>
-    ) : null}
-
     {row.state !== 'available' ? (
-      <div class="detail-note detail-note--unavailable">
-        <h4>Unavailable state</h4>
+      <div class="detail-note detail-note--unavailable" style="margin-top: 0;">
+        <h4>Awaiting Test Run Evidence</h4>
         <p>{row.state_reason ?? 'No completed run has been published for this matrix cell yet.'}</p>
+        <div style="margin-top: 1rem; font-size: 0.8rem; color: #64748b;">
+          <strong>Target:</strong> {row.variant} · {row.suite} ({row.branch})<br/>
+          <strong>To trigger locally:</strong> <code style="color: #38bdf8; background: rgba(0,0,0,0.25); padding: 0.1rem 0.35rem; border-radius: 4px; font-family: monospace;">just run-tests-tag {row.branch === 'testing' ? 'testing' : 'stable'}</code>
+        </div>
       </div>
     ) : (
       <>
+        <div class="detail-grid">
+          <article>
+            <h4>Latest run</h4>
+            <dl>
+              <div>
+                <dt>Branch</dt>
+                <dd>{row.branch}</dd>
+              </div>
+              <div>
+                <dt>Architecture</dt>
+                <dd>
+                  <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">x86_64</span>
+                  <span class="pill pill--gap" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none;">aarch64</span>
+                </dd>
+              </div>
+              <div>
+                <dt>Execution Mode</dt>
+                <dd>
+                  {row.suite === 'system' ? (
+                    <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2);">KubeVirt VM</span>
+                  ) : (
+                    <span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; text-transform: none; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container Pod</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Last run</dt>
+                <dd>{row.last_run ? new Date(row.last_run).toLocaleString() : 'Unavailable'}</dd>
+              </div>
+              {row.details?.duration_seconds !== undefined && row.details.duration_seconds > 0 && (
+                <div>
+                  <dt>Run duration</dt>
+                  <dd>{formatDuration(row.details.duration_seconds)}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Scenarios</dt>
+                <dd>{row.scenarios_total}</dd>
+              </div>
+              <div>
+                <dt>Failed scenarios</dt>
+                <dd>{row.scenarios_failed}</dd>
+              </div>
+              <div>
+                <dt>History points</dt>
+                <dd>{row.history_points}</dd>
+              </div>
+            </dl>
+          </article>
+
+          <article>
+            <h4>Evidence links</h4>
+            <ul class="evidence-list">
+              <li><a href={`../${row.results_path}`}>{row.results_path}</a></li>
+              <li><a href={row.source_url} rel="noreferrer" target="_blank">Source JSON on GitHub</a></li>
+              {row.screenshot_url && <li><a href={row.screenshot_url} rel="noreferrer" target="_blank">Latest screenshot</a></li>}
+              {row.workflow_name && workflowHref(row.workflow_name) && (
+                <li><a href={workflowHref(row.workflow_name)!} rel="noreferrer" target="_blank">Workflow: {row.workflow_name}</a></li>
+              )}
+            </ul>
+          </article>
+        </div>
+
+        {/* ── Visual Evidence Gallery ── */}
+        <div class="screenshot-gallery">
+          <h4>Visual Evidence</h4>
+          {hasScreenshot ? (
+            <div class="screenshot-card">
+              <a href={row.screenshot_url!} target="_blank" rel="noreferrer" class="screenshot-link">
+                <img
+                  src={row.screenshot_url!}
+                  alt={`UI screenshot for ${row.id} — ${row.suite} suite on ${row.variant}`}
+                  class="screenshot-img"
+                  loading="lazy"
+                  decoding="async"
+                />
+                <div class="screenshot-overlay">
+                  <span>↗ Full size</span>
+                </div>
+              </a>
+              <div class="screenshot-caption">
+                <span class={`pill pill--${row.result_status}`}>{row.result_status}</span>
+                <span style="font-size: 0.75rem; color: #64748b; margin-left: 0.5rem;">
+                  {row.suite} · {row.variant} · {row.last_run ? new Date(row.last_run).toLocaleDateString() : 'Awaiting Run'}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div class="screenshot-placeholder">
+              <div class="screenshot-placeholder__content">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="placeholder-icon"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                <h5>{row.suite === 'system' ? 'No Screenshot Captured Yet' : 'Non-Virtual Evidence Captured'}</h5>
+                <p>
+                  {row.suite === 'system' ? (
+                    <span>The <strong>{row.suite}</strong> suite runs automated platform-contract BDD tests inside an ephemeral KubeVirt VM. A screenshot of the desktop session is captured via Wayland on successful execution.</span>
+                  ) : (
+                    <span>The <strong>{row.suite}</strong> suite runs automated desktop/app BDD tests inside a non-privileged, software-rendered Kubernetes Container Pod. Real-time CLI logs provide complete execution evidence.</span>
+                  )}
+                </p>
+                <div class="placeholder-meta">
+                  <span>Target: {row.variant} ({row.branch})</span>
+                  <span>Run command: <code>just run-tests-tag {row.branch === 'testing' ? 'testing' : 'stable'}</code></span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Historical Dot-Timeline ── */}
+        {row.details?.history?.length ? (
+          <div class="history-timeline">
+            <span class="timeline-label">Execution Timeline (Last 15 Runs)</span>
+            <div class="timeline-dots">
+              {[...row.details.history].reverse().map((entry) => {
+                const rate = detailPassRate(entry.scenarios, entry.failed);
+                const formattedDate = new Date(entry.run_date).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                const durationText = entry.duration_seconds ? ` | Duration: ${formatDuration(entry.duration_seconds)}` : '';
+                const tooltip = `Workflow: ${entry.workflow_name || 'Manual'} | Pass Rate: ${rate !== null ? `${rate}%` : '—'} | Failed: ${entry.failed}/${entry.scenarios}${durationText} | ${formattedDate}`;
+                return (
+                  <span 
+                    class:list={['dot', entry.status === 'passed' ? 'passed' : 'failed']} 
+                    data-tooltip={tooltip}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div class="detail-grid detail-grid--split">
           <article>
             <h4>Latest Diagnostics & Logs</h4>

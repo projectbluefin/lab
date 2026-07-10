@@ -93,3 +93,60 @@ const {
     </div>
   </div>
 </div>
+
+<style>
+  /* ── KPI scorecards ─────────────────────────────────────── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+  .kpi-card {
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 130px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .kpi-card:hover {
+    border-color: rgba(56, 189, 248, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  }
+  .kpi-card--success {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+    border-color: rgba(16, 185, 129, 0.25);
+  }
+  .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
+  .kpi-card--warning {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
+    border-color: rgba(245, 158, 11, 0.2);
+  }
+  .kpi-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
+  .kpi-card__title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .kpi-card__value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: -0.04em;
+    margin: 0.5rem 0 0.2rem 0;
+  }
+  .kpi-card__sub {
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+  .pill-ok  { background: rgba(34,197,94,.15);  color: #4ade80; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+  .pill-gap { background: rgba(148,163,184,.12); color: #94a3b8; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
+</style>

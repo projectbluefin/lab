@@ -65,9 +65,27 @@ interface Props {
 const { row, workflowHref, detailPassRate } = Astro.props;
 
 const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path));
+
+const formatDuration = (seconds?: number) => {
+  if (seconds === undefined || seconds <= 0) return '—';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.round(seconds % 60);
+  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+};
 ---
 
 <style>
+  /* Override global wide-table grid column rule for split grid */
+  .detail-grid--split > article {
+    grid-column: span 1 !important;
+  }
+  @media (max-width: 900px) {
+    .detail-grid--split > article {
+      grid-column: 1 / -1 !important;
+    }
+  }
+
   /* ── Dot timelines ───────────────────────────────────────── */
   .history-timeline {
     margin-top: 1.5rem;
@@ -135,6 +153,123 @@ const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(),
   .dot:hover::after {
     opacity: 1;
     transform: translateX(-50%) scale(1);
+  }
+
+  /* ── Interactive failure rows ────────────────────────────── */
+  .failure-search-wrapper {
+    margin-bottom: 0.75rem;
+    position: relative;
+  }
+  .failure-search-input {
+    width: 100%;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: #cbd5e1;
+    padding: 0.45rem 0.75rem 0.45rem 2rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    outline: none;
+    transition: all 0.2s;
+  }
+  .failure-search-input:focus {
+    border-color: rgba(244, 63, 94, 0.4);
+    box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.15);
+  }
+  .failure-search-icon {
+    position: absolute;
+    left: 0.65rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #475569;
+    pointer-events: none;
+  }
+  
+  .failures-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+  }
+  
+  .failure-row {
+    background: rgba(244, 63, 94, 0.03);
+    border: 1px solid rgba(244, 63, 94, 0.1);
+    border-radius: 8px;
+    padding: 0.65rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    transition: all 0.2s;
+  }
+  .failure-row:hover {
+    border-color: rgba(244, 63, 94, 0.25);
+    background: rgba(244, 63, 94, 0.05);
+  }
+  .failure-row__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 0.75rem;
+  }
+  .failure-row__name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #fca5a5;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+  .failure-row__meta {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 0.15rem;
+  }
+  .failure-row__meta code {
+    background: rgba(0, 0, 0, 0.25);
+    padding: 0.05rem 0.25rem;
+    border-radius: 4px;
+    color: #f43f5e;
+  }
+  .failure-action-btn {
+    background: rgba(244, 63, 94, 0.1);
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    color: #fca5a5;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    cursor: pointer;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .failure-action-btn:hover {
+    background: rgba(244, 63, 94, 0.2);
+    border-color: rgba(244, 63, 94, 0.35);
+    color: #f8fafc;
+  }
+  
+  /* Detailed failure traceback area */
+  .failure-traceback {
+    margin-top: 0.25rem;
+    background: #090d16;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-family: 'Ptyxis', 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    max-height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
 
   /* ── Terminal Mockup ─────────────────────────────────────── */
@@ -237,7 +372,7 @@ const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(),
           {row.details?.duration_seconds !== undefined && row.details.duration_seconds > 0 && (
             <div>
               <dt>Run duration</dt>
-              <dd>{row.details.duration_seconds} seconds</dd>
+              <dd>{formatDuration(row.details.duration_seconds)}</dd>
             </div>
           )}
           <div>
@@ -326,7 +461,7 @@ const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(),
               hour: '2-digit',
               minute: '2-digit'
             });
-            const durationText = entry.duration_seconds ? ` | Duration: ${entry.duration_seconds}s` : '';
+            const durationText = entry.duration_seconds ? ` | Duration: ${formatDuration(entry.duration_seconds)}` : '';
             const tooltip = `Workflow: ${entry.workflow_name || 'Manual'} | Pass Rate: ${rate !== null ? `${rate}%` : '—'} | Failed: ${entry.failed}/${entry.scenarios}${durationText} | ${formattedDate}`;
             return (
               <span 
@@ -350,37 +485,70 @@ const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(),
           <article>
             <h4>Latest Diagnostics & Logs</h4>
             
-            {row.details?.failed_scenarios_detailed?.length ? (
-              row.details.failed_scenarios_detailed.map((detailed) => (
-                <div class="terminal-mockup">
-                  <div class="terminal-header">
-                    <span class="terminal-dot red"></span>
-                    <span class="terminal-dot yellow"></span>
-                    <span class="terminal-dot green"></span>
-                    <span class="terminal-title">behave --suite {row.suite} --scenario "{detailed.scenario_name.slice(0, 30)}..."</span>
-                  </div>
-                  <div class="terminal-body">
-                    <pre class="terminal-line"><span class="text-red">[FAILED]</span> Scenario: {detailed.scenario_name}</pre>
-                    <pre class="terminal-line">  <span class="text-yellow">Step:</span> {detailed.failing_step}</pre>
-                    <pre class="terminal-line">  <span class="text-dim">Duration:</span> {detailed.duration_seconds}s</pre>
-                    <pre class="terminal-line text-cyan">{detailed.error_message}</pre>
-                  </div>
+            {(row.details?.failed_scenarios_detailed?.length || row.details?.failed_scenarios?.length) ? (
+              <div class="failure-list-widget">
+                <div class="failure-search-wrapper">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="failure-search-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input 
+                    type="text" 
+                    placeholder={`Search ${row.scenarios_failed} failed scenarios...`} 
+                    class="failure-search-input" 
+                    data-card-id={row.id}
+                  />
                 </div>
-              ))
-            ) : row.details?.failed_scenarios?.length ? (
-              <div class="terminal-mockup">
-                <div class="terminal-header">
-                  <span class="terminal-dot red"></span>
-                  <span class="terminal-dot yellow"></span>
-                  <span class="terminal-dot green"></span>
-                  <span class="terminal-title">behave --suite {row.suite} --summary</span>
-                </div>
-                <div class="terminal-body">
-                  <pre class="terminal-line"><span class="text-red">[FAILED]</span> The following scenarios failed in the latest run:</pre>
-                  {row.details.failed_scenarios.map((scenario, index) => (
-                    <pre class="terminal-line">  {index + 1}. {scenario}</pre>
-                  ))}
-                  <pre class="terminal-line text-dim">Note: Upgrade results pipeline to see detailed error traces and step runtimes.</pre>
+                
+                <div class="failures-list-container" data-failures-list={row.id}>
+                  {row.details.failed_scenarios_detailed?.length ? (
+                    row.details.failed_scenarios_detailed.map((detailed) => {
+                      const copyCmd = `behave -n "${detailed.scenario_name}"`;
+                      return (
+                        <div class="failure-row" data-search-text={detailed.scenario_name.toLowerCase()}>
+                          <div class="failure-row__header">
+                            <span class="failure-row__name">✕ {detailed.scenario_name}</span>
+                            <button 
+                              class="failure-action-btn btn-copy-command" 
+                              data-command={copyCmd}
+                              title="Copy local reproduction command"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                              <span>Copy Cmd</span>
+                            </button>
+                          </div>
+                          <div class="failure-row__meta">
+                            <span>Failing Step: <code>{detailed.failing_step}</code></span>
+                            {detailed.duration_seconds > 0 && (
+                              <span>· Duration: <strong>{detailed.duration_seconds}s</strong></span>
+                            )}
+                          </div>
+                          {detailed.error_message && (
+                            <pre class="failure-traceback">{detailed.error_message}</pre>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    row.details.failed_scenarios?.map((scenarioName) => {
+                      const copyCmd = `behave -n "${scenarioName}"`;
+                      return (
+                        <div class="failure-row" data-search-text={scenarioName.toLowerCase()}>
+                          <div class="failure-row__header">
+                            <span class="failure-row__name">✕ {scenarioName}</span>
+                            <button 
+                              class="failure-action-btn btn-copy-command" 
+                              data-command={copyCmd}
+                              title="Copy local reproduction command"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                              <span>Copy Cmd</span>
+                            </button>
+                          </div>
+                          <div class="failure-row__meta">
+                            <span class="text-dim">Note: Upgrade results pipeline to see detailed error traces and step runtimes.</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             ) : (
@@ -398,6 +566,7 @@ const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(),
                       <th scope="col">Run date</th>
                       <th scope="col">Workflow</th>
                       <th scope="col">Status</th>
+                      <th scope="col">Duration</th>
                       <th scope="col">Failed</th>
                       <th scope="col">Pass rate</th>
                     </tr>
@@ -408,8 +577,21 @@ const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(),
                       return (
                         <tr>
                           <td>{new Date(entry.run_date).toLocaleString()}</td>
-                          <td>{entry.workflow_name ?? 'Unavailable'}</td>
-                          <td>{entry.status}</td>
+                          <td>
+                            {entry.workflow_name ? (
+                              <a href={workflowHref(entry.workflow_name)} target="_blank" rel="noreferrer" style="color: #38bdf8; text-decoration: none;">
+                                {entry.workflow_name}
+                              </a>
+                            ) : (
+                              'Unavailable'
+                            )}
+                          </td>
+                          <td>
+                            <span class={`pill pill--${entry.status}`} style="font-size: 0.65rem; padding: 0.1rem 0.4rem;">
+                              {entry.status}
+                            </span>
+                          </td>
+                          <td>{entry.duration_seconds !== undefined && entry.duration_seconds > 0 ? formatDuration(entry.duration_seconds) : '—'}</td>
                           <td>{entry.failed}/{entry.scenarios}</td>
                           <td class="rate-col">
                             <strong>{rate === null ? '—' : `${rate}%`}</strong>

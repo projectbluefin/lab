@@ -128,6 +128,13 @@ test('tests page renders matrix views, chart mounts, evidence links, and unavail
   assert.match(testsPage, /Evidence-backed authenticity/i, 'tests page renders evidence-backed authenticity disclosure');
   assert.match(testsPage, /Triage & Local Execution Runbook/i, 'tests page renders triage runbook section');
   assert.match(testsPage, /Permission denied \(publickey\) at SSH wait/i, 'tests page runbook lists common publickey log symptom');
+  
+  // Toggles, copying, and search
+  assert.match(testsPage, /Expand All/i, 'tests page renders Expand All toggle button');
+  assert.match(testsPage, /Collapse All/i, 'tests page renders Collapse All toggle button');
+  assert.match(testsPage, /failure-search-input/i, 'tests page renders scoped failure search filter inputs');
+  assert.match(testsPage, /behave -n /i, 'tests page renders local reproduction behave commands');
+  assert.match(testsPage, /toast-notification/i, 'tests page renders toast notification styling');
 });
 
 test('images page renders grouped views, chart mounts, evidence links, and unavailable states', () => {

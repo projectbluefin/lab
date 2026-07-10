@@ -446,6 +446,29 @@ const chartPayload = {
       border-radius: 4px;
       color: #38bdf8;
     }
+
+    /* ── Detail toggle controls ──────────────────────────────── */
+    .detail-toggle-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-right: 0.5rem;
+    }
+    .control-btn {
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
+    }
+    .control-btn:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: #f8fafc;
+    }
   </style>
 
   <!-- ═══════════════════════════════════════════════════════════ -->
@@ -513,7 +536,11 @@ const chartPayload = {
           Detail cards join the matrix with linked result JSON so the page can show failed scenarios, run history, screenshots, and workflow identifiers when they exist.
         </p>
       </div>
-      <div class="section-heading__meta">
+      <div class="section-heading__meta" style="align-items: center;">
+        <div class="detail-toggle-group">
+          <button id="btn-expand-all" class="control-btn">Expand All</button>
+          <button id="btn-collapse-all" class="control-btn">Collapse All</button>
+        </div>
         <span>{availableRows.length} available</span>
         <span>{unavailableRows.length} unavailable</span>
         <span>{contract._meta.generated_at}</span>
@@ -561,4 +588,72 @@ const chartPayload = {
     </ul>
     <a href={`${baseUrl}data/tests-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
   </div>
+
+  <script>
+    // Expand All / Collapse All details
+    const btnExpandAll = document.getElementById('btn-expand-all');
+    const btnCollapseAll = document.getElementById('btn-collapse-all');
+    const detailElements = document.querySelectorAll('details.detail-card');
+
+    btnExpandAll?.addEventListener('click', () => {
+      detailElements.forEach((detail) => {
+        detail.setAttribute('open', '');
+      });
+    });
+
+    btnCollapseAll?.addEventListener('click', () => {
+      detailElements.forEach((detail) => {
+        detail.removeAttribute('open');
+      });
+    });
+
+    // Scoped search filter for failed scenarios inside each card
+    const failureSearchInputs = document.querySelectorAll('.failure-search-input');
+    failureSearchInputs.forEach((inputEl) => {
+      inputEl.addEventListener('input', (e) => {
+        const input = e.target as HTMLInputElement;
+        const query = input.value.toLowerCase().trim();
+        const cardId = input.getAttribute('data-card-id');
+        const listContainer = document.querySelector(`[data-failures-list="${cardId}"]`);
+        if (!listContainer) return;
+        
+        const rows = listContainer.querySelectorAll('.failure-row');
+        rows.forEach((rowEl) => {
+          const row = rowEl as HTMLElement;
+          const text = row.getAttribute('data-search-text') || '';
+          if (text.includes(query)) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+      });
+    });
+
+    // Event delegation for copying commands with toast feedback
+    document.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.btn-copy-command');
+      if (!btn) return;
+      
+      const command = btn.getAttribute('data-command');
+      if (!command) return;
+      
+      navigator.clipboard.writeText(command).then(() => {
+        let toast = document.getElementById('toast-feedback');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = 'toast-feedback';
+          toast.className = 'toast-notification';
+          document.body.appendChild(toast);
+        }
+        
+        toast.textContent = 'Behave command copied!';
+        toast.classList.add('show');
+        
+        setTimeout(() => {
+          toast?.classList.remove('show');
+        }, 2000);
+      });
+    });
+  </script>
 </SiteLayout>

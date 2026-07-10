@@ -98,11 +98,11 @@ spec:
       - name: HOME
         value: /home/bluefin-test
       - name: XDG_RUNTIME_DIR
-        value: /run/user/1000
+        value: /home/bluefin-test/run
       - name: DBUS_SESSION_BUS_ADDRESS
-        value: unix:path=/run/user/1000/bus
+        value: unix:path=/home/bluefin-test/run/bus
       - name: AT_SPI_BUS_ADDRESS
-        value: unix:path=/run/user/1000/bus
+        value: unix:path=/home/bluefin-test/run/bus
       - name: XDG_SESSION_TYPE
         value: wayland
       - name: XDG_SESSION_DESKTOP
@@ -128,8 +128,6 @@ spec:
       volumeMounts:
       - mountPath: /workspace
         name: workspace
-      - mountPath: /run/user/1000
-        name: xrd
       - mountPath: /dev/shm
         name: shm
       - mountPath: /home/bluefin-test
@@ -138,10 +136,19 @@ spec:
       args:
       - |
         set -euo pipefail
-        mkdir -p /tmp/results /home/bluefin-test/.local/bin
+        mkdir -p /tmp/results /home/bluefin-test/.local/bin /home/bluefin-test/run
+        chmod 700 /home/bluefin-test/run
         export PATH="/home/bluefin-test/.local/bin:${PATH}"
 
         echo "Installing Python dependencies (behave, qecore, dogtail)..." >&2
+        if ! python3 -m pip --version &>/dev/null; then
+          echo "pip not found, attempting to bootstrap..." >&2
+          python3 -m ensurepip --user --default-pip 2>&1 || {
+            echo "ensurepip failed, downloading get-pip.py..." >&2
+            curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --user --quiet || true
+          }
+        fi
+
         python3 -m pip install --quiet --user qecore dogtail behave 2>&1 || {
           echo "Warning: Pip installation returned warning/error, checking if packages work" >&2
         }

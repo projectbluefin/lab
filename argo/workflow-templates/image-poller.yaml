@@ -26,6 +26,8 @@ spec:
         value: "testing"
       - name: branch
         value: "main"
+      - name: testsuite-branch
+        value: "main"
       - name: vm-memory
         value: "8Gi"
       - name: ssh-key-secret
@@ -69,6 +71,8 @@ spec:
                   value: "{{workflow.parameters.vm-memory}}"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
+                - name: testsuite-branch
+                  value: "{{workflow.parameters.testsuite-branch}}"
                 - name: ssh-key-secret
                   value: "{{workflow.parameters.ssh-key-secret}}"
           - name: update-digest

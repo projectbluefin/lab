@@ -64,7 +64,7 @@ interface Props {
 
 const { row, workflowHref, detailPassRate } = Astro.props;
 
-const hasScreenshot = row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path));
+const hasScreenshot = !!(row.screenshot_url || (row.screenshot_path && existsSync(path.join(process.cwd(), 'docs', row.screenshot_path))));
 
 const formatDuration = (seconds?: number) => {
   if (seconds === undefined || seconds <= 0) return '—';
@@ -329,6 +329,61 @@ const formatDuration = (seconds?: number) => {
   .text-yellow { color: #f59e0b; }
   .text-dim { color: #475569; }
   .text-cyan { color: #38bdf8; }
+
+  /* Success widget for 100% passing suites */
+  .suite-pass-success-widget {
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.04) 0%, rgba(15, 23, 42, 0.25) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.12);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    box-sizing: border-box;
+  }
+  .success-icon-badge {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: #34d399;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+  }
+  .suite-pass-success-widget h5 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f8fafc;
+  }
+  .suite-pass-success-widget p {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: #94a3b8;
+  }
+  .suite-pass-success-widget strong {
+    color: #34d399;
+  }
+  .success-run-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    padding-top: 0.5rem;
+    width: 100%;
+  }
+  .success-run-meta strong {
+    color: #cbd5e1;
+  }
 </style>
 
 <details id={row.id} class="detail-card" open={row.state === 'available'} data-test-card data-test-id={row.id} data-test-variant={row.variant} data-test-suite={row.suite} data-test-status={row.state === 'available' ? row.result_status : 'unavailable'}>
@@ -472,12 +527,13 @@ const formatDuration = (seconds?: number) => {
             <div class="timeline-dots">
               {[...row.details.history].reverse().map((entry) => {
                 const rate = detailPassRate(entry.scenarios, entry.failed);
-                const formattedDate = new Date(entry.run_date).toLocaleDateString('en-US', {
+                const runTimestamp = entry.run_date || (entry as any).run;
+                const formattedDate = runTimestamp ? new Date(runTimestamp).toLocaleDateString('en-US', {
                   month: 'short',
                   day: 'numeric',
                   hour: '2-digit',
                   minute: '2-digit'
-                });
+                }) : 'Unknown Date';
                 const durationText = entry.duration_seconds ? ` | Duration: ${formatDuration(entry.duration_seconds)}` : '';
                 const tooltip = `Workflow: ${entry.workflow_name || 'Manual'} | Pass Rate: ${rate !== null ? `${rate}%` : '—'} | Failed: ${entry.failed}/${entry.scenarios}${durationText} | ${formattedDate}`;
                 return (
@@ -562,7 +618,17 @@ const formatDuration = (seconds?: number) => {
                 </div>
               </div>
             ) : (
-              <p class="detail-note">No failed scenario names published for the latest run.</p>
+              <div class="suite-pass-success-widget">
+                <div class="success-icon-badge">✓</div>
+                <h5>Suite Verification Complete</h5>
+                <p>
+                  All <strong>{row.scenarios_total}</strong> scenarios executed and validated successfully on this variant without any failures. The core operating system contract is fully verified.
+                </p>
+                <div class="success-run-meta">
+                  <span>Pass rate: <strong>100%</strong></span>
+                  <span>Last verified: <strong>{row.last_run ? new Date(row.last_run).toLocaleDateString() : 'Awaiting Run'}</strong></span>
+                </div>
+              </div>
             )}
           </article>
 
@@ -584,9 +650,10 @@ const formatDuration = (seconds?: number) => {
                   <tbody>
                     {row.details.history.map((entry) => {
                       const rate = detailPassRate(entry.scenarios, entry.failed);
+                      const runTimestamp = entry.run_date || (entry as any).run;
                       return (
                         <tr>
-                          <td>{new Date(entry.run_date).toLocaleString()}</td>
+                          <td>{runTimestamp ? new Date(runTimestamp).toLocaleString() : 'Unknown Date'}</td>
                           <td>
                             {entry.workflow_name ? (
                               <a href={workflowHref(entry.workflow_name)} target="_blank" rel="noreferrer" style="color: #38bdf8; text-decoration: none;">

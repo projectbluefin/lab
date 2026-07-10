@@ -1,0 +1,246 @@
+---
+---
+<div class="qa-explainer-card">
+  <div class="qa-explainer-header">
+    <div class="header-icon-wrapper">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="header-svg"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+    </div>
+    <div>
+      <span class="qa-badge">QA Pipeline Architecture</span>
+      <h3>Platform Verification & Quality Assurance</h3>
+    </div>
+  </div>
+  
+  <p class="qa-intro">
+    Bluefin is validated as an <strong>image-based, atomic operating system</strong>. Rather than verifying single packages in isolation, our testing framework asserts the entire system state, ensuring immutability, update transitions, and seamless desktop environment integrations.
+  </p>
+
+  <div class="qa-grid">
+    <!-- Grid Item 1: Execution Substrate -->
+    <div class="qa-grid-item">
+      <div class="item-header">
+        <span class="step-num">01</span>
+        <h5>Execution Substrate</h5>
+      </div>
+      <p>
+        Jobs schedule on the homelab control-plane node (<code>ghost</code>). The pipeline provisions **ephemeral KubeVirt VMs** for full-virtualization tests or boots **parallel Wayland test containers** running Mutter with software LLVMpipe rendering.
+      </p>
+    </div>
+
+    <!-- Grid Item 2: BDD Automation -->
+    <div class="qa-grid-item">
+      <div class="item-header">
+        <span class="step-num">02</span>
+        <h5>BDD & Desktop Simulation</h5>
+      </div>
+      <p>
+        Automated test runs trigger <strong>Python Behave</strong> BDD scenarios using **dogtail** to traverse the GNOME AT-SPI accessibility tree. This simulates real mouse moves, clicks, app launches, and desktop key combos.
+      </p>
+    </div>
+
+    <!-- Grid Item 3: System Contracts -->
+    <div class="qa-grid-item">
+      <div class="item-header">
+        <span class="step-num">03</span>
+        <h5>Immutability & Integrity</h5>
+      </div>
+      <p>
+        The suites prove critical OS-level contracts: read-only <code>/usr</code> directories, writable <code>/var</code> paths, OCI image signatures, composefs integrity, flatpak portal boundaries, and rootless Podman execution.
+      </p>
+    </div>
+  </div>
+
+  <h4 class="suites-heading">The 5 Core Test Suites</h4>
+  <div class="suites-grid">
+    <div class="suite-card">
+      <div class="suite-card__header">
+        <span class="suite-badge badge--smoke">smoke</span>
+        <h6>GNOME Shell & Apps</h6>
+      </div>
+      <p>Verifies desktop startup, system extension configs, top-bar menus, and primary app wrappers (Ptyxis, Software Center).</p>
+    </div>
+    
+    <div class="suite-card">
+      <div class="suite-card__header">
+        <span class="suite-badge badge--common">common</span>
+        <h6>Sandbox & Portals</h6>
+      </div>
+      <p>Asserts Flatpak sandbox portals, permission prompts, authorization overrides (polkit), and user space isolation boundaries.</p>
+    </div>
+
+    <div class="suite-card">
+      <div class="suite-card__header">
+        <span class="suite-badge badge--developer">developer</span>
+        <h6>Dev Toolchains</h6>
+      </div>
+      <p>Validates Homebrew path setup, rootless Podman socket mappings, and developer command line tool configurations.</p>
+    </div>
+
+    <div class="suite-card">
+      <div class="suite-card__header">
+        <span class="suite-badge badge--software">software</span>
+        <h6>Bazaar Flatpaks</h6>
+      </div>
+      <p>Tests the desktop application centers (Bazaar hub), Flatpak CLI actions, and local app metadata caching.</p>
+    </div>
+
+    <div class="suite-card">
+      <div class="suite-card__header">
+        <span class="suite-badge badge--system">system</span>
+        <h6>Atomic OS Contract</h6>
+      </div>
+      <p>Ensures <code>bootc status</code> OCI transport validity, composefs signatures, staged upgrade queues, and rollbacks.</p>
+    </div>
+  </div>
+</div>
+
+<style>
+  .qa-explainer-card {
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.35) 0%, rgba(15, 23, 42, 0.6) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 20px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .qa-explainer-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .header-icon-wrapper {
+    background: rgba(56, 189, 248, 0.1);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+    padding: 0.5rem;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .qa-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #38bdf8;
+    margin-bottom: 0.15rem;
+  }
+  .qa-explainer-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: -0.02em;
+  }
+  .qa-intro {
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: #cbd5e1;
+    margin: 0 0 1.5rem 0;
+    max-width: 850px;
+  }
+  .qa-intro strong {
+    color: #38bdf8;
+  }
+  .qa-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 1.5rem;
+  }
+  .qa-grid-item {
+    background: rgba(15, 23, 42, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    padding: 1rem;
+  }
+  .item-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .step-num {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.1);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+  .qa-grid-item h5 {
+    margin: 0;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #cbd5e1;
+  }
+  .qa-grid-item p {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: #94a3b8;
+  }
+  .suites-heading {
+    margin: 0 0 0.85rem 0;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .suites-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+  }
+  .suite-card {
+    background: rgba(30, 41, 59, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 10px;
+    padding: 0.85rem;
+    transition: all 0.2s ease-in-out;
+  }
+  .suite-card:hover {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(30, 41, 59, 0.25);
+  }
+  .suite-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .suite-card h6 {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #cbd5e1;
+  }
+  .suite-badge {
+    font-size: 0.58rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    font-family: monospace;
+  }
+  .badge--smoke { background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.15); }
+  .badge--common { background: rgba(168, 85, 247, 0.1); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.15); }
+  .badge--developer { background: rgba(236, 72, 153, 0.1); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.15); }
+  .badge--software { background: rgba(34, 197, 94, 0.1); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.15); }
+  .badge--system { background: rgba(249, 115, 22, 0.1); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.15); }
+  
+  .suite-card p {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: #64748b;
+  }
+</style>

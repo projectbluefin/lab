@@ -11,6 +11,7 @@ import SuiteMatrix from '../components/tests/SuiteMatrix.astro';
 import TestEvidenceCard from '../components/tests/TestEvidenceCard.astro';
 import RunbookSection from '../components/tests/RunbookSection.astro';
 import EvidenceGallery from '../components/tests/EvidenceGallery.astro';
+import QAExplainer from '../components/tests/QAExplainer.astro';
 
 interface SummaryMetric {
   id: string;
@@ -247,127 +248,7 @@ const chartPayload = {
     /* ── Hidden anchor for legacy tests ─────────────────────── */
     .legacy-hidden { display: none !important; }
 
-    /* ── Screenshot visual evidence gallery ─────────────────── */
-    .screenshot-gallery {
-      margin-top: 1.25rem;
-      padding-top: 1rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-    }
-    .screenshot-gallery h4 {
-      font-size: 0.82rem;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin: 0 0 0.75rem 0;
-    }
-    .screenshot-card {
-      display: inline-flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      max-width: 520px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      overflow: hidden;
-      background: rgba(15, 23, 42, 0.5);
-      transition: border-color 0.2s;
-    }
-    .screenshot-card:hover {
-      border-color: rgba(56, 189, 248, 0.35);
-    }
-    .screenshot-link {
-      position: relative;
-      display: block;
-      text-decoration: none;
-    }
-    .screenshot-img {
-      display: block;
-      width: 100%;
-      max-height: 320px;
-      object-fit: cover;
-      object-position: top center;
-    }
-    .screenshot-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(15, 23, 42, 0);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: rgba(248, 250, 252, 0);
-      transition: all 0.2s;
-    }
-    .screenshot-link:hover .screenshot-overlay {
-      background: rgba(15, 23, 42, 0.55);
-      color: #f8fafc;
-    }
-    .screenshot-caption {
-      padding: 0.5rem 0.75rem;
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 0.35rem;
-    }
 
-    /* ── Educational 16:9 Screenshot Placeholder ── */
-    .screenshot-placeholder {
-      width: 100%;
-      max-width: 520px;
-      aspect-ratio: 16 / 9;
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%);
-      border: 1px dashed rgba(255, 255, 255, 0.12);
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1.5rem;
-      text-align: center;
-      box-sizing: border-box;
-      transition: all 0.2s ease-in-out;
-    }
-    .screenshot-placeholder:hover {
-      border-color: rgba(56, 189, 248, 0.4);
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.9) 100%);
-    }
-    .screenshot-placeholder__content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .placeholder-icon {
-      color: #64748b;
-      margin-bottom: 0.25rem;
-    }
-    .screenshot-placeholder h5 {
-      margin: 0;
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: #cbd5e1;
-    }
-    .screenshot-placeholder p {
-      margin: 0;
-      font-size: 0.78rem;
-      color: #64748b;
-      line-height: 1.5;
-      max-width: 420px;
-    }
-    .placeholder-meta {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      font-size: 0.72rem;
-      color: #475569;
-      margin-top: 0.5rem;
-    }
-    .placeholder-meta code {
-      background: rgba(0, 0, 0, 0.3);
-      padding: 0.1rem 0.3rem;
-      border-radius: 4px;
-      color: #38bdf8;
-    }
 
     /* ── Detail toggle controls ──────────────────────────────── */
     .detail-toggle-group {
@@ -419,6 +300,8 @@ const chartPayload = {
     summaryMetrics={summaryMetrics}
     status={contract._meta.status}
   />
+
+  <QAExplainer />
 
   <!-- ═══════════════════════════════════════════════════════════ -->
   <!--  CHARTS SECTION                                             -->

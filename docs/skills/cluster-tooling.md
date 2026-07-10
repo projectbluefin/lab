@@ -156,6 +156,21 @@ Follow this precise order of operations to disable power management and reset th
    udevadm settle
    ```
 
+### 3. Permanent Bootloader Fix
+For permanent stability across host reboots (especially on atomic host operating systems like Bluefin/Silverblue running on `ghost`), APST should be disabled in the kernel command-line. This completely prevents the drive from entering high-latency sleep states that trigger link dropouts under high parallel I/O.
+
+Append the `nvme_core.default_ps_max_latency_us=0` parameter:
+```bash
+# On atomic hosts (rpm-ostree)
+sudo rpm-ostree kargs --append-if-missing="nvme_core.default_ps_max_latency_us=0"
+```
+
+A reboot is required to activate the bootloader change. After reboot, verify the setting:
+```bash
+cat /sys/module/nvme_core/parameters/default_ps_max_latency_us
+# Expected output: 0 (APST disabled)
+```
+
 ### 3. Optimal Formatting and Mounting (Btrfs to XFS Migration)
 
 The 4TB local data NVMe drives are mounted at `/var/mnt/ghost-data` on `ghost` and

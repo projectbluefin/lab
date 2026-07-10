@@ -370,8 +370,14 @@ spec:
           'RUN set -eux; \' \
           '    if [ -f /usr/sbin/findmnt ]; then \' \
           '        mv /usr/sbin/findmnt /usr/sbin/findmnt.orig; \' \
+          '        ln -sf /usr/sbin/findmnt.orig /usr/bin/findmnt.orig; \' \
+          '        ln -sf /usr/sbin/findmnt.orig /bin/findmnt.orig; \' \
+          '        ln -sf /usr/sbin/findmnt.orig /sbin/findmnt.orig; \' \
           '        mv /tmp/findmnt-wrapper /usr/sbin/findmnt; \' \
           '        chmod +x /usr/sbin/findmnt; \' \
+          '        ln -sf /usr/sbin/findmnt /usr/bin/findmnt; \' \
+          '        ln -sf /usr/sbin/findmnt /bin/findmnt; \' \
+          '        ln -sf /usr/sbin/findmnt /sbin/findmnt; \' \
           '    else \' \
           '        rm -f /tmp/findmnt-wrapper; \' \
           '    fi' \
@@ -464,6 +470,11 @@ spec:
               # Restore original findmnt binary if wrapper exists
               if [ -f "${DEPLOY_DIR}/usr/sbin/findmnt.orig" ]; then
                 mv "${DEPLOY_DIR}/usr/sbin/findmnt.orig" "${DEPLOY_DIR}/usr/sbin/findmnt"
+                rm -f "${DEPLOY_DIR}/usr/bin/findmnt.orig" "${DEPLOY_DIR}/bin/findmnt.orig" "${DEPLOY_DIR}/sbin/findmnt.orig"
+                rm -f "${DEPLOY_DIR}/usr/bin/findmnt" "${DEPLOY_DIR}/bin/findmnt" "${DEPLOY_DIR}/sbin/findmnt"
+                cp "${DEPLOY_DIR}/usr/sbin/findmnt" "${DEPLOY_DIR}/usr/bin/findmnt"
+                cp "${DEPLOY_DIR}/usr/sbin/findmnt" "${DEPLOY_DIR}/bin/findmnt"
+                cp "${DEPLOY_DIR}/usr/sbin/findmnt" "${DEPLOY_DIR}/sbin/findmnt"
                 echo "[POST-INSTALL] Original findmnt binary restored in ${DEPLOY_DIR}"
               fi
 

@@ -88,6 +88,8 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 87. Keep details description lists compact by overriding stacked vertical `dt`/`dd` layouts. Align key-value pairs horizontally using flex row layouts (`display: flex; justify-content: space-between;`) to conserve massive vertical space.
 88. Format raw evidence links (JSON paths, screenshots, workflow links) as premium interactive grid cards with custom icons and descriptions instead of simple bullet lists.
 89. Wrap detailed historical run tables inside collapsible `<details>` blocks to keep page layouts clean and compact, preserving full data visibility on user demand.
+90. For high-density registry/OCI dashboards, embed ECharts micro-sparklines (height ~30px, margin-less, axis hidden) inside grid card lists to visualize pulls and build durations inline, alongside expert CLI snippet tools (e.g. `.buildstream.conf`) for immediate copy-pasting.
+
 
 ## Common Rationalizations
 

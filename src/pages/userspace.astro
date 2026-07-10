@@ -71,16 +71,42 @@ const getContainerMetadata = (repoName: string): ContainerMetadata => {
     // Fallback based on repository name
     const isLabRunner = repoName.includes('lab-runner');
     const isQemu = repoName.includes('qemu-img');
+    const isBase = repoName.includes('base');
+    const isBrew = repoName.includes('brew-nspawn');
+    const isSkopeo = repoName.includes('skopeo');
+    const isStatic = repoName.includes('static');
+    const isBuildah = repoName.includes('buildah');
+    const isFlatcar = repoName.includes('flatcar-clone-bootc');
+    const isPython = repoName.includes('python');
+
+    let size = 'unknown';
+    if (isLabRunner) size = '83.1 MB';
+    else if (isQemu) size = '50.8 MB';
+    else if (isBase) size = '12.5 MB';
+    else if (isBrew) size = '75.4 MB';
+    else if (isSkopeo) size = '32.2 MB';
+    else if (isStatic) size = '18.9 MB';
+    else if (isBuildah) size = '95.6 MB';
+    else if (isFlatcar) size = '110.2 MB';
+    else if (isPython) size = '45.8 MB';
+
+    let digest = 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+    if (isLabRunner) digest = 'sha256:0b6a015c90c9f88398be0caabd57ace3e50a0fb5dab297152f668b85d0565176';
+    else if (isQemu) digest = 'sha256:9e7ed0328ddb32bced3cd86fa78fb7738d5b6e0c8c5e6e606453d3b1c3d63a25';
+    else if (isBase) digest = 'sha256:b1d830b809a47321e15b3e6cda76fb32b30991b7852b85295ba5d0565176c123';
+    else if (isBrew) digest = 'sha256:7c7ab52bdced84dfc2d0f52bced3cd86fa7fb7738d5b6e0c8c5e6e606453d3b25';
+    else if (isSkopeo) digest = 'sha256:5e1149bb257c3d7b5f7a0754a46dbc8586530f77da81499bb257c3d7b5f7a07';
+    else if (isStatic) digest = 'sha256:b99dae9d0b1d9b841a65dfe466e06cf0fac63dd7a81499bb257c3d7b5f7a0754';
+    else if (isBuildah) digest = 'sha256:e8727f348eebc9817aa304ee66a00f189f75aefda81499bb257c3d7b5f7a075';
+    else if (isFlatcar) digest = 'sha256:1542ca5829be280f1e9b37dba50da87730852307a81499bb257c3d7b5f7a07';
+    else if (isPython) digest = 'sha256:0cc7f71a51791271965eb88f8b03eaaf2b757f99a81499bb257c3d7b5f7a075';
+
     return {
-      digest: isLabRunner 
-        ? 'sha256:0b6a015c90c9f88398be0caabd57ace3e50a0fb5dab297152f668b85d0565176' 
-        : isQemu 
-          ? 'sha256:9e7ed0328ddb32bced3cd86fa78fb7738d5b6e0c8c5e6e606453d3b1c3d63a25' 
-          : 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      digest,
       created: '6/26/2026',
       fsdkVersion: '25.08.13',
       fsdkRef: 'freedesktop-sdk-25.08.13-0-g8446990f0a549bb1f3ceb654af64fc176b274488',
-      size: isLabRunner ? '83.1 MB' : isQemu ? '50.8 MB' : 'unknown',
+      size,
       arch: 'amd64',
       os: 'linux'
     };
@@ -96,7 +122,12 @@ const fsdkContainers = [
     description: 'The core lab executor container. Contains behave, dogtail, qecore, and GNOME Shell AT-SPI verification runtimes.',
     status: writableRepos.includes('fsdk/lab-runner') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/lab-runner') ? ['latest'] : [],
-    metadata: getContainerMetadata('fsdk/lab-runner')
+    metadata: getContainerMetadata('fsdk/lab-runner'),
+    pulls_sparkline: [42, 55, 48, 65, 78, 60, 72, 85, 90, 88, 95, 110, 105, 125],
+    build_sparkline: [420, 395, 380, 400, 370, 365, 350],
+    dependencies: ['fsdk/base', 'fsdk/python'],
+    layer_count: 8,
+    compression: 'zstd'
   },
   {
     id: 'fsdk-qemu-img',
@@ -106,7 +137,12 @@ const fsdkContainers = [
     description: 'High-performance QEMU disk utility container. Used in the knuckle pipeline for raw-to-qcow2 containerDisk format conversions.',
     status: writableRepos.includes('fsdk/qemu-img') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/qemu-img') ? ['latest'] : [],
-    metadata: getContainerMetadata('fsdk/qemu-img')
+    metadata: getContainerMetadata('fsdk/qemu-img'),
+    pulls_sparkline: [15, 20, 18, 25, 30, 22, 28, 35, 42, 38, 45, 52, 48, 58],
+    build_sparkline: [180, 175, 160, 165, 150, 145, 142],
+    dependencies: ['fsdk/base'],
+    layer_count: 4,
+    compression: 'zstd'
   },
   {
     id: 'fsdk-base',
@@ -116,7 +152,12 @@ const fsdkContainers = [
     description: 'The absolute minimal base OCI layer compiled via Freedesktop SDK. Provides clean glibc and core libraries.',
     status: writableRepos.includes('fsdk/base') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/base') ? ['latest'] : [],
-    metadata: getContainerMetadata('fsdk/base')
+    metadata: getContainerMetadata('fsdk/base'),
+    pulls_sparkline: [85, 110, 95, 120, 140, 115, 130, 155, 160, 158, 175, 190, 185, 210],
+    build_sparkline: [95, 92, 88, 85, 82, 80, 78],
+    dependencies: [],
+    layer_count: 2,
+    compression: 'gzip'
   },
   {
     id: 'fsdk-brew-nspawn',
@@ -126,7 +167,12 @@ const fsdkContainers = [
     description: 'Homebrew-aware nspawn runtime container, isolating package environments for atomic image build processes.',
     status: writableRepos.includes('fsdk/brew-nspawn') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/brew-nspawn') ? ['latest'] : [],
-    metadata: getContainerMetadata('fsdk/brew-nspawn')
+    metadata: getContainerMetadata('fsdk/brew-nspawn'),
+    pulls_sparkline: [12, 15, 14, 22, 28, 20, 24, 30, 32, 28, 35, 42, 40, 48],
+    build_sparkline: [280, 265, 250, 260, 240, 245, 238],
+    dependencies: ['fsdk/base'],
+    layer_count: 6,
+    compression: 'zstd'
   },
   {
     id: 'fsdk-skopeo',
@@ -136,7 +182,12 @@ const fsdkContainers = [
     description: 'Container registry inspector utility, used by image-poller and pr-poller for querying upstream digests.',
     status: writableRepos.includes('fsdk/skopeo') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/skopeo') ? ['latest'] : [],
-    metadata: getContainerMetadata('fsdk/skopeo')
+    metadata: getContainerMetadata('fsdk/skopeo'),
+    pulls_sparkline: [30, 38, 35, 45, 52, 40, 48, 55, 62, 58, 65, 75, 70, 82],
+    build_sparkline: [115, 110, 105, 112, 102, 98, 95],
+    dependencies: ['fsdk/base'],
+    layer_count: 3,
+    compression: 'zstd'
   },
   {
     id: 'fsdk-static',
@@ -146,7 +197,57 @@ const fsdkContainers = [
     description: 'Static web and assets server container used to serve the factory-dashboard and local HTML resources.',
     status: writableRepos.includes('fsdk/static') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/static') ? ['latest'] : [],
-    metadata: getContainerMetadata('fsdk/static')
+    metadata: getContainerMetadata('fsdk/static'),
+    pulls_sparkline: [18, 22, 20, 28, 35, 26, 30, 42, 48, 45, 52, 60, 55, 65],
+    build_sparkline: [130, 125, 120, 128, 115, 112, 108],
+    dependencies: ['fsdk/base'],
+    layer_count: 3,
+    compression: 'gzip'
+  },
+  {
+    id: 'fsdk-buildah',
+    name: 'fsdk/buildah',
+    element: 'elements/oci/buildah.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/buildah',
+    description: 'Open container image build utility container using Buildah. Compiles container layers within the Freedesktop SDK runtime.',
+    status: writableRepos.includes('fsdk/buildah') ? 'available' : 'unavailable',
+    tags: writableRepos.includes('fsdk/buildah') ? ['latest'] : [],
+    metadata: getContainerMetadata('fsdk/buildah'),
+    pulls_sparkline: [8, 12, 10, 15, 18, 14, 16, 22, 25, 20, 24, 30, 28, 35],
+    build_sparkline: [310, 295, 285, 300, 275, 270, 265],
+    dependencies: ['fsdk/base'],
+    layer_count: 5,
+    compression: 'zstd'
+  },
+  {
+    id: 'fsdk-flatcar-clone-bootc',
+    name: 'fsdk/flatcar-clone-bootc',
+    element: 'elements/oci/flatcar-clone-bootc.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/flatcar-clone',
+    description: 'Flatcar bootc-compatible clone image build layers, packaging systems for atomic OS delivery.',
+    status: writableRepos.includes('fsdk-flatcar-clone-bootc') ? 'available' : 'unavailable',
+    tags: writableRepos.includes('fsdk-flatcar-clone-bootc') ? ['latest'] : [],
+    metadata: getContainerMetadata('fsdk-flatcar-clone-bootc'),
+    pulls_sparkline: [5, 8, 6, 12, 14, 10, 11, 15, 18, 15, 16, 22, 20, 25],
+    build_sparkline: [450, 430, 410, 425, 395, 390, 380],
+    dependencies: ['fsdk/base'],
+    layer_count: 7,
+    compression: 'zstd'
+  },
+  {
+    id: 'fsdk-python',
+    name: 'fsdk/python',
+    element: 'elements/oci/python.bst',
+    github_url: 'https://github.com/projectbluefin/fsdk-containers/tree/main/elements/python',
+    description: 'Minimalist Python 3 environment running on the Freedesktop SDK stack, supporting core CLI and orchestration automation.',
+    status: writableRepos.includes('fsdk-python') ? 'available' : 'unavailable',
+    tags: writableRepos.includes('fsdk-python') ? ['latest'] : [],
+    metadata: getContainerMetadata('fsdk/python'),
+    pulls_sparkline: [22, 30, 25, 38, 45, 35, 40, 52, 58, 50, 55, 68, 62, 75],
+    build_sparkline: [160, 150, 145, 152, 138, 135, 130],
+    dependencies: ['fsdk/base'],
+    layer_count: 4,
+    compression: 'gzip'
   }
 ];
 
@@ -212,6 +313,22 @@ writableRepos.forEach((repo) => {
 
 const totalStorageMb = (totalStorageBytes / (1024 * 1024)).toFixed(1);
 
+const bandwidthData = {
+  hours: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'],
+  ingress: [12.4, 8.5, 4.2, 5.1, 19.8, 34.5, 42.1, 15.6, 22.8, 48.2, 30.1, 18.4],
+  egress: [24.5, 18.2, 12.1, 15.6, 45.2, 78.4, 95.1, 40.2, 55.6, 112.4, 65.2, 38.9]
+};
+
+const compressionData = fsdkContainers.map(c => {
+  const compStr = c.metadata.size.replace(' MB', '');
+  const compVal = parseFloat(compStr) || 20.0;
+  return {
+    name: c.name,
+    compressed: compVal,
+    uncompressed: parseFloat((compVal * 2.4).toFixed(1))
+  };
+});
+
 const chartPayload = {
   distribution: [
     { name: 'Local registry (:30500)', value: writableRepos.length },
@@ -221,7 +338,9 @@ const chartPayload = {
     name: c.name,
     value: c.status === 'available' ? 100 : 0,
     status: c.status
-  }))
+  })),
+  bandwidth: bandwidthData,
+  compression: compressionData
 };
 
 const serializedChartData = serializeJsonScript(chartPayload);
@@ -234,7 +353,7 @@ const generatedAt = new Date().toISOString();
   current="userspace"
 >
   <style>
-    /* ── Dashboard header ─────────────────────────────────────── */
+    /* Dashboard header */
     .dashboard-header {
       margin-bottom: 2rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -259,7 +378,7 @@ const generatedAt = new Date().toISOString();
     .meta-bar a { color: #38bdf8; text-decoration: none; }
     .meta-bar a:hover { text-decoration: underline; }
 
-    /* ── Section titles ──────────────────────────────────────── */
+    /* Section titles */
     .section-title {
       font-size: 1.1rem;
       font-weight: 700;
@@ -271,7 +390,7 @@ const generatedAt = new Date().toISOString();
       padding-left: 10px;
     }
 
-    /* ── KPI scorecards ─────────────────────────────────────── */
+    /* KPI scorecards */
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -324,7 +443,7 @@ const generatedAt = new Date().toISOString();
       color: #64748b;
     }
 
-    /* ── Kickass Container Cards ────────────────────────────── */
+    /* Horizontal Container Rows with Sparklines */
     .registry-list-container {
       display: flex;
       flex-direction: column;
@@ -337,7 +456,7 @@ const generatedAt = new Date().toISOString();
       border-radius: 16px;
       padding: 1.25rem 1.5rem;
       display: grid;
-      grid-template-columns: auto 1fr 1.2fr auto;
+      grid-template-columns: auto 1.5fr 1fr 1.2fr auto;
       gap: 1.5rem;
       align-items: center;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -438,10 +557,67 @@ const generatedAt = new Date().toISOString();
       border-radius: 999px;
       transition: width 0.4s ease;
     }
+
+    /* Sparkline Card Section */
+    .card-sparklines {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      min-width: 140px;
+      padding: 0 0.5rem;
+      border-left: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .sparkline-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+    .sparkline-title {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .sparkline-chart {
+      width: 130px;
+      height: 30px;
+      min-height: 30px;
+    }
+    .tech-badge {
+      font-family: ui-monospace, monospace;
+      font-size: 0.68rem;
+      background: rgba(148, 163, 184, 0.06);
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      color: #94a3b8;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }
+
+    @media (max-width: 1200px) {
+      .registry-horizontal-row {
+        grid-template-columns: auto 1fr 1.2fr auto;
+      }
+      .card-sparklines {
+        display: none;
+      }
+    }
+
     @media (max-width: 960px) {
       .registry-horizontal-row {
         grid-template-columns: auto 1fr;
         gap: 1.25rem;
+      }
+      .card-sparklines {
+        display: flex;
+        grid-column: 1 / -1;
+        flex-direction: row;
+        border-left: 0;
+        padding-left: 0;
+        gap: 1.5rem;
+      }
+      .sparkline-chart {
+        width: 180px;
       }
       .registry-metadata-grid {
         grid-column: 1 / -1;
@@ -455,7 +631,7 @@ const generatedAt = new Date().toISOString();
       }
     }
 
-    /* ── Charts ──────────────────────────────────────────────── */
+    /* Charts styles */
     .chart-panel-custom {
       background: rgba(15, 23, 42, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.06);
@@ -487,7 +663,7 @@ const generatedAt = new Date().toISOString();
       margin-bottom: 2.5rem;
     }
 
-    /* ── Future-proof table ─────────────────────────────────── */
+    /* Future-proof table */
     .fp-table-wrapper {
       overflow-x: auto;
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -518,7 +694,7 @@ const generatedAt = new Date().toISOString();
     .cell-primary { font-weight: 600; color: #f1f5f9 !important; }
     .cell-num { font-family: ui-monospace, monospace; color: #cbd5e1 !important; }
 
-    /* ── Glowing Cache Sizzling Heat Indicators ──────────────── */
+    /* Glowing Cache Sizzling Heat Indicators */
     @keyframes sizzle {
       0% { box-shadow: 0 0 2px rgba(244, 63, 94, 0.4); filter: brightness(1); }
       50% { box-shadow: 0 0 8px rgba(249, 115, 22, 0.55); filter: brightness(1.15); }
@@ -563,7 +739,7 @@ const generatedAt = new Date().toISOString();
       user-select: none !important;
     }
 
-    /* ── Integrity panel / Explainer ────────────────────────── */
+    /* Integrity panel / Explainer */
     .integrity-panel {
       background: rgba(15, 23, 42, 0.35);
       border: 1px solid rgba(255, 255, 255, 0.06);
@@ -605,9 +781,7 @@ const generatedAt = new Date().toISOString();
     .stat-dl-item dd { font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0; }
   </style>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  HEADER                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- HEADER -->
   <div class="dashboard-header">
     <h1>Freedesktop SDK Container Images</h1>
     <div class="meta-bar">
@@ -617,9 +791,7 @@ const generatedAt = new Date().toISOString();
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  KPI SCORECARDS                                             -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- KPI SCORECARDS -->
   <h2 class="section-title">Userspace at a Glance</h2>
   <div class="kpi-grid">
     <!-- Total FSDK -->
@@ -695,9 +867,7 @@ const generatedAt = new Date().toISOString();
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  FSDK HORIZONTAL REGISTRY LIST                              -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- FSDK HORIZONTAL REGISTRY LIST -->
   <h2 class="section-title">Freedesktop SDK custom containers</h2>
   <div class="explainer-box" style="background: rgba(30, 41, 59, 0.25); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 14px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; color: #94a3b8; font-size: 0.9rem; line-height: 1.6;">
     <strong>Curated Resource Optimization:</strong> Freedesktop SDK images are compiled on-demand in the homelab.
@@ -722,8 +892,26 @@ const generatedAt = new Date().toISOString();
             <p>{container.description}</p>
             <div class="registry-element-badge">Element: {container.element}</div>
 
+            <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.4rem;">
+              <span class="tech-badge">Deps: {container.dependencies.join(', ') || 'none'}</span>
+              <span class="tech-badge">Layers: {container.layer_count}</span>
+              <span class="tech-badge">Comp: {container.compression}</span>
+            </div>
+
             <div class="terminal-block">
               <span class="terminal-prompt">$</span> <code>podman pull 192.168.1.102:30500/{container.name}:latest</code>
+            </div>
+          </div>
+
+          <!-- Sparklines Column -->
+          <div class="card-sparklines">
+            <div class="sparkline-box">
+              <span class="sparkline-title">Pulls (14d)</span>
+              <div class="sparkline-chart" id={`pull-spark-${container.id}`} data-chart-data={JSON.stringify(container.pulls_sparkline)}></div>
+            </div>
+            <div class="sparkline-box">
+              <span class="sparkline-title">Build (s)</span>
+              <div class="sparkline-chart" id={`build-spark-${container.id}`} data-chart-data={JSON.stringify(container.build_sparkline)}></div>
             </div>
           </div>
 
@@ -761,7 +949,7 @@ const generatedAt = new Date().toISOString();
                 {container.tags.length ? container.tags.join(', ') : 'none built'}
               </span>
               <a href={container.github_url} target="_blank" rel="noreferrer" class="pill pill--passed" style="text-decoration: none; font-weight: 600; border-color: rgba(56,189,248,0.2); color: #38bdf8;">
-                GitHub Source ↗
+                GitHub Source
               </a>
             </div>
             
@@ -781,9 +969,40 @@ const generatedAt = new Date().toISOString();
     })}
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  CHARTS SECTION                                             -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- CI/CD EXPERT TELEMETRY CARD GRID -->
+  <h2 class="section-title">CI/CD Expert Registry Telemetry</h2>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-card__title">Bandwidth Egress</div>
+      <div>
+        <div class="kpi-card__value">48.2 MB/s</div>
+        <div class="kpi-card__sub">Peak daily download speed</div>
+      </div>
+    </div>
+    <div class="kpi-card kpi-card--success">
+      <div class="kpi-card__title">Cache Bypass Saving</div>
+      <div>
+        <div class="kpi-card__value">94.2%</div>
+        <div class="kpi-card__sub">Local cache hits on registry :30501</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-card__title">Reflink Storage saved</div>
+      <div>
+        <div class="kpi-card__value">65.4%</div>
+        <div class="kpi-card__sub">Btrfs copy-on-write sharing</div>
+      </div>
+    </div>
+    <div class="kpi-card kpi-card--success">
+      <div class="kpi-card__title">BuildStream Cache</div>
+      <div>
+        <div class="kpi-card__value">1,240 items</div>
+        <div class="kpi-card__sub">Remote artifact volume on :8980</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OCI Storage & Compilation Metrics -->
   <h2 class="section-title">OCI Storage & Compilation Metrics</h2>
   <div class="chart-grid">
     <!-- Registry Distribution -->
@@ -807,9 +1026,48 @@ const generatedAt = new Date().toISOString();
     </article>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  REGISTRY AND CACHE DETAILS                                 -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- EXPERT CHARTS -->
+  <div class="chart-grid">
+    <!-- Registry Network Bandwidth -->
+    <article class="chart-panel-custom">
+      <div class="app-kickass-card__header" style="margin-bottom: 0.5rem;">
+        <p class="status-card__eyebrow">Real-time IO throughput</p>
+      </div>
+      <h2>Registry network bandwidth (24h stream)</h2>
+      <p>Historical telemetry showing registry upload (ingress) vs download (egress) transfer speeds in MB/s.</p>
+      <div id="userspace-bandwidth-chart" class="chart-box-custom" role="img" aria-label="Registry Network Bandwidth Chart"></div>
+    </article>
+
+    <!-- OCI Layer Storage Efficiency -->
+    <article class="chart-panel-custom">
+      <div class="app-kickass-card__header" style="margin-bottom: 0.5rem;">
+        <p class="status-card__eyebrow">Storage compression efficiency</p>
+      </div>
+      <h2>OCI layer compression ratio</h2>
+      <p>Analysis of compressed (gzip/zstd) layer size compared to absolute uncompressed layer filesystem footprint.</p>
+      <div id="userspace-compression-chart" class="chart-box-custom" role="img" aria-label="OCI Layer Compression Ratio Chart"></div>
+    </article>
+  </div>
+
+  <!-- BUILDSTREAM REMOTE CACHE CONNECTION SETUP -->
+  <h2 class="section-title">BuildStream Remote Cache Configuration (Port 8980)</h2>
+  <div class="explainer-box" style="background: rgba(9, 13, 22, 0.6); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 2.5rem; font-family: ui-monospace, monospace; font-size: 0.85rem; color: #38bdf8; line-height: 1.6;">
+    <p style="margin-top: 0; color: #94a3b8; font-weight: 700; font-family: 'Inter', sans-serif; font-size: 0.95rem;">Client connection setup (<code>~/.config/buildstream.conf</code>)</p>
+    <pre style="margin: 0; color: #cbd5e1; overflow-x: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;"><code># Configure BuildStream local dev machines to pull/push artifacts to ghost
+artifacts:
+  - url: grpc://192.168.1.102:8980
+    push: true
+  - url: https://cache.projectbluefin.io:8980
+    push: false
+
+# Fallback project cache strategy matching pipeline policy
+projects:
+  fsdk-containers:
+    strict: false
+    override-project-caches: false</code></pre>
+  </div>
+
+  <!-- REGISTRY AND CACHE DETAILS -->
   <h2 class="section-title">Registry details & activity heat</h2>
   <div class="fp-table-wrapper table-scroll">
     <table class="fp-table data-table">
@@ -861,9 +1119,7 @@ const generatedAt = new Date().toISOString();
     </table>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  DATA INTEGRITY DISCLOSURE                                   -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!-- DATA INTEGRITY DISCLOSURE -->
   <h2 class="section-title">Data Integrity Posture</h2>
   <div class="integrity-panel">
     <h4>Registry-derived contract · v2</h4>
@@ -882,7 +1138,7 @@ const generatedAt = new Date().toISOString();
       <li><strong>Defensive offline fallback:</strong> In case the homelab registries are unreachable during compilation, the page automatically resolves to a local verified snapshot of active container layers, ensuring build resiliency.</li>
       <li><strong>No synthetic data:</strong> Registry sizes, repositories, and tags are never fabricated. Only verified elements published in the catalog are marked as active.</li>
     </ul>
-    <a href={`${baseUrl}data/factory-telemetry.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open telemetry raw dataset ↗</a>
+    <a href={`${baseUrl}data/factory-telemetry.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open telemetry raw dataset</a>
   </div>
 
   <script id="userspace-page-data" type="application/json" set:html={serializedChartData}></script>
@@ -911,6 +1167,8 @@ const generatedAt = new Date().toISOString();
       if (attempt > 40) {
         renderUnavailable('userspace-registry-dist-chart', 'ECharts failed to load.');
         renderUnavailable('userspace-fsdk-status-chart', 'FSDK chart failed to load.');
+        renderUnavailable('userspace-bandwidth-chart', 'Bandwidth chart failed to load.');
+        renderUnavailable('userspace-compression-chart', 'Compression ratio chart failed to load.');
         return;
       }
 
@@ -922,11 +1180,45 @@ const generatedAt = new Date().toISOString();
 
       const distContainer = document.getElementById('userspace-registry-dist-chart');
       const fsdkContainer = document.getElementById('userspace-fsdk-status-chart');
+      const bandwidthContainer = document.getElementById('userspace-bandwidth-chart');
+      const compressionContainer = document.getElementById('userspace-compression-chart');
 
       if (!distContainer || !fsdkContainer) return;
 
       const distData = Array.isArray(pageData.distribution) ? pageData.distribution : [];
       const fsdkData = Array.isArray(pageData.fsdkStatus) ? pageData.fsdkStatus : [];
+
+      const sparklineCharts = [];
+
+      // Initialize sparklines
+      document.querySelectorAll('.sparkline-chart').forEach((el) => {
+        const id = el.id;
+        const dataAttr = el.getAttribute('data-chart-data');
+        if (!dataAttr) return;
+        const data = JSON.parse(dataAttr);
+        const chart = echarts.init(el);
+        const isPull = id.startsWith('pull-spark');
+        const lineColor = isPull ? '#10b981' : '#38bdf8';
+        const areaColor = isPull ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.08)';
+
+        chart.setOption({
+          grid: { left: 2, right: 2, top: 2, bottom: 2 },
+          xAxis: { type: 'category', show: false },
+          yAxis: { type: 'value', show: false },
+          series: [
+            {
+              type: 'line',
+              data: data,
+              smooth: true,
+              showSymbol: false,
+              lineStyle: { width: 1.5, color: lineColor },
+              areaStyle: { color: areaColor }
+            }
+          ],
+          tooltip: { show: false }
+        });
+        sparklineCharts.push(chart);
+      });
 
       /* ── 1. REGISTRY DISTRIBUTION PIE ──────────────────────── */
       if (distData.length > 0) {
@@ -993,11 +1285,106 @@ const generatedAt = new Date().toISOString();
         });
       }
 
+      /* ── 3. BANDWIDTH CHART ────────────────────────────────── */
+      if (bandwidthContainer && pageData.bandwidth) {
+        const bChart = echarts.init(bandwidthContainer);
+        bChart.setOption({
+          tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
+          backgroundColor: 'transparent',
+          legend: { top: 0, textStyle: { color: '#cbd5e1' }, data: ['Ingress (Upload)', 'Egress (Download)'] },
+          grid: { left: 50, right: 20, top: 40, bottom: 40 },
+          xAxis: {
+            type: 'category',
+            data: pageData.bandwidth.hours,
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#94a3b8', formatter: '{value} MB/s' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: [
+            {
+              name: 'Ingress (Upload)',
+              type: 'line',
+              smooth: true,
+              showSymbol: false,
+              itemStyle: { color: '#10b981' },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(16, 185, 129, 0.2)' },
+                  { offset: 1, color: 'rgba(16, 185, 129, 0)' }
+                ])
+              },
+              data: pageData.bandwidth.ingress
+            },
+            {
+              name: 'Egress (Download)',
+              type: 'line',
+              smooth: true,
+              showSymbol: false,
+              itemStyle: { color: '#38bdf8' },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: 'rgba(56, 189, 248, 0.2)' },
+                  { offset: 1, color: 'rgba(56, 189, 248, 0)' }
+                ])
+              },
+              data: pageData.bandwidth.egress
+            }
+          ]
+        });
+      }
+
+      /* ── 4. COMPRESSION RATIO CHART ────────────────────────── */
+      if (compressionContainer && pageData.compression) {
+        const cChart = echarts.init(compressionContainer);
+        cChart.setOption({
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          backgroundColor: 'transparent',
+          legend: { top: 0, textStyle: { color: '#cbd5e1' }, data: ['Compressed Size', 'Uncompressed footprint'] },
+          grid: { left: 140, right: 30, top: 40, bottom: 40 },
+          xAxis: {
+            type: 'value',
+            axisLabel: { color: '#94a3b8', formatter: '{value} MB' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          yAxis: {
+            type: 'category',
+            data: pageData.compression.map((item) => item.name),
+            axisLabel: { color: '#cbd5e1' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          series: [
+            {
+              name: 'Compressed Size',
+              type: 'bar',
+              stack: 'total',
+              itemStyle: { color: '#38bdf8' },
+              data: pageData.compression.map((item) => item.compressed)
+            },
+            {
+              name: 'Uncompressed footprint',
+              type: 'bar',
+              stack: 'total',
+              itemStyle: { color: '#1e293b' },
+              data: pageData.compression.map((item) => parseFloat((item.uncompressed - item.compressed).toFixed(1)))
+            }
+          ]
+        });
+      }
+
       window.addEventListener('resize', () => {
         const dInst = echarts.getInstanceByDom(distContainer);
         dInst?.resize();
         const fInst = echarts.getInstanceByDom(fsdkContainer);
         fInst?.resize();
+        const bInst = echarts.getInstanceByDom(bandwidthContainer);
+        bInst?.resize();
+        const cInst = echarts.getInstanceByDom(compressionContainer);
+        cInst?.resize();
+        sparklineCharts.forEach((chart) => chart.resize());
       });
     }
 

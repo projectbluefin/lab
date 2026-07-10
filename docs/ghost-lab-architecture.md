@@ -79,6 +79,23 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
        +ipv4.routing-rules "priority 5209 to 10.42.0.0/24 table 40"
      ```
 
+  ### Persistent DNS Routing Override over Ethernet (Core SRE Guarantee)
+
+  While the USB4 link is highly optimized for high-bandwidth data plane traffic (such as build artifact transfers), routing lightweight control plane discovery traffic—specifically **DNS queries and responses**—over USB4 creates a single point of failure (SPOF) if the USB4 cable is unplugged or drops.
+
+  To isolate control and data plane traffic properly, **all CoreDNS and DNS traffic is routed strictly over the Ethernet LAN**. This is enforced at priority `5208` (higher than the USB4 route priority `5209`), steering port 53 UDP and TCP queries/responses via the `main` table:
+
+  1. **DNS routing rules** applied on both `ghost` and `exo-0`:
+     - Outbound queries to CoreDNS: `from all ipproto udp dport 53 lookup main pref 5208`
+     - Outbound queries to CoreDNS (TCP): `from all ipproto tcp dport 53 lookup main pref 5208`
+     - Outbound replies from CoreDNS: `from all ipproto udp sport 53 lookup main pref 5208`
+     - Outbound replies from CoreDNS (TCP): `from all ipproto tcp sport 53 lookup main pref 5208`
+
+  2. **Automated Enforcement (usb4-link-monitor DaemonSet)**:
+     These routing overrides are dynamically injected and verified every 15 seconds by the `usb4-link-monitor` DaemonSet using host PID/mount namespace execution (`nsenter` with `/usr/sbin/ip` on the host), making the setup completely self-healing and immune to manual operator changes or NetworkManager profile resets.
+
+  Verify with `ip route get 10.42.1.10 dport 53` on ghost — it must show that it is routed via the Ethernet LAN interface, whereas data-plane IPs route via `thunderbolt0`.
+
   Verify with `ip route get 10.42.1.10` on ghost — it must show
   `via 10.99.0.2 dev thunderbolt0 table 40`.
 

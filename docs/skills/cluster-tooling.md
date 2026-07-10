@@ -409,11 +409,20 @@ therefore gates RE on live link state:
 - In `cache-only` mode bst builds locally in the pod and uses Buildbarn purely
   for artifact pulling/pushing.
 
-> ⚠️ **CRITICAL SRE Operational Guidance on Thunderbolt Link Down**:
-> If the physical USB4/Thunderbolt link is down, the static table-40 policy routing rules persisted in NetworkManager on `exo-0` and `ghost` will continue to match pod traffic destined for the other node's pod CIDR (e.g., `10.42.0.0/24` for ghost / CoreDNS) and try to route it over `thunderbolt0` (which has `NO-CARRIER`), silently blackholing all cross-node pod-to-pod and DNS traffic.
-> To restore healthy LAN-fallback pod networking while the physical link is down:
+> ⚠️ **CRITICAL SRE Operational Guidance on Thunderbolt Link Down and DNS Routing Override**:
+> If the physical USB4/Thunderbolt link is down, the static table-40 policy routing rules persisted in NetworkManager on `exo-0` and `ghost` would match pod traffic destined for the other node's pod CIDR (e.g., `10.42.0.0/24` for ghost) and try to route it over `thunderbolt0` (which has `NO-CARRIER`), silently blackholing all cross-node pod-to-pod and DNS traffic.
+>
+> **The SRE Solution (DNS routed strictly over Ethernet)**:
+> To isolate the control plane and make cluster discovery completely immune to USB4 link drops, DNS queries and responses (UDP/TCP port 53) are routed strictly over the Ethernet LAN interface. This is enforced at priority `5208` (higher than the USB4 route priority `5209`), steering port 53 traffic via the `main` table.
+>
+> This override is dynamically maintained and auto-injected every 15 seconds by the `usb4-link-monitor` DaemonSet using host namespaces:
+> - Outbound queries/replies: `nsenter -t 1 -m -n -- /usr/sbin/ip rule add ipproto [udp|tcp] [dport|sport] 53 lookup main pref 5208`
+>
+> If the physical link is down, data-plane pod-to-pod traffic can be fell back to Ethernet by deactivating the NM connection:
 > 1. On `exo-0`, deactivate the NM Thunderbolt connection: `sudo nmcli con down "Wired connection 2"`
 > 2. On `ghost`, delete the stale routing rule: `sudo ip rule del priority 5209`
+>
+> All DNS queries and responses remain completely unaffected and healthy over Ethernet throughout, preventing cluster outages!
   as artifact/source cache (bounded transfers, ethernet-safe).
 - Retries always force cache-only (`{{retries}} > 0`): a mid-build link drop
   fails the attempt and the retry rides the cache instead of RE.

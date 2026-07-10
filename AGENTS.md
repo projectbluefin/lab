@@ -167,14 +167,12 @@ argo/
   workflow-templates/          ← ArgoCD (lab App) syncs these
     build-containerdisk.yaml      build containerDisk from bootc image
     bluefin-qa-pipeline.yaml      full pipeline: build + provision + tests
-    provision-bluefin-vm.yaml     boot Bluefin KubeVirt VM
+    provision-containerdisk-vm.yaml     boot Bluefin/COSMIC containerDisk KubeVirt VM
     run-gnome-tests.yaml          SSH into VM, run behave/qecore suite
-    teardown-bluefin-vm.yaml      delete Bluefin VM + disk
+    teardown-vm.yaml              delete any KubeVirt test VM
     provision-flatcar-vm.yaml     provision Flatcar VM
     run-flatcar-tests.yaml        SSH into Flatcar VM, run tests
-    teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
     provision-gnomeos-vm.yaml     provision GnomeOS VM
-    teardown-gnomeos-vm.yaml      delete GnomeOS VM
     run-incluster-tests.yaml      run tests inside the cluster
     dakota-qa-pipeline.yaml       full Dakota QA pipeline (pull from ghcr.io/projectbluefin/dakota)
     knuckle-qa-pipeline.yaml      Knuckle installer pipeline

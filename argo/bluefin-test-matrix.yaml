@@ -55,7 +55,7 @@ spec:
         # Phase 1: provision both VMs in parallel
         - - name: bluefin-testing
             templateRef:
-              name: provision-bluefin-vm
+              name: provision-containerdisk-vm
               template: provision-vm
             arguments:
               parameters:
@@ -68,7 +68,7 @@ spec:
 
           - name: bluefin-lts
             templateRef:
-              name: provision-bluefin-vm
+              name: provision-containerdisk-vm
               template: provision-vm
             arguments:
               parameters:
@@ -119,7 +119,7 @@ spec:
       steps:
         - - name: teardown-testing
             templateRef:
-              name: teardown-bluefin-vm
+              name: teardown-vm
               template: teardown-vm
             arguments:
               parameters:
@@ -130,7 +130,7 @@ spec:
 
           - name: teardown-lts
             templateRef:
-              name: teardown-bluefin-vm
+              name: teardown-vm
               template: teardown-vm
             arguments:
               parameters:

@@ -1,8 +1,12 @@
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
-  name: teardown-flatcar-vm
+  name: teardown-vm
   namespace: argo
+  annotations:
+    description: |
+      Deletes a KubeVirt VirtualMachine by name and namespace.
+      Used for Bluefin, COSMIC, Dakota, Flatcar, GNOME OS, and Knuckle test VMs.
 spec:
   serviceAccountName: argo
   templates:
@@ -11,7 +15,6 @@ spec:
         parameters:
           - name: vm-name
           - name: namespace
-            value: "flatcar-test"
       resource:
         action: delete
         manifest: |

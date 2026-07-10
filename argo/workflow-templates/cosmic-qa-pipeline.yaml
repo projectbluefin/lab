@@ -131,7 +131,7 @@ spec:
     steps:
     - - name: provision
         templateRef:
-          name: provision-cosmic-vm
+          name: provision-containerdisk-vm
           template: provision-vm
         arguments:
           parameters:
@@ -143,6 +143,12 @@ spec:
             value: "{{inputs.parameters.namespace}}"
           - name: vm-memory
             value: "{{inputs.parameters.vm-memory}}"
+          - name: containerdisk-repo
+            value: "cosmic-containerdisk"
+          - name: app-label
+            value: "cosmic-test"
+          - name: label-prefix
+            value: "cosmic.io"
     - - name: run-tests
         templateRef:
           name: run-gnome-tests
@@ -164,7 +170,7 @@ spec:
         hooks:
           exit:
             templateRef:
-              name: teardown-bluefin-vm
+              name: teardown-vm
               template: teardown-vm
             arguments:
               parameters:
@@ -174,7 +180,7 @@ spec:
                 value: "{{inputs.parameters.namespace}}"
     - - name: teardown
         templateRef:
-          name: teardown-bluefin-vm
+          name: teardown-vm
           template: teardown-vm
         arguments:
           parameters:

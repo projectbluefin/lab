@@ -15,7 +15,7 @@ metadata:
 
 ## When to Use
 
-- Editing `provision-bluefin-vm.yaml`, `provision-flatcar-vm.yaml`, `knuckle-qa-pipeline.yaml`
+- Editing `provision-containerdisk-vm.yaml`, `provision-flatcar-vm.yaml`, `knuckle-qa-pipeline.yaml`
 - Debugging VM boot timeouts or SSH readiness failures
 - Adding a new image variant
 - Enabling a new KubeVirt feature gate
@@ -64,7 +64,7 @@ build-containerdisk (build-containerdisk.yaml)
   ├─ configure-disk   — inject test user, SSH, GDM autologin, sudoers, selinux=0
   └─ convert-and-push — qemu-img raw→qcow2, buildah OCI wrap, push to zot:30500
          │
-provision-bluefin-vm (provision-bluefin-vm.yaml)
+provision-containerdisk-vm (provision-containerdisk-vm.yaml)
   └─ VM boots from containerDisk: 192.168.1.102:30500/bluefin-containerdisk:<tag>
 ```
 
@@ -203,7 +203,7 @@ and must be preserved when editing that template.
 | Namespace created | `manifests/<variant>-test-namespace.yaml` |
 | SSH pubkey secret in namespace | same file (bluefin-test-ssh-pubkey Secret) |
 | RBAC (kubevirt-manager Role + RoleBinding for argo SA) | `manifests/kubevirt-rbac.yaml` |
-| `accessCredentials` lists both `root` and `bluefin-test` | `provision-bluefin-vm.yaml` |
+| `accessCredentials` lists both `root` and `bluefin-test` | `provision-containerdisk-vm.yaml` |
 | CronWorkflow for nightly smoke | `manifests/nightly-<variant>.yaml` |
 | Disk size measured and set per-variant | `argo/workflow-templates/build-containerdisk.yaml` default + `digest-watch.yaml` per-variant override |
 
@@ -748,16 +748,19 @@ When maintaining custom ebuilds in `flatcar/kernel-overlay/` for Flatcar kernel 
 * **Symptom**: After deploying a wrapper script inside the image to override a binary (like `findmnt` or `bootupctl`), running the command fails with `Inspecting filesystem: No such file or directory (os error 2)` or results in infinite symlink recursion / command hang.
 * **Root Cause**: Modern operating systems (including Fedora, Bluefin, and Dakota) have undergone **UsrMerge**, which symlinks and merges `/usr/sbin`, `/sbin`, and `/bin` into a single physical directory `/usr/bin`. If a loop or set of commands sequentially copies/symlinks a wrapper script to all of `/usr/bin/findmnt`, `/usr/sbin/findmnt`, `/bin/findmnt`, and `/sbin/findmnt` and overwrites them, it overwrites the newly renamed original binary with a circular symlink pointing back to the wrapper, or destroys the wrapper.
 * **The Fix**:
-  1. **Canonicalize Paths**: Always run `readlink -f` on every candidate binary path inside the container context to find its absolute physical file location before performing moves or copies.
+  1. **Canonicalize Paths**: Always run `readlink -f` strictly within the chroot context (e.g., `chroot "${DEPLOY_DIR}" readlink -f /bin/findmnt`) to resolve candidate paths. Running `readlink -f` directly on the host using paths prefixed with `${DEPLOY_DIR}` will escape the target image rootfs jail (since `/bin` is an absolute symlink to `/usr/bin`) and resolve to host-level paths, risking host contamination or binary overwrites.
   2. **Deduplicate Target List**: Store only the unique canonical paths in a whitespace-delimited variable, filtering out any duplicates.
-  3. **Location-Independent Original Invocation**: Write the wrapper using `"${0}.orig"` to dynamically invoke the original renamed binary based on how the wrapper itself was called, avoiding hardcoding path targets:
+  3. **Location-Independent Original Invocation**: Write the wrapper using `"${0}.orig"` with `exec -a` to dynamically invoke the original renamed binary and explicitly preserve the expected `argv[0]`, preventing multicall (clap/busybox) binary execution crashes:
      ```bash
-     exec "${0}.orig" "$@"
+     exec -a "$(basename "$0")" "${0}.orig" "$@"
      ```
-  4. **Recursive Restoration**: During the post-installation cleanup phase, avoid targeting hardcoded original paths. Instead, run a dynamic file search using `find` to discover and restore all original files:
+  4. **Recursive Restoration**: During the post-installation cleanup phase, avoid targeting hardcoded original paths. Check if the deployment directory exists, then run a dynamic file search using `find` to discover and restore all original files:
      ```bash
-     find "${DEPLOY_DIR}" -name "findmnt.orig" | while read -r orig_file; do
-       base_dir=$(dirname "${orig_file}")
-       mv "${orig_file}" "${base_dir}/findmnt"
-     done
+     if [ -n "${DEPLOY_DIR}" ] && [ -d "${DEPLOY_DIR}" ]; then
+       find "${DEPLOY_DIR}" -name "*.orig" | while read -r orig_file; do
+         base_dir=$(dirname "${orig_file}")
+         orig_name=$(basename "${orig_file}" .orig)
+         mv "${orig_file}" "${base_dir}/${orig_name}"
+       done
+     fi
      ```

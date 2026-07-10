@@ -11,7 +11,7 @@ Git push / manual submit
 Argo Workflow (argo namespace)
         │
         ├─ build-containerdisk    ─► containerDisk in local Zot registry (digest-checked)
-        ├─ provision-bluefin-vm   ─► boot KubeVirt VM from containerDisk
+        ├─ provision-containerdisk-vm   ─► boot KubeVirt VM from containerDisk
         ├─ run-gnome-tests        ─► runner pod SSHes VM, executes qecore + behave
         └─ teardown (onExit)      ─► delete VM (always runs, success or failure)
 ```

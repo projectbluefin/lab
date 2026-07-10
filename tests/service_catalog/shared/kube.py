@@ -10,8 +10,6 @@ from pathlib import Path
 NAMESPACE = os.environ["TEST_NAMESPACE"]
 APP_LABEL = os.environ.get("TEST_APP_LABEL", "app=service-catalog-workload")
 SERVICE_NAME = os.environ.get("TEST_SERVICE_NAME", "service-catalog")
-TEST_NAMESPACE = NAMESPACE
-TEST_SERVICE_NAME = SERVICE_NAME
 TEST_LANE = os.environ.get("TEST_LANE", "")
 RESULTS_DIR = Path(os.environ.get("TEST_RESULTS_DIR", "/tmp/results"))
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)

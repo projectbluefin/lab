@@ -27,8 +27,8 @@
   (`smoke`, `common`, `developer`, `software`, `system`, filtered by `suites`) →
   `onExit: cleanup-and-report` (deletes any orphaned lane VMs, posts a GitHub commit
   status on PR runs).
-- **Each lane:** `provision-bluefin-vm` (containerDisk VM boot) → `run-gnome-tests`
-  (SSH in, run `behave`) → `teardown-bluefin-vm`.
+- **Each lane:** `provision-containerdisk-vm` (containerDisk VM boot) → `run-gnome-tests`
+  (SSH in, run `behave`) → `teardown-vm`.
 - **Who builds the containerDisk:** the `digest-watch` CronWorkflow (see
   [Cache Warming](#cache-warming-pollers)) — completely decoupled from this pipeline.
 - **Just recipe:** `run-tests`, `run-tests-tag`, `run-tests-matrix`.
@@ -123,9 +123,9 @@
 | Template | Role |
 | --- | --- |
 | `build-containerdisk` | Shared containerDisk builder used by `digest-watch`/`image-poller`. Flow: `check` (Zot existence) → `install-to-disk` → `convert-and-push`. Builds a KubeVirt containerDisk from a bootc image and pushes it to the local registry. |
-| `provision-bluefin-vm` | Shared Bluefin/Dakota VM bring-up directly from a containerDisk (no reflink, no golden disk, no hostDisk). `create-vm` defines a 4 vCPU KubeVirt VM (`vm-memory` param, default 8Gi), `wait-for-vm-ready` starts `sshd.socket` via QEMU guest agent and returns the pod IP once SSH is reachable. `priorityClassName: lab-test-vm`. |
+| `provision-containerdisk-vm` | Shared Bluefin/Dakota/COSMIC VM bring-up directly from a containerDisk (no reflink, no golden disk, no hostDisk). `create-vm` defines a 4 vCPU KubeVirt VM (`vm-memory` param, default 8Gi), `wait-for-vm-ready` starts `sshd.socket` via QEMU guest agent and returns the pod IP once SSH is reachable. `priorityClassName: lab-test-vm`. |
 | `provision-flatcar-vm` / `provision-gnomeos-vm` | Same containerDisk-VM pattern as above for their respective variants. Both set `priorityClassName: lab-test-vm`. |
-| `teardown-bluefin-vm` / `teardown-flatcar-vm` / `teardown-gnomeos-vm` | Deletes the KubeVirt VM (and hostDisk/PVC where applicable). |
+| `teardown-vm` | Deletes any KubeVirt test VM (and hostDisk/PVC where applicable). |
 | `run-gnome-tests` | Shared test runner. Clones `projectbluefin/testsuite` (the single source of truth), waits for SSH, installs test dependencies, copies `tests/<suite>`, and runs `behave`. GUI suites (smoke) run via `qecore-headless` inside the VM. The `common` suite runs from the runner container with `VM_IP`/`SSH_KEY` exported so its SSH steps reach the VM directly — do NOT run common via qecore-headless. The `system` suite runs inside the VM without a display. |
 | `run-incluster-tests` | Shared in-cluster pytest runner. Git-syncs `lab`, runs a pytest module against a live k8s workload, emits JUnit XML. |
 
@@ -208,7 +208,7 @@ alongside the digest comparison — not implemented yet.
 
 | PriorityClass | Value | Applied to |
 | --- | --- | --- |
-| `lab-test-vm` | 1,000,000, `PreemptLowerPriority` | All KubeVirt test VMs (`provision-bluefin-vm`, `provision-flatcar-vm`, `provision-gnomeos-vm`, `knuckle-qa-pipeline`'s two VM specs) |
+| `lab-test-vm` | 1,000,000, `PreemptLowerPriority` | All KubeVirt test VMs (`provision-containerdisk-vm`, `provision-flatcar-vm`, `provision-gnomeos-vm`, `knuckle-qa-pipeline`'s two VM specs) |
 | `bst-build` | (see `manifests/bst-build-priorityclass.yaml`) | Heavy/long BuildStream compiles: `dakota-build-pipeline`, `bluefin-server-build-pipeline`, `flatcar-kernel-build`'s VM spec |
 
 Test VMs are meant to win resource contention over background build workloads —

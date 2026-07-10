@@ -108,20 +108,17 @@ Builds a KubeVirt containerDisk from a bootc image and pushes it to the local
 Zot registry at `192.168.1.102:30500`. Checks if an up-to-date image already
 exists (digest comparison) and skips the build if so.
 
-### `provision-bluefin-vm` (template: `provision-vm`)
+### `provision-containerdisk-vm` (template: `provision-vm`)
 
-Creates a KubeVirt VM using the containerDisk from the local Zot registry,
+Creates a KubeVirt VM using a containerDisk from the local Zot registry,
 waits for the VMI to be Ready and SSH to become reachable, emits `vm-ip`.
+Used for Bluefin, Dakota, and COSMIC variants (parameterized by containerDisk
+repo, app label, and label prefix).
 
 ### `provision-flatcar-vm` (template: `provision-vm`)
 
 Same shape for Flatcar — accepts an `ssh-pubkey` parameter directly instead
 of relying on the bluefin-test secret for cloud-init injection.
-
-### `provision-cosmic-vm` (template: `provision-vm`)
-
-Creates a KubeVirt VM using the `cosmic-containerdisk` from the local Zot registry,
-waits for the VMI to be Ready and SSH to become reachable, emits `vm-ip`.
 
 ### `run-gnome-tests` (template: `run-gnome-tests`)
 
@@ -137,7 +134,7 @@ network namespace.
 Same shape for Flatcar; uses `core` as the SSH user and runs pytest+dogtail
 fixtures from `tests/flatcar/`.
 
-### `teardown-bluefin-vm` / `teardown-flatcar-vm`
+### `teardown-vm` (template: `teardown-vm`)
 
 Delete the VM and wait for the VMI object to drain. Invoked as `onExit` from
 the pipeline templates — always runs regardless of pipeline outcome.

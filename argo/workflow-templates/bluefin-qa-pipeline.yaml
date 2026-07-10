@@ -180,7 +180,7 @@ spec:
     - - name: provision
         when: "{{inputs.parameters.suite}} == system"
         templateRef:
-          name: provision-bluefin-vm
+          name: provision-containerdisk-vm
           template: provision-vm
         arguments:
           parameters:
@@ -237,7 +237,7 @@ spec:
         hooks:
           exit:
             templateRef:
-              name: teardown-bluefin-vm
+              name: teardown-vm
               template: teardown-vm
             arguments:
               parameters:
@@ -248,7 +248,7 @@ spec:
     - - name: teardown
         when: "{{inputs.parameters.suite}} == system"
         templateRef:
-          name: teardown-bluefin-vm
+          name: teardown-vm
           template: teardown-vm
         arguments:
           parameters:

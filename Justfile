@@ -133,15 +133,7 @@ setup-ghost-ssh-banner:
 # —— [REMOVED] titan VM recipes ——
 # run-titan-smoke, run-titan-system, run-titan-developer, run-titan-software,
 # setup-titan-fixtures, run-titan-disk-cleanup
-# Titan persistent VMs are no longer GitOps-managed. See argo/deprecated/ for history.
-
-# PLACEHOLDER for removed recipes (kept to avoid recipe renaming surprises)
-_titan-removed:
-    @echo "Titan VM recipes removed. See argo/deprecated/README.md"
-
-# DEPRECATED placeholder — slot reserved
-setup-titan-fixtures:
-    @echo "Titan fixtures removed — titan VMs are no longer used"
+# Titan persistent VMs are no longer GitOps-managed.
 
 # Run Flatcar smoke tests
 run-flatcar-smoke:

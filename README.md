@@ -90,7 +90,7 @@ Git push / manual submit
         │   (bootc install-to-disk)     192.168.1.102:30500/bluefin-containerdisk:<tag>
         │                               digest-checked; skips if already current
         │
-        ├─ provision-bluefin-vm ────► KubeVirt VM booting from containerDisk
+        ├─ provision-containerdisk-vm ────► KubeVirt VM booting from containerDisk
         │   (VMI + wait for SSH)        ~2 min from submit to SSH-ready
         │
         ├─ run-gnome-tests ─────────► runner pod (Fedora + qecore-headless)
@@ -130,16 +130,15 @@ lab/
 │   │   ├── bluefin-qa-pipeline.yaml      full pipeline: containerDisk + VM + tests
 │   │   ├── bluefin-migration-test.yaml   bootc switch migration validation
 │   │   ├── bluefin-service-catalog-pipeline.yaml  service catalog smoke lanes
-│   │   ├── provision-bluefin-vm.yaml     boot containerDisk KubeVirt VM
+│   │   ├── provision-containerdisk-vm.yaml     boot containerDisk KubeVirt VM
 │   │   ├── run-gnome-tests.yaml          behave + qecore + Dogtail GNOME tests
 │   │   ├── run-incluster-tests.yaml      in-cluster (kubectl-based) tests
-│   │   ├── run-service-tests.yaml        service endpoint + health-check tests
 │   │   ├── run-flatcar-tests.yaml        Flatcar OS test runner
 │   │   ├── provision-flatcar-vm.yaml     provision Flatcar test VM (hostDisk)
 │   │   ├── provision-gnomeos-vm.yaml     provision GNOME OS test VM
-│   │   ├── teardown-bluefin-vm.yaml      delete Bluefin containerDisk VM
-│   │   ├── teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
-│   │   ├── teardown-gnomeos-vm.yaml      delete GNOME OS VM
+│   │   ├── teardown-vm.yaml      delete Bluefin containerDisk VM
+│   │   ├── teardown-vm.yaml      delete Flatcar VM + hostDisk
+│   │   ├── teardown-vm.yaml      delete GNOME OS VM
 │   │   ├── collect-vm-logs.yaml          gather VM journal logs post-test
 │   │   ├── dakota-build-pipeline.yaml   Dakota BST build pipeline (bluefin + nvidia)
 │   │   ├── dakota-commit-poller.yaml    Poll dakota:testing commits and trigger BST builds

@@ -4,7 +4,7 @@ import os
 import json
 import subprocess
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 
 def run_cmd(cmd, cwd=None, env=None, check=True):
     print(f"Running command: {' '.join(cmd)}")
@@ -40,7 +40,11 @@ def parse_results_and_build_update(data, existing_data, current_utc, workflow_na
                     
                     if step_result.get('status') == 'failed':
                         failing_step_name = step.get('name', 'Unnamed Step')
-                        failing_step_error = step_result.get('error_message', '').strip()
+                        raw_error = step_result.get('error_message', '')
+                        if isinstance(raw_error, list):
+                            failing_step_error = '\n'.join(raw_error).strip()
+                        else:
+                            failing_step_error = str(raw_error).strip()
                 
                 total_duration += scenario_duration
                 
@@ -128,7 +132,7 @@ def main():
         print(f"ERROR: Failed to parse {results_json_path}: {e}")
         sys.exit(0)
 
-    current_utc = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    current_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # 2. Clone projectbluefin/lab to a temporary directory
     temp_dir = "/tmp/lab-repo-clone"

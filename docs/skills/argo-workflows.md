@@ -178,7 +178,7 @@ spec:
     steps:
     - - name: teardown
         templateRef:
-          name: teardown-bluefin-vm
+          name: teardown-vm
           template: teardown-vm
         arguments:
           parameters:
@@ -204,7 +204,7 @@ To guarantee teardown in all entrypoints (direct and via `templateRef`), define 
         hooks:
           exit:
             templateRef:
-              name: teardown-bluefin-vm
+              name: teardown-vm
               template: teardown-vm
             arguments:
               parameters:
@@ -303,14 +303,14 @@ The live pattern in this repo is to place the semaphore on the heavy child templ
 
 ### 8. File names must match `metadata.name`
 
-WorkflowTemplate file names in `argo/workflow-templates/` must match the resource's `metadata.name`. Divergence (e.g. `provision-vm.yaml` containing `name: provision-bluefin-vm`) confuses ArgoCD tracking and grep-based navigation:
+WorkflowTemplate file names in `argo/workflow-templates/` must match the resource's `metadata.name`. Divergence (e.g. `provision-vm.yaml` containing `name: provision-containerdisk-vm`) confuses ArgoCD tracking and grep-based navigation:
 
 ```
 # ✗ WRONG — file name diverged from resource name
-argo/workflow-templates/provision-vm.yaml  →  metadata.name: provision-bluefin-vm
+argo/workflow-templates/provision-vm.yaml  →  metadata.name: provision-containerdisk-vm
 
 # ✅ CORRECT — file name matches resource name
-argo/workflow-templates/provision-bluefin-vm.yaml  →  metadata.name: provision-bluefin-vm
+argo/workflow-templates/provision-containerdisk-vm.yaml  →  metadata.name: provision-containerdisk-vm
 ```
 
 ArgoCD tracks by GVK + resource name, not filename. A rename is safe — just git mv and push.
@@ -928,7 +928,7 @@ Before marking any WorkflowTemplate change done:
 - [ ] All pod-running templates have `resources:` requests and limits
 - [ ] Change is committed and pushed — not manually applied to cluster
 - [ ] `description:` annotation present on the new/modified template
-- [ ] File name matches `metadata.name` (e.g. `provision-bluefin-vm.yaml` for `name: provision-bluefin-vm`)
+- [ ] File name matches `metadata.name` (e.g. `provision-containerdisk-vm.yaml` for `name: provision-containerdisk-vm`)
 - [ ] VM pipeline spec has NO `synchronization.semaphores` block — k8s scheduler handles VM concurrency
 - [ ] VM pipeline spec has `activeDeadlineSeconds` (1h or 2h) so stuck VMs self-evict
 - [ ] No `nodeSelector: kubernetes.io/hostname: ghost` in VM specs — VMs float to any KubeVirt-capable node

@@ -11,7 +11,7 @@ def main():
     with open(stats_path) as f:
         stats = json.load(f)
 
-    now = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    now = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     def run_json(cmd):
         try:

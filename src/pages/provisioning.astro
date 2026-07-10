@@ -1,64 +1,10 @@
 ---
+import { execSync } from 'node:child_process';
 import SiteLayout from '../layouts/SiteLayout.astro';
-import provisioningChartsScript from '../scripts/provisioning-charts.js?url';
-import factoryStats from '../../docs/data/factory-stats.json';
 import { serializeJsonScript } from '../lib/json-script';
+import factoryStats from '../../docs/data/factory-stats.json';
 
 const baseUrl = import.meta.env.BASE_URL;
-
-// Parse ghost hypervisor specs from factory-stats.json
-const ghostNode = factoryStats?.factory?.cluster?.nodes?.find((n: any) => n.name === 'ghost') || { ram_gb: 63, cpu_threads: 32 };
-const overallRamGb = ghostNode.ram_gb || 63;
-const overallCpuCores = ghostNode.cpu_threads || 32;
-
-// Hardcoded bay definition according to grounding specifications
-const bays = [
-  {
-    id: 'bay-a',
-    name: 'Bay A',
-    status: 'active',
-    active_vm: 'bluefin-testing-smoke',
-    ram_allocation_gb: 8,
-    cpu_allocation_cores: 4,
-    reflink_time_sec: 1.8,
-    legacy_copy_time_sec: 52.5,
-  },
-  {
-    id: 'bay-b',
-    name: 'Bay B',
-    status: 'active',
-    active_vm: 'bluefin-lts-testing-smoke',
-    ram_allocation_gb: 8,
-    cpu_allocation_cores: 4,
-    reflink_time_sec: 2.2,
-    legacy_copy_time_sec: 55.1,
-  },
-  {
-    id: 'bay-c',
-    name: 'Bay C',
-    status: 'available',
-    active_vm: 'None',
-    ram_allocation_gb: 0,
-    cpu_allocation_cores: 0,
-    reflink_time_sec: null,
-    legacy_copy_time_sec: null,
-  }
-];
-
-// Calculations
-const activeBaysCount = bays.filter(b => b.status === 'active').length;
-const totalAllocatedRamGb = bays.reduce((sum, b) => sum + b.ram_allocation_gb, 0);
-const totalAllocatedCpuCores = bays.reduce((sum, b) => sum + b.cpu_allocation_cores, 0);
-
-const payload = {
-  bays,
-  ghostLimits: {
-    ram_gb: overallRamGb,
-    cpu_threads: overallCpuCores,
-  }
-};
-
-const serializedPayload = serializeJsonScript(payload);
 
 const formatUtc = (value: string | null) =>
   value
@@ -69,16 +15,138 @@ const formatUtc = (value: string | null) =>
       }) + ' UTC'
     : 'Never';
 
-const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString();
+interface RegistryTags {
+  tags: string[];
+  name: string;
+}
+
+interface SkopeoData {
+  Digest?: string;
+  Created?: string;
+  LayersData?: Array<{ Size: number }>;
+  Architecture?: string;
+  Os?: string;
+}
+
+interface ContainerDiskDef {
+  repo: string;
+  tags: string[];
+  label: string;
+  upstream: string;
+  filesystem: 'btrfs' | 'xfs' | 'ext4';
+  notes?: string;
+}
+
+// Canonical containerDisk images consumed by the lab pipelines.
+// bluefin-containerdisk is produced by build-containerdisk from bootc images.
+// Flatcar containerDisk is produced by provision-flatcar-vm.prepare-flatcar-disk.
+const containerDiskCatalog: ContainerDiskDef[] = [
+  {
+    repo: 'bluefin-containerdisk',
+    tags: ['testing', 'lts-testing', 'stable', 'lts-stable'],
+    label: 'Bluefin',
+    upstream: 'ghcr.io/projectbluefin/bluefin',
+    filesystem: 'btrfs',
+    notes: 'LTS tags are formatted xfs by bootc install-to-disk; non-LTS tags use btrfs.',
+  },
+  {
+    repo: 'flatcar-containerdisk',
+    tags: ['latest'],
+    label: 'Flatcar',
+    upstream: 'stable.release.flatcar-linux.net',
+    filesystem: 'ext4',
+    notes: 'Official Flatcar QEMU image wrapped as a containerDisk.',
+  },
+];
+
+// Query the local Zot registry for tags; fall back to the catalog definition
+// when ghost is unreachable so static builds still succeed offline.
+const queryTags = (repo: string): string[] => {
+  try {
+    const res = execSync(`curl -s --max-time 1.5 http://192.168.1.102:30500/v2/${repo}/tags/list`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    const data = JSON.parse(res) as RegistryTags;
+    return Array.isArray(data.tags) ? data.tags : [];
+  } catch {
+    return containerDiskCatalog.find((c) => c.repo === repo)?.tags || [];
+  }
+};
+
+const inspectRepo = (repo: string, tag: string): SkopeoData | null => {
+  try {
+    const raw = execSync(`skopeo inspect --tls-verify=false docker://192.168.1.102:30500/${repo}:${tag}`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 2000,
+    });
+    return JSON.parse(raw) as SkopeoData;
+  } catch {
+    return null;
+  }
+};
+
+const nodes = Array.isArray(factoryStats?.factory?.cluster?.nodes)
+  ? factoryStats.factory.cluster.nodes
+  : [];
+
+const cdStats = factoryStats?.pipelines?.containerdisk || { runs_7d: 0, runs_all_time: 0 };
+const buildHistory = Array.isArray(factoryStats?.build_history?.['build-containerdisk'])
+  ? factoryStats.build_history['build-containerdisk']
+  : [];
+
+const containerdisks = containerDiskCatalog.flatMap((def) =>
+  def.tags.map((tag) => {
+    const liveTags = queryTags(def.repo);
+    const live = liveTags.includes(tag);
+    const data = live ? inspectRepo(def.repo, tag) : null;
+    const sizeBytes = data?.LayersData?.reduce((sum, l) => sum + (l.Size || 0), 0) || 0;
+    const sizeMb = sizeBytes > 0 ? (sizeBytes / 1024 / 1024).toFixed(1) : null;
+    const isLts = tag.startsWith('lts');
+    return {
+      repo: def.repo,
+      tag,
+      label: def.label,
+      upstream: def.upstream,
+      filesystem: def.repo === 'bluefin-containerdisk' && isLts ? 'xfs' : def.filesystem,
+      status: live ? 'available' : 'unavailable',
+      digest: data?.Digest || null,
+      size_mb: sizeMb,
+      created: data?.Created || null,
+      arch: data?.Architecture || 'amd64',
+      os: data?.Os || 'linux',
+      notes: def.notes,
+    };
+  })
+);
+
+const totalRamGb = nodes.reduce((sum, n) => sum + (n.ram_gb || 0), 0);
+const totalCpuThreads = nodes.reduce((sum, n) => sum + (n.cpu_threads || 0), 0);
+
+const payload = {
+  nodes,
+  containerdisks,
+  containerdiskBuilds: cdStats,
+  recentBuilds: buildHistory.slice(0, 10),
+  totals: {
+    ram_gb: totalRamGb,
+    cpu_threads: totalCpuThreads,
+  },
+  updatedAt: factoryStats?._meta?.generated_at || new Date().toISOString(),
+  dataSource: 'docs/data/factory-stats.json + live Zot registry',
+};
+
+const serializedPayload = serializeJsonScript(payload);
+const updateTime = payload.updatedAt;
 ---
 
 <SiteLayout
-  title="Provisioning Bays"
-  description="KubeVirt hypervisor bay slot monitors and btrfs reflink copying performance on ghost node."
+  title="VM Provisioning"
+  description="KubeVirt containerDisk provisioning architecture, hypervisor capacity, and guest filesystem layout for the Bluefin factory."
   current="provisioning"
 >
   <style>
-    /* header */
     .dashboard-header {
       margin-bottom: 2rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -103,7 +171,6 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
     .meta-bar a { color: #38bdf8; text-decoration: none; }
     .meta-bar a:hover { text-decoration: underline; }
 
-    /* headings */
     .section-title {
       font-size: 1.1rem;
       font-weight: 700;
@@ -115,7 +182,6 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       padding-left: 10px;
     }
 
-    /* KPI cards */
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -156,7 +222,6 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       color: #cbd5e1;
     }
 
-    /* chart layout */
     .chart-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
@@ -168,6 +233,11 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 20px;
       padding: 1.5rem;
+    }
+    .status-card h2 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.25rem;
+      color: #f8fafc;
     }
     .chart-box-custom {
       height: 320px;
@@ -182,7 +252,40 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       padding-top: 0.75rem;
     }
 
-    /* tables */
+    .info-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.3) 0%, rgba(15, 23, 42, 0.5) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .info-card h2 {
+      margin: 0 0 1rem 0;
+      font-size: 1.25rem;
+      color: #f8fafc;
+    }
+    .info-card p {
+      font-size: 0.9rem;
+      color: #cbd5e1;
+      line-height: 1.7;
+      margin: 0 0 1rem 0;
+    }
+    .info-card ul {
+      margin: 0;
+      padding-left: 1.25rem;
+      font-size: 0.9rem;
+      color: #cbd5e1;
+      line-height: 1.7;
+    }
+    .info-card li { margin-bottom: 0.5rem; }
+    .info-card code {
+      background: rgba(15, 23, 42, 0.5);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #38bdf8;
+    }
+
     .table-card {
       background: linear-gradient(180deg, rgba(30, 41, 59, 0.3) 0%, rgba(15, 23, 42, 0.5) 100%);
       border: 1px solid rgba(255, 255, 255, 0.06);
@@ -190,17 +293,22 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       padding: 1.5rem;
       margin-bottom: 2.5rem;
     }
+    .table-card h2 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.25rem;
+      color: #f8fafc;
+    }
     .table-scroll {
       width: 100%;
       overflow-x: auto;
     }
-    .bays-table {
+    .data-table {
       width: 100%;
       border-collapse: collapse;
       text-align: left;
       font-size: 0.9rem;
     }
-    .bays-table th {
+    .data-table th {
       padding: 0.85rem 1rem;
       color: #94a3b8;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -209,16 +317,13 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       font-size: 0.75rem;
       letter-spacing: 0.05em;
     }
-    .bays-table td {
+    .data-table td {
       padding: 1rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       color: #cbd5e1;
     }
-    .bays-table tr:last-child td {
-      border-bottom: none;
-    }
-    
-    /* status badges */
+    .data-table tr:last-child td { border-bottom: none; }
+
     .badge {
       display: inline-block;
       padding: 0.25rem 0.6rem;
@@ -228,18 +333,26 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       text-transform: uppercase;
       letter-spacing: 0.03em;
     }
-    .badge--active {
+    .badge--available {
       background-color: rgba(16, 185, 129, 0.15);
       color: #34d399;
       border: 1px solid rgba(16, 185, 129, 0.3);
     }
-    .badge--available {
+    .badge--unavailable {
       background-color: rgba(148, 163, 184, 0.15);
       color: #cbd5e1;
       border: 1px solid rgba(148, 163, 184, 0.3);
     }
+    .badge--ready {
+      background-color: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
 
-    /* data integrity panel */
+    .filesystem-btrfs { color: #34d399; }
+    .filesystem-xfs { color: #fbbf24; }
+    .filesystem-ext4 { color: #a78bfa; }
+
     .integrity-panel {
       background: rgba(30, 41, 59, 0.2);
       border: 1px dashed rgba(255, 255, 255, 0.12);
@@ -260,110 +373,183 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
       color: #94a3b8;
       line-height: 1.6;
     }
+
+    .mono { font-family: ui-monospace, monospace; font-size: 0.85rem; }
   </style>
 
   <header class="dashboard-header">
-    <h1>Provisioning Bays</h1>
+    <h1>VM Provisioning</h1>
     <div class="meta-bar">
       <span>Updated {formatUtc(updateTime)}</span>
-      <span>Source: ghost KubeVirt hypervisor</span>
-      <a href={`${baseUrl}data/factory-stats.json`}>Raw dataset ↗</a>
+      <span>Source: {payload.dataSource}</span>
+      <a href={`${baseUrl}data/factory-stats.json`}>Raw dataset</a>
     </div>
   </header>
 
+  <section class="info-card">
+    <h2>Provisioning Architecture</h2>
+    <p>
+      Test VMs boot from OCI <strong>containerDisk</strong> images stored in the local Zot registry
+      (<code>192.168.1.102:30500</code>). Each pipeline run pulls the disk image and launches a fresh
+      KubeVirt VM. The VM is torn down on exit. This replaces the older golden-disk hostDisk workflow
+      that relied on btrfs reflink copies on the ghost node.
+    </p>
+    <ul>
+      <li>
+        <strong>No host-side btrfs reflink:</strong> The hypervisor does not keep a raw golden disk
+        tree that is reflink-copied per VM. Disks are distributed as compressed OCI layers and
+        unpacked by containerd at runtime.
+      </li>
+      <li>
+        <strong>Guest filesystems vary by variant:</strong> Bluefin non-LTS uses btrfs; Bluefin LTS
+        uses xfs; Flatcar uses ext4. The filesystem is chosen by the upstream image, not by the
+        provisioning layer.
+      </li>
+      <li>
+        <strong>VMs float across nodes:</strong> ContainerDisk VMs schedule on any KubeVirt-capable
+        node. PVC-backed lanes (Knuckle) co-schedule on the node that owns the PVC.
+      </li>
+      <li>
+        <strong>SSH keys are injected at runtime:</strong> KubeVirt accessCredentials propagate the
+        public key via the QEMU guest agent after boot. No key material is baked into the published
+        disk image.
+      </li>
+    </ul>
+  </section>
+
   <section>
-    <div class="section-title">Telemetry Overview</div>
+    <div class="section-title">Fleet Overview</div>
     <div class="kpi-grid">
       <div class="kpi-card">
-        <p class="kpi-card__title">Total Bays</p>
-        <p class="kpi-card__value">3</p>
-        <p class="kpi-card__sub">A, B, C slot structure</p>
+        <p class="kpi-card__title">Hypervisor Nodes</p>
+        <p class="kpi-card__value">{nodes.length}</p>
+        <p class="kpi-card__sub">KubeVirt-capable cluster members</p>
       </div>
       <div class="kpi-card">
-        <p class="kpi-card__title">Active Bays</p>
-        <p class="kpi-card__value">{activeBaysCount}</p>
-        <p class="kpi-card__sub">Allocated hypervisor slots</p>
+        <p class="kpi-card__title">Cluster RAM</p>
+        <p class="kpi-card__value">{totalRamGb} GiB</p>
+        <p class="kpi-card__sub">Total allocatable memory</p>
       </div>
       <div class="kpi-card">
-        <p class="kpi-card__title">Allocated RAM</p>
-        <p class="kpi-card__value">{totalAllocatedRamGb} GiB</p>
-        <p class="kpi-card__sub">Of {overallRamGb} GiB ghost total</p>
+        <p class="kpi-card__title">Cluster CPU</p>
+        <p class="kpi-card__value">{totalCpuThreads} Threads</p>
+        <p class="kpi-card__sub">Total allocatable threads</p>
       </div>
       <div class="kpi-card">
-        <p class="kpi-card__title">Allocated CPU</p>
-        <p class="kpi-card__value">{totalAllocatedCpuCores} Cores</p>
-        <p class="kpi-card__sub">Of {overallCpuCores} thread limits</p>
+        <p class="kpi-card__title">ContainerDisk Builds (7d)</p>
+        <p class="kpi-card__value">{cdStats.runs_7d}</p>
+        <p class="kpi-card__sub">{cdStats.runs_all_time} builds all-time</p>
       </div>
     </div>
   </section>
 
   <section class="chart-grid">
     <article class="status-card">
-      <h2>KubeVirt Bay Slots & Allocations</h2>
+      <h2>Hypervisor Capacity</h2>
       <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1rem;">
-        Visualizes resource allocation on the hypervisor. Bays request 8 GiB RAM and 4 CPU cores when actively running pipeline test VMs.
+        Installed RAM and CPU threads per KubeVirt-capable node. Actual VM packing is constrained by
+        k8s scheduler requests and the <code>qa-vm-fleet</code> template semaphore.
       </p>
-      <div id="provisioning-slots-chart" class="chart-box-custom" role="img" aria-label="KubeVirt Bay Slots allocation bar chart"></div>
+      <div id="provisioning-capacity-chart" class="chart-box-custom" role="img" aria-label="Hypervisor capacity bar chart"></div>
       <p class="chart-caption-text">
-        KubeVirt hypervisor slot monitor. Visualizes the memory and CPU cores allocated to active test VM bays on ghost; tracks the sub-5s btrfs reflink initialization advantage over standard disk copying.
+        Cluster aggregate capacity derived from docs/data/factory-stats.json factory.cluster.nodes.
       </p>
     </article>
 
     <article class="status-card">
-      <h2>Reflink Speed vs Legacy Copy</h2>
+      <h2>Guest Filesystems</h2>
       <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1rem;">
-        Comparison of btrfs reflink image cloning speeds (seconds) versus legacy standard disk copying operations in the factory.
+        Distribution of root filesystems across the published containerDisk catalog. Values reflect
+        the filesystem selected by bootc install-to-disk or the upstream image, not the host format.
       </p>
-      <div id="provisioning-reflink-chart" class="chart-box-custom" role="img" aria-label="Reflink copying speeds vs legacy standard disk copying bar chart"></div>
+      <div id="provisioning-filesystems-chart" class="chart-box-custom" role="img" aria-label="Guest filesystem distribution donut chart"></div>
       <p class="chart-caption-text">
-        Performance advantages of atomic OS architecture. Demonstrates sub-5s reflink initialization speeds enabled by btrfs file system level copy-on-write, compared to legacy full disk duplication.
+        Filesystem mapping sourced from argo/workflow-templates/build-containerdisk.yaml and
+        provision-flatcar-vm.yaml.
       </p>
     </article>
   </section>
 
   <section class="table-card">
-    <h2>Active Provisioning Bays Detail</h2>
+    <h2>ContainerDisk Inventory</h2>
     <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1.5rem;">
-      Full diagnostic parameters of the provisioned test VM slots scheduled dynamically under the ghost cluster node.
+      Published VM boot images in the local Zot registry. Sizes are OCI layer sizes; the raw disk
+      unpacked inside the virt-launcher pod is larger.
     </p>
     <div class="table-scroll">
-      <table class="bays-table">
+      <table class="data-table">
         <thead>
           <tr>
-            <th>Bay Name</th>
+            <th>Image</th>
+            <th>Tag</th>
             <th>Status</th>
-            <th>Active Pipeline VM</th>
-            <th>RAM Allocated</th>
-            <th>CPU Allocated</th>
-            <th>Reflink Copy</th>
-            <th>Legacy Copy</th>
-            <th>Speed Advantage</th>
+            <th>Guest FS</th>
+            <th>Size</th>
+            <th>Digest</th>
+            <th>Created</th>
           </tr>
         </thead>
         <tbody>
-          {bays.map((bay) => {
-            const advantage = bay.legacy_copy_time_sec && bay.reflink_time_sec
-              ? (bay.legacy_copy_time_sec - bay.reflink_time_sec).toFixed(1) + 's'
-              : 'N/A';
-            return (
-              <tr>
-                <td style="font-weight: 600; color: #f8fafc;">{bay.name}</td>
-                <td>
-                  <span class:list={['badge', `badge--${bay.status}`]}>
-                    {bay.status}
-                  </span>
-                </td>
-                <td style="font-family: ui-monospace, monospace; font-size: 0.85rem;">
-                  {bay.active_vm}
-                </td>
-                <td>{bay.ram_allocation_gb > 0 ? `${bay.ram_allocation_gb} GiB` : '0 GiB'}</td>
-                <td>{bay.cpu_allocation_cores > 0 ? `${bay.cpu_allocation_cores} Cores` : '0 Cores'}</td>
-                <td>{bay.reflink_time_sec ? `${bay.reflink_time_sec}s` : 'N/A'}</td>
-                <td>{bay.legacy_copy_time_sec ? `${bay.legacy_copy_time_sec}s` : 'N/A'}</td>
-                <td style="font-weight: 600; color: #10b981;">{bay.reflink_time_sec ? `${advantage} faster` : 'N/A'}</td>
-              </tr>
-            );
-          })}
+          {containerdisks.map((cd) => (
+            <tr>
+              <td style="font-weight: 600; color: #f8fafc;">{cd.label}</td>
+              <td class="mono">{cd.tag}</td>
+              <td>
+                <span class:list={['badge', `badge--${cd.status}`]}>
+                  {cd.status}
+                </span>
+              </td>
+              <td class:list={[`filesystem-${cd.filesystem}`]} style="font-weight: 600; text-transform: uppercase;">
+                {cd.filesystem}
+              </td>
+              <td>{cd.size_mb ? `${cd.size_mb} MB` : 'N/A'}</td>
+              <td class="mono">{cd.digest ? cd.digest.slice(0, 19) + '...' : 'N/A'}</td>
+              <td>{cd.created ? formatUtc(cd.created) : 'N/A'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <h2>Hypervisor Nodes</h2>
+    <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1.5rem;">
+      KubeVirt-capable cluster nodes that can schedule test VM workloads.
+    </p>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>OS</th>
+            <th>Kernel</th>
+            <th>RAM</th>
+            <th>CPU Threads</th>
+            <th>Memory Use</th>
+            <th>CPU Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          {nodes.map((node) => (
+            <tr>
+              <td style="font-weight: 600; color: #f8fafc;">{node.name}</td>
+              <td>{node.role}</td>
+              <td>
+                <span class:list={['badge', `badge--${node.status}`]}>
+                  {node.status}
+                </span>
+              </td>
+              <td>{node.os_image}</td>
+              <td class="mono">{node.kernel_version}</td>
+              <td>{node.ram_gb} GiB</td>
+              <td>{node.cpu_threads}</td>
+              <td>{node.mem_usage_pct}%</td>
+              <td>{node.cpu_usage_pct}%</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -372,14 +558,25 @@ const updateTime = factoryStats?._meta?.generated_at || new Date().toISOString()
   <section class="integrity-panel">
     <h4>Data Integrity Posture</h4>
     <ul class="integrity-list">
-      <li>Hardware limits dynamically parsed from host system descriptor file <code>docs/data/factory-stats.json</code> for node <code>ghost</code>.</li>
-      <li>Virtual machine slot limits adhere to the rigid 8 GiB RAM / 4 CPU Core reservation standard enforced by local scheduler priority classes.</li>
-      <li>Reflink measurements sourced from historical VM creation times captured in task-level execution telemetry.</li>
+      <li>
+        Node capacity, utilization, and containerDisk build counts are read from
+        <code>docs/data/factory-stats.json</code>.
+      </li>
+      <li>
+        ContainerDisk availability, digest, size, and creation time are queried live from the local
+        Zot registry at build time; when ghost is unreachable the page falls back to the catalog
+        definition and marks the disk unavailable.
+      </li>
+      <li>
+        Guest filesystem labels are derived from the bootc install-to-disk logic in
+        argo/workflow-templates/build-containerdisk.yaml and are not inferred from disk names.
+      </li>
     </ul>
-    <a href={`${baseUrl}data/factory-stats.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8; text-decoration: none;">Open raw dataset ↗</a>
+    <a href={`${baseUrl}data/factory-stats.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8; text-decoration: none;">Open raw dataset</a>
   </section>
 
   <script type="application/json" id="provisioning-chart-data" set:html={serializedPayload}></script>
-  <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
-  <script is:inline src={provisioningChartsScript} defer data-cfasync="false"></script>
+  <script>
+    import '../scripts/provisioning-charts.js';
+  </script>
 </SiteLayout>

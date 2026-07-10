@@ -10,8 +10,7 @@ function html(file) {
   return readFileSync(path.join(repo, file), 'utf8');
 }
 
-test('provisioning page renders bays, charts, nav links, and integrity data', () => {
-  // Trigger build to ensure pages are fresh
+test('provisioning page renders architecture, nodes, containerDisks, and evidence links', () => {
   execFileSync('npm', ['run', 'build'], {
     cwd: repo,
     stdio: 'pipe',
@@ -23,50 +22,50 @@ test('provisioning page renders bays, charts, nav links, and integrity data', ()
 
   assert.match(
     provisioningPage,
-    /Provisioning Bays/i,
+    /VM Provisioning/i,
     'provisioning page renders the header title',
   );
 
   assert.match(
     provisioningPage,
-    /Bay A/i,
-    'provisioning page includes Bay A',
+    /containerDisk/i,
+    'provisioning page explains containerDisk provisioning',
   );
 
   assert.match(
     provisioningPage,
-    /Bay B/i,
-    'provisioning page includes Bay B',
+    /No host-side btrfs reflink/i,
+    'provisioning page explicitly corrects the btrfs reflink misconception',
   );
 
   assert.match(
     provisioningPage,
-    /Bay C/i,
-    'provisioning page includes Bay C',
+    /Hypervisor Nodes/i,
+    'provisioning page renders the hypervisor nodes section',
   );
 
   assert.match(
     provisioningPage,
-    /KubeVirt hypervisor slot monitor\./i,
-    'provisioning page renders the required slots chart caption',
+    /ContainerDisk Inventory/i,
+    'provisioning page renders the containerDisk inventory',
   );
 
   assert.match(
     provisioningPage,
-    /btrfs reflink initialization advantage/i,
-    'provisioning page renders btrfs reflink advantages text',
+    /Guest Filesystems/i,
+    'provisioning page renders the guest filesystems section',
   );
 
   assert.match(
     provisioningPage,
-    /provisioning-slots-chart/i,
-    'provisioning page includes the slots chart container ID',
+    /provisioning-capacity-chart/i,
+    'provisioning page includes the capacity chart container',
   );
 
   assert.match(
     provisioningPage,
-    /provisioning-reflink-chart/i,
-    'provisioning page includes the reflink speed chart container ID',
+    /provisioning-filesystems-chart/i,
+    'provisioning page includes the filesystems chart container',
   );
 
   assert.match(
@@ -87,7 +86,7 @@ test('provisioning page renders bays, charts, nav links, and integrity data', ()
     'site nav includes a link to the Provisioning page',
   );
 
-  // Assertion: Ensure there are absolutely no emojis in the generated HTML of the provisioning page
+  // No emojis in generated HTML.
   const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F1E6}-\u{1F1FF}]/u;
   assert.equal(
     emojiRegex.test(provisioningPage),

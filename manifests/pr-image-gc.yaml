@@ -34,16 +34,16 @@ spec:
     - name: gc
       nodeSelector:
         kubernetes.io/hostname: ghost
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
       script:
         image: ghcr.io/projectbluefin/lab-runner:latest
         command: [sh]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         env:
         - name: GITHUB_TOKEN
           valueFrom:

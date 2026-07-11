@@ -159,3 +159,27 @@ so build actions are genuinely distributed across the `worker` DaemonSet pods on
 `ghost` and `exo-0` rather than executing locally on a single node. The `bst-build` client
 pod itself also carries a required podAntiAffinity so concurrent builds spread across
 nodes instead of stacking on one.
+
+## GitHub Actions Runners
+
+A self-hosted Actions Runner Controller (ARC) bridge lets projectbluefin
+maintainers trigger GitHub Actions jobs on the Ghost cluster without keeping fat
+runner pods idle.
+
+- **Controller:** `arc-systems` namespace, `gha-runner-scale-set-controller`
+  0.9.3. It listens to GitHub and creates ephemeral runner pods.
+- **Org scale set:** `arc-runners` namespace, `runnerScaleSetName: ghost-runners`,
+  `githubConfigUrl: https://github.com/projectbluefin`. Only repos covered by the
+  `bluefin-ghost-arc` GitHub App installation can request these runners.
+- **Container mode:** each Actions job declares a `container:` image and runs as a
+  separate Kubernetes pod. Heavy work is submitted back into Argo Workflows
+  (e.g., `argo submit --from workflowtemplate/dakota-buildstream-warm-cache
+  --wait`) so the small runner pod coordinates while real build pods consume
+  cluster CPU/memory.
+- **Personal scale set:** maintainers who want the same runners on personal repos
+  install the `bluefin-ghost-arc` app on their personal account and use a second
+  scale set (`ghost-runners-personal`) with a different `githubConfigUrl` and
+  installation secret.
+
+Example workflow: `.github/workflows/example-container-mode-build.yml`.  
+Access, auth, and troubleshooting: `docs/maintainer-onboarding.md`.

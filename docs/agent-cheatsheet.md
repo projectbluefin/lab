@@ -374,6 +374,8 @@ workflow.
 Add `runs-on: ghost-runners` and a `container:` block to any projectbluefin workflow.
 A listener pod and ephemeral runner pod will appear in `arc-systems` and
 `arc-runners` respectively. Example: `.github/workflows/example-container-mode-build.yml`.
+For maintainer access, authentication model, and troubleshooting, see
+`docs/maintainer-onboarding.md`.
 
 **Writing a container-mode job:**
 - The job **must** declare `container:`; without it the runner will fail.
@@ -382,13 +384,39 @@ A listener pod and ephemeral runner pod will appear in `arc-systems` and
 - The runner service account (`arc-runner-workflow-submitter`) can create and
   watch workflows in the `argo` namespace.
 
+**Allow a maintainer to use ghost-runners on personal repos:**
+The org `ghost-runners` scale set cannot serve repos outside `projectbluefin`.
+Create a second scale set for the maintainer's personal account:
+
+1. Maintainer installs the `bluefin-ghost-arc` GitHub App on their personal
+   account and notes the installation ID.
+2. Create a secret for the personal installation:
+   ```bash
+   kubectl create secret generic arc-github-secret-personal \
+     --namespace arc-runners \
+     --from-literal=github_app_id=4099840 \
+     --from-literal=github_app_installation_id="<PERSONAL_INSTALLATION_ID>" \
+     --from-literal=github_app_private_key="$(cat /path/to/bluefin-ghost-arc.pem)"
+   ```
+3. Add an ArgoCD Application like `argocd/arc-runners-personal-app.yaml` with
+   `githubConfigUrl: https://github.com/<USERNAME>` and
+   `runnerScaleSetName: ghost-runners-personal`.
+4. Maintainer uses `runs-on: ghost-runners-personal` in their personal repo.
+
+See `docs/maintainer-onboarding.md` for the full Application manifest and
+security notes.
+
 **ArgoCD Applications for ARC** (stored in `argocd/`, applied manually once):
 - `arc-systems` — controller (gha-runner-scale-set-controller 0.9.3)
 - `arc-runners` — scale set pointing at `https://github.com/projectbluefin`
+- `arc-runners-personal` (optional) — second scale set for a maintainer's
+  personal GitHub account; uses a different `githubConfigUrl` and installation
+  secret.
 
 **GitHub App:** `bluefin-ghost-arc` (App ID 4099840, Installation 141458121)
 installed on the `projectbluefin` org. Credentials in `arc-github-secret`
-(namespace `arc-runners`) — never replace with a PAT.
+(namespace `arc-runners`) — never replace with a PAT. Personal-account scale
+sets need a separate secret with the personal installation ID.
 
 ---
 

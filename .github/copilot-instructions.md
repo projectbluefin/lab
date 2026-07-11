@@ -15,4 +15,5 @@ Keep only these repo-specific inline reminders:
 - Compare existing subdomains before DNS/TLS changes; keep static GitHub Pages hosts behind the established Cloudflare-proxied pattern unless GitHub cert issuance is confirmed.
 - If Cloudflare fronts a Pages site, opt the dashboard entry script out of Rocket Loader with `data-cfasync="false"` and verify the live HTML preserves the raw script tag.
 - PR queue work is only complete with real lab evidence.
+- ARC container-mode runners require a `container:` block on every job and offload heavy work to Argo Workflows; point maintainers to `docs/maintainer-onboarding.md` for access/auth and the personal-repo scale-set pattern.
 - At end of any non-trivial session, run the self-improvement loop in `docs/skills/skill-improvement.md` and update the relevant skill file(s) with the durable pattern before handoff.

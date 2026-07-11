@@ -1,5 +1,10 @@
 # Workflow Reference
 
+This doc covers Argo Workflows and WorkflowTemplates. For the GitHub Actions
+bridge that submits Argo Workflows from ephemeral ARC runners, see
+`.github/workflows/example-container-mode-build.yml` and
+`docs/maintainer-onboarding.md`.
+
 ## Table of Contents
 - [Pipelines](#pipelines)
   - [bluefin-qa-pipeline](#bluefin-qa-pipeline)

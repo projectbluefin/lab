@@ -33,9 +33,16 @@ metadata:
 |---|---|---|---|
 | `lab` | `argo/workflow-templates/` | argo | WorkflowTemplates |
 | `lab-infra` | `manifests/` | argo + others | CronWorkflows, RBAC, NodePorts, ConfigMaps |
+| `arc-systems` | `argocd/arc-controller-app.yaml` | arc-systems | ARC controller |
+| `arc-runners` | `argocd/arc-runners-app.yaml` | arc-runners | Org `ghost-runners` scale set |
+| `arc-runners-personal` (optional) | `argocd/arc-runners-personal-app.yaml` | arc-runners | Personal-account scale set |
 
 Both use `automated: { prune: true, selfHeal: true }` — per
 [Argo CD best practices](https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/).
+The `argocd/` Applications (ARC controller, ARC runner scale sets) are also
+ArgoCD-managed, but the Application manifests themselves are applied manually
+once during cluster setup because ArgoCD cannot create its own Application
+definitions from git before it is running.
 
 **`prune: true`** — resources removed from git are deleted from the cluster.
 **`selfHeal: true`** — manual cluster changes are reverted within ~3 minutes.

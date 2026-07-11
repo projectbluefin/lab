@@ -19,6 +19,7 @@ metadata:
 - Dashboard data is stale, empty, or inconsistent with cluster state
 - A workflow needs homelab/private network data
 - GitHub Pages shows JSON/JS fetch errors after CI changes
+- Onboarding maintainers to the `ghost-runners` ARC scale set or adding a personal-repo scale set
 
 ## When NOT to Use
 
@@ -53,6 +54,7 @@ metadata:
 20. When a data source has no direct "value used" gauge (e.g. Buildbarn's block-device-backed storage, which preallocates fixed-size blocks on disk regardless of logical fill), derive an estimate from available counters (e.g. `allocations_total - releases_total` × known block size) and say so explicitly in the row's `derivation` field. Never silently report a physical-allocation number as if it were logical usage.
 21. **Use a dedicated CI-only Tailscale tailnet to bridge GitHub-hosted runners into the homelab only for best-effort seeding jobs**, never for required product gates. The production tailnet must remain separate. Pin `tailscale/github-action` to a SHA, use an OAuth client scoped to `auth_keys` write and a dedicated tag (e.g. `tag:ci-cache-seeder`), and start the runner with `--accept-routes=false --ssh=false`. Tag the runner hostname deterministically so Ghost can push to it via MagicDNS. Authenticate each seed request with a short-lived signed JWT and verify it on Ghost together with the Tailscale peer tag via `tailscale whois`. Keep the upstream cache signing key on the runner only; Ghost pushes artifacts to the runner's local cache unsigned, and the runner alone signs and pushes to the upstream cache. Wrap every seeding step and the whole job in `continue-on-error: true`, set explicit `timeout-minutes`, and run teardown with `if: always()` so any Tailscale, network, or cache failure leaves the parent workflow green.
 22. **Use ARC container mode (`type: kubernetes`) to keep the runner controller small while heavy work runs in separate cluster pods.** Each workflow job must declare a `container:` image. Offload CPU/memory-intensive work (BST builds, large container builds) to existing Argo WorkflowTemplates via `argo submit --from workflowtemplate/<name> --wait` rather than running it directly in the small step container. Grant the runner service account only the RBAC it needs to create and watch workflows in the target namespace.
+23. **Route maintainers to `docs/maintainer-onboarding.md` for runner access.** The org `ghost-runners` scale set is bound to `https://github.com/projectbluefin` and cannot serve personal repos. A maintainer who wants `ghost-runners` on a personal repo must install the `bluefin-ghost-arc` GitHub App on their personal account and create a second scale set (`ghost-runners-personal`) with a different `githubConfigUrl` and installation secret.
 
 ## Common Rationalizations
 
@@ -87,6 +89,8 @@ metadata:
 - A container-mode ARC job targets `ghost-runners` without a `container:` block, causing the runner to fail immediately.
 - Heavy builds run directly inside a small ARC step container instead of being submitted to an Argo Workflow, leading to OOM or CPU throttling.
 - The ARC runner service account is given broad cluster-admin permissions instead of a namespace-scoped Role for workflow submission.
+- A maintainer tries to use `runs-on: ghost-runners` from a personal repo instead of creating a separate `ghost-runners-personal` scale set with a personal GitHub App installation.
+- A personal-repo scale set reuses the org's `githubConfigUrl: https://github.com/projectbluefin` or the org's installation secret.
 
 ## Verification
 
@@ -117,3 +121,6 @@ metadata:
 - [ ] Heavy ARC jobs submit Argo Workflows rather than executing the heavy work inside the step container.
 - [ ] The ARC runner service account has a namespace-scoped Role for workflow submission, not cluster-admin.
 - [ ] A test container-mode workflow completes and produces the expected build artifact or cache seed.
+- [ ] New maintainers can follow `docs/maintainer-onboarding.md` to add `ghost-runners` to an org repo.
+- [ ] A personal-repo scale set uses a different `githubConfigUrl` and a different GitHub App installation secret from the org scale set.
+- [ ] `docs/maintainer-onboarding.md` is referenced from any skill or ops doc that discusses ARC runner access.

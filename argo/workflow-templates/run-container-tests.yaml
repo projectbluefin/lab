@@ -237,9 +237,13 @@ spec:
         chmod +x /tmp/run-behave.sh
 
         echo "Bootstrapping dbus-run-session + qecore-headless..." >&2
+        # --allow-duplication is required in the container: the constrained
+        # process tree makes qecore-headless think it is a duplicate of an
+        # already-running instance and exit before executing the test script.
         dbus-run-session -- qecore-headless \
           --session-type wayland \
           --session-desktop gnome \
+          --allow-duplication \
           /tmp/run-behave.sh
 
         BEHAVE_RC=$(cat /tmp/results/behave-rc.txt 2>/dev/null || echo "1")

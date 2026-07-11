@@ -114,6 +114,103 @@ The `--wait` flag keeps the GitHub Actions job alive and streams status until
 the Argo Workflow finishes. The cluster supplies the real CPU/memory; the
 runner pod just coordinates.
 
+## Bluefin Maintainers who want to use the Runners on their personal repos
+
+The `ghost-runners` scale set is bound to the `projectbluefin` organization, so it
+cannot serve repositories outside that org. A maintainer can reuse the same
+cluster infrastructure for personal repos by adding a second scale set tied to
+their personal GitHub account.
+
+### What the maintainer does
+
+1. Open personal **Settings → Applications → GitHub Apps**.
+2. Install the `bluefin-ghost-arc` app on the personal account (or select
+   specific repos).
+3. Note the **installation ID** from the URL (`/settings/installations/<ID>`).
+
+### What a cluster admin does
+
+Create a new secret for the personal installation. The app ID and private key
+are the same; only the installation ID changes:
+
+```bash
+kubectl create secret generic arc-github-secret-personal \
+  --namespace arc-runners \
+  --from-literal=github_app_id=4099840 \
+  --from-literal=github_app_installation_id="<PERSONAL_INSTALLATION_ID>" \
+  --from-literal=github_app_private_key="$(cat /path/to/bluefin-ghost-arc.pem)"
+```
+
+Add a new ArgoCD Application, for example
+`argocd/arc-runners-personal-app.yaml`:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-runners-personal
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set
+    targetRevision: 0.9.3
+    helm:
+      values: |
+        githubConfigUrl: "https://github.com/<GITHUB_USERNAME>"
+        githubConfigSecret: arc-github-secret-personal
+        runnerScaleSetName: ghost-runners-personal
+        minRunners: 0
+        maxRunners: 6
+        controllerServiceAccount:
+          namespace: arc-systems
+          name: arc-systems-gha-rs-controller
+        containerMode:
+          type: kubernetes
+          kubernetesModeWorkVolumeClaim:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 50Gi
+        template:
+          spec:
+            serviceAccountName: arc-runner-workflow-submitter
+            containers:
+              - name: runner
+                image: ghcr.io/projectbluefin/arc-runner:latest
+                command: ["/home/runner/run.sh"]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-runners
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
+
+### What the maintainer puts in their personal repo
+
+```yaml
+jobs:
+  build:
+    runs-on: ghost-runners-personal
+    container:
+      image: ghcr.io/projectbluefin/arc-runner:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: argo version
+```
+
+### Security note
+
+The personal scale set uses the same runner image and cluster RBAC as the org
+scale set, so it has the same privileges (Argo Workflow submit/read in the
+`argo` namespace). Only extend this to trusted Bluefin maintainers.
+
 ## Verifying a repo can use the runner
 
 Open a PR with a workflow that uses `runs-on: ghost-runners`. If the repository

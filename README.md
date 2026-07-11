@@ -42,7 +42,7 @@ The lab continuously validates the core operating system family across multiple 
 | `ghcr.io/projectbluefin/bluefin-lts` | `testing`, `stable` | Nightly 02:30 UTC + on every OCI digest change | Long-term support GNOME enterprise target |
 | `ghcr.io/ublue-os/aurora` | `testing`, `stable` | Hourly OCI digest poll on upstream change | KDE variant validation (system suite) |
 | `ghcr.io/frostyard/snow` | `latest` | Every 3 hours + on every OCI digest change | Snosi GNOME desktop profile (smoke/developer/system suites) |
-| `ghcr.io/projectbluefin/dakota` | `latest` | Nightly 03:00 UTC + on every BST build trigger | BuildStream (BST) flatcar-substrate variant |
+| `ghcr.io/projectbluefin/dakota` | `latest` | Nightly 03:00 UTC + on every BST build trigger | BuildStream (BST) flatcar-substrate variant; `build-mode=cache-only` is the default while the remote-execution sandbox remains unstable |
 
 **Image-poll trigger:** hourly CronWorkflows check the OCI registry digests against a stored
 ConfigMap state. When the digest changes, a full `bluefin-qa-pipeline` run fires

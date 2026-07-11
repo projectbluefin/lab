@@ -269,6 +269,19 @@ spec:
         insecure = true
         EOF
 
+        # Overwrite default policy.json with insecureAcceptAnything to bypass
+        # signature checks for build-containerdisk runs
+        mkdir -p /etc/containers
+        cat > /etc/containers/policy.json <<'EOF'
+        {
+            "default": [
+                {
+                    "type": "insecureAcceptAnything"
+                }
+            ]
+        }
+        EOF
+
         if [[ -f "${DISK}" ]]; then
           echo "Removing stale disk: ${DISK}"
           losetup -j "${DISK}" | cut -d: -f1 | xargs -r losetup -d 2>/dev/null || true

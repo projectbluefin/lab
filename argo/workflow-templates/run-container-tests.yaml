@@ -132,6 +132,8 @@ spec:
         name: shm
       - mountPath: /home/bluefin-test
         name: home
+      - mountPath: /tmp
+        name: tmp
       command: [bash, -c]
       args:
       - |
@@ -262,4 +264,6 @@ spec:
       emptyDir:
         medium: Memory
     - name: home
+      emptyDir: {}
+    - name: tmp
       emptyDir: {}

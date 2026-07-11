@@ -43,9 +43,11 @@ The normal operator path is now **fresh-VM only**. Persistent titan recovery flo
 | Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
 | Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate Flatcar | `just run-flatcar-smoke` |
-| Submit Dakota BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
+| Submit Dakota BST build pipeline (bluefin + nvidia, defaults to cache-only) | `just run-bst-build [ref=testing]` |
 
 Rule: if a `just` recipe exists, use it. Otherwise use MCP, not workstation `kubectl`/`argo`.
+
+For Dakota BST runs, the default path is `build-mode=cache-only` because the current Buildbarn remote-execution sandbox is still unstable in the webkitgtk path. Override to `re` or `auto` only when you are explicitly debugging the RE lane.
 
 ---
 

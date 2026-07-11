@@ -24,6 +24,8 @@ spec:
       labels:
         app.kubernetes.io/name: llm-d-modelserver
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: ghost
       containers:
         - name: modelserver
           image: ghcr.io/ggml-org/llama.cpp:server

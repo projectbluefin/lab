@@ -752,6 +752,22 @@ kubectl patch workflow <name> -n argo -p '{"spec":{"shutdown":"Stop"}}' --type=m
 If mutex contention appears, stop stale failed workflows holding `ghost-heavy-compute`; do not
 blanket-stop all Dakota build-publish runs.
 
+### 20a. Dakota BuildStream publish lane output tags
+
+`dakota-build-pipeline` exports the built `oci/bluefin.bst` and `oci/bluefin-nvidia.bst`
+artifacts to the local Zot registry. The published tags must match the projectbluefin/dakota
+image contract, not internal "cluster testing" names:
+
+- Base variant → `192.168.1.102:30500/dakota:testing`
+- NVIDIA variant → `192.168.1.102:30500/dakota-nvidia:testing`
+
+Do not publish these as `:latest` from the cluster lane; `:testing` is the testing-branch
+stream and `:stable` is promoted separately from `main`. Keeping the cluster lane on `:testing`
+prevents accidental overwrites of the stable/production stream and makes the artifact identity
+obvious to downstream lab jobs.
+
+If the template is retagged, update the dashboard fallback writable-repos list in
+`src/pages/index.astro` and `src/pages/userspace.astro` to match the new repository names.
 
 ### 21. Per-workflow ephemeral storage — volumeClaimTemplates
 

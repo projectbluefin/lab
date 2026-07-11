@@ -45,18 +45,8 @@ spec:
           - name: image-tag
             value: "{{workflow.parameters.image-tag}}"
 
-      - name: ensure-passwd
-        depends: "assert-image.Succeeded"
-        template: ensure-passwd
-        arguments:
-          parameters:
-          - name: image
-            value: "{{workflow.parameters.image}}"
-          - name: image-tag
-            value: "{{workflow.parameters.image-tag}}"
-
       - name: dakota-image-smoke
-        depends: "ensure-passwd.Succeeded"
+        depends: "assert-image.Succeeded"
         template: dakota-image-smoke
         arguments:
           parameters:
@@ -95,41 +85,6 @@ spec:
           exit 1
         fi
 
-  - name: ensure-passwd
-    inputs:
-      parameters:
-      - name: image
-      - name: image-tag
-    script:
-      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
-      imagePullPolicy: IfNotPresent
-      command: [sh]
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-      securityContext:
-        runAsUser: 0
-      volumeMounts:
-      - mountPath: /mnt/passwd
-        name: passwd
-      source: |
-        set -euo pipefail
-        cp /etc/passwd /mnt/passwd/passwd
-        cp /etc/group /mnt/passwd/group
-        if ! grep -q '^bluefin-test:' /mnt/passwd/passwd; then
-          echo 'bluefin-test:x:1000:1000:bluefin-test:/home/bluefin-test:/bin/bash' >> /mnt/passwd/passwd
-        fi
-        if ! grep -q '^bluefin-test:' /mnt/passwd/group; then
-          echo 'bluefin-test:x:1000:' >> /mnt/passwd/group
-        fi
-    volumes:
-    - name: passwd
-      emptyDir: {}
-
   - name: dakota-image-smoke
     inputs:
       parameters:
@@ -148,19 +103,11 @@ spec:
           cpu: "500m"
           memory: "512Mi"
       securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
+        runAsUser: 0
         allowPrivilegeEscalation: false
         capabilities:
           drop:
           - ALL
-      volumeMounts:
-      - mountPath: /etc/passwd
-        name: passwd
-        subPath: passwd
-      - mountPath: /etc/group
-        name: passwd
-        subPath: group
       source: |
         set -euo pipefail
         VARIANT="{{inputs.parameters.variant}}"
@@ -219,6 +166,3 @@ spec:
           echo "=== ${FAILURES} smoke check(s) failed ===" >&2
           exit 1
         fi
-    volumes:
-    - name: passwd
-      emptyDir: {}

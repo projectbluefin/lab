@@ -79,6 +79,52 @@ Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check
 `kubectl describe node | grep -A8 "Allocated resources"` and delete VMs whose
 parent workflow is terminal.
 
+## BST build scheduling: avoid ghost preemption
+
+`ghost` is the k3s control-plane and also runs higher-priority VM/test workloads.
+BST build pods use the `bst-build` PriorityClass, which is deliberately
+preemptable by lab test VMs. In practice this means any BST build pod that lands
+on `ghost` is likely to be killed within minutes when a VM pod is scheduled.
+Symptom: `argo get` shows `pod deleted` and `kubectl get events --field-selector
+reason=Preempted` lists the build pod displaced by a VM pod.
+
+Mitigations:
+
+1. **Pin BST build pods to `exo-0`.** Add required node affinity to the build
+template so the scheduler can only place the pod on the dedicated worker:
+
+   ```yaml
+   affinity:
+     nodeAffinity:
+       requiredDuringSchedulingIgnoredDuringExecution:
+         nodeSelectorTerms:
+           - matchExpressions:
+               - key: kubernetes.io/hostname
+                 operator: In
+                 values:
+                   - exo-0
+   ```
+
+   `exo-0` has ~15 GiB allocatable memory and no competing preempting workloads,
+   so a 14 GiB BST build request can run to completion.
+
+2. **Serialize high-memory BST variants.** Do not run two 14 GiB BST build pods
+in parallel; the second pod will be forced onto `ghost` and be preempted. Change
+the DAG so the NVIDIA/variant lane `depends:` on the base lane instead of running
+concurrently after `detect-build-mode`.
+
+3. **Verify the fix live.** After submission, confirm the pod landed on `exo-0`:
+
+   ```bash
+   kubectl get pod -n argo <pod-name> -o custom-columns='NODE:.spec.nodeName'
+   ```
+
+   And watch for preemptions:
+
+   ```bash
+   kubectl get events -n argo --field-selector reason=Preempted --sort-by='.lastTimestamp'
+   ```
+
 ## Queueing, cleanup, and Buildbarn recovery
 
 When the cluster is already hot, the fastest recovery is usually to stop the noise
@@ -118,6 +164,48 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 | `zot` | OCI registry for test artifacts |
 | `external-secrets` | Pulls secrets from vault into k8s Secrets |
 | `k8sgpt` | Cluster analysis / MCP troubleshooting bridge |
+
+## Common Rationalizations
+
+- "Ghost has 64 GiB, so the build pod will fit."  
+  Fitting is not the same as surviving. VM pods use a higher PriorityClass and
+  will preempt a `bst-build` pod for memory. The pod gets deleted, the workflow
+  retries, and the build never finishes.
+
+- "I will just retry the workflow again."  
+  Retries do not change the scheduler decision. Without node affinity, the pod
+  lands on ghost again and is preempted again. Fix the scheduling, then retry.
+
+- "Two variants should build in parallel to save time."  
+  Parallel high-memory pods force one onto ghost where it is preempted. The
+  wall-clock savings are lost to retries and partial work. Serialize first;
+  parallelize only after the cluster has enough dedicated memory capacity.
+
+- "The semaphore already limits concurrency."  
+  The `bst-build` semaphore allows multiple lanes. It gates admission but does
+  not pin pods to nodes or prevent preemption. Use it together with node
+  affinity, not instead of it.
+
+## Red Flags
+
+- `argo get` shows `pod deleted` for a BST build step.
+- `kubectl get events --field-selector reason=Preempted` shows BST pods
+  displaced by VM pods on `ghost`.
+- A BST build pod is scheduled on `ghost` instead of `exo-0`.
+- Two BST build pods are `Running` at the same time with 14 GiB requests each.
+- Builds repeatedly fail fast (seconds to a few minutes) without a build error
+  in the container logs.
+
+## Verification
+
+- [ ] `just lint` passes after any WorkflowTemplate change.
+- [ ] ArgoCD reports `Synced` for `testing-lab` after the push.
+- [ ] The submitted build pod is scheduled on `exo-0`:
+      `kubectl get pod -n argo <pod> -o jsonpath='{.spec.nodeName}'` returns `exo-0`.
+- [ ] No `Preempted` events appear for the build pod after 10 minutes.
+- [ ] The build progresses past source fetches into artifact pulls/builds.
+- [ ] Workflow reaches `Succeeded`, or if it fails, the failure is a real build
+      error (not `pod deleted`).
 
 ## Key references
 

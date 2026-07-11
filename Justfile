@@ -280,6 +280,16 @@ run-dakota-qa branch="main" variant="dakota":
       -p branch={{ branch }} \
       -n {{ argo_ns }} --watch
 
+# Containerized Dakota QA pipeline: run behave suites directly inside the OCI
+# image. Use this while the VM-based path is blocked for composefs-oci Dakota
+# images (bootc install to-disk requires bootupd/ostree).
+run-dakota-container-qa image-tag="testing" variant="dakota":
+    argo submit --from workflowtemplate/dakota-container-qa-pipeline \
+      -p image=192.168.1.102:30500/{{ variant }} \
+      -p image-tag={{ image-tag }} \
+      -p variant={{ variant }} \
+      -n {{ argo_ns }} --watch
+
 # Run the in-cluster BuildStream build pipeline for bluefin-server
 # Usage: just run-bluefin-server-build
 run-bluefin-server-build ref="main" repo="https://github.com/projectbluefin/server.git":

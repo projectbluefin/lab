@@ -53,14 +53,26 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   `concurrency: 2` → two 8-core/16Gi action slots per node, 4 across the cluster.
 - **Zot pull-through** on every node (`registry-mirror-config` DaemonSet) keeps
   image pulls off the WAN and off cross-node paths.
-- **Per-node hostPath bst-cache** (`/var/tmp/bst-cache/<tag>`) still absorbs
-  BuildStream-level reuse before any network hop.
+- **Per-tag hostPath bst-cache** (`/var/tmp/bst-cache/<tag>`) still absorbs
+  BuildStream-level reuse before any network hop. Use a single shared cache for
+  multiple variants of the same project (e.g. `cosmic` + `cosmic-nvidia`) so one
+  variant's successful source build is reused by the others. Also share a cache
+  when an earlier remote-execution attempt may have left a corrupted artifact
+  record in a per-tag directory; a fresh shared path avoids retrying the bad
+  record.
 - **Dakota lane policy:** `dakota-build-pipeline` uses `build-mode=auto` to enable
   Buildbarn remote execution only when the USB4 data-plane is confirmed up on both
   ghost and exo-0; otherwise it stays on the cache-only path over ethernet and
   any retry forces cache-only to preserve the LAN. The dakota commit poller also
   pins the checkout to the exact GitHub SHA it observed, so the lab build follows
   the same revision that GitHub is building.
+- **Buildbarn RE sandbox lacks device nodes**: `bb_runner` with
+  `chrootIntoInputRoot: true` does not create `/dev/null`, `/dev/zero`,
+  `/dev/urandom`, etc. inside the chroot. Source builds that run
+  `icx --version` (meson) or redirect to `/dev/null` fail with
+  "No such file or directory". Until the runner is configured to provide a
+  minimal `/dev`, lanes that hit uncached source builds must fall back to local
+  (cache-only) mode where BuildStream's bubblewrap sandbox supplies the devices.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

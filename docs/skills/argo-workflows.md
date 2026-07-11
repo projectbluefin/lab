@@ -701,7 +701,33 @@ remove the `when` guard and move the bypass into the script body.
 - Controller logs show `"was unable to obtain the node"` for the downstream task (normal reconciliation noise)
 - `force=true` workflows submitted after a digest change never actually build
 
-### 19. Mutex contention from stuck failed builds
+### 19. `when` condition values with hyphens must be quoted or avoided
+
+Argo's `when` expression parser (expr-lang based) treats an unquoted hyphenated
+string as a subtraction expression. A condition like:
+
+```yaml
+when: "{{inputs.parameters.mode}} == cache-only"
+```
+
+expands to `cache-only == cache-only`, which fails with:
+
+```
+Value 'cache' cannot be used with the modifier '-', it is not a number
+```
+
+**Fixes:**
+
+1. Quote the literal: `when: "{{inputs.parameters.mode}} == 'cache-only'"` works
+   for values that expr-lang can parse as a single quoted string.
+2. Safer: avoid hyphens in the enumerated value entirely. Use `local` instead of
+   `cache-only` and quote the comparison: `when: "{{inputs.parameters.mode}} == 'local'"`.
+
+Always lint after changing `when` expressions, then submit a test workflow to
+verify the DAG branches are scheduled as expected before relying on the path in
+production.
+
+### 20. Mutex contention from stuck failed builds
 
 The `ghost-heavy-compute` mutex (on the `install-to-disk` template) allows only one
 concurrent build at a time. Failed workflows that were stopped via `shutdown: Stop` **release
@@ -727,7 +753,7 @@ If mutex contention appears, stop stale failed workflows holding `ghost-heavy-co
 blanket-stop all Dakota build-publish runs.
 
 
-### 20. Per-workflow ephemeral storage — volumeClaimTemplates
+### 21. Per-workflow ephemeral storage — volumeClaimTemplates
 
 For pipelines that need shared scratch space across steps (e.g. installer binaries, target disks),
 use Argo's `volumeClaimTemplates` at the workflow spec level. Argo auto-creates the PVC at workflow
@@ -788,7 +814,7 @@ ADD --chown=107:107 disk.raw /disk/
 ```
 UID 107 = qemu. Required — omitting `--chown` causes VM boot failure (permission denied on disk).
 
-### 21. Log access — Argo is sufficient, no separate stack needed
+### 22. Log access — Argo is sufficient, no separate stack needed
 
 Argo Server retains all workflow pod logs for the workflow TTL period (7 days success,
 30 days failure via `workflow-controller-configmap`). No separate log aggregation stack
@@ -816,7 +842,7 @@ argo-mcp-logs_workflow <workflow-name>
 - Adding Loki + Promtail duplicates storage, adds 2–3 pods, and a 10Gi PVC for no
   additional capability that `argo logs` doesn't already provide
 
-### 22. CronWorkflow `suspend` field can survive a git removal — verify live, don't trust ArgoCD "Synced"
+### 23. CronWorkflow `suspend` field can survive a git removal — verify live, don't trust ArgoCD "Synced"
 
 Removing `spec.suspend: true` from a CronWorkflow's git manifest and syncing does **not**
 reliably clear the live field, even when ArgoCD reports the resource `Synced` and the sync
@@ -838,7 +864,7 @@ a boolean field set by an earlier field manager isn't cleared just because a lat
 manifest omits it). Treat any boolean/scalar field removal from a CronWorkflow the same
 way: confirm live state with `kubectl get -o jsonpath`, don't stop at "ArgoCD says Synced".
 
-### 23. Digest-comparison pollers can't detect out-of-band artifact loss
+### 24. Digest-comparison pollers can't detect out-of-band artifact loss
 
 `digest-watch` (and similarly-shaped pollers) only rebuild an artifact when the **upstream
 source digest changes** vs a ConfigMap-stored value. They have no way to notice that the
@@ -879,7 +905,7 @@ when the artifact is missing or when the upstream source digest changed. This co
 wipes, registry migration, and manual Zot cleanup without waiting for a separate recovery
 step.
 
-### 24. Configure registries mirror before running podman build inside workflow containers
+### 25. Configure registries mirror before running podman build inside workflow containers
 
 When running `podman build` or other image operations (like `podman push`) inside a privileged Argo workflow container, you must configure any custom registries mirror files (such as `/etc/containers/registries.conf.d/bluefin-local-zot.conf` to hook up the local Zot pull-through cache) BEFORE executing those container operations. 
 

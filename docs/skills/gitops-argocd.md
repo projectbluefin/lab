@@ -191,6 +191,14 @@ kubectl get autoscalingrunnersets -n arc-runners
 Without it the controller logs `failed to find GitHub config secret` and no
 listener or runner pods are created.
 
+A contributor with gh CLI auth and the downloaded private key can recreate it:
+```bash
+./scripts/setup-arc-github-secret.sh
+```
+The script fetches App/Installation IDs from the GitHub API and prompts for the
+private key file. The private key itself must be generated from the GitHub App
+settings UI; it cannot be retrieved via API.
+
 **Stuck retry loop** — if ArgoCD retries a failed sync with stale syncOptions:
 ```bash
 kubectl patch application <name> -n argocd \

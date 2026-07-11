@@ -10,8 +10,9 @@ metadata:
       hostPath cache, routing artifact cache push/pulls to the shared Buildbarn
       frontend (:8980 gRPC) for hot builds. Triggered by push to dakota:testing
       via dakota-commit-poller CronWorkflow. On success, exports to local Zot
-      (:30500). Uses bst-build PriorityClass — higher priority than lab-test-vm
-      so BST cache-seeding work wins scheduling disputes.
+      (:30500) as dakota:testing and dakota-nvidia:testing. Uses bst-build
+      PriorityClass — higher priority than lab-test-vm so BST cache-seeding work
+      wins scheduling disputes.
   labels:
     app.kubernetes.io/component: dakota-build
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -75,7 +76,7 @@ spec:
                 - name: element
                   value: "oci/bluefin.bst"
                 - name: tag
-                  value: "dakota-cluster-testing"
+                  value: "dakota"
                 - name: ref
                   value: "{{inputs.parameters.ref}}"
                 - name: commit-sha
@@ -96,7 +97,7 @@ spec:
                 - name: element
                   value: "oci/bluefin-nvidia.bst"
                 - name: tag
-                  value: "dakota-cluster-testing-nvidia"
+                  value: "dakota-nvidia"
                 - name: ref
                   value: "{{inputs.parameters.ref}}"
                 - name: commit-sha
@@ -370,14 +371,14 @@ spec:
 
           echo "=== Pushing to local Zot ==="
           if command -v skopeo >/dev/null 2>&1; then
-            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:latest"
+            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:testing"
           else
             IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
+            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:testing" --tls-verify=false
             podman rmi "${IMAGE_ID}" 2>/dev/null || true
           fi
 
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="
+          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:testing ==="
 
     - name: bst-build-local
       synchronization:
@@ -537,11 +538,11 @@ spec:
 
           echo "=== Pushing to local Zot ==="
           if command -v skopeo >/dev/null 2>&1; then
-            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:latest"
+            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:testing"
           else
             IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
+            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:testing" --tls-verify=false
             podman rmi "${IMAGE_ID}" 2>/dev/null || true
           fi
 
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="
+          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:testing ==="

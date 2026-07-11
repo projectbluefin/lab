@@ -155,10 +155,15 @@ spec:
           echo "Warning: Pip installation returned warning/error, checking if packages work" >&2
         }
 
-        # Add symlinks for qecore commands
+        # Add symlinks for qecore commands. When pip installs executables
+        # directly into ~/.local/bin the source and target are identical;
+        # skip those to avoid a non-zero ln exit under set -e.
         for f in /home/bluefin-test/.local/bin/qecore_*; do
           if [ -f "$f" ]; then
-            ln -sf "$f" /home/bluefin-test/.local/bin/$(basename "$f")
+            target="/home/bluefin-test/.local/bin/$(basename "$f")"
+            if [ "$f" != "$target" ]; then
+              ln -sf "$f" "$target"
+            fi
           fi
         done
 

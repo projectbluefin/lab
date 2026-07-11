@@ -204,8 +204,12 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
+          # Share a single local-build cache across cosmic variants. Per-tag
+          # caches duplicated FSDK bootstrap work and kept a stale/corrupted
+          # artifact from an earlier RE attempt, causing one variant to fail
+          # while the other built from source successfully.
           hostPath:
-            path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
+            path: /var/tmp/bst-cache/cosmic-local
             type: DirectoryOrCreate
         - name: buildstream-config
           configMap:
@@ -342,8 +346,9 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
+          # Share local-build cache across cosmic variants; see bst-build-re.
           hostPath:
-            path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
+            path: /var/tmp/bst-cache/cosmic-local
             type: DirectoryOrCreate
         - name: buildstream-config
           configMap:

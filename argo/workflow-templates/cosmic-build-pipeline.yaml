@@ -32,8 +32,8 @@ spec:
         # Buildbarn's RE sandbox is fixed. bb_runner chrootIntoInputRoot does
         # not provide /dev/null, which breaks meson's compiler detection
         # (icx --version) and other build steps. Local builds run in the bst2
-        # pod where BuildStream's bubblewrap sandbox has a proper /dev. See
-        # projectbluefin/lab issue for the Buildbarn fix.
+        # pod where BuildStream's bubblewrap sandbox has a proper /dev.
+        # Revert to "auto" once projectbluefin/lab#271 is resolved.
         value: "local"
 
   entrypoint: build
@@ -207,7 +207,8 @@ spec:
           # Share a single local-build cache across cosmic variants. Per-tag
           # caches duplicated FSDK bootstrap work and kept a stale/corrupted
           # artifact from an earlier RE attempt, causing one variant to fail
-          # while the other built from source successfully.
+          # while the other built from source successfully. Revert to per-tag
+          # paths once projectbluefin/lab#271 is resolved and RE is re-enabled.
           hostPath:
             path: /var/tmp/bst-cache/cosmic-local
             type: DirectoryOrCreate
@@ -347,6 +348,7 @@ spec:
             path: /dev/fuse
         - name: bst-cache
           # Share local-build cache across cosmic variants; see bst-build-re.
+          # Revert to per-tag paths once projectbluefin/lab#271 is resolved.
           hostPath:
             path: /var/tmp/bst-cache/cosmic-local
             type: DirectoryOrCreate

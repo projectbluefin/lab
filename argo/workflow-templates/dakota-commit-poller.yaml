@@ -19,8 +19,10 @@ spec:
   ttlStrategy:
     secondsAfterSuccess: 3600
     secondsAfterFailure: 86400
-  # Allow the referenced dakota-build-pipeline to complete.
-  activeDeadlineSeconds: 10800
+  # Allow the referenced dakota-build-pipeline to complete. Cold cache-only
+  # builds with local compilation can run for many hours; keep the poller
+  # workflow alive as long as the build pipeline itself (24h).
+  activeDeadlineSeconds: 86400
   entrypoint: poll
 
   arguments:

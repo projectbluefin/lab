@@ -256,6 +256,7 @@ run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
     argo submit --from workflowtemplate/dakota-build-pipeline \
       -p ref={{ ref }} \
       -p repo={{ repo }} \
+      -p build-mode=cache-only \
       -n {{ argo_ns }} --watch
 
 # Compatibility alias for older docs/callers.

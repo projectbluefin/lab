@@ -58,11 +58,10 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
   remote execution, and cache reuse only, with a pod-local BuildStream cache kept
   for fast per-pod retry state. The workflow uses a checked-in BuildStream config
   and a warm-cache pre-step so the shared object, action, and remote-asset caches
-  are primed before the main build. Dakota is USB4-first: `build-mode=auto`
-  enables remote execution only when both ghost and exo-0 report
-  `lab.projectbluefin.io/usb4-link=up`; otherwise the lane falls back to
-  cache-only mode over ethernet. Retries always force cache-only so a transient
-  link drop does not saturate 2.5GbE.
+  are primed before the main build. Dakota now defaults to `build-mode=cache-only`
+  while the current BuildBarn remote-execution sandbox remains unstable in the
+  webkitgtk path; explicit `build-mode=re` or `build-mode=auto` overrides still
+  remain available for operators who need to test the RE lane.
 - **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
   pods on resource contention.
 - **Who triggers it automatically:** `dakota-commit-poller` (see

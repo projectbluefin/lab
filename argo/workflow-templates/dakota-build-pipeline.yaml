@@ -33,10 +33,11 @@ spec:
         value: ""
       - name: registry
         value: "192.168.1.102:30500"
-      # auto: distributed RE when the USB4 link is up on both nodes, else
-      # cache-only. Operators can force either mode.
+      # cache-only is the default for now because the BuildBarn remote-execution
+      # sandbox is currently unstable in the webkitgtk path. Operators can still
+      # force either mode explicitly.
       - name: build-mode
-        value: "auto"
+        value: "cache-only"
 
   entrypoint: build
 
@@ -62,7 +63,7 @@ spec:
           # invoke this template via templateRef (dakota-commit-poller) resolve
           # it without defining the parameter themselves.
           - name: build-mode
-            value: "auto"
+            value: "cache-only"
       dag:
         tasks:
           - name: detect-build-mode
@@ -211,15 +212,6 @@ spec:
 
     - name: bst-build-re
       priorityClassName: bst-build
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - ghost
       activeDeadlineSeconds: 43200
       retryStrategy:
         limit: "2"
@@ -389,15 +381,6 @@ spec:
 
     - name: bst-build-local
       priorityClassName: bst-build
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - ghost
       activeDeadlineSeconds: 43200
       retryStrategy:
         limit: "2"

@@ -192,6 +192,18 @@ spec:
 
     - name: bst-build-re
       priorityClassName: bst-build
+      # Pin RE builds to exo-0. Ghost is the control-plane node and repeatedly
+      # preempts BST build pods for higher-priority VM workloads. exo-0 is a
+      # dedicated worker with enough memory for the build bubblewrap sandboxes.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - exo-0
       activeDeadlineSeconds: 5400
       retryStrategy:
         # First RE attempt may hit Buildbarn sandbox issues; retries fall back
@@ -337,6 +349,18 @@ spec:
 
     - name: bst-build-local
       priorityClassName: bst-build
+      # Pin local builds to exo-0. Ghost is the control-plane node and repeatedly
+      # preempts BST build pods for higher-priority VM workloads. exo-0 is a
+      # dedicated worker with enough memory for the build bubblewrap sandboxes.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - exo-0
       activeDeadlineSeconds: 5400
       retryStrategy:
         # Transient GitHub HTTPS read timeouts (30s) on cargo/git dependencies

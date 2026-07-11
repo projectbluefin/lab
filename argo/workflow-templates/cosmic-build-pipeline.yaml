@@ -16,7 +16,12 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  # BST build concurrency managed by k8s scheduler via pod resource requests.
+  # 2026-07-11: Serialise the two variants instead of running them in
+  # parallel. The lab only has two KubeVirt-capable nodes (ghost and exo-0),
+  # and each BST build pod requests 14 GiB memory. Running both at once
+  # causes the second pod to land on ghost and be repeatedly preempted by
+  # higher-priority VM pods. Serialising keeps one 14 GiB pod active at a
+  # time and lets it run to completion.
   activeDeadlineSeconds: 14400
 
   arguments:
@@ -83,7 +88,7 @@ spec:
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
           - name: build-cosmic-nvidia
             template: run-bst-step
-            depends: detect-build-mode
+            depends: build-cosmic
             arguments:
               parameters:
                 - name: element

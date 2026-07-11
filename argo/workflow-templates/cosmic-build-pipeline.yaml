@@ -28,7 +28,13 @@ spec:
       - name: registry
         value: "192.168.1.102:30500"
       - name: build-mode
-        value: "auto"
+        # 2026-07-11: Force cache-only for cosmic until Buildbarn RE sandbox is
+        # fixed. bb_runner chrootIntoInputRoot does not provide /dev/null, which
+        # breaks meson's compiler detection (icx --version) and other build
+        # steps. Cache-only builds the same elements locally in the bst2 pod
+        # where the BuildStream bubblewrap sandbox has a proper /dev. See
+        # projectbluefin/lab issue for the Buildbarn fix.
+        value: "cache-only"
 
   entrypoint: build
 
@@ -49,7 +55,7 @@ spec:
           - name: registry
             value: "{{workflow.parameters.registry}}"
           - name: build-mode
-            value: "auto"
+            value: "cache-only"
       dag:
         tasks:
           - name: detect-build-mode

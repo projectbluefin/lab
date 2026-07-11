@@ -70,6 +70,38 @@ spec:
           echo "Branch ${TSBRANCH} not found, falling back to main" >&2
           git clone --depth 1 "${TSREPO}" /workspace/testsuite
         fi
+    - name: ensure-passwd
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      imagePullPolicy: IfNotPresent
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+      - mountPath: /mnt/passwd
+        name: passwd
+      command: [sh, -c]
+      args:
+      - |
+        set -euo pipefail
+        # Images such as Dakota's composefs-oci rootfs do not include a UID 1000
+        # regular user, but dbus-run-session requires the UID to resolve in
+        # /etc/passwd. Copy the image's passwd/group into a shared emptyDir and
+        # append a test user entry when missing. The main container mounts these
+        # copies at /etc/passwd and /etc/group so it can run as UID 1000.
+        cp /etc/passwd /mnt/passwd/passwd
+        cp /etc/group /mnt/passwd/group
+        if ! grep -q '^bluefin-test:' /mnt/passwd/passwd; then
+          echo 'bluefin-test:x:1000:1000:bluefin-test:/home/bluefin-test:/bin/bash' >> /mnt/passwd/passwd
+        fi
+        if ! grep -q '^bluefin-test:' /mnt/passwd/group; then
+          echo 'bluefin-test:x:1000:' >> /mnt/passwd/group
+        fi
     container:
       image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
       imagePullPolicy: IfNotPresent
@@ -134,6 +166,12 @@ spec:
         name: home
       - mountPath: /tmp
         name: tmp
+      - mountPath: /etc/passwd
+        name: passwd
+        subPath: passwd
+      - mountPath: /etc/group
+        name: passwd
+        subPath: group
       command: [bash, -c]
       args:
       - |
@@ -271,4 +309,6 @@ spec:
     - name: home
       emptyDir: {}
     - name: tmp
+      emptyDir: {}
+    - name: passwd
       emptyDir: {}

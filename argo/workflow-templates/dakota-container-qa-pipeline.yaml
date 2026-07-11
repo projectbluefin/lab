@@ -5,13 +5,15 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Containerized Dakota QA pipeline. Runs behave/qecore suites directly
+      Containerized Dakota QA pipeline. Runs image-level smoke checks directly
       inside the target OCI image without provisioning a KubeVirt VM. This
       bypasses the bootc-install/containerDisk path that Dakota's
-      composefs-oci backend currently cannot satisfy (no bootupd/ostree).
+      composefs-oci backend currently cannot satisfy (no UKI/bootupd).
     notes: |
       Use this pipeline to verify dakota:testing and dakota-nvidia:testing
-      while the VM-based dakota-qa-pipeline remains blocked on bootupd support.
+      while the VM-based dakota-qa-pipeline remains blocked on UKI/bootupd
+      support (projectbluefin/lab#272). GUI behave suites cannot run inside
+      a pod because qecore-headless requires a full systemd/GDM session.
   labels:
     app.kubernetes.io/component: qa-pipeline
     app.kubernetes.io/part-of: dakota-test-suite
@@ -26,12 +28,8 @@ spec:
       value: "192.168.1.102:30500/dakota"
     - name: image-tag
       value: "testing"
-    - name: suites
-      value: "smoke,developer,system"
     - name: variant
       value: "dakota"
-    - name: branch
-      value: "main"
 
   templates:
 
@@ -47,28 +45,27 @@ spec:
           - name: image-tag
             value: "{{workflow.parameters.image-tag}}"
 
-      - name: test-lane
+      - name: ensure-passwd
         depends: "assert-image.Succeeded"
-        withItems:
-        - smoke
-        - developer
-        - system
-        when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
-        templateRef:
-          name: run-container-tests
-          template: run-container-tests
+        template: ensure-passwd
         arguments:
           parameters:
           - name: image
             value: "{{workflow.parameters.image}}"
           - name: image-tag
             value: "{{workflow.parameters.image-tag}}"
-          - name: suite
-            value: "{{item}}"
+
+      - name: dakota-image-smoke
+        depends: "ensure-passwd.Succeeded"
+        template: dakota-image-smoke
+        arguments:
+          parameters:
+          - name: image
+            value: "{{workflow.parameters.image}}"
+          - name: image-tag
+            value: "{{workflow.parameters.image-tag}}"
           - name: variant
             value: "{{workflow.parameters.variant}}"
-          - name: branch
-            value: "{{workflow.parameters.branch}}"
 
   - name: assert-image
     inputs:
@@ -97,3 +94,131 @@ spec:
           echo "ERROR: image ${IMAGE}:${TAG} not found in registry" >&2
           exit 1
         fi
+
+  - name: ensure-passwd
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+    script:
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      imagePullPolicy: IfNotPresent
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+      - mountPath: /mnt/passwd
+        name: passwd
+      source: |
+        set -euo pipefail
+        cp /etc/passwd /mnt/passwd/passwd
+        cp /etc/group /mnt/passwd/group
+        if ! grep -q '^bluefin-test:' /mnt/passwd/passwd; then
+          echo 'bluefin-test:x:1000:1000:bluefin-test:/home/bluefin-test:/bin/bash' >> /mnt/passwd/passwd
+        fi
+        if ! grep -q '^bluefin-test:' /mnt/passwd/group; then
+          echo 'bluefin-test:x:1000:' >> /mnt/passwd/group
+        fi
+    volumes:
+    - name: passwd
+      emptyDir: {}
+
+  - name: dakota-image-smoke
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+      - name: variant
+    script:
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      imagePullPolicy: IfNotPresent
+      command: [bash]
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+      volumeMounts:
+      - mountPath: /etc/passwd
+        name: passwd
+        subPath: passwd
+      - mountPath: /etc/group
+        name: passwd
+        subPath: group
+      source: |
+        set -euo pipefail
+        VARIANT="{{inputs.parameters.variant}}"
+        FAILURES=0
+
+        check() {
+          local desc="$1"; shift
+          if "$@" >/dev/null 2>&1; then
+            echo "PASS: ${desc}"
+          else
+            echo "FAIL: ${desc}" >&2
+            FAILURES=$((FAILURES + 1))
+          fi
+        }
+
+        echo "=== Dakota image smoke test for ${VARIANT} ==="
+
+        # Identity checks
+        check "os-release declares Bluefin Dakota" \
+          grep -q 'ID="bluefin-dakota"' /etc/os-release
+        check "os-release IMAGE_NAME is dakota" \
+          grep -q 'IMAGE_NAME="dakota"' /etc/os-release
+
+        # Tooling checks
+        check "podman is installed" command -v podman
+        check "flatpak is installed" command -v flatpak
+        check "gnome-shell is installed" command -v gnome-shell
+        check "bootc is installed" command -v bootc
+
+        # bootc install configuration
+        check "bootc install config exists" test -f /usr/lib/bootc/install/00-defaults.toml
+        check "bootc install config declares systemd bootloader" \
+          grep -q 'bootloader = "systemd"' /usr/lib/bootc/install/00-defaults.toml
+
+        # bootc status returns valid JSON (booted will be null inside a container)
+        if bootc status --format=json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1; then
+          echo "PASS: bootc status returns valid JSON"
+        else
+          echo "FAIL: bootc status does not return valid JSON" >&2
+          FAILURES=$((FAILURES + 1))
+        fi
+
+        # When /usr is mounted separately it must be read-only in a booted system.
+        # In a container it may not be a separate mount; only enforce when present.
+        if findmnt /usr >/dev/null 2>&1; then
+          check "/usr mount is read-only" \
+            findmnt /usr --output OPTIONS -n | grep -q 'ro'
+        else
+          echo "SKIP: /usr is not a separate mount in this container"
+        fi
+
+        if [ "${FAILURES}" -eq 0 ]; then
+          echo "=== All smoke checks passed ==="
+          exit 0
+        else
+          echo "=== ${FAILURES} smoke check(s) failed ===" >&2
+          exit 1
+        fi
+    volumes:
+    - name: passwd
+      emptyDir: {}

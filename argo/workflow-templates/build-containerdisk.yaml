@@ -410,7 +410,7 @@ spec:
           '  echo "$OUT"' \
           'else' \
           '  echo "delegating to findmnt.orig" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
-          '  exec "$(dirname "$(readlink -f "$0")")/findmnt.orig" "$@"' \
+          '  exec /usr/bin/findmnt.orig "$@"' \
           'fi' \
           > "${BOOTABLE_CTX}/findmnt-wrapper"
 

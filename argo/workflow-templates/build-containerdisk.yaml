@@ -15,7 +15,7 @@ spec:
   # Delete the 100Gi staging PVC on ANY terminal state — the default
   # (OnWorkflowSuccess) stranded a PVC for every failed build.
   volumeClaimGC:
-    strategy: OnWorkflowCompletion
+    strategy: OnWorkflowSuccess
   volumeClaimTemplates:
   - metadata:
       name: staging

@@ -387,17 +387,21 @@ spec:
           '#!/bin/bash' \
           'if [[ "$*" == *"-J"* ]] && [[ "$*" == *"--output=SOURCE,FSTYPE,OPTIONS,UUID"* ]]; then' \
           '  path="${@: -1}"' \
+          '  if [[ "$path" == -* ]]; then' \
+          '    path="."' \
+          '  fi' \
+          '  real_path=$(readlink -f "$path" 2>/dev/null || echo "$path")' \
           '  loop_dev=$(ls /dev/loop*p3 2>/dev/null | head -n 1 | sed "s/p3$//")' \
           '  if [ -z "$loop_dev" ]; then' \
           '    loop_dev="/dev/loop0"' \
           '  fi' \
-          '  if [ "$path" = "/boot" ]; then' \
+          '  if [ "$real_path" = "/boot" ] || [[ "$real_path" == "/boot/"* ]]; then' \
           '    echo "{\"filesystems\": [{\"source\": \"${loop_dev}p2\", \"fstype\": \"vfat\", \"options\": \"rw,relatime\", \"uuid\": \"1234-5678\"}]}"' \
           '  else' \
           '    echo "{\"filesystems\": [{\"source\": \"${loop_dev}p3\", \"fstype\": \"btrfs\", \"options\": \"rw,relatime,subvol=/\", \"uuid\": \"7ae86aa6-e733-41e6-bed7-7fda4b6f4e9b\"}]}"' \
           '  fi' \
           'else' \
-          '  exec "${0}.orig" "$@"' \
+          '  exec "$(dirname "$(readlink -f "$0")")/findmnt.orig" "$@"' \
           'fi' \
           > "${BOOTABLE_CTX}/findmnt-wrapper"
 

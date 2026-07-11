@@ -55,9 +55,11 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          # Plain default (not a workflow-parameter reference) so callers that
-          # invoke this template via templateRef (dakota-commit-poller) resolve
-          # it without defining the parameter themselves.
+          # Regular Dakota builds should stay on the local cache-only path.
+          # Only an explicit build-mode=re request should use the lightweight RE
+          # coordinator lane; callers that invoke this template via templateRef
+          # (dakota-commit-poller) can omit the parameter and still get a normal
+          # build.
           - name: build-mode
             value: "cache-only"
       dag:
@@ -139,18 +141,20 @@ spec:
           REQUESTED="{{inputs.parameters.build-mode}}"
           MODE=cache-only
           case "${REQUESTED}" in
-            re) MODE=re ;;
-            cache-only) MODE=cache-only ;;
-            auto)
-              ANNOT='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}'
-              G=$(kubectl get node ghost -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              E=$(kubectl get node exo-0 -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              echo "usb4-link annotations: ghost=${G:-unset} exo-0=${E:-unset}"
-              if [[ "${G}" == "up" && "${E}" == "up" ]]; then
-                MODE=re
-              fi
+            re)
+              MODE=re
               ;;
-            *) echo "unknown build-mode '${REQUESTED}', using cache-only" >&2 ;;
+            cache-only)
+              MODE=cache-only
+              ;;
+            auto)
+              echo "build-mode=auto is not used for Dakota builds; forcing cache-only to avoid the 1-CPU RE coordinator lane" >&2
+              MODE=cache-only
+              ;;
+            *)
+              echo "unknown build-mode '${REQUESTED}', forcing cache-only" >&2
+              MODE=cache-only
+              ;;
           esac
           echo "build mode: ${MODE}"
           printf '%s' "${MODE}" > /tmp/mode

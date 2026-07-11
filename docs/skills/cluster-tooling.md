@@ -60,12 +60,13 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   when an earlier remote-execution attempt may have left a corrupted artifact
   record in a per-tag directory; a fresh shared path avoids retrying the bad
   record.
-- **Dakota lane policy:** `dakota-build-pipeline` uses `build-mode=auto` to enable
-  Buildbarn remote execution only when the USB4 data-plane is confirmed up on both
-  ghost and exo-0; otherwise it stays on the cache-only path over ethernet and
-  any retry forces cache-only to preserve the LAN. The dakota commit poller also
-  pins the checkout to the exact GitHub SHA it observed, so the lab build follows
-  the same revision that GitHub is building.
+- **Dakota lane policy:** `dakota-build-pipeline` defaults to `build-mode=cache-only`
+  for ordinary builds so the lane stays on the local BuildStream path and never
+  falls onto the 1-CPU RE coordinator pod. The only explicit RE mode is
+  `build-mode=re`; the normal `auto` path is forced to `cache-only` so the cluster
+  stays on the local cache-only lane even when the USB4 data-plane is available.
+  The dakota commit poller also pins the checkout to the exact GitHub SHA it
+  observed, so the lab build follows the same revision that GitHub is building.
 - **Buildbarn RE sandbox lacks device nodes**: `bb_runner` with
   `chrootIntoInputRoot: true` does not create `/dev/null`, `/dev/zero`,
   `/dev/urandom`, etc. inside the chroot. Source builds that run

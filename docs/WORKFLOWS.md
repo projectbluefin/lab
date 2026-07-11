@@ -60,8 +60,10 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
   and a warm-cache pre-step so the shared object, action, and remote-asset caches
   are primed before the main build. Dakota now defaults to `build-mode=cache-only`
   while the current BuildBarn remote-execution sandbox remains unstable in the
-  webkitgtk path; explicit `build-mode=re` or `build-mode=auto` overrides remain
-  available for operators who need to test the RE lane. The semaphore for the
+  webkitgtk path; explicit `build-mode=re` remains available for operators who
+  need to test the RE lane, while the normal `auto` path is forced to
+  `cache-only` so a regular build does not fall onto the 1-CPU RE coordinator
+  lane. The semaphore for the
   heavy BuildStream step lives on the actual `bst-build-local`/`bst-build-re`
   templates, so retries can re-enter the lane instead of getting stuck behind a
   parent-template lock.

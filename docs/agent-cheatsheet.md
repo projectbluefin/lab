@@ -42,7 +42,7 @@
 
 Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.
 
-Dakota BST submissions default to `build-mode=cache-only` via `just run-bst-build`; use `-p build-mode=re` or `-p build-mode=auto` only when you are explicitly debugging the remote-execution sandbox.
+Dakota BST submissions default to `build-mode=cache-only` via `just run-bst-build`; use `-p build-mode=re` only when you are explicitly debugging the remote-execution sandbox. The pipeline now forces `cache-only` for the normal `auto` path so a regular build does not fall onto the 1-CPU RE coordinator lane.
 
 ---
 

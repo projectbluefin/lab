@@ -3,8 +3,9 @@
 #
 # A contributor with GitHub org admin access and the downloaded private key
 # can run this to create the arc-github-secret in the arc-runners namespace.
-# The private key must be generated from the GitHub App settings UI; it cannot
-# be retrieved or regenerated via the REST API.
+#
+# GitHub does not let you download an existing private key. If the key is lost,
+# generate a new one from the app settings page. The new .pem downloads once.
 
 set -euo pipefail
 
@@ -40,11 +41,22 @@ echo "App ID:          ${APP_ID}"
 echo "Installation ID: ${INSTALLATION_ID}"
 echo ""
 
+echo "Download a new private key from:"
+echo "  https://github.com/organizations/projectbluefin/settings/apps/${APP_SLUG}"
+echo "Then choose Private keys -> Generate a private key. The .pem downloads once."
+echo ""
+
 read -rp "Path to the downloaded GitHub App private key (.pem file): " PEM_PATH
 PEM_PATH="${PEM_PATH/#\~/$HOME}"
 
 if [[ ! -f "${PEM_PATH}" ]]; then
   echo "ERROR: File not found: ${PEM_PATH}" >&2
+  exit 1
+fi
+
+if ! grep -qE 'BEGIN (RSA )?PRIVATE KEY' "${PEM_PATH}"; then
+  echo "ERROR: ${PEM_PATH} does not look like a PEM private key." >&2
+  echo "       Make sure you downloaded the .pem, not a token or fingerprint." >&2
   exit 1
 fi
 

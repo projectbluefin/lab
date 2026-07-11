@@ -62,15 +62,18 @@ spec:
             value: "auto"
       dag:
         tasks:
+          - name: create-bst-cache-pvc
+            template: create-bst-cache-pvc
           - name: detect-build-mode
             template: detect-build-mode
+            depends: create-bst-cache-pvc
             arguments:
               parameters:
                 - name: build-mode
                   value: "{{inputs.parameters.build-mode}}"
           - name: build-bluefin
             template: run-bst-step
-            depends: detect-build-mode
+            depends: create-bst-cache-pvc && detect-build-mode
             arguments:
               parameters:
                 - name: element
@@ -115,6 +118,22 @@ spec:
     # usb4-link-monitor DaemonSet keeps a live up/down annotation on ghost
     # and exo-0; RE is selected only when both report "up". Missing or
     # unreadable annotations fail safe to cache-only.
+    - name: create-bst-cache-pvc
+      resource:
+        action: apply
+        manifest: |
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "{{workflow.name}}-bst-cache"
+            namespace: "{{workflow.namespace}}"
+          spec:
+            accessModes: [ReadWriteOnce]
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 200Gi
+
     - name: detect-build-mode
       inputs:
         parameters:
@@ -260,9 +279,8 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          hostPath:
-            path: /var/tmp/bst-cache/dakota-shared
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-bst-cache"
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache
@@ -434,9 +452,8 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          hostPath:
-            path: /var/tmp/bst-cache/dakota-shared
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-bst-cache"
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache

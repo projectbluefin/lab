@@ -61,9 +61,8 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          hostPath:
-            path: /var/tmp/bst-cache/dakota-shared
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: "{{workflow.name}}-bst-cache"
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache

@@ -48,6 +48,9 @@ subjects:
   - kind: ServiceAccount
     name: arc-runner-workflow-submitter
     namespace: arc-runners
+  - kind: ServiceAccount
+    name: default
+    namespace: arc-runners
 roleRef:
   kind: Role
   name: arc-runner-kube-mode
@@ -85,6 +88,9 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: arc-runner-workflow-submitter
+    namespace: arc-runners
+  - kind: ServiceAccount
+    name: default
     namespace: arc-runners
 roleRef:
   kind: Role

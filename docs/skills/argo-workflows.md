@@ -769,6 +769,43 @@ obvious to downstream lab jobs.
 If the template is retagged, update the dashboard fallback writable-repos list in
 `src/pages/index.astro` and `src/pages/userspace.astro` to match the new repository names.
 
+### 20b. Dakota verification: use containerized QA when VM path is blocked
+
+Dakota images are built from a composefs-oci backend and intentionally omit `bootupd`/`ostree`.
+The lab's standard VM QA path (`build-containerdisk` → `bootc install to-disk` → KubeVirt VM)
+therefore fails with `bootupd is required for ostree-based installs`. Until UKI/bootupd support
+lands in Dakota, verify Dakota builds with the containerized QA pipeline instead.
+
+WorkflowTemplate: `dakota-container-qa-pipeline`
+
+- Runs the same `smoke`, `developer`, and `system` behave/qecore suites as the VM pipeline.
+- Executes each suite directly inside a pod built from the target OCI image via
+  `templateRef` to `run-container-tests`.
+- Requires no `bootc install`, no containerDisk, and no `provision-containerdisk-vm`.
+
+Default invocation for a fresh `dakota:testing` build:
+
+```bash
+argo submit --from workflowtemplate/dakota-container-qa-pipeline \
+  -p image=192.168.1.102:30500/dakota \
+  -p image-tag=testing \
+  -p variant=dakota \
+  -n argo --watch
+```
+
+For `dakota-nvidia:testing`, change only `image` and `variant`:
+
+```bash
+argo submit --from workflowtemplate/dakota-container-qa-pipeline \
+  -p image=192.168.1.102:30500/dakota-nvidia \
+  -p image-tag=testing \
+  -p variant=dakota-nvidia \
+  -n argo --watch
+```
+
+Keep the VM-based `dakota-qa-pipeline` suspended until Dakota gains the boot artifacts it
+requires; resume it only after a successful `build-containerdisk` run proves the path works.
+
 ### 21. Per-workflow ephemeral storage — volumeClaimTemplates
 
 For pipelines that need shared scratch space across steps (e.g. installer binaries, target disks),

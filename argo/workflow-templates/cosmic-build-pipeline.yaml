@@ -28,13 +28,13 @@ spec:
       - name: registry
         value: "192.168.1.102:30500"
       - name: build-mode
-        # 2026-07-11: Force cache-only for cosmic until Buildbarn RE sandbox is
-        # fixed. bb_runner chrootIntoInputRoot does not provide /dev/null, which
-        # breaks meson's compiler detection (icx --version) and other build
-        # steps. Cache-only builds the same elements locally in the bst2 pod
-        # where the BuildStream bubblewrap sandbox has a proper /dev. See
+        # 2026-07-11: Force local (cache-only) builds for cosmic until
+        # Buildbarn's RE sandbox is fixed. bb_runner chrootIntoInputRoot does
+        # not provide /dev/null, which breaks meson's compiler detection
+        # (icx --version) and other build steps. Local builds run in the bst2
+        # pod where BuildStream's bubblewrap sandbox has a proper /dev. See
         # projectbluefin/lab issue for the Buildbarn fix.
-        value: "cache-only"
+        value: "local"
 
   entrypoint: build
 
@@ -55,7 +55,7 @@ spec:
           - name: registry
             value: "{{workflow.parameters.registry}}"
           - name: build-mode
-            value: "cache-only"
+            value: "local"
       dag:
         tasks:
           - name: detect-build-mode
@@ -121,10 +121,10 @@ spec:
         source: |
           set -uo pipefail
           REQUESTED="{{inputs.parameters.build-mode}}"
-          MODE=cache-only
+          MODE=local
           case "${REQUESTED}" in
             re) MODE=re ;;
-            cache-only) MODE=cache-only ;;
+            local) MODE=local ;;
             auto)
               ANNOT='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}'
               G=$(kubectl get node ghost -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
@@ -134,7 +134,7 @@ spec:
                 MODE=re
               fi
               ;;
-            *) echo "unknown build-mode '${REQUESTED}', using cache-only" >&2 ;;
+            *) echo "unknown build-mode '${REQUESTED}', using local" >&2 ;;
           esac
           echo "build mode: ${MODE}"
           printf '%s' "${MODE}" > /tmp/mode
@@ -152,7 +152,7 @@ spec:
         tasks:
           - name: bst-re
             template: bst-build-re
-            when: "{{inputs.parameters.mode}} == re"
+            when: "{{inputs.parameters.mode}} == 're'"
             arguments:
               parameters:
                 - name: element
@@ -169,7 +169,7 @@ spec:
                   value: "{{inputs.parameters.mode}}"
           - name: bst-local
             template: bst-build-local
-            when: "{{inputs.parameters.mode}} == 'cache-only'"
+            when: "{{inputs.parameters.mode}} == 'local'"
             arguments:
               parameters:
                 - name: element

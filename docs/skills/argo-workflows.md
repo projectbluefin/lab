@@ -905,17 +905,41 @@ when the artifact is missing or when the upstream source digest changed. This co
 wipes, registry migration, and manual Zot cleanup without waiting for a separate recovery
 step.
 
-### 25. Configure registries mirror before running podman build inside workflow containers
+### 25. Configure registries mirror and security policies before running container builds
 
-When running `podman build` or other image operations (like `podman push`) inside a privileged Argo workflow container, you must configure any custom registries mirror files (such as `/etc/containers/registries.conf.d/bluefin-local-zot.conf` to hook up the local Zot pull-through cache) BEFORE executing those container operations. 
+When running `podman build`, `bootc install`, or other image/pull operations inside a privileged Argo workflow container, you must configure any custom registries mirror files (such as `/etc/containers/registries.conf.d/bluefin-local-zot.conf` to hook up the local Zot pull-through cache) and security policy files (such as `/etc/containers/policy.json`) BEFORE executing those container operations. 
 
-If custom registry mirrors are written *after* building/pushing, the container engine inside the pod will bypass the local hot cache, making expensive network calls to the external internet registries (e.g. GHCR, Quay) every build, which significantly degrades performance.
+In particular, if the base image being pulled or built has a strict production signature policy built into its `/etc/containers/policy.json` (as is the case with Bluefin/Aurora production images), `bootc install` and other podman/skopeo pull tasks will reject pulling unsigned images from local registries or GHCR with exit code 125 ("Source image rejected: A signature was required, but no signature exists"). Overwriting the pod container's local `/etc/containers/policy.json` with an insecure policy (e.g. `"type": "insecureAcceptAnything"`) prevents this exit-125 failure.
+
+This is extremely critical when the workflow uses `hostPID: true` (which `bootc install` loopback installation requires). If a pod using `hostPID: true` exits with failure (or is terminated/timed out), the `argoexec` process teardown signals all processes in its view — which in a host PID namespace means **every host process**, killing host daemons like `k3s`, `sshd`, and `systemd-journald` and crashing the node. Bypassing signature checks using `policy.json` prevents these exit-125 crashes and subsequent node failures.
 
 **Correct order of execution:**
 1. Configure containers-storage graphroot.
 2. Write registry mirror configuration files under `/etc/containers/registries.conf.d/`.
-3. Run container build operations (e.g., `podman build --tls-verify=false -t ...`).
-4. Run container push operations (e.g., `podman push ...`).
+3. Overwrite `/etc/containers/policy.json` with `insecureAcceptAnything` to bypass signature checks.
+4. Run container build or install operations (e.g., `podman build --tls-verify=false -t ...` or `bootc install to-disk ...`).
+5. Run container push operations (e.g., `podman push ...`).
+
+### 26. Avoid permission denied errors on /tmp for non-root containers
+
+If an Argo workflow container template is configured to run as a non-root user (such as `runAsUser: 1000` in `run-container-tests.yaml`), and needs to write results, temporary configurations, or scripts under `/tmp`, it can easily fail with `Permission denied` (exit code 1). This happens because `/tmp` inside the bootc rootfs image is typically owned by root with restricted permissions.
+
+The clean, standard Kubernetes/Argo solution is to mount an `emptyDir: {}` volume on `/tmp` inside the pod container. This provides a fresh, fully-writable `/tmp` filesystem that is owned by the executing non-root user (1000) and completely isolates test execution from any image-baked `/tmp` permission constraints.
+
+**Implementation pattern:**
+```yaml
+    container:
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+      volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+    volumes:
+      - name: tmp
+        emptyDir: {}
+```
 
 ## Common Rationalizations
 
@@ -927,6 +951,8 @@ If custom registry mirrors are written *after* building/pushing, the container e
 
 ## Red Flags
 
+- **Host Namespace Crash Risk**: Failing to write an insecure `/etc/containers/policy.json` (such as `insecureAcceptAnything`) inside build/install containers running with `hostPID: true` when pulling from registries. If the pull fails due to strict production signature policies inside the base image with exit code 125, `argoexec` will tear down and SIGTERM all processes in the host namespace, crashing `k3s`, `sshd`, and the node.
+- **Permission Denied Risk**: Forgetting to mount an `emptyDir` at `/tmp` for containers running as non-root (1000) that need to write results, scripts, or temporary configs to `/tmp`. Inside bootc images, `/tmp` is root-owned and restricted, leading to immediate execution failures.
 - Adding a separate log aggregation stack (Loki, Promtail, Vector, etc.) alongside Argo — Argo Server already retains pod logs for the workflow TTL. A separate stack duplicates storage, adds pods/PVCs, and creates a Helm-outside-ArgoCD installation with GitOps debt. `argo logs` covers the same use case.
 - **Outage Risk**: Leaving nodes cordoned (`SchedulingDisabled`) after k3s upgrades or manual interventions. This completely blocks system pods (including CoreDNS!) from scheduling, causing cluster-wide DNS timeouts (`read udp i/o timeout`) and a silent, complete cluster outage. Always ensure nodes are uncordoned (`kubectl uncordon`) and `Ready`.
 - **Outage Risk**: Setting low memory limits (under 2Gi) for any runner/script step that performs large file transfers (e.g. copying 400MB+ Flatcar update payloads over SCP/kubectl cp). File caching and transfer buffers will instantly trigger the container OOM-killer (exit code 137). Always set memory limits to at least 2Gi–4Gi for transfer-heavy steps.

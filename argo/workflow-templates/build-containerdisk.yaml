@@ -385,22 +385,31 @@ spec:
 
         printf '%s\n' \
           '#!/bin/bash' \
+          'mkdir -p /sysroot/tmp 2>/dev/null' \
+          'echo "=== findmnt-wrapper called ===" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          'echo "args: $*" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          'echo "pwd: $(pwd)" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
           'if [[ "$*" == *"-J"* ]] && [[ "$*" == *"--output=SOURCE,FSTYPE,OPTIONS,UUID"* ]]; then' \
           '  path="${@: -1}"' \
           '  if [[ "$path" == -* ]]; then' \
           '    path="."' \
           '  fi' \
           '  real_path=$(readlink -f "$path" 2>/dev/null || echo "$path")' \
+          '  echo "path resolved: $path -> $real_path" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
           '  loop_dev=$(ls /dev/loop*p3 2>/dev/null | head -n 1 | sed "s/p3$//")' \
           '  if [ -z "$loop_dev" ]; then' \
           '    loop_dev="/dev/loop0"' \
           '  fi' \
+          '  echo "loop_dev: $loop_dev" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
           '  if [ "$real_path" = "/boot" ] || [[ "$real_path" == "/boot/"* ]]; then' \
-          '    echo "{\"filesystems\": [{\"source\": \"${loop_dev}p2\", \"fstype\": \"vfat\", \"options\": \"rw,relatime\", \"uuid\": \"1234-5678\"}]}"' \
+          '    OUT="{\"filesystems\": [{\"source\": \"${loop_dev}p2\", \"fstype\": \"vfat\", \"options\": \"rw,relatime\", \"uuid\": \"1234-5678\"}]}"' \
           '  else' \
-          '    echo "{\"filesystems\": [{\"source\": \"${loop_dev}p3\", \"fstype\": \"btrfs\", \"options\": \"rw,relatime,subvol=/\", \"uuid\": \"7ae86aa6-e733-41e6-bed7-7fda4b6f4e9b\"}]}"' \
+          '    OUT="{\"filesystems\": [{\"source\": \"${loop_dev}p3\", \"fstype\": \"btrfs\", \"options\": \"rw,relatime,subvol=/\", \"uuid\": \"7ae86aa6-e733-41e6-bed7-7fda4b6f4e9b\"}]}"' \
           '  fi' \
+          '  echo "returning mock json: $OUT" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          '  echo "$OUT"' \
           'else' \
+          '  echo "delegating to findmnt.orig" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
           '  exec "$(dirname "$(readlink -f "$0")")/findmnt.orig" "$@"' \
           'fi' \
           > "${BOOTABLE_CTX}/findmnt-wrapper"

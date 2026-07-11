@@ -44,11 +44,6 @@ spec:
   templates:
 
     - name: build
-      synchronization:
-        semaphores:
-        - configMapKeyRef:
-            name: workflow-semaphores
-            key: bst-build
       inputs:
         parameters:
           - name: ref
@@ -211,6 +206,11 @@ spec:
                   value: "{{inputs.parameters.mode}}"
 
     - name: bst-build-re
+      synchronization:
+        semaphores:
+        - configMapKeyRef:
+            name: workflow-semaphores
+            key: bst-build
       priorityClassName: bst-build
       activeDeadlineSeconds: 43200
       retryStrategy:
@@ -380,6 +380,11 @@ spec:
           echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="
 
     - name: bst-build-local
+      synchronization:
+        semaphores:
+        - configMapKeyRef:
+            name: workflow-semaphores
+            key: bst-build
       priorityClassName: bst-build
       activeDeadlineSeconds: 43200
       retryStrategy:

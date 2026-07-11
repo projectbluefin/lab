@@ -66,8 +66,14 @@ argocd-status:
 # Usage: just ensure-disk
 # Usage: just ensure-disk lts
 ensure-disk tag=image_tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    img="ghcr.io/projectbluefin/bluefin"
+    if [[ "{{ tag }}" == *lts* ]]; then
+        img="ghcr.io/projectbluefin/bluefin-lts"
+    fi
     argo submit --from workflowtemplate/build-containerdisk \
-        -p image="ghcr.io/projectbluefin/bluefin:{{ tag }}" \
+        -p image="${img}" \
         -p image-tag="{{ tag }}" \
         -n {{ argo_ns }} \
         --watch

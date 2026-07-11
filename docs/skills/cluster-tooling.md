@@ -113,7 +113,13 @@ in parallel; the second pod will be forced onto `ghost` and be preempted. Change
 the DAG so the NVIDIA/variant lane `depends:` on the base lane instead of running
 concurrently after `detect-build-mode`.
 
-3. **Verify the fix live.** After submission, confirm the pod landed on `exo-0`:
+3. **Limit the `bst-build` semaphore to 1.** The semaphore in
+   `manifests/workflow-semaphores.yaml` gates all BST build lanes. Even with
+   node affinity, two BST workflows (for example Dakota and Cosmic) can submit
+   concurrently and land on `exo-0`, causing one to be preempted. Set
+   `bst-build: "1"` so expensive cache-heavy builds queue instead of colliding.
+
+4. **Verify the fix live.** After submission, confirm the pod landed on `exo-0`:
 
    ```bash
    kubectl get pod -n argo <pod-name> -o custom-columns='NODE:.spec.nodeName'
@@ -182,9 +188,10 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
   parallelize only after the cluster has enough dedicated memory capacity.
 
 - "The semaphore already limits concurrency."  
-  The `bst-build` semaphore allows multiple lanes. It gates admission but does
-  not pin pods to nodes or prevent preemption. Use it together with node
-  affinity, not instead of it.
+  The `bst-build` semaphore was set to 3, allowing multiple BST lanes to run
+  at once. On a two-node lab where each pod requests 14 GiB, that causes
+  collisions and preemptions. Set it to 1 and use it together with node
+  affinity.
 
 ## Red Flags
 
@@ -202,6 +209,8 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 - [ ] ArgoCD reports `Synced` for `testing-lab` after the push.
 - [ ] The submitted build pod is scheduled on `exo-0`:
       `kubectl get pod -n argo <pod> -o jsonpath='{.spec.nodeName}'` returns `exo-0`.
+- [ ] `kubectl get configmap -n argo workflow-semaphores` shows
+      `bst-build: "1"`.
 - [ ] No `Preempted` events appear for the build pod after 10 minutes.
 - [ ] The build progresses past source fetches into artifact pulls/builds.
 - [ ] Workflow reaches `Succeeded`, or if it fails, the failure is a real build

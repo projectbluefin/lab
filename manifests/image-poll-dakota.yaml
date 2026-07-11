@@ -9,7 +9,12 @@ metadata:
     app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
-  suspend: false
+  # Suspended: the VM-based dakota-qa-pipeline path requires bootc install
+  # to-disk, which fails on Dakota's composefs-oci backend because bootupd is
+  # not included. Resume only after build-containerdisk succeeds for Dakota or
+  # an alternative VM-boot path is implemented. Use dakota-container-qa-pipeline
+  # for image-level regression coverage in the meantime.
+  suspend: true
   schedules:
     - "8/10 * * * *"
   timezone: "UTC"

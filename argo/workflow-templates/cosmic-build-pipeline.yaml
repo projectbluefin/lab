@@ -22,7 +22,12 @@ spec:
   # causes the second pod to land on ghost and be repeatedly preempted by
   # higher-priority VM pods. Serialising keeps one 14 GiB pod active at a
   # time and lets it run to completion.
-  activeDeadlineSeconds: 14400
+  #
+  # 2026-07-11: Raised 14400 -> 86400 (dakota parity). The workflow-level
+  # deadline starts at creation and also counts time spent queued on the
+  # bst-build semaphore; run cosmic-build-pipeline-queued-1783735153 spent
+  # 1.5 h queued and was killed at 4 h with a healthy build in progress.
+  activeDeadlineSeconds: 86400
 
   arguments:
     parameters:
@@ -204,7 +209,10 @@ spec:
                     operator: In
                     values:
                       - exo-0
-      activeDeadlineSeconds: 5400
+      # 2026-07-11: Raised 5400 -> 43200 (dakota parity). A cold local BST
+      # build exceeds 90 min; attempt (2) of run ...-queued-1783735153 was
+      # killed healthy at 94 min by this step deadline.
+      activeDeadlineSeconds: 43200
       retryStrategy:
         # First RE attempt may hit Buildbarn sandbox issues; retries fall back
         # to cache-only automatically. Extra retries help transient failures.
@@ -361,7 +369,9 @@ spec:
                     operator: In
                     values:
                       - exo-0
-      activeDeadlineSeconds: 5400
+      # 2026-07-11: Raised 5400 -> 43200 (dakota parity); cold local builds
+      # exceed 90 min. See bst-build-re note above.
+      activeDeadlineSeconds: 43200
       retryStrategy:
         # Transient GitHub HTTPS read timeouts (30s) on cargo/git dependencies
         # are the main failure mode in local mode. Give the lane several chances

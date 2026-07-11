@@ -189,7 +189,9 @@ spec:
       priorityClassName: bst-build
       activeDeadlineSeconds: 5400
       retryStrategy:
-        limit: "2"
+        # First RE attempt may hit Buildbarn sandbox issues; retries fall back
+        # to cache-only automatically. Extra retries help transient failures.
+        limit: "5"
         retryPolicy: "Always"
       inputs:
         parameters:
@@ -332,7 +334,10 @@ spec:
       priorityClassName: bst-build
       activeDeadlineSeconds: 5400
       retryStrategy:
-        limit: "2"
+        # Transient GitHub HTTPS read timeouts (30s) on cargo/git dependencies
+        # are the main failure mode in local mode. Give the lane several chances
+        # before failing the whole workflow.
+        limit: "5"
         retryPolicy: "Always"
       inputs:
         parameters:

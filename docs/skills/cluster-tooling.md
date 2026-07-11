@@ -79,6 +79,11 @@ Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check
 `kubectl describe node | grep -A8 "Allocated resources"` and delete VMs whose
 parent workflow is terminal.
 
+Also check for completed Jobs whose pods still reserve large memory requests;
+Kubernetes counts a pod's request against node capacity until the Job (and its
+pods) is deleted. Example: a finished `atspi-cacheonly` Job held a 14Gi request
+and blocked Buildbarn storage scheduling on `exo-0` until the Job was removed.
+
 ## BST build scheduling: avoid ghost preemption
 
 `ghost` is the k3s control-plane and also runs higher-priority VM/test workloads.

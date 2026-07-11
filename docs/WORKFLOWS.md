@@ -51,12 +51,12 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
 - **Purpose:** The actual BuildStream compile step for Dakota — builds
   `oci/bluefin.bst` and `oci/bluefin-nvidia.bst` in parallel and pushes both to
   the local Zot registry. This is what populates/warms the Dakota build cache.
-- **Distribution:** The normal `cache-only` local build path and its warm-cache
-  pre-step are both pinned to `exo-0` so the node-local BuildStream cache is
-  seeded and reused on the same host instead of starting from a cold cache on a
-  different node. The `re` lane remains available for operators who explicitly
-  request it, but the default `cache-only` path now stays on the dedicated
-  build worker.
+- **Distribution:** Dakota defaults to `build-mode=auto`; the workflow uses
+  the distributed Buildbarn/RE path whenever the USB4 data plane annotations on
+  `ghost` and `exo-0` report `up`, and falls back to the local cache-only lane
+  only when the RE plane is unavailable. The warm-cache pre-step is scheduled by
+  the cluster like any other build pod, without node pinning, so distributed
+  builds keep using the shared Buildbarn cache/execution plane.
 - **Cache:** Uses the shared Buildbarn cache/execution path for artifact writes,
   remote execution, and cache reuse only, with a pod-local BuildStream cache kept
   for fast per-pod retry state. The workflow uses a checked-in BuildStream config

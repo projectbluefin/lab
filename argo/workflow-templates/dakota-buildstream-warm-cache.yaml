@@ -42,15 +42,6 @@ spec:
             name: workflow-semaphores
             key: bst-build
       priorityClassName: bst-build
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - exo-0
       inputs:
         parameters:
           - name: repo

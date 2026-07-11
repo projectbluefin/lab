@@ -34,11 +34,11 @@ spec:
         value: ""
       - name: registry
         value: "192.168.1.102:30500"
-      # cache-only is the default for now because the BuildBarn remote-execution
-      # sandbox is currently unstable in the webkitgtk path. Operators can still
-      # force either mode explicitly.
+      # Default to auto so Dakota uses the distributed Buildbarn/RE path when
+      # the USB4 data plane is healthy, and falls back to cache-only only when
+      # the cluster reports the RE plane is unavailable.
       - name: build-mode
-        value: "cache-only"
+        value: "auto"
 
   entrypoint: build
 
@@ -55,13 +55,11 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          # Regular Dakota builds should stay on the local cache-only path.
-          # Only an explicit build-mode=re request should use the lightweight RE
-          # coordinator lane; callers that invoke this template via templateRef
-          # (dakota-commit-poller) can omit the parameter and still get a normal
-          # build.
+          # Default to auto so wrapped callers that omit the parameter still let
+          # the workflow choose distributed RE when the cluster says the data
+          # plane is healthy, otherwise fall back to cache-only.
           - name: build-mode
-            value: "cache-only"
+            value: "auto"
       dag:
         tasks:
           - name: detect-build-mode
@@ -148,11 +146,18 @@ spec:
               MODE=cache-only
               ;;
             auto)
-              echo "build-mode=auto is not used for Dakota builds; forcing cache-only to avoid the 1-CPU RE coordinator lane" >&2
-              MODE=cache-only
+              ANNOT='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}'
+              G=$(kubectl get node ghost -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
+              E=$(kubectl get node exo-0 -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
+              echo "usb4-link annotations: ghost=${G:-unset} exo-0=${E:-unset}" >&2
+              if [[ "${G}" == "up" && "${E}" == "up" ]]; then
+                MODE=re
+              else
+                MODE=cache-only
+              fi
               ;;
             *)
-              echo "unknown build-mode '${REQUESTED}', forcing cache-only" >&2
+              echo "unknown build-mode '${REQUESTED}', falling back to cache-only" >&2
               MODE=cache-only
               ;;
           esac
@@ -411,18 +416,6 @@ spec:
             name: workflow-semaphores
             key: bst-build
       priorityClassName: bst-build
-      # Pin local Dakota builds to exo-0 so the warm-cache step and the main
-      # BuildStream pod share the same node-local hostPath cache instead of
-      # starting from a cold cache on a different node.
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - exo-0
       activeDeadlineSeconds: 43200
       retryStrategy:
         limit: "2"

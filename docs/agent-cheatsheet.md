@@ -201,7 +201,7 @@ argo submit -n argo --from cronworkflow/orphan-vm-cleanup
 |---|---|---|
 | `nightly-smoke` | 02:00 | `bluefin-qa-pipeline` (`testing`) |
 | `nightly-smoke-lts` | 02:30 | `bluefin-qa-pipeline` (`lts-testing`) |
-| `orphan-vm-cleanup` | every 2h | Clean orphan test VMs |
+| `orphan-vm-cleanup` | every 30 min | Clean orphan test VMs |
 
 Any patch that must survive beyond a short debug session also needs a matching git change under `manifests/`.
 

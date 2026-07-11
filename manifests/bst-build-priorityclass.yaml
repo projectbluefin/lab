@@ -1,15 +1,15 @@
 # manifests/bst-build-priorityclass.yaml
-# BST build pods run below lab-test-vm (1,000,000) so test VMs keep the
-# highest scheduling priority. Set the pod class to preempt lower-priority
-# workloads so a pending build can make room when the cluster is memory-full,
-# while higher-priority test VMs can still evict BST work when necessary.
+# BST build pods must run above lab-test-vm (1,000,000). Multi-hour cache-only
+# builds lose all progress when preempted by short-lived image-poll VMs, so
+# builds take scheduling precedence over polling VMs. Active QA VMs can still
+# coexist; if the cluster is truly full, lower-priority work is preempted first.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: bst-build
   labels:
     app.kubernetes.io/part-of: lab
-value: 500000
+value: 1500000
 preemptionPolicy: PreemptLowerPriority
 globalDefault: false
-description: "BST build pods. Lower priority than lab-test-vm, but can preempt lower-priority work when room is needed."
+description: "BST build pods. Higher priority than lab-test-vm so long-running builds are not preempted by polling VMs."

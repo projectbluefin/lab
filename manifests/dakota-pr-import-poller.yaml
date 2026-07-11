@@ -1,5 +1,7 @@
 # CronWorkflow: polls projectbluefin/dakota every 5 min for PRs labeled test-on-lab.
 # Dispatches the in-cluster Dakota batch build workflow for the PR branch.
+# SUSPENDED during the Dakota build fix iteration to avoid 24Gi PR batch pods
+# contending with the main dakota-build-pipeline (projectbluefin/lab#272).
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -9,7 +11,7 @@ metadata:
     app.kubernetes.io/component: dakota-pr-import-poller
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
-  suspend: false
+  suspend: true
   schedules:
     - "*/5 * * * *"
   timezone: "UTC"

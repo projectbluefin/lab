@@ -1,6 +1,6 @@
-# CronWorkflow: deletes orphaned KubeVirt VMs in test namespaces every 2 hours.
+# CronWorkflow: deletes orphaned KubeVirt VMs in test namespaces every 30 min.
 # A VM is orphaned when its parent workflow was force-deleted, skipping the onExit handler.
-# Deletes VMs older than 3 hours that have no associated live Argo workflow.
+# Deletes VMs whose parent Argo workflow is in a terminal phase or no longer exists.
 # Covers the fresh-VM namespaces, including knuckle-test installer runs.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -11,7 +11,7 @@ metadata:
     app.kubernetes.io/part-of: lab
 spec:
   schedules:
-    - "0 */2 * * *"
+    - "*/30 * * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
@@ -50,7 +50,9 @@ spec:
             fi
             NAMESPACES="aurora-test bluefin-test bluefin-lts-test flatcar-test knuckle-test"
             # Delete VMs older than 3 hours — use kubectl with age filter
-            # The argo-workflow label links a VM to its parent workflow
+            # The argo-workflow label links a VM to its parent workflow.
+            # Look up the workflow in the VM's own namespace; image-poller and
+            # QA workflows run in their test namespace, not in argo.
             for NS in ${NAMESPACES}; do
               echo "Checking namespace: ${NS}" >&2
               while IFS= read -r VM; do
@@ -58,8 +60,8 @@ spec:
                 WF_LABEL=$(kubectl get vm "${VM}" -n "${NS}" \
                   -o jsonpath='{.metadata.labels.argo-workflow}' 2>/dev/null || true)
                 if [[ -n "${WF_LABEL}" ]]; then
-                  if kubectl get workflow "${WF_LABEL}" -n argo &>/dev/null; then
-                    PHASE=$(kubectl get workflow "${WF_LABEL}" -n argo -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                  if kubectl get workflow "${WF_LABEL}" -n "${NS}" &>/dev/null; then
+                    PHASE=$(kubectl get workflow "${WF_LABEL}" -n "${NS}" -o jsonpath='{.status.phase}' 2>/dev/null || true)
                     if [[ "${PHASE}" != "Succeeded" && "${PHASE}" != "Failed" && "${PHASE}" != "Error" ]]; then
                       echo "SKIP ${NS}/${VM}: workflow ${WF_LABEL} still active (phase: ${PHASE})" >&2
                       continue

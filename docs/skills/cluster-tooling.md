@@ -79,62 +79,54 @@ Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check
 `kubectl describe node | grep -A8 "Allocated resources"` and delete VMs whose
 parent workflow is terminal.
 
+`manifests/orphan-vm-cleanup.yaml` runs every 30 minutes and deletes VMs whose
+parent Argo workflow is gone or in a terminal phase. The cleanup looks up the
+`argo-workflow` label in the VM's own namespace; image-poller and QA workflows
+run in their test namespace, not in `argo`.
+
 Also check for completed Jobs whose pods still reserve large memory requests;
 Kubernetes counts a pod's request against node capacity until the Job (and its
 pods) is deleted. Example: a finished `atspi-cacheonly` Job held a 14Gi request
 and blocked Buildbarn storage scheduling on `exo-0` until the Job was removed.
 
-## BST build scheduling: avoid ghost preemption
+## BST build scheduling: avoid preemption
 
-`ghost` is the k3s control-plane and also runs higher-priority VM/test workloads.
-BST build pods use the `bst-build` PriorityClass, which is deliberately
-preemptable by lab test VMs. In practice this means any BST build pod that lands
-on `ghost` is likely to be killed within minutes when a VM pod is scheduled.
-Symptom: `argo get` shows `pod deleted` and `kubectl get events --field-selector
-reason=Preempted` lists the build pod displaced by a VM pod.
+BST build pods use the `bst-build` PriorityClass. Long cache-only builds lose all
+progress when preempted, so `bst-build` (1,500,000) is set higher than
+`lab-test-vm` (1,000,000). Builds therefore take scheduling precedence over
+short-lived image-poll VMs, while still remaining below kubevirt/system critical
+classes.
+
+Symptom of the old lower-priority setting: `argo get` shows `pod deleted` and
+`kubectl get events --field-selector reason=Preempted` lists the build pod
+displaced by a VM pod. If this returns, verify the PriorityClass values:
+
+```bash
+kubectl get priorityclass bst-build lab-test-vm
+```
 
 Mitigations:
 
-1. **Pin BST build pods to `exo-0`.** Add required node affinity to the build
-template so the scheduler can only place the pod on the dedicated worker:
-
-   ```yaml
-   affinity:
-     nodeAffinity:
-       requiredDuringSchedulingIgnoredDuringExecution:
-         nodeSelectorTerms:
-           - matchExpressions:
-               - key: kubernetes.io/hostname
-                 operator: In
-                 values:
-                   - exo-0
-   ```
-
-   `exo-0` has ~15 GiB allocatable memory and no competing preempting workloads,
-   so a 14 GiB BST build request can run to completion.
+1. **Keep `bst-build` above `lab-test-vm`.** `manifests/bst-build-priorityclass.yaml`
+owns the value. Raising it lets builds preempt polling VMs instead of the
+reverse.
 
 2. **Serialize high-memory BST variants.** Do not run two 14 GiB BST build pods
-in parallel; the second pod will be forced onto `ghost` and be preempted. Change
-the DAG so the NVIDIA/variant lane `depends:` on the base lane instead of running
-concurrently after `detect-build-mode`.
+in parallel; the second pod may be forced onto a node without enough headroom.
+The Dakota pipeline already runs base and NVIDIA variants sequentially.
 
 3. **Limit the `bst-build` semaphore to 1.** The semaphore in
-   `manifests/workflow-semaphores.yaml` gates all BST build lanes. Even with
-   node affinity, two BST workflows (for example Dakota and Cosmic) can submit
-   concurrently and land on `exo-0`, causing one to be preempted. Set
-   `bst-build: "1"` so expensive cache-heavy builds queue instead of colliding.
+`manifests/workflow-semaphores.yaml` gates all BST build lanes. Set
+`bst-build: "1"` so expensive cache-heavy builds queue instead of colliding.
 
-4. **Verify the fix live.** After submission, confirm the pod landed on `exo-0`:
+4. **Verify the fix live.** After submission, confirm the pod is Running and on a
+node with enough free requested memory:
 
-   ```bash
-   kubectl get pod -n argo <pod-name> -o custom-columns='NODE:.spec.nodeName'
-   ```
-
-   And watch for preemptions:
-
-   ```bash
-   kubectl get events -n argo --field-selector reason=Preempted --sort-by='.lastTimestamp'
-   ```
+```bash
+kubectl get pod -n argo <pod-name> -o custom-columns='NODE:.spec.nodeName'
+kubectl describe node <node> | grep -A8 "Allocated resources"
+kubectl get events -n argo --field-selector reason=Preempted --sort-by='.lastTimestamp'
+```
 
 ## Queueing, cleanup, and Buildbarn recovery
 

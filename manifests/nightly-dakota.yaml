@@ -1,5 +1,8 @@
 # CronWorkflow: runs the Dakota QA pipeline nightly at 03:00 UTC.
 # References dakota-qa-pipeline WorkflowTemplate — no DAG duplication.
+# SUSPENDED: dakota-qa-pipeline uses build-containerdisk, which fails for
+# Dakota's composefs-oci backend (projectbluefin/lab#272). Resume after a
+# containerDisk or VM-less QA path is available.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -8,7 +11,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 spec:
-  suspend: false
+  suspend: true
   schedules:
     - "0 3 * * *"
   timezone: "UTC"

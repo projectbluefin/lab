@@ -23,6 +23,10 @@ spec:
         value: "https://github.com/projectbluefin/dakota.git"
       - name: ref
         value: "testing"
+      - name: commit-sha
+        value: ""
+      - name: tag
+        value: "dakota"
       - name: element
         value: "oci/bluefin.bst"
       - name: registry
@@ -40,20 +44,23 @@ spec:
       priorityClassName: bst-build
       affinity:
         nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
                   - key: kubernetes.io/hostname
                     operator: In
                     values:
-                      - ghost
+                      - exo-0
       inputs:
         parameters:
           - name: repo
             value: "{{workflow.parameters.repo}}"
           - name: ref
             value: "{{workflow.parameters.ref}}"
+          - name: commit-sha
+            value: "{{workflow.parameters.commit-sha}}"
+          - name: tag
+            value: "{{workflow.parameters.tag}}"
           - name: element
             value: "{{workflow.parameters.element}}"
           - name: registry
@@ -64,7 +71,7 @@ spec:
             path: /dev/fuse
         - name: bst-cache
           hostPath:
-            path: /var/tmp/bst-cache/warm-cache
+            path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
             type: DirectoryOrCreate
         - name: buildstream-config
           configMap:
@@ -105,13 +112,24 @@ spec:
           cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
           BST_CONF=/tmp/buildstream-cluster.conf
           ELEMENT="{{inputs.parameters.element}}"
+          TAG="{{inputs.parameters.tag}}"
           REF="{{inputs.parameters.ref}}"
           REPO="{{inputs.parameters.repo}}"
+          COMMIT_SHA="{{inputs.parameters.commit-sha}}"
 
           echo "=== Cloning dakota @ ${REF} ==="
           rm -rf /src
-          git clone --depth=1 --branch "${REF}" "${REPO}" /src
+          git clone --depth=1 "${REPO}" /src
           cd /src
+          if [[ -n "${COMMIT_SHA}" ]]; then
+            echo "=== Checking out exact GitHub commit ${COMMIT_SHA} ==="
+            git fetch --depth=1 origin "${COMMIT_SHA}"
+            git checkout --detach "${COMMIT_SHA}"
+          else
+            echo "=== Checking out ref ${REF} ==="
+            git fetch --depth=1 origin "${REF}"
+            git checkout --detach FETCH_HEAD
+          fi
 
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           cat >> /tmp/buildstream-cluster.conf <<EOF
@@ -187,7 +205,7 @@ spec:
             fi
           )
 
-          echo "=== Warming BuildStream cache for ${ELEMENT} ==="
+          echo "=== Warming BuildStream cache for ${ELEMENT} (${TAG}) ==="
           bst --config "${BST_CONF}" \
               --no-interactive \
               build "${ELEMENT}"

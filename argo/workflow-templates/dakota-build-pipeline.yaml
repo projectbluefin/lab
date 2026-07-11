@@ -190,8 +190,28 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{inputs.parameters.mode}}"
+          - name: warm-cache
+            templateRef:
+              name: dakota-buildstream-warm-cache
+              template: warm-cache
+            when: "'{{inputs.parameters.mode}}' == 'cache-only'"
+            arguments:
+              parameters:
+                - name: element
+                  value: "{{inputs.parameters.element}}"
+                - name: tag
+                  value: "{{inputs.parameters.tag}}"
+                - name: ref
+                  value: "{{inputs.parameters.ref}}"
+                - name: commit-sha
+                  value: "{{inputs.parameters.commit-sha}}"
+                - name: repo
+                  value: "{{inputs.parameters.repo}}"
+                - name: registry
+                  value: "{{inputs.parameters.registry}}"
           - name: bst-local
             template: bst-build-local
+            depends: warm-cache
             when: "'{{inputs.parameters.mode}}' == 'cache-only'"
             arguments:
               parameters:
@@ -391,6 +411,18 @@ spec:
             name: workflow-semaphores
             key: bst-build
       priorityClassName: bst-build
+      # Pin local Dakota builds to exo-0 so the warm-cache step and the main
+      # BuildStream pod share the same node-local hostPath cache instead of
+      # starting from a cold cache on a different node.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - exo-0
       activeDeadlineSeconds: 43200
       retryStrategy:
         limit: "2"

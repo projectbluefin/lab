@@ -21,7 +21,7 @@ spec:
       message: "Hostname pinning is not allowed for build workloads."
     - expression: "!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath) || (v.hostPath.path == '/dev/fuse' && (!has(v.hostPath.type) || v.hostPath.type == 'CharDevice')))"
       message: "hostPath is forbidden for build workloads, except /dev/fuse as CharDevice."
-    - expression: "object.spec.containers.all(c, has(c.resources) && has(c.resources.requests) && has(c.resources.requests['ephemeral-storage']) && has(c.resources.limits) && has(c.resources.limits['ephemeral-storage']))"
+    - expression: "object.spec.containers.all(c, has(c.resources) && has(c.resources.requests) && ('ephemeral-storage' in c.resources.requests) && has(c.resources.limits) && ('ephemeral-storage' in c.resources.limits))"
       message: "Containers must declare ephemeral-storage requests and limits."
 ---
 apiVersion: admissionregistration.k8s.io/v1

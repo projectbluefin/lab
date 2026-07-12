@@ -11,6 +11,8 @@ kind: DaemonSet
 metadata:
   name: worker
   namespace: buildbarn
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
   labels:
     app.kubernetes.io/part-of: lab
 spec:

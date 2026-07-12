@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-path-config
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: lab
+data:
+  # Rancher Local Path Provisioner creates data beneath the selected node path.
+  # Omitting a default entry makes PVC provisioning fail on unlisted nodes rather
+  # than silently creating storage on their root filesystem.
+  config.json: |-
+    {
+      "nodePathMap": [
+        {
+          "node": "ghost",
+          "paths": [
+            "/var/mnt/ghost-data/local-path"
+          ]
+        },
+        {
+          "node": "exo-0",
+          "paths": [
+            "/var/mnt/exo0-data/local-path"
+          ]
+        }
+      ]
+    }

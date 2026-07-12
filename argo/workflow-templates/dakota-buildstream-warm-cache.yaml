@@ -127,6 +127,11 @@ spec:
             git checkout --detach FETCH_HEAD
           fi
 
+          echo "=== Rewriting gnome-build-meta source URL to GitHub mirror ==="
+          if [[ -f /src/elements/gnome-build-meta.bst ]]; then
+            sed -i 's#https://gitlab.gnome.org/GNOME/gnome-build-meta.git#https://github.com/GNOME/gnome-build-meta.git#g' /src/elements/gnome-build-meta.bst
+          fi
+
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
           cat >> /tmp/buildstream-cluster.conf <<EOF
           projects:
@@ -156,7 +161,7 @@ spec:
           echo "=== Synchronizing upstream patch queues for cache reuse ==="
           rm -rf /tmp/upstream-patches
           mkdir -p /tmp/upstream-patches
-          git clone --depth=1 https://gitlab.gnome.org/GNOME/gnome-build-meta.git /tmp/upstream-patches/gnome-build-meta >/dev/null 2>&1
+          git clone --depth=1 https://github.com/GNOME/gnome-build-meta.git /tmp/upstream-patches/gnome-build-meta >/dev/null 2>&1
           (
             cd /tmp/upstream-patches/gnome-build-meta
             GNOME_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/gnome-build-meta.bst | tr -d '\r')

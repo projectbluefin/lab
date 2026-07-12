@@ -19,6 +19,8 @@
 #                        Keep two lanes admitted so bluefin + bluefin-nvidia
 #                        can run concurrently and both buildbarn workers remain
 #                        busy on the two-node fleet.
+#   bst-build-manual   — Dedicated recovery lane for manual Dakota submissions
+#                        so poller-triggered jobs cannot starve operator runs.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -30,3 +32,4 @@ data:
   qa-vm-fleet: "1"
   containerdisk-build: "2"
   bst-build: "2"
+  bst-build-manual: "2"

@@ -36,6 +36,8 @@ spec:
         value: "192.168.1.102:30500"
       - name: build-mode
         value: "re"
+      - name: lock-key
+        value: "bst-build"
 
   entrypoint: build
 
@@ -54,6 +56,8 @@ spec:
             value: "{{workflow.parameters.registry}}"
           - name: build-mode
             value: "re"
+          - name: lock-key
+            value: "{{workflow.parameters.lock-key}}"
       dag:
         tasks:
           - name: create-bst-cache-pvc
@@ -84,6 +88,8 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
+                - name: lock-key
+                  value: "{{inputs.parameters.lock-key}}"
           - name: build-bluefin-nvidia
             template: run-bst-step
             depends: create-bst-cache-pvc && detect-build-mode
@@ -103,6 +109,8 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
+                - name: lock-key
+                  value: "{{inputs.parameters.lock-key}}"
 
     # Dakota builds are distributed-only. Non-RE modes are rejected to prevent
     # local/serial bypasses that write large build state to node root disks.
@@ -173,6 +181,7 @@ spec:
           - name: repo
           - name: registry
           - name: mode
+          - name: lock-key
       dag:
         tasks:
           - name: bst-re
@@ -194,13 +203,15 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{inputs.parameters.mode}}"
+                - name: lock-key
+                  value: "{{inputs.parameters.lock-key}}"
 
     - name: bst-build-re
       synchronization:
         semaphores:
         - configMapKeyRef:
             name: workflow-semaphores
-            key: bst-build
+            key: "{{inputs.parameters.lock-key}}"
       priorityClassName: bst-build
       activeDeadlineSeconds: 43200
       retryStrategy:
@@ -215,6 +226,7 @@ spec:
           - name: repo
           - name: registry
           - name: mode
+          - name: lock-key
       volumes:
         - name: fuse
           hostPath:

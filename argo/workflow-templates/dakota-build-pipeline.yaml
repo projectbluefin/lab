@@ -34,11 +34,11 @@ spec:
         value: ""
       - name: registry
         value: "192.168.1.102:30500"
-      # Default to auto so Dakota uses the distributed Buildbarn/RE path when
-      # the USB4 data plane is healthy, and falls back to cache-only only when
-      # the cluster reports the RE plane is unavailable.
+      # Default to cache-only for ordinary Dakota runs so the lane stays on the
+      # local BuildStream path, avoids the 1-CPU RE coordinator lane, and uses
+      # the shared cache without competing with ghost's higher-priority VM work.
       - name: build-mode
-        value: "auto"
+        value: "cache-only"
 
   entrypoint: build
 
@@ -55,11 +55,10 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          # Default to auto so wrapped callers that omit the parameter still let
-          # the workflow choose distributed RE when the cluster says the data
-          # plane is healthy, otherwise fall back to cache-only.
+          # Default to cache-only for wrapped callers that omit the parameter so
+          # ordinary Dakota runs stay on the local cache-backed path.
           - name: build-mode
-            value: "auto"
+            value: "cache-only"
       dag:
         tasks:
           - name: create-bst-cache-pvc
@@ -165,15 +164,8 @@ spec:
               MODE=cache-only
               ;;
             auto)
-              ANNOT='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}'
-              G=$(kubectl get node ghost -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              E=$(kubectl get node exo-0 -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              echo "usb4-link annotations: ghost=${G:-unset} exo-0=${E:-unset}" >&2
-              if [[ "${G}" == "up" && "${E}" == "up" ]]; then
-                MODE=re
-              else
-                MODE=cache-only
-              fi
+              echo "build-mode=auto falls back to cache-only for ordinary Dakota runs" >&2
+              MODE=cache-only
               ;;
             *)
               echo "unknown build-mode '${REQUESTED}', falling back to cache-only" >&2
@@ -245,6 +237,15 @@ spec:
             name: workflow-semaphores
             key: bst-build
       priorityClassName: bst-build
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - exo-0
       activeDeadlineSeconds: 43200
       retryStrategy:
         limit: "2"
@@ -418,6 +419,15 @@ spec:
             name: workflow-semaphores
             key: bst-build
       priorityClassName: bst-build
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - exo-0
       activeDeadlineSeconds: 43200
       retryStrategy:
         limit: "2"

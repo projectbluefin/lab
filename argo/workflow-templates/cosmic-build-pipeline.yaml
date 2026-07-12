@@ -38,13 +38,7 @@ spec:
       - name: registry
         value: "192.168.1.102:30500"
       - name: build-mode
-        # 2026-07-11: Force local (cache-only) builds for cosmic until
-        # Buildbarn's RE sandbox is fixed. bb_runner chrootIntoInputRoot does
-        # not provide /dev/null, which breaks meson's compiler detection
-        # (icx --version) and other build steps. Local builds run in the bst2
-        # pod where BuildStream's bubblewrap sandbox has a proper /dev.
-        # Revert to "auto" once projectbluefin/lab#271 is resolved.
-        value: "local"
+        value: "re"
 
   entrypoint: build
 
@@ -65,7 +59,7 @@ spec:
           - name: registry
             value: "{{workflow.parameters.registry}}"
           - name: build-mode
-            value: "local"
+            value: "re"
       dag:
         tasks:
           - name: detect-build-mode
@@ -131,20 +125,17 @@ spec:
         source: |
           set -uo pipefail
           REQUESTED="{{inputs.parameters.build-mode}}"
-          MODE=local
+          MODE=re
           case "${REQUESTED}" in
             re) MODE=re ;;
-            local) MODE=local ;;
-            auto)
-              ANNOT='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}'
-              G=$(kubectl get node ghost -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              E=$(kubectl get node exo-0 -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              echo "usb4-link annotations: ghost=${G:-unset} exo-0=${E:-unset}"
-              if [[ "${G}" == "up" && "${E}" == "up" ]]; then
-                MODE=re
-              fi
+            auto|cache-only|local)
+              echo "cosmic build-mode '${REQUESTED}' is forbidden; distributed mode ('re') is required" >&2
+              exit 1
               ;;
-            *) echo "unknown build-mode '${REQUESTED}', using local" >&2 ;;
+            *)
+              echo "unknown build-mode '${REQUESTED}'; expected 're'" >&2
+              exit 1
+              ;;
           esac
           echo "build mode: ${MODE}"
           printf '%s' "${MODE}" > /tmp/mode
@@ -197,18 +188,6 @@ spec:
 
     - name: bst-build-re
       priorityClassName: bst-build
-      # Pin RE builds to exo-0. Ghost is the control-plane node and repeatedly
-      # preempts BST build pods for higher-priority VM workloads. exo-0 is a
-      # dedicated worker with enough memory for the build bubblewrap sandboxes.
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - exo-0
       # 2026-07-11: Raised 5400 -> 43200 (dakota parity). A cold local BST
       # build exceeds 90 min; attempt (2) of run ...-queued-1783735153 was
       # killed healthy at 94 min by this step deadline.
@@ -231,14 +210,14 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          # Share a single local-build cache across cosmic variants. Per-tag
-          # caches duplicated FSDK bootstrap work and kept a stale/corrupted
-          # artifact from an earlier RE attempt, causing one variant to fail
-          # while the other built from source successfully. Revert to per-tag
-          # paths once projectbluefin/lab#271 is resolved and RE is re-enabled.
-          hostPath:
-            path: /var/tmp/bst-cache/cosmic-local
-            type: DirectoryOrCreate
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 200Gi
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache
@@ -393,9 +372,14 @@ spec:
         - name: bst-cache
           # Share local-build cache across cosmic variants; see bst-build-re.
           # Revert to per-tag paths once projectbluefin/lab#271 is resolved.
-          hostPath:
-            path: /var/tmp/bst-cache/cosmic-local
-            type: DirectoryOrCreate
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 200Gi
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache

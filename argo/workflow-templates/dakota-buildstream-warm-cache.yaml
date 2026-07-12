@@ -8,7 +8,7 @@ metadata:
       Runs a single BuildStream build against the Dakota checkout to warm the
       shared Buildbarn remote cache before the main Dakota build pipeline starts.
       It uses the checked-in BuildStream remote-cache config, keeps the pod-local
-      cache on a hostPath mount, and exits after the warm-up build completes so
+      cache on a local-path PVC, and exits after the warm-up build completes so
       it stays lightweight and safe.
   labels:
     app.kubernetes.io/component: dakota-build
@@ -61,8 +61,14 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          persistentVolumeClaim:
-            claimName: "{{workflow.name}}-bst-cache"
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 200Gi
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache

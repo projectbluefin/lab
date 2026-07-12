@@ -6,8 +6,8 @@ metadata:
   annotations:
     description: |
       Additive dakota BST build pipeline. Builds the bluefin and bluefin-nvidia OCI
-      variants in parallel using the same shared Buildbarn frontend and persistent
-      hostPath cache, routing artifact cache push/pulls to the shared Buildbarn
+      variants in parallel using the same shared Buildbarn frontend and
+      workflow-scoped PVC cache, routing artifact cache push/pulls to the shared Buildbarn
       frontend (:8980 gRPC) for hot builds. Triggered by push to dakota:testing
       via dakota-commit-poller CronWorkflow. On success, exports to local Zot
       (:30500) as dakota:testing and dakota-nvidia:testing. Uses bst-build
@@ -34,11 +34,8 @@ spec:
         value: ""
       - name: registry
         value: "192.168.1.102:30500"
-      # Default to cache-only for ordinary Dakota runs so the lane stays on the
-      # local BuildStream path, avoids the 1-CPU RE coordinator lane, and uses
-      # the shared cache without competing with ghost's higher-priority VM work.
       - name: build-mode
-        value: "cache-only"
+        value: "re"
 
   entrypoint: build
 
@@ -55,10 +52,8 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          # Default to cache-only for wrapped callers that omit the parameter so
-          # ordinary Dakota runs stay on the local cache-backed path.
           - name: build-mode
-            value: "cache-only"
+            value: "re"
       dag:
         tasks:
           - name: create-bst-cache-pvc
@@ -89,11 +84,9 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-          # Keep the two variants serialized so the lab can schedule each BuildStream
-          # pod within the available memory reservations on ghost/exo-0.
           - name: build-bluefin-nvidia
             template: run-bst-step
-            depends: build-bluefin
+            depends: create-bst-cache-pvc && detect-build-mode
             arguments:
               parameters:
                 - name: element
@@ -111,12 +104,8 @@ spec:
                 - name: mode
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
 
-    # Decide between distributed remote execution and cache-only builds.
-    # RE fans action input roots out across nodes — safe on the USB4 data
-    # plane, but it saturates 1 GbE and starves the control plane. The
-    # usb4-link-monitor DaemonSet keeps a live up/down annotation on ghost
-    # and exo-0; RE is selected only when both report "up". Missing or
-    # unreadable annotations fail safe to cache-only.
+    # Dakota builds are distributed-only. Non-RE modes are rejected to prevent
+    # local/serial bypasses that write large build state to node root disks.
     - name: create-bst-cache-pvc
       resource:
         action: apply
@@ -155,21 +144,18 @@ spec:
         source: |
           set -uo pipefail
           REQUESTED="{{inputs.parameters.build-mode}}"
-          MODE=cache-only
+          MODE=re
           case "${REQUESTED}" in
             re)
               MODE=re
               ;;
-            cache-only)
-              MODE=cache-only
-              ;;
-            auto)
-              echo "build-mode=auto falls back to cache-only for ordinary Dakota runs" >&2
-              MODE=cache-only
+            cache-only|auto)
+              echo "Dakota build-mode '${REQUESTED}' is forbidden; distributed mode ('re') is required" >&2
+              exit 1
               ;;
             *)
-              echo "unknown build-mode '${REQUESTED}', falling back to cache-only" >&2
-              MODE=cache-only
+              echo "unknown build-mode '${REQUESTED}'; expected 're'" >&2
+              exit 1
               ;;
           esac
           echo "build mode: ${MODE}"
@@ -190,29 +176,6 @@ spec:
           - name: bst-re
             template: bst-build-re
             when: "'{{inputs.parameters.mode}}' == 're'"
-            arguments:
-              parameters:
-                - name: element
-                  value: "{{inputs.parameters.element}}"
-                - name: tag
-                  value: "{{inputs.parameters.tag}}"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: commit-sha
-                  value: "{{inputs.parameters.commit-sha}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{inputs.parameters.mode}}"
-          # In cache-only mode we skip a separate warm-cache build. It would
-          # trigger another full BST build and double the runtime for the same
-          # cache volume. The shared PVC cache is reused directly by the real
-          # build/export step and by the subsequent NVIDIA variant.
-          - name: bst-local
-            template: bst-build-local
-            when: "'{{inputs.parameters.mode}}' == 'cache-only'"
             arguments:
               parameters:
                 - name: element
@@ -368,181 +331,8 @@ spec:
                   push: false
           EOF
 
-          # Since we are in the RE-coordinator template, RE is always enabled
-          # on first try, but we respect the retry attempt and drop RE on retry.
-          ATTEMPT="{{retries}}"
-          if [[ "${ATTEMPT}" == "0" ]]; then
-            echo "=== Distributed build: remote execution enabled (USB4 link up) ==="
-            sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
-          else
-            echo "=== Coordinator retry fallback to Cache-only (attempt=${ATTEMPT}) ==="
-          fi
-
-          echo "=== Building ${ELEMENT} ==="
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              build "${ELEMENT}"
-
-          echo "=== Exporting ${ELEMENT} ==="
-          EXPORT_DIR="/tmp/export-$(basename ${ELEMENT} .bst)"
-          mkdir -p "${EXPORT_DIR}"
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              -o x86_64_v3 true \
-              artifact checkout "${ELEMENT}" \
-              --directory "${EXPORT_DIR}"
-
-          echo "=== Pushing to local Zot ==="
-          if command -v skopeo >/dev/null 2>&1; then
-            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:testing"
-          else
-            IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:testing" --tls-verify=false
-            podman rmi "${IMAGE_ID}" 2>/dev/null || true
-          fi
-
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:testing ==="
-
-    - name: bst-build-local
-      synchronization:
-        semaphores:
-        - configMapKeyRef:
-            name: workflow-semaphores
-            key: bst-build
-      priorityClassName: bst-build
-      activeDeadlineSeconds: 43200
-      retryStrategy:
-        limit: "2"
-        retryPolicy: "Always"
-      inputs:
-        parameters:
-          - name: element
-          - name: tag
-          - name: ref
-          - name: commit-sha
-          - name: repo
-          - name: registry
-          - name: mode
-      volumes:
-        - name: fuse
-          hostPath:
-            path: /dev/fuse
-        - name: bst-cache
-          persistentVolumeClaim:
-            claimName: "{{workflow.name}}-bst-cache"
-        - name: buildstream-config
-          configMap:
-            name: buildstream-remote-cache
-            items:
-              - key: dakota-buildstream.conf
-                path: buildstream.conf
-              - key: remote-execution.conf
-                path: remote-execution.conf
-      script:
-        image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
-        command: [bash]
-        securityContext:
-          privileged: true
-          seLinuxOptions:
-            type: spc_t
-        env:
-          - name: GRPC_POLL_STRATEGY
-            value: poll
-          - name: GRPC_ENABLE_FORK_SUPPORT
-            value: "1"
-        resources:
-          requests:
-            cpu: "8"
-            memory: 12Gi
-          limits:
-            cpu: "12"
-            memory: 16Gi
-        volumeMounts:
-          - name: fuse
-            mountPath: /dev/fuse
-          - name: bst-cache
-            mountPath: /root/.cache/buildstream
-          - name: buildstream-config
-            mountPath: /etc/buildstream
-            readOnly: true
-        source: |
-          set -euo pipefail
-
-          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
-          BST_CONF=/tmp/buildstream-cluster.conf
-          ELEMENT="{{inputs.parameters.element}}"
-          TAG="{{inputs.parameters.tag}}"
-          REF="{{inputs.parameters.ref}}"
-          REPO="{{inputs.parameters.repo}}"
-          echo "=== Cloning dakota @ ${REF} ==="
-          rm -rf /src
-          git clone --depth=1 "${REPO}" /src
-          cd /src
-          COMMIT_SHA="{{inputs.parameters.commit-sha}}"
-          if [[ -n "${COMMIT_SHA}" ]]; then
-            echo "=== Checking out exact GitHub commit ${COMMIT_SHA} ==="
-            git fetch --depth=1 origin "${COMMIT_SHA}"
-            git checkout --detach "${COMMIT_SHA}"
-          else
-            echo "=== Checking out ref ${REF} ==="
-            git fetch --depth=1 origin "${REF}"
-            git checkout --detach FETCH_HEAD
-          fi
-
-          echo "=== Synchronizing upstream patch queues for cache reuse ==="
-          rm -rf /tmp/upstream-patches
-          mkdir -p /tmp/upstream-patches
-          git clone --depth=1 https://gitlab.gnome.org/GNOME/gnome-build-meta.git /tmp/upstream-patches/gnome-build-meta >/dev/null 2>&1
-          (
-            cd /tmp/upstream-patches/gnome-build-meta
-            GNOME_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/gnome-build-meta.bst | tr -d '\r')
-            git fetch --depth=1 origin "${GNOME_REF}" >/dev/null 2>&1 || true
-            git checkout --detach "${GNOME_REF}" >/dev/null 2>&1 || git checkout --detach FETCH_HEAD >/dev/null 2>&1 || true
-            if [[ -d patches/gnome-build-meta ]]; then
-              rm -rf /src/patches/gnome-build-meta
-              cp -a patches/gnome-build-meta /src/patches/gnome-build-meta
-            fi
-          )
-          git clone --depth=1 https://gitlab.com/freedesktop-sdk/freedesktop-sdk.git /tmp/upstream-patches/freedesktop-sdk >/dev/null 2>&1
-          (
-            cd /tmp/upstream-patches/freedesktop-sdk
-            FDS_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/freedesktop-sdk.bst | tr -d '\r')
-            git fetch --depth=1 origin "${FDS_REF}" >/dev/null 2>&1 || true
-            git checkout --detach "${FDS_REF}" >/dev/null 2>&1 || git checkout --detach FETCH_HEAD >/dev/null 2>&1 || true
-            if [[ -d patches/freedesktop-sdk ]]; then
-              rm -rf /src/patches/freedesktop-sdk
-              cp -a patches/freedesktop-sdk /src/patches/freedesktop-sdk
-            fi
-          )
-
-          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
-          cat >> /tmp/buildstream-cluster.conf <<EOF
-          projects:
-            ${PROJECT_NAME}:
-              artifacts:
-                override-project-caches: false
-                servers:
-                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  push: true
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-              source-caches:
-                override-project-caches: false
-                servers:
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-          EOF
-
-          # Since we are in the local-fallback template, it is always cache-only
-          echo "=== Cache-only build (attempt={{retries}}) ==="
+          echo "=== Distributed build: remote execution enabled ==="
+          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

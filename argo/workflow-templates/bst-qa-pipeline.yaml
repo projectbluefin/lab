@@ -53,9 +53,14 @@ spec:
         - name: workdir
           emptyDir: {}
         - name: bst-cache
-          hostPath:
-            path: /var/tmp/bst-cache/bst-qa
-            type: DirectoryOrCreate
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 100Gi
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache

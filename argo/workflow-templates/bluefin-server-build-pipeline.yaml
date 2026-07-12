@@ -25,7 +25,7 @@ spec:
       - name: registry
         value: "192.168.1.102:30500"
       - name: build-mode
-        value: "auto"
+        value: "re"
 
   entrypoint: build
 
@@ -46,7 +46,7 @@ spec:
           - name: registry
             value: "{{workflow.parameters.registry}}"
           - name: build-mode
-            value: "auto"
+            value: "re"
       dag:
         tasks:
           - name: detect-build-mode
@@ -112,20 +112,17 @@ spec:
         source: |
           set -uo pipefail
           REQUESTED="{{inputs.parameters.build-mode}}"
-          MODE=cache-only
+          MODE=re
           case "${REQUESTED}" in
             re) MODE=re ;;
-            cache-only) MODE=cache-only ;;
-            auto)
-              ANNOT='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}'
-              G=$(kubectl get node ghost -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              E=$(kubectl get node exo-0 -o jsonpath="${ANNOT}" 2>/dev/null || echo unknown)
-              echo "usb4-link annotations: ghost=${G:-unset} exo-0=${E:-unset}"
-              if [[ "${G}" == "up" && "${E}" == "up" ]]; then
-                MODE=re
-              fi
+            auto|cache-only|local)
+              echo "bluefin-server build-mode '${REQUESTED}' is forbidden; distributed mode ('re') is required" >&2
+              exit 1
               ;;
-            *) echo "unknown build-mode '${REQUESTED}', using cache-only" >&2 ;;
+            *)
+              echo "unknown build-mode '${REQUESTED}'; expected 're'" >&2
+              exit 1
+              ;;
           esac
           echo "build mode: ${MODE}"
           printf '%s' "${MODE}" > /tmp/mode
@@ -195,9 +192,14 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          hostPath:
-            path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
-            type: DirectoryOrCreate
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 200Gi
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache
@@ -336,9 +338,14 @@ spec:
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          hostPath:
-            path: /var/tmp/bst-cache/{{inputs.parameters.tag}}
-            type: DirectoryOrCreate
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 200Gi
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache

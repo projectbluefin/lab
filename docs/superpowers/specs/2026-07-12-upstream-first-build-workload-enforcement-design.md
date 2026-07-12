@@ -65,9 +65,9 @@ need a separate evidence-based review.
    namespaces. They roll out with `Warn`, then use `Deny` after the live
    workload inventory is clean.
 2. The policies reject `hostPID`, `hostIPC`, hostname `nodeSelector`, and
-   root-backed build-cache `hostPath` volumes. A narrowly defined read-only
-   `/dev/fuse` exception is permitted only if template and live-workload
-   verification prove it is required.
+   directory build-cache `hostPath` volumes. The only permitted `hostPath`
+   exception is `/dev/fuse` with `type: CharDevice`; it is a required device
+   interface, not node storage.
 3. Repository lint/tests enforce the same prohibitions before GitOps
    reconciliation. They also require bounded `emptyDir` volumes and
    `ephemeral-storage` requests and limits for build containers.

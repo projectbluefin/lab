@@ -130,6 +130,9 @@ keeping as durable operator guidance:
 - Buildbarn backend recovery: if storage pods stay `Pending` after a StatefulSet or
   PVC change, verify the PVC bindings and the storage pods before re-running the
   build. Treat the storage pods as the live signal, not the old workflow status.
+- Local-path safety: map every schedulable node explicitly to its non-root data
+  mount in `manifests/local-path-config.yaml`. Do not use a default mapping,
+  root-backed `hostPath` cache, or node selector to steer storage placement.
 - ArgoCD access: if the local port-forward drops, restart it and verify the health
   endpoint before forcing a sync or submitting a workflow against the updated
   template.

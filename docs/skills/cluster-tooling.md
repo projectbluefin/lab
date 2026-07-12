@@ -10,6 +10,7 @@ metadata:
     - /external-secrets/external-secrets
     - /k8sgpt-ai/k8sgpt
     - /apache/buildstream
+    - /kubernetes/website
 ---
 
 # Cluster Tooling — lab
@@ -37,29 +38,28 @@ metadata:
    - keep BuildStream concurrency intentionally conservative for homelab lanes (`fetchers/builders/pushers: 1`, `build.max-jobs: 1`) so cache-backed builds finish without oversubscribing the cluster.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
+6. Never use a root filesystem for persistent workload data or a `hostPath` build
+   cache. `manifests/local-path-config.yaml` is the GitOps source for explicit
+   node-to-data-mount mappings. It intentionally has no default mapping, so
+   PVC provisioning fails on an unconfigured node instead of falling back to
+   that node's root disk.
 
 ## Ethernet mode (USB4 data plane down)
 
 When the ghost<->exo-0 USB4 link is down (see RUNBOOK), all cross-node traffic
 rides 2.5GbE. The cluster stays good at ingesting BST builds via:
 
-- **Node-local CAS read cache**: `manifests/buildbarn-config.yaml` worker.jsonnet
-  wraps the shared sharded CAS in `readCaching` — `fast` = `local` disk cache on
-  hostPath `/var/tmp/bb-local-cas` (20GiB/node, persistent), `slow` = the shared
-  gRPC storage. Hot blobs are served locally; only cold misses and writes cross
-  the wire. Verified against bb-storage `blobstore.proto`
-  (`ReadCachingBlobAccessConfiguration`).
+- **Shared Buildbarn storage**: artifact and source caches use the scheduler-managed
+  Buildbarn storage service. Do not add node-local `hostPath` caches; they bypass
+  Kubernetes storage accounting and can fill a node root filesystem.
 - **4 concurrent build slots**: worker DaemonSet runner sized 16 CPU / 32Gi with
   `concurrency: 2` → two 8-core/16Gi action slots per node, 4 across the cluster.
 - **Zot pull-through** on every node (`registry-mirror-config` DaemonSet) keeps
   image pulls off the WAN and off cross-node paths.
-- **Per-tag hostPath bst-cache** (`/var/tmp/bst-cache/<tag>`) still absorbs
-  BuildStream-level reuse before any network hop. Use a single shared cache for
-  multiple variants of the same project (e.g. `cosmic` + `cosmic-nvidia`) so one
-  variant's successful source build is reused by the others. Also share a cache
-  when an earlier remote-execution attempt may have left a corrupted artifact
-  record in a per-tag directory; a fresh shared path avoids retrying the bad
-  record.
+- **BuildStream workspaces** use workflow PVCs. With `WaitForFirstConsumer`,
+  Kubernetes selects a schedulable node and the local-path provisioner binds
+  the PVC below that node's configured data mount. Do not select a node or
+  bind-mount a cache path to influence placement.
 - **Dakota lane policy:** `dakota-build-pipeline` defaults to `build-mode=cache-only`
   for ordinary builds so the lane stays on the local BuildStream path and avoids
   the 1-CPU RE coordinator pod. The explicit RE mode remains `build-mode=re`; the
@@ -178,8 +178,8 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
   retries, and the build never finishes.
 
 - "I will just retry the workflow again."  
-  Retries do not change the scheduler decision. Without node affinity, the pod
-  lands on ghost again and is preempted again. Fix the scheduling, then retry.
+  Retries do not change the resource envelope. Fix the requests, limits, and
+  concurrency budget, then retry; do not pin the pod to a preferred node.
 
 - "Two variants should build in parallel to save time."  
   Parallel high-memory pods force one onto ghost where it is preempted. The
@@ -189,15 +189,14 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 - "The semaphore already limits concurrency."  
   The `bst-build` semaphore was set to 3, allowing multiple BST lanes to run
   at once. On a two-node lab where each pod requests 14 GiB, that causes
-  collisions and preemptions. Set it to 1 and use it together with node
-  affinity.
+  collisions and preemptions. Set it to 1 and let the scheduler choose among
+  nodes that can satisfy the declared requests.
 
 ## Red Flags
 
 - `argo get` shows `pod deleted` for a BST build step.
 - `kubectl get events --field-selector reason=Preempted` shows BST pods
   displaced by VM pods on `ghost`.
-- A BST build pod is scheduled on `ghost` instead of `exo-0`.
 - Two BST build pods are `Running` at the same time with 14 GiB requests each.
 - Builds repeatedly fail fast (seconds to a few minutes) without a build error
   in the container logs.
@@ -206,8 +205,9 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 
 - [ ] `just lint` passes after any WorkflowTemplate change.
 - [ ] ArgoCD reports `Synced` for `testing-lab` after the push.
-- [ ] The submitted build pod is scheduled on `exo-0`:
-      `kubectl get pod -n argo <pod> -o jsonpath='{.spec.nodeName}'` returns `exo-0`.
+- [ ] The submitted build pod is scheduler-admitted without a node selector:
+      `kubectl get pod -n argo <pod> -o jsonpath='{.spec.nodeName}'` returns
+      a Ready node with adequate allocatable resources.
 - [ ] `kubectl get configmap -n argo workflow-semaphores` shows
       `bst-build: "1"`.
 - [ ] No `Preempted` events appear for the build pod after 10 minutes.
@@ -345,45 +345,17 @@ workflows. **`/dev/nvme1n1` on `exo-0` is the live system disk — never target 
    ```bash
    ssh core@192.168.1.170 "sudo systemctl daemon-reload && sudo systemctl start 'var-mnt-exo0\x2ddata.mount' && sudo systemctl enable 'var-mnt-exo0\x2ddata.mount'"
    ```
-6. **Recreate empty cache structure**:
+6. **Recreate the non-root local-path base**:
    ```bash
    ssh core@192.168.1.170 "sudo mkdir -p /var/mnt/exo0-data/ac.v2 /var/mnt/exo0-data/cas.v2 /var/mnt/exo0-data/raw.v2 /var/mnt/exo0-data/bst-cache /var/mnt/exo0-data/local-path && sudo chmod 777 /var/mnt/exo0-data/bst-cache && sudo chmod 700 /var/mnt/exo0-data/local-path"
    ```
-7. **Bind-mount `bst-cache` onto `/var/tmp/bst-cache`** so the workflow templates'
-   hardcoded `hostPath: /var/tmp/bst-cache/...` (used by `dakota-build-pipeline`,
-   `cosmic-build-pipeline`, `bluefin-server-build-pipeline`,
-   `dakota-buildstream-warm-cache`) transparently lands on the 4TB drive instead of the
-   small system disk, without any workflow YAML changes:
-   ```bash
-   ssh core@192.168.1.170 "sudo mkdir -p /var/tmp/bst-cache"
-   ```
-   Add a second mount unit, `var-tmp-bst\x2dcache.mount`:
-   ```ini
-   [Unit]
-   Description=Bind-mount BuildStream cache onto the 4TB data drive
-   After=var-mnt-exo0\x2ddata.mount
-   Requires=var-mnt-exo0\x2ddata.mount
-
-   [Mount]
-   What=/var/mnt/exo0-data/bst-cache
-   Where=/var/tmp/bst-cache
-   Type=none
-   Options=bind
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-   Then `daemon-reload && systemctl enable --now var-tmp-bst\x2dcache.mount`. Apply the
-   same bind-mount pattern on `ghost` (`/var/mnt/ghost-data/bst-cache` → `/var/tmp/bst-cache`)
-   so both nodes keep BuildStream cache growth off their system disks.
-8. **Point `local-path-provisioner` at the 4TB drive for this node**: the cluster-wide
-   `local-path-config` ConfigMap in `kube-system` (a k3s-owned system resource, not
-   tracked under `manifests/`) must have an explicit `nodePathMap` entry for `exo-0`
-   pointing at `/var/mnt/exo0-data/local-path` — a single `DEFAULT_PATH_FOR_NON_LISTED_NODES`
-   entry using a `ghost-data`-named path will silently place `exo-0`'s local-path PVCs on
-   its system disk (the path is just a directory string; nothing stops it from being created
-   on whichever disk backs it on that particular node).
-9. **Re-enable shared Buildbarn workloads** after the filesystem migration: confirm the Buildbarn frontend/scheduler/storage/worker pods are healthy before resuming heavy BST traffic.
+7. **Configure the local-path provisioner through GitOps**:
+   `manifests/local-path-config.yaml` must list `exo-0` with
+   `/var/mnt/exo0-data/local-path`. It must not contain
+   `DEFAULT_PATH_FOR_NON_LISTED_NODES`; omitting that entry makes provisioning
+   fail closed on future nodes until their non-root data mount is explicitly
+   configured.
+8. **Re-enable shared Buildbarn workloads** after the filesystem migration: confirm the Buildbarn frontend/scheduler/storage/worker pods are healthy before resuming heavy BST traffic.
 
 ### 2. Migrating `ghost` (Stateful Control Plane Storage)
 `ghost` holds persistent states like OCI cache layers in `zot-local` and persistent volume data in `local-path`. This data must be preserved.
@@ -514,7 +486,10 @@ All folders are stored under `/var/mnt/ghost-data/` with exact ownership of `jor
 
 ## BuildStream 2.x Distributed Builds and Caching
 
-BuildStream 2.x uses the cluster's shared Buildbarn deployment for artifact cache writeback and remote execution. The current design is a two-layer cache: a pod-local hostPath cache under `/root/.cache/buildstream` for fast per-pod state, and a shared Buildbarn frontend for cluster-wide artifact sharing.
+BuildStream 2.x uses the cluster's shared Buildbarn deployment for artifact
+cache writeback and remote execution. Workflow-local state belongs on a
+PVC-backed workspace, while the shared Buildbarn frontend provides cluster-wide
+artifact reuse. Neither cache layer may use a root-backed `hostPath`.
 
 ### 0. USB4-gated remote execution (link-state fallback)
 
@@ -598,15 +573,21 @@ Repeat the same override and server ordering at the project level so the primary
 - **Nested under `scheduler`**: fetch / retry / network settings belong under `scheduler:`.
 - **Sequence writes in Argo scripts**: prefer `echo "..." >> file` over multiline heredocs when generating config in YAML script blocks.
 
-### 4. Persistent pod-local cache
-Each BuildStream pod should keep a persistent hostPath cache at `/root/.cache/buildstream` (for example `/var/tmp/bst-cache/<tag>`). This keeps the pod-local cache warm across retries and avoids losing the local work state between attempts while still allowing the shared Buildbarn frontend to serve cluster-wide artifact reuse.
+### 4. PVC-backed workflow workspace
+Each BuildStream pod mounts a workflow PVC at `/root/.cache/buildstream` when
+state must persist between workflow steps. It must use the `local-path` StorageClass
+with the explicit GitOps node-to-data-mount mapping. Never use `/var/tmp`, a
+root filesystem, or a node-local `hostPath` cache.
 
 ### 5. Buildbarn durable shard backup / restore
 
 #### What is durable vs. disposable
 - **Durable**: the `storage` StatefulSet's per-ordinal `local-path` PVCs. `manifests/buildbarn-storage.yaml` defines two replicas (`storage-0`, `storage-1`) with **required** podAntiAffinity, plus two PVCs per ordinal: `cas` mounted at `/storage-cas` and `ac` mounted at `/storage-ac`.
 - **Not replicas of the same bytes**: `manifests/buildbarn-config.yaml` shards both CAS and AC across two equally weighted shards (`"0"` and `"1"` with `weight: 1` each). That means `storage-0` and `storage-1` each own part of the keyspace. Losing one shard without a backup loses roughly half of the CAS blobs and AC entries permanently.
-- **Disposable**: BuildStream's client-side cache (`/var/tmp/bst-cache/<tag>` on the host, `/root/.cache/buildstream` in build pods). That cache is safe to wipe and rebuild. Do **not** treat it as a substitute for backing up Buildbarn storage PVCs.
+- **Disposable**: workflow-local BuildStream PVC contents are safe to wipe after
+  the workflow is terminal. Do **not** treat them as a substitute for backing
+  up Buildbarn storage PVCs, and never replace them with a root-backed
+  `hostPath`.
 
 #### First inspect the live shard mapping
 Command patterns in this subsection were verified against current Kubernetes docs via Context7 (`/kubernetes/website`).

@@ -161,7 +161,7 @@ The semaphore-tuner CronWorkflow (`manifests/semaphore-tuner.yaml`) recomputes
 allocatable memory. New nodes are reflected automatically within one hour of
 joining the cluster. No manual slot edits are needed.
 
-If a Framework node has local NVMe and you want to schedule HostDisk VMs on it,
-add `nodeSelector: kubernetes.io/hostname: <nodename>` to the relevant
-WorkflowTemplate steps and create the necessary host path directories on that
-node.
+Do not add node selectors to steer workloads toward local disks. Define an
+explicit non-root local-path mapping for the node, then let
+`WaitForFirstConsumer` and the Kubernetes scheduler co-locate the PVC consumer
+with its selected volume.

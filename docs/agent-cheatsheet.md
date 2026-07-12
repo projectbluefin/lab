@@ -105,6 +105,7 @@ If no row matches:
 | Symptom | Action |
 |---|---|
 | Workflows `Pending` | `kubectl top nodes` to identify the current CPU hog before submitting more work |
+| Node has `DiskPressure` | Do not submit builds. Inspect PV node affinity and `kube-system/local-path-config`; every eligible node needs an explicit non-root data path and there must be no default root-disk fallback. |
 | Many `virt-launcher-*` pods with no corresponding live workflow | `argo submit -n argo --from workflowtemplate/orphan-vm-cleanup` |
 
 Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limits**.

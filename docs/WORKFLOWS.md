@@ -152,8 +152,8 @@ different problems and do not overlap:
 | Buildbarn (`buildbarn` namespace) | BuildStream cache writes and remote-execution actions (chroot-only sandbox, `CAP_SYS_CHROOT`) | `dakota-build-pipeline`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline` |
 
 Buildbarn topology (2 storage shards, 1 scheduler, 2 frontend replicas, 1
-worker+runner DaemonSet pair per node — one shard/worker pair pinned per node
-via `podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. It **cannot**
+worker+runner DaemonSet pair per node — storage replicas spread with
+`podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. It **cannot**
 run the real dakota/bluefin-server OCI builds — those require privileges
 Buildbarn's runner deliberately does not grant. For Dakota, the BuildStream lane
 uses the shared Buildbarn cache path for artifact writes and only opts into remote

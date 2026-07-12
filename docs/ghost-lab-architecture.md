@@ -126,9 +126,11 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 
 ### exo-0 / other workers
 
-Local disk only, no shared/replicated storage layer. PVCs are node-local
-(`local-path-provisioner`); there is no Longhorn, ZFS, or cross-node replication in this
-cluster today.
+`exo-0` uses `/var/mnt/exo0-data` as its non-root workload disk. Local-path
+PVCs are node-local; there is no Longhorn, ZFS, or cross-node replication in
+this cluster today. `manifests/local-path-config.yaml` explicitly maps `ghost`
+and `exo-0` to their own data mounts and has no default mapping. Never
+provision workload storage on a root filesystem.
 
 ---
 
@@ -146,8 +148,9 @@ and is the canonical build cache/remote-exec mechanism for BuildStream (`bst`) j
   remote-execution traffic from `bst` clients.
 - `scheduler` — Deployment, 1 replica (single point of failure by design; see
   `production-hardening-*` follow-ups).
-- `storage` — StatefulSet, 2 replicas, **required** podAntiAffinity + per-pod local-path
-  PVC pinned via node affinity, one replica per node (`ghost` + `exo-0`).
+- `storage` — StatefulSet, 2 replicas, **required** podAntiAffinity + per-pod
+  local-path PVCs. `WaitForFirstConsumer` and the Kubernetes scheduler choose
+  placement; no node selector or root-disk fallback is permitted.
 - `worker` — DaemonSet, one pod per schedulable node, each with a `runner` sidecar
   (`CAP_SYS_CHROOT`) that executes BuildStream REAPI actions dispatched by the scheduler.
 - `bb-remote-asset` — Deployment, source/asset resolution.

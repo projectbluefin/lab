@@ -8,6 +8,7 @@ description: >
 metadata:
   context7-sources:
     - /argoproj/argo-workflows
+    - /kubernetes/website
 ---
 
 # Argo Workflows — lab Skill
@@ -67,7 +68,9 @@ If a workflow step never progresses and the pod stays Pending/Terminating on a w
 3. `argo submit ...` — submit a fresh workflow; the scheduler will place it on a healthy node such as `ghost`.
 4. Verify with `kubectl get pods -n argo -l workflows.argoproj.io/workflow=<name> -o wide` and confirm the new pod lands on a `Ready` node.
 
-This is especially relevant for cache-heavy BST builds because the workflow uses hostPath cache mounts and a fresh run on a healthy node can reuse the same cache directory.
+This is especially relevant for cache-heavy BST builds because the workflow uses
+PVC-backed workspace state and shared Buildbarn caches; a fresh run can be
+placed on any healthy node without depending on a node-local root-disk cache.
 
 For distributed BuildStream runs, fix the shared config or template first and then stop/re-submit the workflow once; do not let Argo keep retrying a pod that is failing for a known configuration reason. Repeated retries burn node CPU and memory, overfill the namespace queue, and make the cluster look resource-constrained even when the underlying config issue is trivial.
 
@@ -408,7 +411,10 @@ Operational rule:
    - `scheduler.network-retries: 8` (vs 4) to handle transient GitHub source fetch timeouts
    - `source.fetch-timeout: 300` (5m, vs BuildStream default 30s) to allow slow fetches on high-latency networks
    - **CPU and Memory Scaling:** Pods must request `8` CPUs (`limits: 12`) and `12Gi` Memory (`limits: 16Gi`) to fully saturate physical worker node cores and avoid thread throttling under heavy BuildStream compilation.
-   - **Persistent Local Caching:** Rather than using an ephemeral `emptyDir: {}` for `bst-cache` which gets completely cleared on pod teardown, use a persistent `hostPath` under `/var/tmp/bst-cache/{{inputs.parameters.tag}}` with `type: DirectoryOrCreate`. This ensures that consecutive builds immediately find a warm BuildStream cache (containing compiled compilers, dependencies, and base SDK objects) on the worker node, while partitioning by `{{inputs.parameters.tag}}` completely avoids lock conflicts between the standard and nvidia parallel build steps.
+   - **Persistent Local Caching:** Use a workflow PVC with
+     `storageClassName: local-path`, not a `hostPath`. The local-path provisioner
+     binds it after scheduler placement below the node's configured non-root data
+     mount. Never use `/var/tmp` or another root-backed cache path.
 4. Re-run a fresh Dakota workflow; stale submissions snapshot old template values at submit time.
 
 ```bash
@@ -822,7 +828,7 @@ spec:
         name: workspace
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: local-path   # k3s default
+        storageClassName: local-path   # explicit non-root node mapping in GitOps
         resources:
           requests:
             storage: 30Gi
@@ -839,6 +845,10 @@ spec:
 by a RWO PVC, KubeVirt automatically schedules the VM on the same node as the PVC — no explicit
 `nodeSelector` needed. Source: /kubevirt/user-guide — "When using local devices or ReadWriteOnce
 (RWO) PVCs, affinity rules on VMs sharing storage ensure they are scheduled on the same node."
+
+The local-path provisioner configuration must contain an explicit non-root data
+mount for every eligible node. It has no default path: a PVC on an unconfigured
+node must fail provisioning rather than write to the root filesystem.
 
 **Namespace constraint:** `volumeClaimTemplates` creates the PVC in the workflow's own namespace
 (`argo`). If a VM in a different namespace (`knuckle-test`) needs a disk, create a dedicated PVC
@@ -1021,7 +1031,9 @@ The clean, standard Kubernetes/Argo solution is to mount an `emptyDir: {}` volum
 - Any `script:` template without `resources:` limits
 - Templates in `argo/workflow-templates/` applied with `kubectl apply` (not via git)
 - A `pr-poller` (or any PR-gating workflow) that skips on ANY existing commit status — it must skip only `pending` (in-flight) and `success` (already passed), and re-test on `error`/`failure`. Skipping `error` means stale statuses from deleted workflows permanently block retests.
-- A hostDisk VM pipeline (`flatcar-smoke-test`) with `nodeSelector` only on individual templates but not at `spec.nodeSelector` — the DAG entrypoint pod can land on the wrong node. Set `spec.nodeSelector: kubernetes.io/hostname: ghost` at the WorkflowTemplate spec level for all hostDisk pipelines. Knuckle and GnomeOS no longer use hostDisk.
+- A VM or build pipeline that uses a node selector to reach local storage. Use
+  scheduler-selected `WaitForFirstConsumer` PVC placement on an explicitly
+  configured non-root data mount instead.
 - Python inside bash inside YAML (colons + quotes cause parse errors — use `curl`+`jq` instead; never `python3 -c` or heredoc Python; see §16 GitHub Contents API pattern)
 - Heredoc `<< 'EOF'` inside a YAML block scalar — indentation breaks the YAML parser. ArgoCD returns `ManifestGenerationError: yaml: could not find expected ':'`. Write scripts to files in initContainers or use inline jq instead.
 - `registry.k8s.io/kubectl` used as a shell-capable image — it is distroless, has no bash, nc, or any shell utilities. Use `cgr.dev/chainguard/kubectl:latest-dev` when you need kubectl + bash together
@@ -1067,7 +1079,9 @@ Before marking any WorkflowTemplate change done:
 - [ ] VM pipeline spec has NO `synchronization.semaphores` block — k8s scheduler handles VM concurrency
 - [ ] VM pipeline spec has `activeDeadlineSeconds` (1h or 2h) so stuck VMs self-evict
 - [ ] No `nodeSelector: kubernetes.io/hostname: ghost` in VM specs — VMs float to any KubeVirt-capable node
-- [ ] GitHub Contents API write-backs use curl+jq, not inline Python; output teed to a file on persistent hostPath storage
+- [ ] GitHub Contents API write-backs use curl+jq, not inline Python; output is
+      retained through the workflow artifact/log mechanism or a workflow PVC,
+      never a root-backed hostPath
 - [ ] `kubectl get workflowtemplate -n argo` shows no cluster-only templates (not in git) unless they're intentional bootstrap one-shots
 - [ ] No CronWorkflow with a `dry-run` parameter whose default is `"true"` — verify GC jobs actually delete
 - [ ] All local OCI registry references use `:30500` (NodePort), not `:5000` (container-internal)

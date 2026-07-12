@@ -232,6 +232,18 @@ spec:
         - configMapKeyRef:
             name: workflow-semaphores
             key: "{{inputs.parameters.lock-key}}"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: workflows.argoproj.io/workflow
+                      operator: In
+                      values:
+                        - "{{workflow.name}}"
+                topologyKey: kubernetes.io/hostname
       priorityClassName: bst-build
       activeDeadlineSeconds: 43200
       retryStrategy:

@@ -61,19 +61,20 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   record in a per-tag directory; a fresh shared path avoids retrying the bad
   record.
 - **Dakota lane policy:** `dakota-build-pipeline` defaults to `build-mode=cache-only`
-  for ordinary builds so the lane stays on the local BuildStream path and never
-  falls onto the 1-CPU RE coordinator pod. The only explicit RE mode is
-  `build-mode=re`; the normal `auto` path is forced to `cache-only` so the cluster
-  stays on the local cache-only lane even when the USB4 data-plane is available.
-  The dakota commit poller also pins the checkout to the exact GitHub SHA it
+  for ordinary builds so the lane stays on the local BuildStream path and avoids
+  the 1-CPU RE coordinator pod. The explicit RE mode remains `build-mode=re`; the
+  normal `auto` path is forced to `cache-only` so ordinary Dakota runs stay on
+  the local cache-only lane unless someone is explicitly debugging the distributed
+  path. The dakota commit poller also pins the checkout to the exact GitHub SHA it
   observed, so the lab build follows the same revision that GitHub is building.
-- **Buildbarn RE sandbox lacks device nodes**: `bb_runner` with
-  `chrootIntoInputRoot: true` does not create `/dev/null`, `/dev/zero`,
-  `/dev/urandom`, etc. inside the chroot. Source builds that run
-  `icx --version` (meson) or redirect to `/dev/null` fail with
-  "No such file or directory". Until the runner is configured to provide a
-  minimal `/dev`, lanes that hit uncached source builds must fall back to local
-  (cache-only) mode where BuildStream's bubblewrap sandbox supplies the devices.
+- **Buildbarn RE sandbox device nodes**: `bb_runner` with
+  `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
+  `/dev/random`, and `/dev/urandom` are missing inside the chroot. The cluster-side
+  fix is now in the manifests: `manifests/buildbarn-worker.yaml` creates a
+  minimal `/worker/dev` tree with those nodes, and `manifests/buildbarn-config.yaml`
+  sets `bb_runner.devDirectoryPath` to `/worker/dev`. That removes the old
+  device-node failure mode without requiring a cache-only fallback for this
+  specific issue.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

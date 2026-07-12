@@ -42,7 +42,7 @@
 
 Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.
 
-Dakota BST submissions default to `build-mode=cache-only` via `just run-bst-build`; use `-p build-mode=re` only when you are explicitly debugging the remote-execution sandbox. The pipeline now forces `cache-only` for the normal `auto` path so a regular build does not fall onto the 1-CPU RE coordinator lane.
+Dakota BST submissions default to the local cache-backed lane (`build-mode=cache-only`) via `just run-bst-build`; use `-p build-mode=re` only when you are explicitly debugging the remote-execution sandbox. The Buildbarn RE runtime now provides a minimal chroot `/dev` tree via `manifests/buildbarn-worker.yaml` and `manifests/buildbarn-config.yaml`, so missing `/dev/null`-style nodes are no longer the reason to force the cache-only fallback. The pipeline still keeps the normal `auto` path on `cache-only` for ordinary Dakota runs.
 
 ---
 

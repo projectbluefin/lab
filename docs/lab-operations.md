@@ -47,7 +47,7 @@ The normal operator path is now **fresh-VM only**. Persistent titan recovery flo
 
 Rule: if a `just` recipe exists, use it. Otherwise use MCP, not workstation `kubectl`/`argo`.
 
-For Dakota BST runs, the default path is `build-mode=cache-only` because the current Buildbarn remote-execution sandbox is still unstable in the webkitgtk path. Override to `re` or `auto` only when you are explicitly debugging the RE lane.
+For Dakota BST runs, the default path remains `build-mode=cache-only`. The Buildbarn RE runtime now includes a minimal chroot `/dev` tree (`/worker/dev`), so the old missing device-node failure is fixed; override to `re` or `auto` only when you are explicitly debugging the RE lane and have verified the runtime fix is live.
 
 ---
 

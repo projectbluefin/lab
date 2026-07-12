@@ -15,14 +15,10 @@
 #                        time: each fleet is up to 5 VMs x 8Gi requests.
 #   containerdisk-build — build-containerdisk runs (bootc install,
 #                        4Gi + 100Gi PVC each). Two at a time, one per node.
-#   bst-build          — Dakota/Cosmic BuildStream build lanes. One at a time.
-#                        Each bst-build pod requests 14 GiB memory and cannot
-#                        share a node with another 14 GiB pod; the lab's two
-#                        KubeVirt-capable nodes (ghost and exo-0) both run
-#                        higher-priority VM workloads that preempt bst-build
-#                        pods. Keeping the semaphore at 1 prevents two BST
-#                        builds from colliding on the same node and getting
-#                        repeatedly preempted.
+#   bst-build          — Dakota/Cosmic BuildStream build lanes.
+#                        Keep two lanes admitted so bluefin + bluefin-nvidia
+#                        can run concurrently and both buildbarn workers remain
+#                        busy on the two-node fleet.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -33,4 +29,4 @@ metadata:
 data:
   qa-vm-fleet: "1"
   containerdisk-build: "2"
-  bst-build: "1"
+  bst-build: "2"

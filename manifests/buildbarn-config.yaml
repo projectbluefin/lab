@@ -88,7 +88,7 @@ data:
             currentBlocks: 24,
             newBlocks: 3,
             blocksOnBlockDevice: {
-              source: { file: { path: '/storage-cas/blocks', sizeBytes: 50 * 1024 * 1024 * 1024 } },
+              source: { file: { path: '/storage-cas/blocks', sizeBytes: 90 * 1024 * 1024 * 1024 } },
               spareBlocks: 3,
             },
             persistent: {
@@ -113,7 +113,7 @@ data:
             currentBlocks: 24,
             newBlocks: 1,
             blocksOnBlockDevice: {
-              source: { file: { path: '/storage-ac/blocks', sizeBytes: 512 * 1024 * 1024 } },
+              source: { file: { path: '/storage-ac/blocks', sizeBytes: 3 * 1024 * 1024 * 1024 } },
               spareBlocks: 3,
             },
             persistent: {
@@ -244,7 +244,7 @@ data:
           buildDirectoryPath: '/worker/build',
           cacheDirectoryPath: '/worker/cache',
           maximumCacheFileCount: 20000,
-          maximumCacheSizeBytes: 16 * 1024 * 1024 * 1024,
+          maximumCacheSizeBytes: 64 * 1024 * 1024 * 1024,
           cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
         },
         runners: [{
@@ -266,8 +266,8 @@ data:
           },
         }],
       }],
-      inputDownloadConcurrency: 6,
-      outputUploadConcurrency: 6,
+      inputDownloadConcurrency: 16,
+      outputUploadConcurrency: 8,
       directoryCache: {
         maximumCount: 20000,
         maximumSizeBytes: 128 * 1024 * 1024,

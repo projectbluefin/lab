@@ -214,28 +214,12 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{inputs.parameters.mode}}"
-          - name: warm-cache
-            templateRef:
-              name: dakota-buildstream-warm-cache
-              template: warm-cache
-            when: "'{{inputs.parameters.mode}}' == 'cache-only'"
-            arguments:
-              parameters:
-                - name: element
-                  value: "{{inputs.parameters.element}}"
-                - name: tag
-                  value: "{{inputs.parameters.tag}}"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: commit-sha
-                  value: "{{inputs.parameters.commit-sha}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
+          # In cache-only mode we skip a separate warm-cache build. It would
+          # trigger another full BST build and double the runtime for the same
+          # cache volume. The shared PVC cache is reused directly by the real
+          # build/export step and by the subsequent NVIDIA variant.
           - name: bst-local
             template: bst-build-local
-            depends: warm-cache
             when: "'{{inputs.parameters.mode}}' == 'cache-only'"
             arguments:
               parameters:

@@ -318,6 +318,10 @@ data:
       // BuildStream requires the input root to become the sandbox's `/`.
       // bb_runner supports this natively via chroot(2); see
       // bb-remote-execution pkg/proto/configuration/bb_runner/bb_runner.proto.
+      // Provide a minimal /dev tree inside the chroot so BuildStream actions
+      // that use /dev/null, /dev/zero, /dev/random, or /dev/urandom can run
+      // under the remote-execution lane.
       chrootIntoInputRoot: true,
+      devDirectoryPath: '/worker/dev',
       setTmpdirEnvironmentVariable: true,
     }

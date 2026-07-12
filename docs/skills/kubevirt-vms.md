@@ -295,7 +295,9 @@ spec:
 - **ContainerDisk VMs** (Bluefin, GnomeOS, Dakota, Flatcar): OCI image from Zot. No nodeSelector.
 - **PVC-backed VMs** (Knuckle): `local-path` RWO PVC; KubeVirt auto-schedules on the PVC's node.
 
-**nodeSelector and hostNetwork are NOT required for SSH/kubectl workflow steps.** Pod IPs are routable across nodes via flannel. `kubectl exec` goes through the API server. Only steps that mount hostPath volumes need a nodeSelector matching the node where those files exist.
+**nodeSelector and hostNetwork are NOT required for SSH/kubectl workflow steps.**
+Pod IPs are routable across nodes via flannel and `kubectl exec` goes through
+the API server. Workflow storage must use PVCs rather than hostPath volumes.
 
 KubeVirt capacity is whatever nodes are currently online with
 `kubevirt.io/schedulable: "true"` and `virt-handler` running.
@@ -386,7 +388,8 @@ Every pipeline must include an `onExit` teardown that:
 1. Deletes the KubeVirt VM object: `kubectl delete vm "${VM}" -n "${NS}"`
 2. Deletes the reflinked disk file: `rm -f "${DISK_PATH}"`
 
-The teardown template must also be pinned to ghost (it deletes a hostPath file).
+Teardown deletes the VM and any PVC-backed disk through the Kubernetes API; it
+must not rely on a host-local file or node placement.
 
 Orphaned VMs (from force-deleted workflows) are cleaned by the `orphan-vm-cleanup`
 CronWorkflow every 2 hours.
@@ -656,7 +659,7 @@ That is the osbuild Fedora 38 runner PCRE2 mismatch. Switch to `bootc install to
 - Using `gts` or `lts-hwe` as image tags (they don't exist)
 - VMs in namespaces other than the four test namespaces
 - Hardcoded IPs in VM templates (use pod IP from `kubectl get pod -l kubevirt.io/vm=...`)
-- **Any `hostPath` pointing to `/var/tmp` for VM disks** — use `/var/mnt/ghost-data/` instead
+- **Any hostPath for VM disks** — use a containerDisk or PVC instead
 - A `wait-for-vm` step that writes debug text to stdout (breaks output parameter capture)
 - `registry.k8s.io/kubectl` used as image for a step that needs bash — it is distroless, use `cgr.dev/chainguard/kubectl:latest-dev`
 - SSH wait using `nc -z` — `nc` is not available in distroless or minimal images; use `bash -c 'echo >/dev/tcp/${IP}/22'`
@@ -691,7 +694,7 @@ Before merging any VM provisioning change:
 - [ ] `onExit` teardown deletes VM object; containerDisk teardown is VM-delete only; PVC-backed teardown also deletes the PVC
 - [ ] Feature gates checked if adding a new VM capability
 - [ ] `just list-vms` shows empty after workflow completion
-- [ ] **All `hostPath` volume paths under `/var/mnt/ghost-data/`, never `/var/tmp`**
+- [ ] VM disks use containerDisk or PVC volumes; no VM workflow relies on hostPath storage
 - [ ] No hardcoded IPs — pod IP derived at runtime via `kubectl get pod`
 - [ ] Zot-writable index checked before running pipeline: `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` > 100 bytes
 - [ ] `bluefin-test-ssh-pubkey` secret exists in **both** `bluefin-test` and `bluefin-lts-test` namespaces

@@ -590,7 +590,8 @@ Key rules:
 - `sha` field required when updating an existing file; omit for new files (404 on GET = new file)
 - `content` must be base64 encoded; use `base64 -w0` (no line wraps)
 - `X-GitHub-Api-Version: 2022-11-28` header required by current GitHub API
-- Log output to a file on persistent storage (hostPath) — pod stdout is GC'd
+- Retain output through Argo logs/artifacts or a workflow PVC — never a
+  root-backed hostPath
 - Concurrent pipeline exits conflict on SHA → last writer wins; 409 = silent skip. Acceptable for metrics files.
 
 **Why no inline Python or heredocs (root cause):** YAML `source: |` literal blocks use indentation to determine block extent. Any line at column 0 (including unindented `python3 -c "...\nimport json\n..."` continuation lines, or heredoc bodies like `<<'EOF'\nimport json\n`) terminates the block — YAML treats those lines as new top-level keys. The `yaml: could not find expected ':'` error is the symptom. Fix: use `jq` one-liners, keep everything on the same indented line, or `--rawfile` to read from a pre-staged file.

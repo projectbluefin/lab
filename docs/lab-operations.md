@@ -11,7 +11,11 @@ Pair with:
 - [`vanguard-report-template.md`](vanguard-report-template.md) — PR verification report
 
 > [!WARNING]
-> **Use Kubernetes MCP tools for all cluster reads/mutations.** Use Argo MCP or repo-owner `just` wrappers for workflow control. The only acceptable SSH path in this repo is **in-cluster** access from workflow/probe pods into test VMs when the test harness or post-mortem artifact collection requires it.
+> **Use the CLI-first hierarchy for cluster operations:** `just` for routine
+> lifecycle actions, then `argo` or `kubectl` for direct inspection and control.
+> MCP is optional and must not block an operation. The only acceptable SSH path
+> in this repo is **in-cluster** access from workflow/probe pods into test VMs
+> when the test harness or post-mortem artifact collection requires it.
 >
 > **Exception:** SSH to ghost is permitted exclusively to start or stop the `k3s` service — you cannot stop the API server via the API itself. See [§ Turning k8s on/off](#turning-k8s-onoff).
 
@@ -45,7 +49,8 @@ The normal operator path is now **fresh-VM only**. Persistent titan recovery flo
 | Validate Flatcar | `just run-flatcar-smoke` |
 | Submit Dakota BST build pipeline (bluefin + nvidia, defaults to cache-only) | `just run-bst-build [ref=testing]` |
 
-Rule: if a `just` recipe exists, use it. Otherwise use MCP, not workstation `kubectl`/`argo`.
+Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
+MCP is optional.
 
 For Dakota BST runs, the default path remains `build-mode=cache-only`. The Buildbarn RE runtime now includes a minimal chroot `/dev` tree (`/worker/dev`), so the old missing device-node failure is fixed; override to `re` or `auto` only when you are explicitly debugging the RE lane and have verified the runtime fix is live.
 
@@ -88,7 +93,8 @@ Use `argo logs` or the Argo UI instead of shelling into pods.
 If you need to push helper files or test content into the cluster, do **not** `scp` them to ghost or exo-1 from a workstation. Use a ConfigMap plus a short-lived Job created through Kubernetes MCP (`kubernetes-mcp-resources_create_or_update`):
 
 1. Create or update a ConfigMap containing the files.
-2. Create a Job pinned to the target node that mounts the ConfigMap and copies its contents into the required hostPath or workload volume.
+2. Create a scheduler-admitted Job that mounts the ConfigMap and writes only to
+   its PVC-backed workload volume.
 3. Wait for the Job to complete, then clean it up if it was ad hoc.
 
 This keeps file staging API-driven and works even when node SSH is unavailable.

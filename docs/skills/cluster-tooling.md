@@ -52,8 +52,9 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
 - **Shared Buildbarn storage**: artifact and source caches use the scheduler-managed
   Buildbarn storage service. Do not add node-local `hostPath` caches; they bypass
   Kubernetes storage accounting and can fill a node root filesystem.
-- **4 concurrent build slots**: worker DaemonSet runner sized 16 CPU / 32Gi with
-  `concurrency: 2` → two 8-core/16Gi action slots per node, 4 across the cluster.
+- **Build capacity is admitted, not assumed:** derive Buildbarn runner slots
+  from live allocatable CPU, memory, and storage. Never reserve capacity by
+  pinning a build to a node.
 - **Zot pull-through** on every node (`registry-mirror-config` DaemonSet) keeps
   image pulls off the WAN and off cross-node paths.
 - **BuildStream workspaces** use workflow PVCs. With `WaitForFirstConsumer`,
@@ -320,8 +321,8 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 
 ### 1. Migrating `exo-0` (Ephemeral Cache Storage)
 `exo-0`'s 4TB drive is `/dev/nvme0n1`, mounted at `/var/mnt/exo0-data`; it holds
-transient REAPI cache items and the BuildStream `bst-cache` hostPath used by build
-workflows. **`/dev/nvme1n1` on `exo-0` is the live system disk — never target it.**
+non-root local-path PVC data. **`/dev/nvme1n1` on `exo-0` is the live system disk
+— never target it.**
 
 1. **Scale down any legacy artifact-server deployment** if one still exists; current BuildStream lanes use the shared Buildbarn frontend and workers rather than a single `bst-artifact-server` pod (removed from `manifests/` — see git history if reviving).
 2. **Stop and unmount unit on `exo-0`**:
@@ -603,7 +604,7 @@ for claim in cas-storage-0 ac-storage-0 cas-storage-1 ac-storage-1; do
 done
 ```
 
-As of **2026-07-09**, the `local-path-config` ConfigMap has been corrected to use explicit per-node paths:
+`manifests/local-path-config.yaml` defines explicit per-node paths:
 - `ghost` is mapped to `/var/mnt/ghost-data/local-path`
 - `exo-0` is mapped to `/var/mnt/exo0-data/local-path`
 
@@ -614,10 +615,6 @@ This ensures that both nodes write their local-path persistent volume data direc
 This storage is **not** shaped like the old multi-million-file BuildStream cache. The live shard layout is sparse block-device files:
 - `/storage-cas`: `blocks`, `key_location_map`, `persistent_state/state`
 - `/storage-ac`: `blocks`, `key_location_map`, `persistent_state/state`
-
-On the live `storage-0` shard (`exo-0`) on 2026-07-08:
-- CAS used `41G` on disk but `51G` apparent size
-- AC used only `80K` on disk but `514M` apparent size
 
 Use `rsync` with `--sparse`; do **not** use a naive `tar | ssh | tar` pipe that inflates sparse files and gives poor restartability.
 

@@ -242,6 +242,8 @@ spec:
             value: poll
           - name: GRPC_ENABLE_FORK_SUPPORT
             value: "1"
+          - name: XDG_CACHE_HOME
+            value: "/root/.cache/{{inputs.parameters.tag}}"
         resources:
           requests:
             cpu: "1"
@@ -253,7 +255,7 @@ spec:
           - name: fuse
             mountPath: /dev/fuse
           - name: bst-cache
-            mountPath: /root/.cache/buildstream
+            mountPath: /root/.cache
           - name: buildstream-config
             mountPath: /etc/buildstream
             readOnly: true
@@ -266,6 +268,9 @@ spec:
           TAG="{{inputs.parameters.tag}}"
           REF="{{inputs.parameters.ref}}"
           REPO="{{inputs.parameters.repo}}"
+          mkdir -p "${XDG_CACHE_HOME}"
+          # Retries can leave stale dulwich lock files; clear them before fetch.
+          find "${XDG_CACHE_HOME}/buildstream/sources/git_repo" -type f -name '*.lock' -delete 2>/dev/null || true
           echo "=== Cloning dakota @ ${REF} ==="
           rm -rf /src
           git clone --depth=1 "${REPO}" /src

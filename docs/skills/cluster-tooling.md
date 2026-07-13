@@ -235,6 +235,8 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 
 On Strix Halo platforms, DRAM-less NVMe controllers (like the Innogrit IG5220 / RainierQX) can experience active I/O timeouts (`QID 32 timeout`) and uninterruptible sleep state (`D` state) due to aggressive PCIe ASPM and APST power state transitions.
 
+`exo-0` has also shown the same timeout pattern on its T-FORCE TM8FFE004T NVMe during heavy rsync/migration load, so treat repeated `nvme1` timeout spam as a real storage-latency issue, not just a transient copy slowdown.
+
 ### 1. Diagnosis
 Check for timeouts or blocked processes in kernel logs or list active file-locks on raw block devices:
 ```bash
@@ -290,12 +292,10 @@ container builds and BuildStream cache workloads.
 
 **Device path is not consistent across hosts by name alone — verify with `lsblk`/`blkid`
 before touching any device.** On `ghost`, the 4TB data drive is `/dev/nvme0n1` and the
-system disk is `/dev/nvme1n1`. On `exo-0`, the 4TB data drive is **also** `/dev/nvme0n1`
-and the system disk is `/dev/nvme1n1` — the naming convention happens to match today, but
-this has been a real source of error (see the corrected `exo-0` procedure below, which
-previously pointed `mkfs.xfs`/the mount unit at `/dev/nvme1n1` — `exo-0`'s live *system*
-disk — instead of `/dev/nvme0n1`, the actual 4TB drive). Never assume the device name;
-confirm the model/size with `lsblk -o NAME,SIZE,MODEL` first.
+system disk is `/dev/nvme1n1`. On `exo-0`, the 4TB data drive is `/dev/nvme1n1` and the
+system disk is `/dev/nvme0n1` — this has been a real source of error before the mount
+unit was corrected. Never assume the device name; confirm the model/size with
+`lsblk -o NAME,SIZE,MODEL` first.
 
 XFS with `reflink=1` provides copy-on-write capability (e.g. `cp --reflink=auto`) identical to Btrfs, but without the high write metadata fragmentation and degradation under OverlayFS / loop-device pressure.
 
@@ -320,8 +320,8 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 ## 4TB SSD Migration Procedures (Btrfs to XFS)
 
 ### 1. Migrating `exo-0` (Ephemeral Cache Storage)
-`exo-0`'s 4TB drive is `/dev/nvme0n1`, mounted at `/var/mnt/exo0-data`; it holds
-non-root local-path PVC data. **`/dev/nvme1n1` on `exo-0` is the live system disk
+`exo-0`'s 4TB drive is `/dev/nvme1n1`, mounted at `/var/mnt/exo0-data`; it holds
+non-root local-path PVC data. **`/dev/nvme0n1` on `exo-0` is the live system disk
 — never target it.**
 
 1. **Scale down any legacy artifact-server deployment** if one still exists; current BuildStream lanes use the shared Buildbarn frontend and workers rather than a single `bst-artifact-server` pod (removed from `manifests/` — see git history if reviving).
@@ -331,13 +331,13 @@ non-root local-path PVC data. **`/dev/nvme1n1` on `exo-0` is the live system dis
    ```
 3. **Format to XFS** (only if not already XFS — check with `blkid` first, reformatting destroys data):
    ```bash
-   ssh core@192.168.1.170 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme0n1"
+   ssh core@192.168.1.170 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme1n1"
    ```
 4. **Update systemd mount file**:
    Edit `/etc/systemd/system/var-mnt-exo0\x2ddata.mount` on `exo-0` to specify XFS:
    ```ini
    [Mount]
-   What=/dev/nvme0n1
+   What=/dev/nvme1n1
    Where=/var/mnt/exo0-data
    Type=xfs
    Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m

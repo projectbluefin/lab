@@ -11,16 +11,6 @@ metadata:
 spec:
   serviceAccountName: argo
   activeDeadlineSeconds: 14400  # 4h; allows queued workflows to stay pending without timing out before they execute
-  volumeClaimGC:
-    strategy: OnWorkflowCompletion
-  volumeClaimTemplates:
-  - metadata:
-      name: staging
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      resources:
-        requests:
-          storage: 100Gi
   entrypoint: build-containerdisk
   arguments:
     parameters:

@@ -48,8 +48,23 @@ spec:
   entrypoint: migration-test
   onExit: teardown
   serviceAccountName: argo
+  volumeClaimGC:
+    strategy: OnWorkflowCompletion
+  volumeClaimTemplates:
+  - metadata:
+      name: staging
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 100Gi
   templates:
   - name: migration-test
+    synchronization:
+      semaphores:
+      - configMapKeyRef:
+          name: workflow-semaphores
+          key: migration-containerdisk-build
     steps:
     - - arguments:
           parameters:

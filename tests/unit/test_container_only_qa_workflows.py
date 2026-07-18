@@ -97,7 +97,7 @@ def test_image_poll_qa_has_no_legacy_containerdisk_producer():
     assert "build-containerdisk" not in matrix
     assert "containerdisk-tag" not in matrix
     assert "qa-vm-fleet" not in semaphores
-    assert "containerdisk-build" not in semaphores
+    assert "\n  containerdisk-build:" not in semaphores
 
 
 def test_unrelated_vm_workflows_keep_their_shared_helpers():
@@ -135,6 +135,10 @@ def test_migration_rebuilds_its_own_containerdisk_source():
     assert migration.index("name: build-bluefin-migration-containerdisk") < migration.index(
         "name: provision-containerdisk-vm"
     )
+    assert "volumeClaimTemplates:" in migration
+    assert "name: staging" in migration
+    assert "volumeClaimTemplates:" not in builder.read_text(encoding="utf-8")
+    assert "key: migration-containerdisk-build" in migration
 
 
 def test_lts_smoke_recipe_uses_lts_image_and_variant():

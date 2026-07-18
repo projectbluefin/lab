@@ -10,6 +10,8 @@
 #                        busy on the two-node fleet.
 #   bst-build-manual   — Dedicated recovery lane for manual Dakota submissions
 #                        so poller-triggered jobs cannot starve operator runs.
+#   migration-containerdisk-build — Serializes the migration workflow while it
+#                        refreshes and consumes its temporary VM source disk.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,3 +22,4 @@ metadata:
 data:
   bst-build: "2"
   bst-build-manual: "2"
+  migration-containerdisk-build: "1"

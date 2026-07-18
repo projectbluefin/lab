@@ -38,19 +38,19 @@
       </thead>
       <tbody>
         <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">Permission denied (publickey) at SSH wait</td>
-          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Test VM is running but lacks the injected SSH public keys in the guest authorized_keys.</td>
-          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just setup-ssh-secret</code></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">No GITHUB_TOKEN or missing results.json</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">The container-only lane could not publish structured results, or the suite failed before writing its result payload.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">kubectl get secret -n argo github-token</code></td>
         </tr>
         <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">Workflow times out waiting for SSH</td>
-          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Test VM failed to boot, or the KubeVirt QEMU guest agent is not running to accept credentials.</td>
-          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just list-vms</code><br/><span style="font-size: 0.7rem; color: #64748b;">Verify the VM is ready; check if the namespace secret matches.</span></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">results.json not found / Execution failed</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">A container-only test lane failed before the summary step completed.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just logs</code><br/><span style="font-size: 0.7rem; color: #64748b;">Identify the failing suite in the run-container-tests output.</span></td>
         </tr>
         <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
-          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f59e0b;">LTS VM goes "Stopped" immediately</td>
-          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">SSH public key secret is missing from the bluefin-lts-test namespace.</td>
-          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just argocd-sync</code><br/><span style="font-size: 0.7rem; color: #64748b;">Forces ArgoCD to re-sync namespaces and apply SSH secrets.</span></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f59e0b;">Expected image-poll rerun never starts</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">The digest may already be recorded in <code>image-polling-digests</code>, so the poller treats the image as already seen.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">kubectl get configmap -n argo image-polling-digests -o yaml</code><br/><span style="font-size: 0.7rem; color: #64748b;">Compare the stored digest with the latest workflow log before clearing state.</span></td>
         </tr>
         <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
           <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #ef4444;">FailedCreate: metadata.labels must be ≤63 chars</td>
@@ -71,10 +71,10 @@
     Bluefin operates as an atomic, image-based OS. You can replicate the exact dashboard BDD verification checks locally using the following steps:
   </p>
   <ol style="margin: 0; padding-left: 1.25rem; color: #64748b; font-size: 0.85rem; line-height: 1.7; margin-bottom: 1.5rem;">
-    <li><strong>Verify Cluster Access:</strong> Run <code>just list-vms</code> to confirm connection and schedule availability on ghost control plane.</li>
-    <li><strong>Initialize Local SSH Credentials:</strong> Execute <code>just setup-ssh-secret</code> to build the ed25519 key-pair used by workflow pods to ssh into the test VMs.</li>
-    <li><strong>Prepare Golden Disk:</strong> Run <code>just ensure-disk testing</code> or <code>just ensure-disk lts-testing</code> to build the VM disk container.</li>
-    <li><strong>Submit Test Suite:</strong> Run <code>just run-tests-tag testing</code> to provision the ephemeral VM and watch the live test logs.</li>
+    <li><strong>Verify Cluster Access:</strong> Run <code>just list-workflows</code> to confirm Argo connectivity and namespace visibility.</li>
+    <li><strong>Sync Workflow Definitions:</strong> Execute <code>just argocd-sync</code> if you need the latest GitOps state before testing.</li>
+    <li><strong>Container-Only Validation:</strong> Run <code>just run-tests-tag testing</code> or <code>just run-tests-tag lts-testing</code> to test the published bootc OCI image directly as a container.</li>
+    <li><strong>Matrix Smoke Check:</strong> Run <code>just run-tests-matrix</code> when you want the default testing and lts-testing smoke pair.</li>
   </ol>
 
   <h4 style="margin-top: 2rem;">Core BDD Test Suites & Assertions</h4>
@@ -121,7 +121,7 @@
         </tr>
         <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
           <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">system</td>
-          <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.2);">KubeVirt VM</span></td>
+          <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
           <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
             <strong>Atomic OS Guarantees:</strong> Proves the core platform contract. Asserts that <code>/usr</code> is read-only, <code>/var</code> is writable, <code>bootc status</code> maps to a correct registry container image reference, <code>bootc upgrade</code> stages updates cleanly without host disruption, and composefs signatures match policies.
           </td>

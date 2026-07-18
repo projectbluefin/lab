@@ -24,27 +24,28 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
 ## Pipelines
 
 ### bluefin-qa-pipeline
-- **Purpose:** Test an already-built Bluefin/Bluefin-LTS containerDisk. Does **not**
-  build anything itself — fails fast if the containerDisk is missing from Zot.
-- **Parameters:** `image`, `image-tag`, `namespace`, `suites`, `variant`,
-  `containerdisk-tag`, `ssh-key-secret`, `branch`, `pr-number`, `sha`, `repo`, `vm-memory`.
-- **DAG:** `assert-cd` (skopeo inspect against Zot) → parallel `test-lane` items
-  (`smoke`, `common`, `developer`, `software`, `system`, filtered by `suites`) →
-  `onExit: cleanup-and-report` (deletes any orphaned lane VMs, posts a GitHub commit
-  status on PR runs).
-- **Each lane:** `provision-containerdisk-vm` (containerDisk VM boot) → `run-gnome-tests`
-  (SSH in, run `behave`) → `teardown-vm`.
-- **Who builds the containerDisk:** the `digest-watch` CronWorkflow (see
-  [Cache Warming](#cache-warming-pollers)) — completely decoupled from this pipeline.
+- **Purpose:** Run Bluefin/Bluefin-LTS suites directly inside the published bootc OCI
+  image. There is no containerDisk build, VM boot, or SSH stage on this path.
+- **Parameters:** `image`, `image-tag`, `suites`, `variant`, `branch`, `pr-number`, `sha`,
+  `repo`, `testsuite-branch`, `testsuite-repo`.
+- **DAG:** `validate-suites` → parallel `test-lane` items (`smoke`, `common`, `developer`,
+  `software`, `system`, filtered by `suites`) using `run-container-tests`.
+- **Each lane:** `run-container-tests` clones `projectbluefin/testsuite`, boots a
+  Wayland session with `dbus-run-session` + `qecore-headless`, runs `behave`,
+  publishes per-suite results back to this repo when `github-token` is present,
+  and returns a summary file to the workflow.
+- **Image-poll trigger flow:** `image-poller` compares GHCR digests against
+  `image-polling-digests`, submits this pipeline on change, and only writes the
+  new digest back after the workflow succeeds.
 - **Just recipe:** `run-tests`, `run-tests-tag`, `run-tests-matrix`.
 
 ### dakota-qa-pipeline
-- **Purpose:** Validate an existing Dakota containerDisk (same assert-cd/fail-fast
-  model as bluefin-qa-pipeline).
-- **Parameters:** `image`, `image-tag`, `containerdisk-tag`, `namespace`, `suites`,
-  `variant`, `ssh-key-secret`, `branch`, `vm-memory`.
-- **DAG:** `assert-cd` → parallel `test-lane` items (`smoke`, `developer`, `system`);
-  `onExit: cleanup-orphan-vms`.
+- **Purpose:** Run Dakota suites directly inside the published bootc OCI image using
+  the same container-only fan-out model as `bluefin-qa-pipeline`.
+- **Parameters:** `image`, `image-tag`, `suites`, `variant`, `branch`, `pr-number`, `sha`,
+  `repo`, `testsuite-branch`, `testsuite-repo`.
+- **DAG:** `validate-suites` → parallel `test-lane` items (`smoke`, `common`, `developer`,
+  `software`, `system`) through `run-container-tests`.
 - **Just recipe:** `run-dakota-qa`.
 
 ### dakota-build-pipeline
@@ -134,11 +135,11 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
 
 | Template | Role |
 | --- | --- |
-| `build-containerdisk` | Shared containerDisk builder used by `digest-watch`/`image-poller`. Flow: `check` (Zot existence) → `install-to-disk` → `convert-and-push`. Builds a KubeVirt containerDisk from a bootc image and pushes it to the local registry. |
-| `provision-containerdisk-vm` | Shared Bluefin/Dakota/COSMIC VM bring-up directly from a containerDisk (no reflink, no golden disk, no hostDisk). `create-vm` defines a 4 vCPU KubeVirt VM (`vm-memory` param, default 8Gi), `wait-for-vm-ready` starts `sshd.socket` via QEMU guest agent and returns the pod IP once SSH is reachable. `priorityClassName: lab-test-vm`. |
-| `provision-flatcar-vm` / `provision-gnomeos-vm` | Same containerDisk-VM pattern as above for their respective variants. Both set `priorityClassName: lab-test-vm`. |
+| `image-poller` | Digest-comparison trigger for the bootc image-poll lane. Flow: fetch GHCR digest → compare with `image-polling-digests` → submit `bluefin-qa-pipeline` on change → persist digest only after downstream success. |
+| `run-container-tests` | Shared container-only runner for Bluefin/Dakota bootc images. Clones `projectbluefin/testsuite`, starts a Wayland session in the target OCI image, runs `behave`, publishes per-suite results back to this repo, and writes a summary file for workflow outputs. |
+| `provision-flatcar-vm` / `provision-gnomeos-vm` | VM-backed provisioning paths for the lanes that still need KubeVirt. Both set `priorityClassName: lab-test-vm`. |
 | `teardown-vm` | Deletes any KubeVirt test VM (and hostDisk/PVC where applicable). |
-| `run-gnome-tests` | Shared test runner. Clones `projectbluefin/testsuite` (the single source of truth), waits for SSH, installs test dependencies, copies `tests/<suite>`, and runs `behave`. GUI suites (smoke) run via `qecore-headless` inside the VM. The `common` suite runs from the runner container with `VM_IP`/`SSH_KEY` exported so its SSH steps reach the VM directly — do NOT run common via qecore-headless. The `system` suite runs inside the VM without a display. |
+| `run-gnome-tests` | Shared VM-backed test runner. Clones `projectbluefin/testsuite`, waits for SSH, installs dependencies, copies `tests/<suite>`, and runs `behave` against a live guest. |
 | `run-incluster-tests` | Shared in-cluster pytest runner. Git-syncs `lab`, runs a pytest module against a live k8s workload, emits JUnit XML. |
 
 ## Distributed Build/RE Grid
@@ -165,9 +166,8 @@ cluster stays usable over 2.5GbE.
 
 | CronWorkflow | Interval | Triggers | Keeps warm |
 | --- | --- | --- | --- |
-| `digest-watch` | 5 min | `build-containerdisk` (force rebuild) when `bluefin`/`bluefin-lts` GHCR digest changes | The containerDisk that `bluefin-qa-pipeline`'s `assert-cd` depends on |
 | `dakota-commit-poller` | 5 min | `dakota-build-pipeline` when `dakota:testing` gets a new commit digest | the shared Buildbarn cache/execution path for the Dakota BuildStream layer |
-| `image-poll-bluefin-{testing,stable}` / `image-poll-lts-{testing,stable}` | 10 min | `bluefin-qa-pipeline` when the respective GHCR tag digest changes | Test coverage freshness (not a build cache) |
+| `image-poll-bluefin-{testing,stable}` / `image-poll-lts-{testing,stable}` | 10 min | `image-poller` when the respective GHCR tag digest changes | Bluefin/LTS container-only QA freshness plus result publication |
 | `image-poll-snosi-latest` | 30 min past every 3 hours | `bluefin-qa-pipeline` when `ghcr.io/frostyard/snow:latest` changes | Snosi GNOME desktop image coverage |
 | `flatcar-kernel-poller` | 10 min | `flatcar-kernel-build` when kernel.org's latest stable version changes | Flatcar kernel build cache |
 | `flatcar-kernel-gate` | 30 min | (gate/promotion check, see `docs/skills/flatcar-node-onboarding.md`) | N/A |
@@ -186,33 +186,24 @@ trade-off, not a gap.
 (test runner against pre-built images), not `dakota-build-pipeline` (the actual
 compile step). The real dakota cache-warming trigger is `dakota-commit-poller`.
 
-All 6 bluefin/lts pollers plus `digest-watch`/`dakota-commit-poller`/
+All bluefin/lts image pollers plus `dakota-commit-poller`/
 `flatcar-kernel-poller`/`flatcar-kernel-gate` were briefly suspended (2026-06-28
-through 2026-07-02) while a real bug was fixed — `containerdisk-tag`'s default
-value self-referenced `{{workflow.parameters.image-tag}}` inside the same
-`arguments.parameters` block, which Argo does not resolve. Fixed in commit
-`be045b12` with an explicit literal default plus a regression test
-(`tests/unit/test_workflow_defaults.py`). Re-enabled 2026-07-03 after
-confirming the fix holds and re-verifying package/network availability.
+through 2026-07-02) while a real bug was fixed in the poller arguments. Fixed
+in commit `be045b12` with a regression test (`tests/unit/test_workflow_defaults.py`),
+then re-enabled after confirming the digest-comparison path and downstream
+container-only QA held under repeated runs.
 
-**Known gap:** `digest-watch` only rebuilds a containerDisk when the upstream
-GHCR digest *changes* vs the `containerdisk-source-digests` ConfigMap — it has
-no way to notice the containerDisk itself disappeared out-of-band (e.g. a Zot
-disk wipe) while the upstream digest stayed the same. This actually happened
-2026-07-03 after the ghost XFS migration wiped Zot: `bluefin-containerdisk`
-was completely absent, `digest-watch` kept reporting "no change — skipping",
-and `bluefin-qa-pipeline`'s `assert-cd` would have failed indefinitely.
-Recovered by manually submitting `build-containerdisk` with `force=true`
-directly. If this needs to self-heal automatically next time, `digest-watch`
-would need an additional Zot-existence check (like `assert-cd`'s skopeo probe)
-alongside the digest comparison — not implemented yet.
+**Current contract:** `image-poller` must not update `image-polling-digests`
+until `run-pipeline.Succeeded`. If the digest is written before QA passes, the
+poller will treat the image as already seen and silently skip the failed lane on
+the next cycle.
 
 ## Nightly Schedule
 
 | CronWorkflow | Time (UTC) | Pipeline | Parameters |
 | --- | --- | --- | --- |
-| `nightly-smoke` | 02:00 | `bluefin-qa-pipeline` | `image=ghcr.io/projectbluefin/bluefin`, `image-tag=testing`, `containerdisk-tag=testing`, `namespace=bluefin-test`, `suites=smoke,developer,system` |
-| `nightly-smoke-lts` | 02:30 | `bluefin-qa-pipeline` | `image=ghcr.io/projectbluefin/bluefin-lts`, `image-tag=testing`, `containerdisk-tag=lts-testing`, `namespace=bluefin-lts-test`, `suites=smoke,developer,system`, `vm-memory=8Gi` |
+| `nightly-smoke` | 02:00 | `bluefin-qa-pipeline` | `image=ghcr.io/projectbluefin/bluefin`, `image-tag=testing`, `suites=smoke,developer,system`, `variant=bluefin` |
+| `nightly-smoke-lts` | 02:30 | `bluefin-qa-pipeline` | `image=ghcr.io/projectbluefin/bluefin-lts`, `image-tag=testing`, `suites=smoke,developer,system`, `variant=bluefin-lts` |
 | `nightly-dakota` | — | `dakota-qa-pipeline` | Tests pre-built images only — does not build/warm cache. Currently `suspend: true`. |
 | `nightly-knuckle` | 03:30 | `knuckle-qa-pipeline` | `branch=main`, `namespace=knuckle-test`, `suite=smoke`, `tests-branch=main` |
 
@@ -220,7 +211,7 @@ alongside the digest comparison — not implemented yet.
 
 | PriorityClass | Value | Applied to |
 | --- | --- | --- |
-| `lab-test-vm` | 1,000,000, `PreemptLowerPriority` | All KubeVirt test VMs (`provision-containerdisk-vm`, `provision-flatcar-vm`, `provision-gnomeos-vm`, `knuckle-qa-pipeline`'s two VM specs) |
+| `lab-test-vm` | 1,000,000, `PreemptLowerPriority` | All explicit VM-backed KubeVirt test VMs (`provision-flatcar-vm`, `provision-gnomeos-vm`, and `knuckle-qa-pipeline`'s VM specs) |
 | `bst-build` | (see `manifests/bst-build-priorityclass.yaml`) | Heavy/long BuildStream compiles: `dakota-build-pipeline`, `bluefin-server-build-pipeline`, `flatcar-kernel-build`'s VM spec |
 
 Test VMs are meant to win resource contention over background build workloads —
@@ -233,9 +224,7 @@ Pod resource requests/limits used by workflow steps:
 
 | Template | CPU req/limit | Memory req/limit |
 | --- | --- | --- |
-| `build-containerdisk/check` | 100m / 500m | 128Mi / 512Mi |
-| `build-containerdisk/install-to-disk` | 4 / 8 | 4Gi / 12Gi |
-| `build-containerdisk/convert-and-push` | 2 / 4 | 4Gi / 8Gi |
+| `run-container-tests` | 1 / 2 | 2Gi / 4Gi |
 | `wait-for-vm-ready` | 100m / 500m | 128Mi / 256Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
 | `dakota-build-pipeline/bst-build` | 2 / 4 | 14Gi / 28Gi |

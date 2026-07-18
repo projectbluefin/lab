@@ -1,19 +1,20 @@
 # Bluefin Integration
 
 This homelab instance is the CI backend for Project Bluefin. Every image publish
-results in a full acceptance test run with zero human intervention; screenshots from
-passing runs appear automatically in Bluefin GitHub Releases.
+results in a full acceptance test run with zero human intervention; structured
+per-suite results are published back into this repo for dashboard and release
+consumers.
 
 ---
 
 ## Images Under Test
 
-| Image | Tag | Namespace | Trigger |
+| Image | Tag | Trigger | QA path |
 |---|---|---|---|
-| `ghcr.io/projectbluefin/bluefin` | `testing` | `bluefin-test` | Nightly 02:00 UTC + digest change |
-| `ghcr.io/projectbluefin/bluefin-lts` | `testing` | `bluefin-lts-test` | Nightly 02:30 UTC + digest change |
-| `ghcr.io/frostyard/snow` | `latest` | `snosi-test` | Every 3 hours + digest change |
-| `ghcr.io/projectbluefin/dakota` | latest BST build | `bluefin-test` | Nightly 03:00 UTC + BST build |
+| `ghcr.io/projectbluefin/bluefin` | `testing` | Nightly 02:00 UTC + digest change | `image-poller` → `bluefin-qa-pipeline` → `run-container-tests` |
+| `ghcr.io/projectbluefin/bluefin-lts` | `testing` | Nightly 02:30 UTC + digest change | `image-poller` → `bluefin-qa-pipeline` → `run-container-tests` |
+| `ghcr.io/frostyard/snow` | `latest` | Every 3 hours + digest change | Poller → `bluefin-qa-pipeline` container lane |
+| `ghcr.io/projectbluefin/dakota` | latest BST build | Nightly 03:00 UTC + BST build | `dakota-qa-pipeline` → `run-container-tests` |
 
 `:testing` is the only production branch tested continuously. `:stable` runs are
 supported but not scheduled by default. Never use `:latest` or date tags in
@@ -23,7 +24,7 @@ automation — `bluefin-lts` has no `:latest` tag.
 
 ## Test Suites
 
-All Bluefin image test scenarios live in **[`projectbluefin/testsuite`](https://github.com/projectbluefin/testsuite)** — the single source of truth. The lab's `run-gnome-tests` WorkflowTemplate clones `testsuite` (main or a branch) and runs qecore-headless + behave against a real KubeVirt VM. The same test code also runs in GitHub Actions (`e2e.yml`) against a QEMU VM.
+All Bluefin image test scenarios live in **[`projectbluefin/testsuite`](https://github.com/projectbluefin/testsuite)** — the single source of truth. The lab's `run-container-tests` WorkflowTemplate clones `testsuite` (main or a branch) and runs qecore-headless + behave directly inside the published bootc OCI image. VM-backed KubeVirt coverage remains for the workflows that explicitly still need it, but the image-poll path no longer boots or installs a guest.
 
 Each pipeline run executes one or more suites via the `suites` parameter (comma-separated).
 
@@ -67,51 +68,45 @@ Hourly CronWorkflows (`image-poll-bluefin-testing`, `image-poll-lts-testing`) ca
 the `image-poller` WorkflowTemplate. Each run:
 
 1. Pulls the current digest for the target image from ghcr.io
-2. Reads the last-known digest from a ConfigMap (`image-polling-state` in `argo`)
+2. Reads the last-known digest from `image-polling-digests` in namespace `argo`
 3. If digests match: exits cleanly (no test run)
-4. If digest changed: updates the ConfigMap, then submits a `bluefin-qa-pipeline` run
+4. If the digest changed: submits `bluefin-qa-pipeline`, which fans out `run-container-tests`
+5. Each selected suite publishes its structured results back into this repo
+6. Only after the downstream workflow succeeds does `image-poller` persist the new digest
 
-This means every new Bluefin image publish triggers a test run within one hour,
-automatically, with no human action.
+This means every new Bluefin image publish triggers container-only validation
+within one hour, automatically, with no human action.
 
 ---
 
-## Screenshot Pipeline
+## Result Publication Pipeline
 
-`run-gnome-tests` captures a desktop PNG at the end of each test scenario via
-`qecore-headless`. The screenshot pipeline:
+`run-container-tests` writes `results.json` and then, when `github-token` is
+available, clones this repository and runs `scripts/publish_test_results.py` to
+merge the new suite outcome into the tracked results data. The publication flow is:
 
-1. PNGs written to the test VM at the path the test runner specifies
-2. SCPed from the VM to the workflow pod's working directory
-3. Pod pushes to the OCI registry via `oras push`:
-   ```
-   ghcr.io/projectbluefin/testsuite/desktop-screenshot:<slug>-<suite>-latest
-   ```
-   where `<slug>` is the image tag (e.g. `testing`, `lts-testing`)
-4. `publish-to-pages.yml` in [projectbluefin/testsuite](https://github.com/projectbluefin/testsuite)
-   runs every 2h, pulls each `*-latest` tag, and pushes the PNG to GitHub Pages at:
-   ```
-   https://projectbluefin.github.io/testsuite/screenshots/<slug>-<suite>-latest.png
-   ```
-5. `reusable-release.yml` in [projectbluefin/actions](https://github.com/projectbluefin/actions)
-   reads the GitHub Pages URL and embeds the screenshot directly in the GitHub Release body
+1. Execute the selected behave suite inside the bootc OCI image
+2. Write `results.json`, `behave-rc.txt`, and a summary file under `/tmp/results`
+3. Clone `projectbluefin/lab` with `github-token`
+4. Run `scripts/publish_test_results.py` for the image/suite/workflow tuple
+5. Push the updated structured results back to the repo for dashboard consumers
 
-The result: a Bluefin release is published → tests pass → the release notes
-automatically contain a desktop screenshot from a real VM boot.
+The result: a Bluefin release is published → tests run in containers → the repo
+receives per-suite QA results without any VM-specific artifact handling.
 
 ---
 
 ## Triggering a Test Run Manually
 
 ```bash
-# Smoke suite against bluefin:testing (latest tag)
+# Smoke suite against bluefin:testing
 just run-tests
 
 # Smoke suite against bluefin-lts:testing
-just run-tests-tag lts
+just run-tests-tag lts-testing
 
-# Full suite (smoke + developer + system)
-just run-tests-full
+# Run the default testing/lts-testing matrix
+just run-tests-matrix
 
 # Submit a named workflow directly
 argo submit argo/bluefin-smoke-test.yaml --watch
@@ -140,7 +135,7 @@ The poller picks it up within 5 minutes.
 
 ## Dakota
 
-Dakota runs through `dakota-qa-pipeline` rather than `bluefin-qa-pipeline`. The
-pipeline runs BST validate → BST build → provisions a VM from the built artifact →
-runs `smoke` and `system` suites. Dakota PRs can also use the `test-on-lab` label
-via the PR label poller.
+Dakota runs through `dakota-qa-pipeline` rather than `bluefin-qa-pipeline`, but
+the QA lane now uses the same container-only fan-out through `run-container-tests`.
+BuildStream artifact builds remain separate in `dakota-build-pipeline`. Dakota PRs
+can also use the `test-on-lab` label via the PR label poller.

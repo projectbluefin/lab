@@ -5,18 +5,17 @@
 ## Architecture summary
 
 ```
-Git push / manual submit
+image-poller CronWorkflow
         │
-        ▼
-Argo Workflow (argo namespace)
-        │
-        ├─ build-containerdisk    ─► containerDisk in local Zot registry (digest-checked)
-        ├─ provision-containerdisk-vm   ─► boot KubeVirt VM from containerDisk
-        ├─ run-gnome-tests        ─► runner pod SSHes VM, executes qecore + behave
-        └─ teardown (onExit)      ─► delete VM (always runs, success or failure)
+        └─ compare GHCR digest with `image-polling-digests`
+             ├─ unchanged ─► exit
+             └─ changed   ─► `run-container-tests` lanes
+                              ├─ qecore + behave inside the bootc OCI image
+                              ├─ publish per-suite results back into this repo
+                              └─ persist the new digest only after QA succeeds
 ```
 
-All pipelines use ephemeral VMs — every run provisions a fresh VM and tears it down on exit. There are no persistent test VMs.
+Bluefin and Dakota image-poll workflows are now container-only. KubeVirt remains for the lanes that still explicitly need VM or installer coverage (Flatcar, Knuckle, migration, and similar workflows).
 
 ## Cluster topology
 
@@ -32,8 +31,7 @@ ArgoCD intentionally scales `argocd-applicationset-controller`, `argocd-dex-serv
 `argocd-notifications-controller` to zero in this homelab. K8sGPT may flag those Services as
 no-endpoint findings; that is expected, not drift.
 
-HostDisk VMs (Flatcar, Knuckle, GnomeOS) must pin to ghost — their disk files live on ghost's local storage.
-ContainerDisk VMs (Bluefin test VMs) float freely and can schedule on any KubeVirt-capable node.
+HostDisk VMs (Flatcar, Knuckle, GnomeOS) must pin to ghost — their disk files live on ghost's local storage. Bluefin and Dakota image-poll QA no longer create containerDisk VMs; only the explicitly VM-backed workflows still schedule KubeVirt guests.
 
 ## GitOps ownership
 
@@ -56,21 +54,21 @@ The repo is intentionally GitOps-first: cluster state should converge from git, 
 
 | Object | Backing location | Used by | Notes |
 |---|---|---|---|
-| ContainerDisk (`testing`) | `192.168.1.102:30500/bluefin-containerdisk:testing` | Bluefin QA pipeline | Built by `build-containerdisk` |
-| ContainerDisk (`lts-testing`) | `192.168.1.102:30500/bluefin-containerdisk:lts-testing` | Bluefin QA pipeline | Built by `build-containerdisk` |
+| Bootc OCI image (`testing`) | `ghcr.io/projectbluefin/bluefin:testing` | Bluefin QA pipeline | Tested directly by `run-container-tests`; no disk conversion stage |
+| Bootc OCI image (`lts-testing`) | `ghcr.io/projectbluefin/bluefin-lts:testing` | Bluefin QA pipeline | Same container-only contract as `testing` |
 | Flatcar hostDisk | `/var/mnt/ghost-data/flatcar-test/<vm-name>/disk.raw` | Flatcar pipeline | Reflinked from golden, removed by teardown |
 | Knuckle hostDisk | `/var/mnt/ghost-data/knuckle-test/<vm-name>/disk.raw` | Knuckle pipeline | Reflinked from golden, removed by teardown |
 
-The SSH secret lives in the `bluefin-test-ssh-key` Kubernetes secret in namespace `argo`.
-Golden disks can be rotated via the `build-containerdisk` template.
+The SSH secret lives in the `bluefin-test-ssh-key` Kubernetes secret in namespace `argo`, but only VM-backed lanes consume it.
 
 ## Test execution stack
 
 | Component | Responsibility |
 |---|---|
 | `git-sync` initContainer | Clone the requested repo ref into the runner pod |
-| `run-gnome-tests` | Copy suites to the VM and orchestrate execution |
-| `qecore-headless` | Start the Wayland GNOME session inside the VM |
+| `run-container-tests` | Clone suites into the target OCI image and orchestrate container-only execution |
+| `run-gnome-tests` | Copy suites to VM-backed lanes and orchestrate guest execution |
+| `qecore-headless` | Start the Wayland GNOME session inside the container or VM |
 | `dogtail` | Traverse and interact with the AT-SPI tree |
 | `gnome-ponytail-daemon` | Translate AT-SPI coordinates into Wayland input |
 | `Shell.Eval` | Handle GNOME Shell 50 top-bar interactions that AT-SPI cannot drive reliably |
@@ -87,13 +85,13 @@ Golden disks can be rotated via the `build-containerdisk` template.
 
 | Symptom | Root cause | Durable fix |
 |---|---|---|
-| `Permission denied (publickey)` during SSH wait | ContainerDisk or hostDisk contains an old public key | Rebuild the containerDisk via `build-containerdisk` |
+| `No GITHUB_TOKEN or missing results.json - skipping publication` | `run-container-tests` could not publish results or never produced the results file | Restore `github-token` in `argo`, inspect the failing suite log, and rerun the workflow |
+| `results.json not found` or summary reports `Execution failed` | Container-only suite failed before the summary step, or dependency bootstrap never completed | Inspect the `run-container-tests` lane log, fix the image or testsuite issue, then rerun |
+| Expected image-poll rerun never starts after a publish | `image-polling-digests` already contains the new digest, so the poller treats the image as already seen | Compare the ConfigMap entry with workflow logs and only clear/update state intentionally after understanding why it was claimed |
 | `wait-for-vm` exits 1 with `Error from server (Forbidden)` | argo SA has no kubevirt-manager Role in the VM namespace | Add Role + RoleBinding to `manifests/kubevirt-rbac.yaml` for the new namespace |
-| `AccessCredentialsSynchronized` never becomes True; `wait-for-vm` times out | `qemu-guest-agent.service` not enabled in VM image | `build-containerdisk` symlinks it; check post-install step was preserved |
-| `force=true` rebuild workflow stalls with only 2 nodes (DAG + Skipped check) | Downstream `when` references a Skipped task's outputs (resolves to empty string); Argo v4 does not schedule the task | Let `check` always run; handle `force=true` bypass inside the script body (see `argo-workflows.md` §18) |
 | dakota builds accumulate, hold `ghost-heavy-compute` mutex, starve other rebuilds | `image-poll-dakota` CronWorkflow not suspended; dakota pipeline permanently blocked (composefs, no UKI) | `image-poll-dakota` has `spec.suspend: true` in git; if builds appear, stop them immediately |
 | Cross-node SSH from workflow pods to VM fails (VM and workflow pod on different nodes) | firewalld on node blocks flannel/pod-to-pod traffic | `k3s-firewalld-config` DaemonSet disables firewalld on all nodes; if re-enabled, rollout restart the DaemonSet |
-| Workflow hangs before GUI steps start | VM boot or SSH readiness never completed | Inspect VMI readiness and runner logs, then re-run the appropriate recovery path |
+| Workflow hangs before GUI steps start | Container session bootstrap or VM-backed readiness never completed | Inspect the failing lane logs first, then re-run the appropriate recovery path |
 | K8sGPT reports no-endpoint Services for `argocd-applicationset-controller`, `argocd-dex-server`, `argocd-notifications-controller-metrics`, or `virt-exportproxy` | These are documented control-plane exceptions in this cluster shape | Ignore those specific findings; they are intentional |
 | `TypeError` involving `requireResult` | Stale dogtail step pattern | Replace with `findChildren(...)` or `findChild(..., retry=False)` |
 | Clock / quick-settings scenarios miss their targets | GNOME Shell AT-SPI geometry gap | Drive the interaction via `Shell.Eval` |
@@ -110,8 +108,7 @@ Golden disks can be rotated via the `build-containerdisk` template.
 | Pods on worker nodes get `no route to host` or `connection refused` to ClusterIP / control-plane (`10.43.0.1`) | Flannel `--flannel-iface=thunderbolt0` is configured but physical USB4 link is `none` (unestablished), causing routing isolation | Ensure physical USB4 cable is in Slot 1/4 on both AMD Framework nodes, and reboots or physical power cycles restore physical link. |
 | `ucsi_acpi GET_CABLE_PROPERTY failed (-5)` or `spurious native interrupt!` kernel spam on PCIe bridge `0000:00:08.3` | PCIe runtime power management (ASPM) or a volatile EC state suspends the USB4 controllers under the bridge | Force power control of bridge `0000:00:08.3` and controllers `c5:00.5`/`c5:00.6` to `on` via sysfs on both nodes. |
 | `exo-0` has no `thunderbolt0` interface at all (`ip link show thunderbolt0` → `Device does not exist`), `/sys/bus/thunderbolt/devices/` shows only local host routers `0-0`/`1-0` (both `authorized=1`) with no downstream peer entry (e.g. no `0-1`) | **EC/PD-level failure, below the OS — confirmed 2026-07-08.** Cable is good and seated in the rear USB4 ports on both machines (all rear Type-C on Framework Desktops are USB4). Both nodes: `thunderbolt`+`thunderbolt_net` loaded, controllers `c5:00.5`/`c5:00.6` runtime PM `on`/active, two `usb4_portN` entries registered, firmware current (BIOS 3.05) — yet `/sys/class/typec/port*` shows **zero partner/attach events ever**, including during a live cable reseat, and warm reboots of both nodes do not help. The embedded PD controller never sees the cable; warm reboots do not reset EC/PD state. | Full power drain required: shut down both nodes, unplug AC for ~30s, replug, boot (known Framework Desktop EC recovery). **Confirmed working 2026-07-09**: after power drain, link came up (`usb4_portN/link` = `usb4`, peer `1-2` enumerated, `thunderbolt0` present). Deployed IPs are `10.99.0.1/30` (ghost) / `10.99.0.2/30` (exo-0), persisted in NetworkManager profiles along with table-40 policy routing rules — see `docs/ghost-lab-architecture.md` for the exact `nmcli` commands. If the link is down, the cluster still runs in ethernet mode (see buildbarn worker readCaching CAS), but you MUST deactivate the Thunderbolt connection profile on exo-0 (`sudo nmcli con down 'Wired connection 2'`) and delete the stale routing rule on ghost (`sudo ip rule del priority 5209`) to prevent table-40 policy routing from blackholing pod-to-pod and CoreDNS traffic. |
-| Host daemons (`sshd`, `systemd-journald`, `systemd-logind`, `systemd-oomd`) die simultaneously on a node; journal shows `systemd-journald: Received SIGTERM from PID <n> (argoexec)` | Workflow steps that set `podSpecPatch: '{"hostPID":true,...}'` (e.g. `build-containerdisk` `install-to-disk`, required by bootc) share the host PID namespace; when Argo terminates the pod (deadline, retry, delete) or when a build step exits early with failure (e.g. base image's production signature policy rejecting unsigned pulls with exit 125), argoexec signals all processes in its view — which is every host process — killing k3s, sshd, and systemd on whichever node ran the step (confirmed 2026-07-08) | Immediate recovery: privileged rescue pod (`hostPID`, `runAsUser: 0`, nsenter to PID 1) → `systemctl restart sshd`. Root mitigation: write an insecure `/etc/containers/policy.json` inside the build pod at start to prevent signature-failure exit-125 crashes, and apply `/etc/systemd/system/sshd.service.d/50-restart.conf` (`Restart=always`) to host daemons. |
-| Pods on one node cycle through `Init:0/1` → `Error`/`Unknown`; events show `MountVolume.SetUp failed ... object "argo"/"kube-root-ca.crt" not registered`; pod networking tests all pass | kubelet informer desync after a control-plane outage/reboot: the node kubelet holds stale API watch state and can no longer resolve projected volumes (confirmed 2026-07-09 on exo-0 after the USB4 power-drain recovery) | `sudo systemctl restart k3s-agent` on the affected node, then force-delete any leftover `Unknown` pods (`kubectl delete pod --force --grace-period=0`). If `systemctl` reports bus connection refused, restart `systemd-journald` and `dbus-broker` first (argoexec hostPID kill, see row above), then retry. |
+| Pods on one node cycle through `Init:0/1` → `Error`/`Unknown`; events show `MountVolume.SetUp failed ... object "argo"/"kube-root-ca.crt" not registered`; pod networking tests all pass | kubelet informer desync after a control-plane outage/reboot: the node kubelet holds stale API watch state and can no longer resolve projected volumes (confirmed 2026-07-09 on exo-0 after the USB4 power-drain recovery) | `sudo systemctl restart k3s-agent` on the affected node, then force-delete any leftover `Unknown` pods (`kubectl delete pod --force --grace-period=0`). If `systemctl` reports bus connection refused, restart `systemd-journald` and `dbus-broker` first, then retry. |
 | `ghost` SSH (port 22) and k3s API (6443) intermittently refuse connections; NodePort services (zot cache) time out; `kubectl describe node ghost` shows ~99% memory allocated | Two overlapping `image-poll-lts-stable` runs both failed but their `onExit` VM teardown couldn't execute (cluster was already too resource-starved to schedule the teardown step), leaving 10 orphaned 8Gi `virt-launcher` VMs (~80Gi requested) running indefinitely; combined with 774 un-garbage-collected `Failed`/`Succeeded` Argo pods bloating etcd/API server object count and starving control-plane CPU (crashing/starving `sshd` on the same host) — confirmed 2026-07-08 | Delete orphaned `vm`/`vmi` objects whose parent workflow already shows `Failed`/`Error` (`argo list -n argo --status Failed,Error`, then `kubectl delete vm --all -n <test-namespace>`), and bulk-delete stale terminal pods (`kubectl delete pods -n argo --field-selector=status.phase=Failed` / `=Succeeded`). Root fix still open: `ghost` has no `system-reserved`/`kube-reserved` kubelet memory carve-out, so pod requests can legitimately reach ~100% of allocatable with zero headroom for host daemons like `sshd`; and VM teardown-on-exit has no resilience against running during a resource-starved cluster. See `production-hardening` backlog. |
 | DRAM-less NVMe SSD (e.g. InnoGrit IG5220 on `ghost`) hits active I/O timeouts (`QID 32 timeout`) or `D` state under high parallel I/O, causing 30s connection freezes, BoltDB file locks (`cache.db` lock in `zot`), and TCP connection dropouts | Aggressive PCIe Autonomous Power State Transition (APST) causes the controller to drop out of PCIe link state on Strix Halo platform during transition | Set PCIe ASPM policy to `performance` and permanently disable APST by appending `nvme_core.default_ps_max_latency_us=0` to `rpm-ostree kargs` on the host, then reboot. If Zot BoltDB is locked by a zombie containerd-shim process, kill the parent shim on the host and rename/delete `cache.db` to trigger a clean metadata rebuild. |
 

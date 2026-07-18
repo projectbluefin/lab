@@ -26,7 +26,7 @@
 | Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate a single Bluefin tag end-to-end | `just run-tests-tag <testing\|lts-testing>` |
 | Validate released (stable) image | `just run-tests-tag stable` or `just run-tests-tag lts-stable` |
-| Validate a golden-disk or image change | `just ensure-disk <tag>` then `just run-tests-tag <tag>` |
+| Validate a bootc OCI image change | `just run-tests-tag <testing\|lts-testing\|stable\|lts-stable>` or `just run-tests-matrix` |
 | Validate the Flatcar lane | `just run-flatcar-smoke` |
 | Run on-demand K8sGPT cluster triage | `just run-k8sgpt` |
 | Check exo-0 kernel canary status (7.1 target) | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` |
@@ -60,15 +60,14 @@ argo submit -n argo --from workflowtemplate/flatcar-kernel-gate
 
 ## 2. Failure triage — symptom → exact next command
 
-Run `just logs` first. Then match a row:
+Run `just logs` first. Then match a row. **Bluefin and Dakota image-poll QA are now container-only** — rows mentioning VM, VMI, or SSH apply only to VM-backed lanes such as Flatcar, Knuckle, or other explicit KubeVirt workflows.
 
 | Symptom in logs | Run next |
 |---|---|
-| `Permission denied (publickey)` at SSH wait | Check `kubectl get vm -n bluefin-test <name> -o yaml \| grep -A10 accessCredentials` — secret must exist. Delete orphaned VM + rerun. |
-| Workflow times out at SSH wait | `just list-vms` → confirm VMI is Ready. If SSH port open but auth fails, verify `bluefin-test-ssh-pubkey` secret exists in the VM's namespace: `kubectl get secret -n bluefin-test bluefin-test-ssh-pubkey` |
-| LTS VM goes `Stopped` immediately | `bluefin-test-ssh-pubkey` missing from `bluefin-lts-test` — check `manifests/bluefin-test-ssh-pubkey.yaml` covers both namespaces; force ArgoCD sync |
+| `No GITHUB_TOKEN or missing results.json - skipping publication` | `kubectl get secret -n argo github-token` — secret must exist; then inspect `just logs` for the failing suite before rerunning. |
+| `results.json not found` or summary reports `Execution failed` | `just logs | grep -n "results.json not found\|Execution failed"` → identify the failing `run-container-tests` lane, then rerun after fixing the image or suite issue. |
+| Expected image-poll rerun never starts after a new publish | `kubectl get configmap image-polling-digests -n argo -o yaml` — compare the stored digest with the workflow log; stale state means the previous run already claimed that digest. |
 | VMI `NotFound` 1 second after VM creation | Same as above — KubeVirt refused to start VM due to missing accessCredentials secret; VM status will be `Stopped` |
-| VM `Stopped` with `FailedCreate: metadata.labels must be no more than 63 characters` | vm-name exceeds K8s label limit. `bluefin-lts-testing-developer-<uuid>` = 67 chars. Fix: use `{{workflow.name}}-{{item}}` in `bluefin-qa-pipeline` (not `{{variant}}-{{item}}-{{uuid}}`). Already fixed in commit `7fca070`. |
 | `TypeError: ... requireResult` | Fix the step per [`docs/dogtail-testing.md`](dogtail-testing.md) §6.2 (`findChildren(...)` / `retry=False`) |
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |
@@ -238,9 +237,9 @@ shred -u "${ssh_key}" "${ssh_key}.pub"
 # 4. Update manifests/bluefin-test-ssh-pubkey.yaml with the new base64 key
 #    so ArgoCD manages the secret going forward.
 
-# 5. Confirm via real runs:
-just run-tests-tag testing
-just run-tests-tag lts-testing
+# 5. Confirm via VM-backed runs:
+just run-migration-test testing
+just run-flatcar-smoke
 
 # 6. Verify the new fingerprint:
 kubectl get secret bluefin-test-ssh-key -n argo \
@@ -251,16 +250,18 @@ SSH key rotation now has two parts:
 - `bluefin-test-ssh-key` (argo ns): private+public key for the SSH client (workflow pods)
 - `bluefin-test-ssh-pubkey` (VM ns): public key for KubeVirt accessCredentials injection
 
-`patch-disk` is no longer needed — SSH keys are injected at VM boot time via KubeVirt
-qemuGuestAgent accessCredentials, not baked into the disk image.
+VM-backed lanes inject SSH keys at boot through KubeVirt qemuGuestAgent
+accessCredentials rather than baking them into disk images.
 
 ---
 
 ## 6.5. Dakota PR batch workflow
 
-Use the Dakota PR batch workflow when you want to validate a Dakota PR branch without switching to the full VM QA lane. It sits alongside the existing Dakota entry points:
+Use the Dakota PR batch workflow when you want to validate a Dakota PR branch
+without switching to the full container-only QA lane. It sits alongside the
+existing Dakota entry points:
 - `just run-bst-build` — the BuildStream artifact build lane.
-- `just run-dakota-qa` — the full VM-based Dakota QA lane.
+- `just run-dakota-qa` — the full Dakota container-only QA lane.
 - `just run-dakota-container-qa` — containerized QA that runs image-level smoke checks directly inside the OCI image. Use this for `dakota:testing` and `dakota-nvidia:testing` while the VM path is blocked (Dakota's composefs-oci backend declares systemd-boot but ships no UKI, so `bootc install to-disk` fails).
 
 Trigger it with:
@@ -279,13 +280,14 @@ Mandatory gate for `knuckle`, `dakota`, and this repo's PRs.
 2. Collect **real evidence** using CLI tools:
    - Workflow status/steps → `argo get -n argo <name>` / `argo list -n argo`
    - Log output → `argo logs -n argo <name>`
-   - Pod/VMI state → `kubectl get pods -n argo` / `kubectl get vmi -A`
+   - Pod state → `kubectl get pods -n argo`
+   - VMI state only for VM-backed lanes → `kubectl get vmi -A`
 3. Post a report on the PR using the template at [`docs/vanguard-report-template.md`](vanguard-report-template.md).
 4. Only then apply `agent-tested` and approve / queue.
 
 Hard exit checklist:
 
-- [ ] Real VM-backed lab evidence exists.
+- [ ] Real lab evidence exists for the lane under test.
 - [ ] Evidence was collected via CLI tools (`argo`, `kubectl`).
 - [ ] The entire loop was tested, not isolated commands.
 - [ ] A canonical Vanguard report with real data is posted on the PR.
@@ -312,11 +314,11 @@ kubectl delete vm -n bluefin-test <name>
 ## 9. Bootstrap — one-time, fresh cluster access
 
 ```bash
-just setup-ssh-secret
 just setup-argocd
 just argocd-sync
-just ensure-disk testing
 just run-tests-tag testing
+# Optional for VM-backed lanes only:
+just setup-ssh-secret
 ```
 
 ---
@@ -335,7 +337,7 @@ Expected steady state:
 - both ArgoCD applications are Synced + Healthy
 - all three CronWorkflows are present
 - no idle test VMs remain after workflows finish
-- the most recent fresh-VM run is green
+- the most recent container-only smoke run is green
 
 ---
 

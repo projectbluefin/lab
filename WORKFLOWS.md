@@ -20,19 +20,21 @@ Conventions:
 
 ### `bluefin-qa-pipeline`
 
-Full pipeline: build containerDisk (if digest changed) → boot a fresh KubeVirt VM →
-run test suites → teardown VM on exit.
+Container-only pipeline: validate the selected suites directly inside the
+published bootc OCI image via `run-container-tests`. No KubeVirt VM or
+containerDisk stage exists on this path.
 
 | Parameter | Default | Notes |
 |---|---|---|
 | `image` | `ghcr.io/projectbluefin/bluefin` | Source image. Tag is appended from `image-tag` for some callers; pass with tag if invoking directly. |
-| `image-tag` | `testing` | `testing`, `lts-testing`, `stable`, `lts-stable`. Also used as the golden-disk dir name. |
-| `namespace` | `bluefin-test` | KubeVirt VM namespace. Use `bluefin-lts-test` for LTS. |
-| `suites` | `smoke,developer` | Comma list; valid: `smoke`, `developer`, `software`. |
-| `variant` | `bluefin` | Selects test fixtures (e.g. `dakota` for Ghostty). |
-| `ssh-key-secret` | `bluefin-test-ssh-key` | Secret in `argo` ns with `id_ed25519`. |
+| `image-tag` | `testing` | `testing`, `lts-testing`, `stable`, `lts-stable`. |
+| `suites` | `smoke,common,developer,software,system` | Comma list; valid: `smoke`, `common`, `developer`, `software`, `system`. |
+| `variant` | `bluefin` | Selects test fixtures and result slugging. |
+| `branch` | `main` | Branch context recorded with published results. |
+| `testsuite-branch` | `main` | Testsuite branch cloned by `run-container-tests`. |
+| `testsuite-repo` | `https://github.com/projectbluefin/testsuite` | Override only for testsuite forks. |
 
-Wall-clock: ~5 min (warm, containerDisk cached), ~10–14 min (cold containerDisk build).
+Wall-clock: a few minutes per selected suite; no VM provisioning stage.
 
 ```
 argo submit --from workflowtemplate/bluefin-qa-pipeline \
@@ -63,19 +65,21 @@ argo submit --from workflowtemplate/knuckle-qa-pipeline \
 
 ### `cosmic-qa-pipeline`
 
-End-to-end COSMIC QA pipeline: assert cosmic-containerdisk exists in Zot, then run the parallel smoke test lane. Provisions a fresh KubeVirt VM, runs tests via SSH, and tears down the VM on completion.
+Container-only COSMIC QA pipeline: run the selected suite directly inside the
+published bootc OCI image via `run-container-tests`. No containerDisk, KubeVirt
+VM, or SSH stage exists on this path.
 
 | Parameter | Default | Notes |
 |---|---|---|
 | `image` | `ghcr.io/razorfinos-org/cosmic-build-meta` | Source image repo. |
 | `image-tag` | `latest` | Image tag under test. |
-| `namespace` | `bluefin-test` | Namespace to run VM testing. |
 | `suites` | `smoke` | Test suite to execute. |
 | `variant` | `cosmic` | Set to `cosmic` for the COSMIC desktop environment. |
-| `ssh-key-secret` | `bluefin-test-ssh-key` | Secret with test suite SSH private key. |
-| `containerdisk-tag` | `cosmic-latest` | Tag of the KubeVirt containerDisk to boot. |
+| `branch` | `main` | Branch context recorded with published results. |
+| `testsuite-branch` | `main` | Testsuite branch cloned by `run-container-tests`. |
+| `testsuite-repo` | `https://github.com/projectbluefin/testsuite` | Override only for testsuite forks. |
 
-Wall-clock: ~5 min (warm, containerDisk cached).
+Wall-clock: a few minutes per selected suite; no VM provisioning stage.
 
 ```
 argo submit --from workflowtemplate/cosmic-qa-pipeline \
@@ -102,18 +106,17 @@ workflow artifact while printing a concise findings summary to logs/stdout.
 
 Output parameter: analyze node emits `k8sgpt-results-json` from `/tmp/results/k8sgpt-results.json`.
 
-### `build-containerdisk` (template: `build-containerdisk`)
+### `image-poller` (template: `check-and-trigger`)
 
-Builds a KubeVirt containerDisk from a bootc image and pushes it to the local
-Zot registry at `192.168.1.102:30500`. Checks if an up-to-date image already
-exists (digest comparison) and skips the build if so.
+Fetches the current GHCR digest, compares it with `image-polling-digests`, runs
+`bluefin-qa-pipeline` when the digest changes, and persists the new digest only
+after the downstream workflow succeeds.
 
-### `provision-containerdisk-vm` (template: `provision-vm`)
+### `run-container-tests` (template: `run-container-tests`)
 
-Creates a KubeVirt VM using a containerDisk from the local Zot registry,
-waits for the VMI to be Ready and SSH to become reachable, emits `vm-ip`.
-Used for Bluefin, Dakota, and COSMIC variants (parameterized by containerDisk
-repo, app label, and label prefix).
+Runs `smoke`, `common`, `developer`, `software`, or `system` directly inside the
+target bootc OCI image with `dbus-run-session` + `qecore-headless`, then
+publishes per-suite results back to this repo when `github-token` is available.
 
 ### `provision-flatcar-vm` (template: `provision-vm`)
 
@@ -211,10 +214,10 @@ Lives in `manifests/`, applied via the `lab-infra` ArgoCD app:
 | `nightly-smoke-lts` | 02:30 UTC | `bluefin-qa-pipeline` (lts-testing) | Same, for LTS branch |
 | `nightly-dakota` | 03:00 UTC | `dakota-qa-pipeline` | Dakota nightly |
 | `nightly-knuckle` | 03:30 UTC | `knuckle-qa-pipeline` | Knuckle installer nightly |
-| `image-poll-bluefin-testing` | hourly | `image-poller` | Trigger on new bluefin:testing digest |
-| `image-poll-lts-testing` | hourly | `image-poller` | Trigger on new bluefin-lts:testing digest |
-| `image-poll-bluefin-stable` | weekly (Sun 01:00) | `image-poller` | Trigger on new bluefin:stable digest |
-| `image-poll-lts-stable` | weekly (Sun 01:30) | `image-poller` | Trigger on new bluefin-lts:stable digest |
+| `image-poll-bluefin-testing` | hourly | `image-poller` | Compare digest, fan out container-only QA, publish results, then persist digest for `bluefin:testing` |
+| `image-poll-lts-testing` | hourly | `image-poller` | Same flow for `bluefin-lts:testing` |
+| `image-poll-bluefin-stable` | weekly (Sun 01:00) | `image-poller` | Same flow for `bluefin:stable` |
+| `image-poll-lts-stable` | weekly (Sun 01:30) | `image-poller` | Same flow for `bluefin-lts:stable` |
 | `orphan-vm-cleanup` | every 2h | inline | GC VMs whose parent workflow was force-deleted |
 | `orphan-pod-gc` | every 30min | inline | Clean ContainerStatusUnknown + failed pods |
 | `golden-disk-gc` | 04:00 UTC | inline | GC stale disk.raw files on ghost |

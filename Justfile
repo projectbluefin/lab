@@ -70,7 +70,7 @@ run-tests:
         --watch
 
 # Run smoke tests against a specific tag
-# Usage: just run-tests-tag lts
+# Usage: just run-tests-tag lts-testing
 run-tests-tag tag:
     argo submit argo/bluefin-smoke-test.yaml \
         -p image="ghcr.io/ublue-os/bluefin:{{ tag }}" \
@@ -86,7 +86,7 @@ run-tests-matrix:
 
 # Run migration validation (bootc switch: ublue-os/bluefin → projectbluefin/bluefin)
 # Usage: just run-migration-test
-# Usage: just run-migration-test lts
+# Usage: just run-migration-test lts-testing
 run-migration-test tag=image_tag:
     argo submit --from workflowtemplate/bluefin-migration-test \
         -p image-tag="{{ tag }}" \
@@ -237,16 +237,15 @@ run-dakota-validate ref="testing" repo="https://github.com/projectbluefin/dakota
 run-dakota-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
     just run-bst-build {{ ref }} {{ repo }}
 
-# Full Dakota QA pipeline: VM-based suite run against dakota containerdisk.
+# Full Dakota QA pipeline: container-only suite fan-out against the published Dakota image.
 run-dakota-qa branch="main" variant="dakota":
     argo submit --from workflowtemplate/dakota-qa-pipeline \
       -p variant={{ variant }} \
       -p branch={{ branch }} \
       -n {{ argo_ns }} --watch
 
-# Containerized Dakota QA pipeline: run behave suites directly inside the OCI
-# image. Use this while the VM-based path is blocked for composefs-oci Dakota
-# images (bootc install to-disk requires bootupd/ostree).
+# Legacy Dakota containerized smoke lane: run behave suites directly inside the OCI
+# image with explicit image/variant overrides.
 run-dakota-container-qa image-tag="testing" variant="dakota":
     argo submit --from workflowtemplate/dakota-container-qa-pipeline \
       -p image=192.168.1.102:30500/{{ variant }} \

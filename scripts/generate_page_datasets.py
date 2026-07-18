@@ -1227,6 +1227,12 @@ def main() -> int:
     root = Path(args.root).resolve()
     collected_at = args.collected_at or now_utc_iso()
     warn_if_surface_drifted_from_testsuite(root)
+    
+    # Run GitOps dashboard collector scripts
+    subprocess.run([sys.executable, str(root / "scripts/refresh_gitops_stats.py")], check=False)
+    subprocess.run([sys.executable, str(root / "scripts/collect_app_resources.py")], check=False)
+    subprocess.run([sys.executable, str(root / "scripts/check_gitops_policy.py")], check=False)
+    
     write_page_datasets(root, collected_at)
     return 0
 

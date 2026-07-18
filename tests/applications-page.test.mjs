@@ -10,8 +10,9 @@ function html(file) {
   return readFileSync(path.join(repo, file), 'utf8');
 }
 
-test('applications page renders Bazaar evidence, chart mounts, and explicit unavailable states', () => {
-  execFileSync('npm', ['run', 'build'], {
+test('applications page renders live GitOps state, resource charts, and policy scorecards', () => {
+  // Isolate environment for sub-process npm run build to avoid ESM/node resolution issues
+  execFileSync('env', ['-i', `PATH=${process.env.PATH}`, 'npm', 'run', 'build'], {
     cwd: repo,
     stdio: 'pipe',
     encoding: 'utf8',
@@ -21,102 +22,52 @@ test('applications page renders Bazaar evidence, chart mounts, and explicit unav
 
   assert.match(
     applicationsPage,
-    /No completed application-specific software result is published/i,
-    'applications page keeps unavailable primary evidence explicit',
+    /GitOps Applications/i,
+    'applications page header renders the correct title',
   );
   assert.match(
     applicationsPage,
-    /Firefox/i,
-    'applications page includes Firefox as a tracked application',
+    /Managed Applications/i,
+    'applications page renders the Managed Applications KPI card',
   );
   assert.match(
     applicationsPage,
-    /Ptyxis/i,
-    'applications page includes Ptyxis terminal emulator',
+    /Policy Pass Rate/i,
+    'applications page displays the policy pass rate scorecard',
   );
   assert.match(
     applicationsPage,
-    /Podman Desktop/i,
-    'applications page includes Podman Desktop container GUI',
+    /argo-workflows/i,
+    'applications page lists the argo-workflows system application',
   );
   assert.match(
     applicationsPage,
-    /VS Code \/ Codium/i,
-    'applications page includes VS Code / Codium as a DX app',
+    /testing-lab-infra/i,
+    'applications page lists the testing-lab-infra application',
   );
   assert.match(
     applicationsPage,
-    /Bazzite Shell/i,
-    'applications page auto-discovers Bazzite Shell test suite',
+    /Rollout History/i,
+    'applications page renders the recent syncs rollout log',
   );
   assert.match(
     applicationsPage,
-    /Flatcar/i,
-    'applications page auto-discovers Flatcar test suite',
+    /Policy Scorecard & Violations/i,
+    'applications page renders the policy check rules section',
   );
   assert.match(
     applicationsPage,
-    /behave tests\/developer\/features\/ptyxis\.feature/i,
-    'applications page renders awesome behave terminal execution snippets',
+    /app-resources-chart/,
+    'applications page renders the resource consumption chart container',
   );
   assert.match(
     applicationsPage,
-    /View on GitHub/i,
-    'applications page links behave test suites directly to GitHub',
-  );
-  assert.match(
-    applicationsPage,
-    /Architectures/i,
-    'applications page displays architectures metadata',
-  );
-  assert.match(
-    applicationsPage,
-    /License/i,
-    'applications page displays license metadata',
-  );
-  assert.match(
-    applicationsPage,
-    /Flatpak SDK Runtime/i,
-    'applications page displays Flatpak SDK runtime metadata',
-  );
-  assert.match(
-    applicationsPage,
-    /applications-outcomes-chart/,
-    'applications page renders the outcomes chart container',
-  );
-  assert.match(
-    applicationsPage,
-    /applications-fallback-chart/,
-    'applications page renders the fallback distribution chart container',
-  );
-  assert.match(
-    applicationsPage,
-    /applications-history-chart/,
-    'applications page renders the evidence history chart container',
+    /app-compliance-chart/,
+    'applications page renders the compliance donut chart container',
   );
   assert.match(
     applicationsPage,
     /applications-page-data/,
-    'applications page serializes client chart data',
-  );
-  assert.match(
-    applicationsPage,
-    /https:\/\/github\.com\/projectbluefin\/lab\/blob\/main\/docs\/results\/bluefin-testing-common\.json/,
-    'applications page links fallback evidence',
-  );
-  assert.match(
-    applicationsPage,
-    /Sandbox Permissions/i,
-    'applications page renders Sandbox Permissions headers',
-  );
-  assert.match(
-    applicationsPage,
-    /file-access:downloads/i,
-    'applications page renders downloads permission tag',
-  );
-  assert.match(
-    applicationsPage,
-    /flatpak install flathub/i,
-    'applications page renders flatpak install CLI helper snippets',
+    'applications page serializes client-side chart payload',
   );
 });

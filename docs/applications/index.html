@@ -15,9 +15,8 @@
       }
 
       if (attempt > 40) {
-        renderUnavailable('applications-outcomes-chart', 'ECharts failed to load. Table below remains the source of truth.');
-        renderUnavailable('applications-fallback-chart', 'Fallback chart unavailable because the chart runtime did not load.');
-        renderUnavailable('applications-history-chart', 'History chart unavailable because the chart runtime did not load.');
+        renderUnavailable('app-resources-chart', 'ECharts failed to load. Resource usage visualization unavailable.');
+        renderUnavailable('app-compliance-chart', 'Policy scorecard chart unavailable.');
         return;
       }
 
@@ -27,181 +26,83 @@
     function bootCharts(echarts) {
       if (!pageData) return;
 
-      const outcomeContainer = document.getElementById('applications-outcomes-chart');
-      const fallbackContainer = document.getElementById('applications-fallback-chart');
-      const historyContainer = document.getElementById('applications-history-chart');
+      const resourceContainer = document.getElementById('app-resources-chart');
+      const complianceContainer = document.getElementById('app-compliance-chart');
 
-      if (!outcomeContainer || !fallbackContainer || !historyContainer) return;
+      if (resourceContainer && pageData.applications) {
+        const apps = pageData.applications.filter(a => a.pods_count > 0);
+        const labels = apps.map(a => a.name);
+        const memUsages = apps.map(a => a.memory.usage);
+        const memRequests = apps.map(a => a.memory.request);
 
-      const outcomes = Array.isArray(pageData.outcomes) ? pageData.outcomes : [];
-      const fallbackDistribution = Array.isArray(pageData.fallbackDistribution) ? pageData.fallbackDistribution : [];
-      const historySeries = Array.isArray(pageData.historySeries) ? pageData.historySeries : [];
-
-      if (outcomes.length === 0) {
-        renderUnavailable('applications-outcomes-chart', 'No outcome rows published in applications-matrix.json.');
-      } else {
-        const branches = [...new Set(outcomes.map((row) => row.branch))];
-        const variants = outcomes.map((row) => `${row.appName}/${row.variant}`);
-        const outcomeChart = echarts.init(outcomeContainer);
-        outcomeChart.setOption({
-          aria: { enabled: true },
-          backgroundColor: 'transparent',
-          tooltip: {
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            borderColor: 'rgba(125, 211, 252, 0.35)',
-            textStyle: { color: '#cbd5e1' },
-            formatter(params) {
-              const row = outcomes[params.dataIndex];
-              return [
-                `<strong>${row.appName} · ${row.variant}/${row.branch}</strong>`,
-                row.stateLabel,
-                `Primary status: ${row.primaryStatus}`,
-                `Fallback signals: ${row.fallbackSignalCount}`,
-                `Matched app scenarios: ${row.matchedScenarioCount}`,
-                `Latest evidence: ${row.latestEvidenceAt ?? 'none published'}`,
-              ].join('<br>');
-            },
-          },
-          grid: { left: 140, right: 20, top: 40, bottom: 40 },
-          xAxis: {
-            type: 'category',
-            data: branches,
-            axisLabel: { color: '#94a3b8' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-          },
-          yAxis: {
-            type: 'category',
-            data: variants,
-            axisLabel: { color: '#cbd5e1' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-          },
-          visualMap: {
-            min: 0,
-            max: 2,
-            orient: 'horizontal',
-            left: 'center',
-            bottom: 0,
-            textStyle: { color: '#cbd5e1' },
-            text: ['Primary', 'None'],
-            inRange: { color: ['#334155', '#f59e0b', '#22c55e'] },
-          },
-          series: [
-            {
-              type: 'heatmap',
-              data: outcomes.map((row, index) => [branches.indexOf(row.branch), index, row.stateScore]),
-              label: {
-                show: true,
-                color: '#e2e8f0',
-                formatter(params) {
-                  const o = outcomes[params.data[1]];
-                  if (o.stateScore === 2) return 'primary';
-                  return o.fallbackSignalCount > 0 ? 'fallback' : 'none';
-                },
-              },
-            },
-          ],
-        });
-      }
-
-      if (fallbackDistribution.length === 0) {
-        renderUnavailable('applications-fallback-chart', 'No fallback distribution published in applications-matrix.json.');
-      } else {
-        const categories = fallbackDistribution.map((row) => `${row.appName}/${row.variant}/${row.branch}`);
-        const fallbackChart = echarts.init(fallbackContainer);
-        fallbackChart.setOption({
-          aria: { enabled: true },
+        const resourceChart = echarts.init(resourceContainer);
+        resourceChart.setOption({
           backgroundColor: 'transparent',
           tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
           legend: {
-            textStyle: { color: '#cbd5f5' },
-            data: ['Fallback signals', 'Matched scenarios'],
+            textStyle: { color: '#cbd5e1', fontSize: 10 },
+            data: ['Actual Usage (MiB)', 'Requested (MiB)']
           },
-          grid: { left: 60, right: 20, top: 40, bottom: 80 },
+          grid: { left: 45, right: 15, top: 40, bottom: 40, containLabel: true },
           xAxis: {
             type: 'category',
-            data: categories,
-            axisLabel: { color: '#cbd5f5', rotate: 25 },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+            data: labels,
+            axisLabel: { color: '#cbd5e1', fontSize: 9, rotate: 12 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
           },
           yAxis: {
             type: 'value',
-            axisLabel: { color: '#cbd5f5' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
+            name: 'Memory (MiB)',
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
           },
           series: [
             {
-              name: 'Fallback signals',
+              name: 'Actual Usage (MiB)',
               type: 'bar',
-              data: fallbackDistribution.map((row) => row.signalCount),
-              itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] },
+              data: memUsages,
+              itemStyle: { color: '#38bdf8', borderRadius: [4, 4, 0, 0] }
             },
             {
-              name: 'Matched scenarios',
+              name: 'Requested (MiB)',
               type: 'bar',
-              data: fallbackDistribution.map((row) => row.matchedScenarioCount),
-              itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] },
-            },
-          ],
+              data: memRequests,
+              itemStyle: { color: 'rgba(56, 189, 248, 0.25)', borderRadius: [4, 4, 0, 0] }
+            }
+          ]
         });
       }
 
-      if (historySeries.length === 0) {
-        renderUnavailable('applications-history-chart', 'No linked evidence file publishes historical runs yet.');
-      } else {
-        const grouped = historySeries.reduce((map, event) => {
-          if (!map.has(event.label)) map.set(event.label, []);
-          map.get(event.label).push(event);
-          return map;
-        }, new Map());
-        const historyChart = echarts.init(historyContainer);
-        historyChart.setOption({
-          aria: { enabled: true },
+      if (complianceContainer && pageData.compliance) {
+        const rules = pageData.compliance.rules || [];
+        const chart = echarts.init(complianceContainer);
+        chart.setOption({
           backgroundColor: 'transparent',
-          tooltip: {
-            trigger: 'axis',
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            borderColor: 'rgba(125, 211, 252, 0.35)',
-            textStyle: { color: '#cbd5e1' },
-            formatter(params) {
-              return params
-                .map((entry) => {
-                  const data = entry.data.event;
-                  return [
-                    `<strong>${data.label}</strong>`,
-                    `${data.runDate}`,
-                    `Status: ${data.status}`,
-                    `Failed scenarios: ${data.failed}/${data.scenarios}`,
-                    `Workflow: ${data.workflowName ?? 'Unavailable'}`,
-                  ].join('<br>');
-                })
-                .join('<br><br>');
-            },
-          },
+          tooltip: { trigger: 'item' },
           legend: {
-            textStyle: { color: '#cbd5f5' },
-            top: 0,
+            orient: 'vertical',
+            left: 'left',
+            textStyle: { color: '#cbd5e1', fontSize: 10 }
           },
-          grid: { left: 60, right: 20, top: 50, bottom: 50 },
-          xAxis: {
-            type: 'time',
-            axisLabel: { color: '#cbd5f5' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-          },
-          yAxis: {
-            type: 'value',
-            axisLabel: { color: '#cbd5f5' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
-          },
-          series: Array.from(grouped.entries()).map(([label, events]) => ({
-            name: label,
-            type: 'line',
-            showSymbol: true,
-            smooth: true,
-            data: events.map((event) => ({
-              value: [event.runDate, event.failed],
-              event,
-            })),
-          })),
+          series: [
+            {
+              name: 'Compliance Pass Rate',
+              type: 'pie',
+              radius: ['45%', '70%'],
+              avoidLabelOverlap: false,
+              itemStyle: { borderRadius: 10, borderColor: '#0f172a', borderWidth: 2 },
+              label: { show: false, position: 'center' },
+              emphasis: {
+                label: { show: true, fontSize: 13, fontWeight: 'bold', color: '#cbd5e1' }
+              },
+              labelLine: { show: false },
+              data: rules.map(r => ({
+                value: r.total_checked - r.violations_count,
+                name: r.name,
+                itemStyle: { color: r.status === 'passed' ? '#10b981' : '#f43f5e' }
+              }))
+            }
+          ]
         });
       }
 

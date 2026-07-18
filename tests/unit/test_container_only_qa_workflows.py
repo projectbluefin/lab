@@ -59,6 +59,26 @@ def test_run_container_tests_explicitly_allows_system_suite():
     assert "Unsupported container suite: ${SUITE}" in content
 
 
+def test_pr_poller_uses_the_exact_testsuite_pr_source():
+    content = (ROOT / "argo/workflow-templates/pr-poller.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "HEAD_REPO=$(echo \"$PR\" | jq -r '.head.repo.clone_url')" in content
+    assert 'TESTSUITE_REPO="$HEAD_REPO"' in content
+    assert "- name: testsuite-repo" in content
+    assert "value: ${TESTSUITE_REPO}" in content
+
+
+def test_container_runner_never_falls_back_to_a_different_testsuite_revision():
+    content = (ROOT / "argo/workflow-templates/run-container-tests.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}"' in content
+    assert "falling back to main" not in content
+
+
 def test_scheduled_and_pr_image_qa_do_not_pass_vm_parameters():
     files = [
         ROOT / "argo/workflow-templates/pr-poller.yaml",

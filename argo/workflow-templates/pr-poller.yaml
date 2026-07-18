@@ -91,13 +91,15 @@ spec:
            fi
 
            HEAD_BRANCH=$(echo "$PR" | jq -r '.head.ref')
-           # testsuite PRs: run-container-tests clones projectbluefin/testsuite,
-           # so pass the real PR branch through testsuite-branch. All other repos
-           # use main because their branch is unrelated to the testsuite checkout.
+           HEAD_REPO=$(echo "$PR" | jq -r '.head.repo.clone_url')
+           # Testsuite PRs run their exact head repository and branch. Other
+           # repositories use the canonical testsuite main branch.
            if [[ "$REPO" == "projectbluefin/testsuite" ]]; then
             TESTSUITE_BRANCH="$HEAD_BRANCH"
+            TESTSUITE_REPO="$HEAD_REPO"
            else
             TESTSUITE_BRANCH="main"
+            TESTSUITE_REPO="https://github.com/projectbluefin/testsuite"
            fi
            BRANCH="$TESTSUITE_BRANCH"
            REPO_SLUG=$(echo "$REPO" | sed 's|.*/||; s/bluefin-lts/lts/; s/bluefin/blu/; s/dakota/dak/; s/knuckle/knu/; s/bazzite/baz/; s/aurora/aur/')
@@ -111,8 +113,10 @@ spec:
            case "$REPO" in
             */dakota)       TMPL="dakota-qa-pipeline"
                             EXTRA_PARAMS="
-              - name: testsuite-branch
-                value: ${TESTSUITE_BRANCH}" ;;
+               - name: testsuite-branch
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
             */knuckle)      TMPL="knuckle-qa-pipeline"
                             EXTRA_PARAMS="" ;;
             */bazzite)      TMPL="bluefin-qa-pipeline"
@@ -126,7 +130,9 @@ spec:
                - name: variant
                  value: bazzite
                - name: testsuite-branch
-                 value: ${TESTSUITE_BRANCH}" ;;
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
             */aurora)       TMPL="bluefin-qa-pipeline"
                             EXTRA_PARAMS="
                - name: image
@@ -138,7 +144,9 @@ spec:
                - name: variant
                  value: aurora
                - name: testsuite-branch
-                 value: ${TESTSUITE_BRANCH}" ;;
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
             */bluefin-lts)  TMPL="bluefin-qa-pipeline"
                             EXTRA_PARAMS="
                - name: image
@@ -150,7 +158,9 @@ spec:
                - name: variant
                  value: bluefin-lts
                - name: testsuite-branch
-                 value: ${TESTSUITE_BRANCH}" ;;
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
             */testsuite)    TMPL="bluefin-qa-pipeline"
                              # Run smoke + common against bluefin:testing using
                              # the PR branch so the new/changed scenarios are exercised.
@@ -160,7 +170,9 @@ spec:
                - name: suites
                  value: smoke,common
                - name: testsuite-branch
-                 value: ${TESTSUITE_BRANCH}" ;;
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
             *)              TMPL="bluefin-qa-pipeline"
                             # bluefin/common: smoke only to limit workload size
                             EXTRA_PARAMS="
@@ -169,7 +181,9 @@ spec:
                - name: suites
                  value: smoke
                - name: testsuite-branch
-                 value: ${TESTSUITE_BRANCH}" ;;
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
            esac
 
            kubectl create -f - <<EOF

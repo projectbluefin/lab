@@ -61,16 +61,12 @@ spec:
       args:
       - |
         set -euo pipefail
-        # Clone projectbluefin/testsuite — the canonical home for all Bluefin image tests.
-        # Falls back to main if the requested branch doesn't exist (PR branch testing).
+        # Clone the requested testsuite revision. A missing PR branch must fail so
+        # the workflow never reports a result from unrelated test code.
         TSREPO="{{inputs.parameters.testsuite-repo}}"
         TSBRANCH="{{inputs.parameters.testsuite-branch}}"
-        if git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}" /workspace/testsuite 2>/dev/null; then
-          echo "Cloned testsuite @ ${TSBRANCH}"
-        else
-          echo "Branch ${TSBRANCH} not found, falling back to main" >&2
-          git clone --depth 1 "${TSREPO}" /workspace/testsuite
-        fi
+        git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}" /workspace/testsuite
+        echo "Cloned testsuite @ ${TSBRANCH}"
     - name: ensure-passwd
       image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
       imagePullPolicy: IfNotPresent

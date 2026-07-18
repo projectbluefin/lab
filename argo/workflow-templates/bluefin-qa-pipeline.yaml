@@ -37,6 +37,8 @@ spec:
       value: ""
     - name: testsuite-branch
       value: "main"
+    - name: testsuite-repo
+      value: "https://github.com/projectbluefin/testsuite"
   templates:
   - name: pipeline
     dag:
@@ -68,6 +70,8 @@ spec:
             value: "{{workflow.parameters.branch}}"
           - name: testsuite-branch
             value: "{{workflow.parameters.testsuite-branch}}"
+          - name: testsuite-repo
+            value: "{{workflow.parameters.testsuite-repo}}"
           - name: behave-tags
             value: ""
   - name: validate-suites

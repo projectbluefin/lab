@@ -8,6 +8,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 spec:
+  # Suspend automatic kernel builds; submit flatcar-kernel-build manually when needed.
+  suspend: true
   schedules:
     - "*/10 * * * *"
   timezone: "UTC"
@@ -88,6 +90,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 spec:
+  # Suspend automatic gate runs with the build poller.
+  suspend: true
   schedules:
     - "*/30 * * * *"
   timezone: "UTC"

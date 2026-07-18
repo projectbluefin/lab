@@ -278,15 +278,9 @@ spec:
                   push: false
           EOF
 
-          # Since we are in the RE-coordinator template, RE is always enabled
-          # on first try, but we respect the retry attempt and drop RE on retry.
-          ATTEMPT="{{retries}}"
-          if [[ "${ATTEMPT}" == "0" ]]; then
-            echo "=== Distributed build: remote execution enabled (USB4 link up) ==="
-            sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
-          else
-            echo "=== Coordinator retry fallback to Cache-only (attempt=${ATTEMPT}) ==="
-          fi
+          # Every retry remains distributed; coordinator-local builds are forbidden.
+          echo "=== Distributed build: remote execution enabled ==="
+          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

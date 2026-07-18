@@ -122,6 +122,16 @@ def test_unrelated_vm_workflows_keep_their_shared_helpers():
     assert "name: teardown-vm" in migration
 
 
+def test_lts_smoke_recipe_uses_lts_image_and_variant():
+    justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
+
+    assert 'if [[ "{{ tag }}" == lts-* ]]; then' in justfile
+    assert 'image="ghcr.io/projectbluefin/bluefin-lts"' in justfile
+    assert 'image_tag="${image_tag#lts-}"' in justfile
+    assert 'variant="bluefin-lts"' in justfile
+    assert '-p variant="${variant}"' in justfile
+
+
 def test_scheduled_and_pr_image_qa_do_not_pass_vm_parameters():
     files = [
         ROOT / "argo/workflow-templates/pr-poller.yaml",

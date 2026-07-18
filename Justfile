@@ -72,9 +72,20 @@ run-tests:
 # Run smoke tests against a specific tag
 # Usage: just run-tests-tag lts-testing
 run-tests-tag tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image="ghcr.io/projectbluefin/bluefin"
+    image_tag="{{ tag }}"
+    variant="bluefin"
+    if [[ "{{ tag }}" == lts-* ]]; then
+        image="ghcr.io/projectbluefin/bluefin-lts"
+        image_tag="${image_tag#lts-}"
+        variant="bluefin-lts"
+    fi
     argo submit argo/bluefin-smoke-test.yaml \
-        -p image="ghcr.io/ublue-os/bluefin:{{ tag }}" \
-        -p image-tag="{{ tag }}" \
+        -p image="${image}" \
+        -p image-tag="${image_tag}" \
+        -p variant="${variant}" \
         -n {{ argo_ns }} \
         --watch
 

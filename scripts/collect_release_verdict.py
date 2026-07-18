@@ -118,7 +118,7 @@ def latest_build(image_builds, key):
     return max(dated, key=lambda r: r["started_at"])
 
 
-def qa_input(tests_rows, variant, branch, build_finished_at):
+def qa_input(tests_rows, variant, branch, build_finished_at, current_digest):
     """QA gate from tests-matrix rows for the lane."""
     rows = [r for r in tests_rows if r.get("variant") == variant and r.get("branch") == branch]
     if not rows:
@@ -126,19 +126,37 @@ def qa_input(tests_rows, variant, branch, build_finished_at):
     ran = [r for r in rows if r.get("last_run")]
     if not ran:
         return {"status": "unavailable", "reason": "no lab QA run has published results for this lane yet", "rows": rows}
+    
     latest = max(r["last_run"] for r in ran)
-    stale = bool(build_finished_at and latest < build_finished_at)
-    failed = [r for r in ran if r.get("result_status") == "failed"]
-    if stale:
+    failed_suites = []
+    pending_suites = []
+    
+    for r in rows:
+        if not r.get("last_run"):
+            pending_suites.append(r.get("suite"))
+            continue
+            
+        suite_digest = r.get("digest")
+        if suite_digest and current_digest:
+            is_match = (suite_digest == current_digest)
+        else:
+            is_match = bool(build_finished_at and r["last_run"] >= build_finished_at)
+            
+        if not is_match:
+            pending_suites.append(r.get("suite"))
+        elif r.get("result_status") == "failed":
+            failed_suites.append(r.get("suite"))
+            
+    if pending_suites:
         return {
             "status": "pending",
-            "reason": f"latest QA evidence ({latest}) predates the current build ({build_finished_at}); verdict awaits a lab run against the new digest",
+            "reason": f"QA evidence pending for suite(s): " + ", ".join(pending_suites) + f" against digest {current_digest[:12] if current_digest else 'none'}",
             "rows": rows, "last_run": latest,
         }
-    if failed:
+    if failed_suites:
         return {
             "status": "failed",
-            "reason": f"{len(failed)} QA suite(s) failing: " + ", ".join(r.get("suite", "?") for r in failed),
+            "reason": f"QA suite(s) failing: " + ", ".join(failed_suites),
             "rows": rows, "last_run": latest,
         }
     return {"status": "passed", "reason": None, "rows": rows, "last_run": latest}
@@ -210,7 +228,7 @@ def main():
             }
 
         # -- input 2: qa ----------------------------------------------------
-        qa = qa_input(tests_rows, variant, branch, build_input.get("finished_at"))
+        qa = qa_input(tests_rows, variant, branch, build_input.get("finished_at"), digest)
 
         # -- input 3: signature (cached by digest) ---------------------------
         prev_row = prev_rows.get(lane_id) or {}

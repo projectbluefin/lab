@@ -146,58 +146,6 @@ projects:
         });
       }
 
-      /* ── 3. BANDWIDTH CHART ────────────────────────────────── */
-      if (bandwidthContainer && pageData.bandwidth) {
-        const bChart = echarts.init(bandwidthContainer);
-        bChart.setOption({
-          tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
-          backgroundColor: 'transparent',
-          legend: { top: 0, textStyle: { color: '#cbd5e1' }, data: ['Ingress (Upload)', 'Egress (Download)'] },
-          grid: { left: 50, right: 20, top: 40, bottom: 40 },
-          xAxis: {
-            type: 'category',
-            data: pageData.bandwidth.hours,
-            axisLabel: { color: '#94a3b8' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-          },
-          yAxis: {
-            type: 'value',
-            axisLabel: { color: '#94a3b8', formatter: '{value} MB/s' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-          },
-          series: [
-            {
-              name: 'Ingress (Upload)',
-              type: 'line',
-              smooth: true,
-              showSymbol: false,
-              itemStyle: { color: '#10b981' },
-              areaStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                  { offset: 0, color: 'rgba(16, 185, 129, 0.2)' },
-                  { offset: 1, color: 'rgba(16, 185, 129, 0)' }
-                ])
-              },
-              data: pageData.bandwidth.ingress
-            },
-            {
-              name: 'Egress (Download)',
-              type: 'line',
-              smooth: true,
-              showSymbol: false,
-              itemStyle: { color: '#38bdf8' },
-              areaStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                  { offset: 0, color: 'rgba(56, 189, 248, 0.2)' },
-                  { offset: 1, color: 'rgba(56, 189, 248, 0)' }
-                ])
-              },
-              data: pageData.bandwidth.egress
-            }
-          ]
-        });
-      }
-
       /* ── 4. COMPRESSION RATIO CHART ────────────────────────── */
       if (compressionContainer && pageData.compression) {
         const cChart = echarts.init(compressionContainer);
@@ -241,8 +189,6 @@ projects:
         dInst?.resize();
         const fInst = echarts.getInstanceByDom(fsdkContainer);
         fInst?.resize();
-        const bInst = echarts.getInstanceByDom(bandwidthContainer);
-        bInst?.resize();
         const cInst = echarts.getInstanceByDom(compressionContainer);
         cInst?.resize();
         sparklineCharts.forEach((chart) => chart.resize());

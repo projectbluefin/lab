@@ -61,7 +61,12 @@ const containerDiskCatalog: ContainerDiskDef[] = [
 
 // Query the local Zot registry for tags; fall back to the catalog definition
 // when ghost is unreachable so static builds still succeed offline.
+const isGha = !!process.env.GITHUB_ACTIONS;
+
 const queryTags = (repo: string): string[] => {
+  if (isGha) {
+    return containerDiskCatalog.find((c) => c.repo === repo)?.tags || [];
+  }
   try {
     const res = execSync(`curl -s --max-time 1.5 http://192.168.1.102:30500/v2/${repo}/tags/list`, {
       encoding: 'utf8',
@@ -75,6 +80,9 @@ const queryTags = (repo: string): string[] => {
 };
 
 const inspectRepo = (repo: string, tag: string): SkopeoData | null => {
+  if (isGha) {
+    return null;
+  }
   try {
     const raw = execSync(`skopeo inspect --tls-verify=false docker://192.168.1.102:30500/${repo}:${tag}`, {
       encoding: 'utf8',

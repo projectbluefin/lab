@@ -4,7 +4,50 @@ import os
 import json
 import subprocess
 import shutil
+import urllib.request
 from datetime import datetime, timezone
+
+def ghcr_digest(repository, tag):
+    """Resolve a public GHCR tag to its manifest digest anonymously."""
+    try:
+        tok_req = urllib.request.Request(
+            f"https://ghcr.io/token?scope=repository:{repository}:pull"
+        )
+        with urllib.request.urlopen(tok_req, timeout=15) as r:
+            token = json.load(r)["token"]
+        req = urllib.request.Request(
+            f"https://ghcr.io/v2/{repository}/manifests/{tag}",
+            method="HEAD",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": ", ".join(
+                    [
+                        "application/vnd.oci.image.index.v1+json",
+                        "application/vnd.oci.image.manifest.v1+json",
+                        "application/vnd.docker.distribution.manifest.list.v2+json",
+                        "application/vnd.docker.distribution.manifest.v2+json",
+                    ]
+                ),
+            },
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.headers.get("Docker-Content-Digest")
+    except Exception:
+        return None
+
+def resolve_digest_for_slug(img_slug):
+    mapping = {
+        "bluefin-testing": ("projectbluefin/bluefin", "testing"),
+        "bluefin-stable": ("projectbluefin/bluefin", "stable"),
+        "bluefin-lts-testing": ("projectbluefin/bluefin-lts", "testing"),
+        "bluefin-lts-stable": ("projectbluefin/bluefin-lts", "stable"),
+        "dakota-testing": ("projectbluefin/dakota", "testing"),
+        "dakota-stable": ("projectbluefin/dakota", "stable"),
+    }
+    if img_slug in mapping:
+        repo, tag = mapping[img_slug]
+        return ghcr_digest(repo, tag)
+    return None
 
 def run_cmd(cmd, cwd=None, env=None, check=True):
     print(f"Running command: {' '.join(cmd)}")
@@ -16,7 +59,7 @@ def run_cmd(cmd, cwd=None, env=None, check=True):
         sys.exit(result.returncode)
     return result
 
-def parse_results_and_build_update(data, existing_data, current_utc, workflow_name, img_slug, suite):
+def parse_results_and_build_update(data, existing_data, current_utc, workflow_name, img_slug, suite, digest=None):
     failed_scenarios = []
     failed_scenarios_detailed = []
     scenarios_total = 0
@@ -78,6 +121,9 @@ def parse_results_and_build_update(data, existing_data, current_utc, workflow_na
         "failed": scenarios_failed,
         "duration_seconds": round(total_duration, 2)
     }
+    if digest:
+        new_history_entry["digest"] = digest
+        
     history.insert(0, new_history_entry)
     # Keep history capped to last 15 runs
     history = history[:15]
@@ -103,11 +149,13 @@ def parse_results_and_build_update(data, existing_data, current_utc, workflow_na
         "screenshot_url": screenshot_url,
         "history": history
     }
+    if digest:
+        updated_data["digest"] = digest
     return updated_data
 
 def main():
     if len(sys.argv) < 6:
-        print("Usage: publish_test_results.py <results_json_path> <img_slug> <suite> <workflow_name> <github_token>")
+        print("Usage: publish_test_results.py <results_json_path> <img_slug> <suite> <workflow_name> <github_token> [digest]")
         sys.exit(1)
 
     results_json_path = sys.argv[1]
@@ -115,6 +163,15 @@ def main():
     suite = sys.argv[3]
     workflow_name = sys.argv[4]
     github_token = sys.argv[5]
+    digest = sys.argv[6] if len(sys.argv) > 6 else None
+
+    if not digest:
+        print(f"No digest provided. Attempting anonymous resolution for slug {img_slug}...")
+        digest = resolve_digest_for_slug(img_slug)
+        if digest:
+            print(f"Successfully resolved digest: {digest}")
+        else:
+            print("Digest resolution skipped or failed.")
 
     if not github_token:
         print("ERROR: github_token is empty. Skipping publication.")
@@ -162,7 +219,8 @@ def main():
         current_utc=current_utc,
         workflow_name=workflow_name,
         img_slug=img_slug,
-        suite=suite
+        suite=suite,
+        digest=digest
     )
 
     with open(result_filepath, 'w') as f:

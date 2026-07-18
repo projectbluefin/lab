@@ -18,11 +18,14 @@ const formatUtc = (value: string | null) =>
       }) + ' UTC'
     : 'Never';
 
+const isGha = !!process.env.GITHUB_ACTIONS;
+
 let writableRepos: string[] = [];
 let cacheRepos: string[] = [];
 let buildSource: 'live' | 'fallback' = 'fallback';
 
 try {
+  if (isGha) throw new Error("GHA environment, skipping local Zot curls");
   // Query Zot writable registry on ghost
   const writableRes = execSync('curl -s --max-time 1.5 http://192.168.1.102:30500/v2/_catalog', { encoding: 'utf8' });
   const writableData = JSON.parse(writableRes) as RegistryCatalog;
@@ -53,6 +56,7 @@ interface ContainerMetadata {
 
 const getContainerMetadata = (repoName: string): ContainerMetadata => {
   try {
+    if (isGha) throw new Error("GHA environment, skipping local skopeo inspect");
     const raw = execSync(`skopeo inspect --tls-verify=false docker://192.168.1.102:30500/${repoName}:latest`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 2000 });
     const data = JSON.parse(raw);
     const sizeBytes = data.LayersData?.reduce((sum: number, layer: any) => sum + (layer.Size || 0), 0) || 0;
@@ -251,26 +255,6 @@ const fsdkContainers = [
   }
 ];
 
-const getRepoHeat = (repo: string) => {
-  const name = repo.toLowerCase();
-  if (name.includes('bluefin') && !name.includes('lts')) {
-    return { percent: 96, label: 'Sizzling', color: 'linear-gradient(90deg, #f43f5e 0%, #f97316 50%, #eab308 100%)' };
-  }
-  if (name.includes('bluefin-lts')) {
-    return { percent: 78, label: 'Very Hot', color: 'linear-gradient(90deg, #ec4899 0%, #f43f5e 50%, #f97316 100%)' };
-  }
-  if (name.includes('lab-runner')) {
-    return { percent: 70, label: 'Hot', color: 'linear-gradient(90deg, #ec4899 0%, #f43f5e 100%)' };
-  }
-  if (name.includes('flatcar')) {
-    return { percent: 45, label: 'Warm', color: 'linear-gradient(90deg, #f43f5e 0%, #f97316 100%)' };
-  }
-  if (name.includes('qemu-img')) {
-    return { percent: 50, label: 'Warm', color: 'linear-gradient(90deg, #f97316 0%, #eab308 100%)' };
-  }
-  return { percent: 25, label: 'Cool', color: 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)' };
-};
-
 const totalFsdk = fsdkContainers.length;
 const builtFsdk = fsdkContainers.filter((c) => c.status === 'available').length;
 
@@ -313,12 +297,6 @@ writableRepos.forEach((repo) => {
 
 const totalStorageMb = (totalStorageBytes / (1024 * 1024)).toFixed(1);
 
-const bandwidthData = {
-  hours: ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'],
-  ingress: [12.4, 8.5, 4.2, 5.1, 19.8, 34.5, 42.1, 15.6, 22.8, 48.2, 30.1, 18.4],
-  egress: [24.5, 18.2, 12.1, 15.6, 45.2, 78.4, 95.1, 40.2, 55.6, 112.4, 65.2, 38.9]
-};
-
 const compressionData = fsdkContainers.map(c => {
   const compStr = c.metadata.size.replace(' MB', '');
   const compVal = parseFloat(compStr) || 20.0;
@@ -339,7 +317,6 @@ const chartPayload = {
     value: c.status === 'available' ? 100 : 0,
     status: c.status
   })),
-  bandwidth: bandwidthData,
   compression: compressionData
 };
 
@@ -1027,17 +1004,7 @@ const generatedAt = new Date().toISOString();
   </div>
 
   <!-- EXPERT CHARTS -->
-  <div class="chart-grid">
-    <!-- Registry Network Bandwidth -->
-    <article class="chart-panel-custom">
-      <div class="app-kickass-card__header" style="margin-bottom: 0.5rem;">
-        <p class="status-card__eyebrow">Real-time IO throughput</p>
-      </div>
-      <h2>Registry network bandwidth (24h stream)</h2>
-      <p>Historical telemetry showing registry upload (ingress) vs download (egress) transfer speeds in MB/s.</p>
-      <div id="userspace-bandwidth-chart" class="chart-box-custom" role="img" aria-label="Registry Network Bandwidth Chart"></div>
-    </article>
-
+  <div class="chart-grid" style="grid-template-columns: 1fr;">
     <!-- OCI Layer Storage Efficiency -->
     <article class="chart-panel-custom">
       <div class="app-kickass-card__header" style="margin-bottom: 0.5rem;">
@@ -1068,7 +1035,7 @@ projects:
   </div>
 
   <!-- REGISTRY AND CACHE DETAILS -->
-  <h2 class="section-title">Registry details & activity heat</h2>
+  <h2 class="section-title">Registry details & cache repositories</h2>
   <div class="fp-table-wrapper table-scroll">
     <table class="fp-table data-table">
       <thead>
@@ -1077,41 +1044,26 @@ projects:
           <th scope="col">Repository Name</th>
           <th scope="col">Local Endpoint</th>
           <th scope="col">Type</th>
-          <th scope="col">Registry Heat / Activity</th>
         </tr>
       </thead>
       <tbody>
         {writableRepos.map((repo) => {
-          const heat = getRepoHeat(repo);
           return (
             <tr>
               <th scope="row" class="cell-primary">Zot local registry</th>
               <td>{repo}</td>
               <td class="cell-num">192.168.1.102:30500/v2/{repo}</td>
               <td><span class="pill pill--passed">writable</span></td>
-              <td class="heat-col-layout">
-                <span style="font-weight: 700; font-size: 0.82rem; color: #f1f5f9;">{heat.label} ({heat.percent}%)</span>
-                <div class="heat-bar-container">
-                  <div class="heat-glowing-bar" style={`width: ${heat.percent}%; background: ${heat.color};`} />
-                </div>
-              </td>
             </tr>
           );
         })}
         {cacheRepos.map((repo) => {
-          const heat = getRepoHeat(repo);
           return (
             <tr>
               <th scope="row" class="cell-primary">Zot pull-through cache</th>
               <td>{repo}</td>
               <td class="cell-num">192.168.1.102:30501/v2/{repo}</td>
               <td><span class="pill pill--pending">pull-through cache</span></td>
-              <td class="heat-col-layout">
-                <span style="font-weight: 700; font-size: 0.82rem; color: #f1f5f9;">{heat.label} ({heat.percent}%)</span>
-                <div class="heat-bar-container">
-                  <div class="heat-glowing-bar" style={`width: ${heat.percent}%; background: ${heat.color};`} />
-                </div>
-              </td>
             </tr>
           );
         })}
@@ -1285,58 +1237,6 @@ projects:
         });
       }
 
-      /* ── 3. BANDWIDTH CHART ────────────────────────────────── */
-      if (bandwidthContainer && pageData.bandwidth) {
-        const bChart = echarts.init(bandwidthContainer);
-        bChart.setOption({
-          tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
-          backgroundColor: 'transparent',
-          legend: { top: 0, textStyle: { color: '#cbd5e1' }, data: ['Ingress (Upload)', 'Egress (Download)'] },
-          grid: { left: 50, right: 20, top: 40, bottom: 40 },
-          xAxis: {
-            type: 'category',
-            data: pageData.bandwidth.hours,
-            axisLabel: { color: '#94a3b8' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-          },
-          yAxis: {
-            type: 'value',
-            axisLabel: { color: '#94a3b8', formatter: '{value} MB/s' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-          },
-          series: [
-            {
-              name: 'Ingress (Upload)',
-              type: 'line',
-              smooth: true,
-              showSymbol: false,
-              itemStyle: { color: '#10b981' },
-              areaStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                  { offset: 0, color: 'rgba(16, 185, 129, 0.2)' },
-                  { offset: 1, color: 'rgba(16, 185, 129, 0)' }
-                ])
-              },
-              data: pageData.bandwidth.ingress
-            },
-            {
-              name: 'Egress (Download)',
-              type: 'line',
-              smooth: true,
-              showSymbol: false,
-              itemStyle: { color: '#38bdf8' },
-              areaStyle: {
-                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                  { offset: 0, color: 'rgba(56, 189, 248, 0.2)' },
-                  { offset: 1, color: 'rgba(56, 189, 248, 0)' }
-                ])
-              },
-              data: pageData.bandwidth.egress
-            }
-          ]
-        });
-      }
-
       /* ── 4. COMPRESSION RATIO CHART ────────────────────────── */
       if (compressionContainer && pageData.compression) {
         const cChart = echarts.init(compressionContainer);
@@ -1380,8 +1280,6 @@ projects:
         dInst?.resize();
         const fInst = echarts.getInstanceByDom(fsdkContainer);
         fInst?.resize();
-        const bInst = echarts.getInstanceByDom(bandwidthContainer);
-        bInst?.resize();
         const cInst = echarts.getInstanceByDom(compressionContainer);
         cInst?.resize();
         sparklineCharts.forEach((chart) => chart.resize());

@@ -6,7 +6,7 @@
     "generated_at": "2026-07-18T23:34:01Z",
     "live_snapshot_ok": false,
     "git_manifests_scanned": 107,
-    "live_pods_scanned": 0
+    "live_pods_scanned": 383
   },
   "score": 80.2,
   "rules": [
@@ -18,6 +18,18 @@
       "total_checked": 101,
       "violations_count": 4,
       "violations": [
+        {
+          "source": "git:manifests/k3s-upgrade-plans.yaml",
+          "detail": "Banned registry for image 'rancher/k3s-upgrade'"
+        },
+        {
+          "source": "git:manifests/k3s-upgrade-plans.yaml",
+          "detail": "Banned registry for image 'rancher/k3s-upgrade'"
+        },
+        {
+          "source": "git:manifests/k3s-upgrade-plans.yaml",
+          "detail": "Banned registry for image 'rancher/k3s-upgrade'"
+        },
         {
           "source": "git:manifests/system-upgrade-controller.yaml",
           "detail": "Banned registry for image 'rancher/system-upgrade-controller:v0.19.2'"
@@ -40,10 +52,35 @@
       "id": "registry_allowlist_cluster",
       "name": "Live Cluster Registry Allowlist",
       "description": "All running container images in the cluster must reside on allowed registries.",
-      "status": "passed",
-      "total_checked": 0,
-      "violations_count": 0,
-      "violations": []
+      "status": "failed",
+      "total_checked": 1037,
+      "violations_count": 6,
+      "violations": [
+        {
+          "source": "cluster:argo/homelab-access-7ff9dddc95-dkd2c",
+          "detail": "Running image violates registry allowlist: 'python:3.12-slim'"
+        },
+        {
+          "source": "cluster:argocd/argocd-redis-5c6c67bb89-mlnbw",
+          "detail": "Running image violates registry allowlist: 'public.ecr.aws/docker/library/redis:8.2.3-alpine'"
+        },
+        {
+          "source": "cluster:default/exo-probe-2",
+          "detail": "Running image violates registry allowlist: 'alpine'"
+        },
+        {
+          "source": "cluster:kube-system/coredns-8587755799-9vb6j",
+          "detail": "Running image violates registry allowlist: 'rancher/mirrored-coredns-coredns:1.14.4'"
+        },
+        {
+          "source": "cluster:kube-system/local-path-provisioner-cfcd64b69-dk52s",
+          "detail": "Running image violates registry allowlist: 'rancher/local-path-provisioner:v0.0.36'"
+        },
+        {
+          "source": "cluster:system-upgrade/system-upgrade-controller-79fc7f6f99-lplvh",
+          "detail": "Running image violates registry allowlist: 'rancher/system-upgrade-controller:v0.19.2'"
+        }
+      ]
     },
     {
       "id": "no_root_storage_git",
@@ -53,10 +90,6 @@
       "total_checked": 18,
       "violations_count": 14,
       "violations": [
-        {
-          "source": "git:manifests/registry-mirror-config.yaml",
-          "detail": "Potentially unauthorized hostPath allocation on root disk: '/var/lib/rancher/k3s/agent/etc/containerd/certs.d'"
-        },
         {
           "source": "git:manifests/system-upgrade-controller.yaml",
           "detail": "Potentially unauthorized hostPath allocation on root disk: '/etc/ssl'"
@@ -71,6 +104,10 @@
         },
         {
           "source": "git:argo/workflow-templates/dakota-buildstream-warm-cache.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/dev/fuse'"
+        },
+        {
+          "source": "git:argo/workflow-templates/dakota-build-pipeline.yaml",
           "detail": "Potentially unauthorized hostPath allocation on root disk: '/dev/fuse'"
         },
         {
@@ -120,11 +157,7 @@
       "violations_count": 8,
       "violations": [
         {
-          "source": "git:manifests/orphan-pod-gc.yaml",
-          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
-        },
-        {
-          "source": "git:manifests/golden-disk-gc.yaml",
+          "source": "git:manifests/orphan-vm-cleanup.yaml",
           "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
         },
         {
@@ -132,11 +165,19 @@
           "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
         },
         {
-          "source": "git:manifests/orphan-vm-cleanup.yaml",
+          "source": "git:manifests/zot-writable.yaml",
           "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
         },
         {
-          "source": "git:manifests/zot-writable.yaml",
+          "source": "git:manifests/golden-disk-gc.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:manifests/orphan-pod-gc.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:argo/workflow-templates/dakota-build-pipeline.yaml",
           "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
         },
         {
@@ -146,10 +187,6 @@
         {
           "source": "git:argo/workflow-templates/flatcar-kernel-build.yaml",
           "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
-        },
-        {
-          "source": "git:argo/workflow-templates/dakota-build-pipeline.yaml",
-          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
         }
       ]
     },
@@ -157,10 +194,63 @@
       "id": "no_hard_node_pins_cluster",
       "name": "No Hard Node Selectors in Cluster",
       "description": "No active pods with hard node selector pinning (excluding approved infrastructure controllers).",
-      "status": "passed",
-      "total_checked": 0,
-      "violations_count": 0,
-      "violations": []
+      "status": "failed",
+      "total_checked": 19,
+      "violations_count": 13,
+      "violations": [
+        {
+          "source": "cluster:argo/argo-workflows-workflow-controller-6ffb86ddb9-2kgdm",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost', 'kubernetes.io/os': 'linux'}"
+        },
+        {
+          "source": "cluster:argo/check-zot-dir",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-g9t4w-detect-build-mode-346799027",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-mhm2n-detect-build-mode-3020541986",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-skt44-detect-build-mode-3423664088",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-vbzzp-detect-build-mode-318940846",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-vr44w-detect-build-mode-3176255339",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-w2nv9-detect-build-mode-2463658798",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-z9k8d-detect-build-mode-1673528840",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argo/dakota-build-pipeline-zlv6s-detect-build-mode-2327597957",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        },
+        {
+          "source": "cluster:argocd/argocd-application-controller-0",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost', 'kubernetes.io/os': 'linux'}"
+        },
+        {
+          "source": "cluster:default/exo-probe-2",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'exo-0'}"
+        },
+        {
+          "source": "cluster:local-registry/check-perms",
+          "detail": "Pod hard-pinned to node: {'kubernetes.io/hostname': 'ghost'}"
+        }
+      ]
     }
   ]
 }

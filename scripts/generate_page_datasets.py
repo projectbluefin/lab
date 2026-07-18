@@ -332,6 +332,7 @@ def build_tests_matrix(root: Path, collected_at: str) -> dict:
                 'result_status': result.get('status', 'missing'),
                 'last_run': last_run,
                 'workflow_name': result.get('workflow_name'),
+                'digest': result.get('digest'),
                 'scenarios_total': scenarios_total,
                 'scenarios_failed': scenarios_failed,
                 'pass_rate': pass_rate,

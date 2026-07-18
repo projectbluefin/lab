@@ -179,3 +179,18 @@ def test_dakota_and_cosmic_qa_are_container_only():
         assert "name: run-container-tests" in content
         assert "provision-containerdisk-vm" not in content
         assert "run-gnome-tests" not in content
+
+
+def test_cosmic_qa_uses_a_published_bootc_image():
+    cosmic = (ROOT / "argo/workflow-templates/cosmic-qa-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'value: "cosmic-pr-33"' in cosmic
+
+
+def test_caller_contract_requires_forked_testsuite_repo_and_branch():
+    contract = (ROOT / "docs/skills/argo-workflows.md").read_text(encoding="utf-8")
+
+    assert "- `testsuite-repo`" in contract
+    assert "override both `testsuite-repo` and `testsuite-branch`" in contract

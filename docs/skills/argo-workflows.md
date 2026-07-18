@@ -128,11 +128,13 @@ payload:
 - `variant`
 - `branch`
 - `testsuite-branch`
+- `testsuite-repo`
 
 Do **not** pass legacy VM-era parameters such as `containerdisk-tag`,
 `ssh-key-secret`, `vm-memory`, or caller-side `namespace` blocks. For testsuite
-PRs, override `testsuite-branch` with the PR branch; keep other repos on
-`main`.
+PRs, override both `testsuite-repo` and `testsuite-branch` with the PR head
+repository and branch; keep the canonical repository and `main` for other
+repos.
 
 ### 4. Output parameters — use `script` with stdout
 

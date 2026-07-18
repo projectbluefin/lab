@@ -41,7 +41,14 @@ spec:
   - name: pipeline
     dag:
       tasks:
+      - name: validate-suites
+        template: validate-suites
+        arguments:
+          parameters:
+          - name: suites
+            value: "{{workflow.parameters.suites}}"
       - name: test-lane
+        depends: "validate-suites.Succeeded"
         withItems: [smoke, common, developer, software, system]
         when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
         templateRef:
@@ -63,3 +70,29 @@ spec:
             value: "{{workflow.parameters.testsuite-branch}}"
           - name: behave-tags
             value: ""
+  - name: validate-suites
+    inputs:
+      parameters:
+      - name: suites
+    script:
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      command: [bash]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |
+        set -euo pipefail
+        IFS=',' read -r -a raw_suites <<< "{{inputs.parameters.suites}}"
+        for suite in "${raw_suites[@]}"; do
+          case "${suite}" in
+            smoke|common|developer|software|system) ;;
+            *)
+              echo "Unsupported suites value: ${suite}" >&2
+              exit 1
+              ;;
+          esac
+        done

@@ -139,7 +139,7 @@ def test_migration_rebuilds_its_own_containerdisk_source():
     assert "name: staging" in migration
     assert "volumeClaimTemplates:" not in builder.read_text(encoding="utf-8")
     assert "key: migration-containerdisk-build" in migration
-    assert "activeDeadlineSeconds: 21600" in migration
+    assert "activeDeadlineSeconds: 86400" in migration
 
 
 def test_lts_smoke_recipe_uses_lts_image_and_variant():

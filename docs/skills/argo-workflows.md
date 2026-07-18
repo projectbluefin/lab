@@ -116,6 +116,33 @@ Use `templateRef` for cross-WorkflowTemplate calls:
       value: "{{tasks.provision.outputs.parameters.vm-ip}}"
 ```
 
+### 3b. Container-only suite fan-out
+
+For container-only QA pipelines, fan out the requested suite list directly from a
+single DAG task instead of keeping a VM-specific lane template around:
+
+```yaml
+- name: test-lane
+  withItems: [smoke, common, developer, software, system]
+  when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
+  templateRef:
+    name: run-container-tests
+    template: run-container-tests
+  arguments:
+    parameters:
+    - name: image
+      value: "{{workflow.parameters.image}}"
+    - name: image-tag
+      value: "{{workflow.parameters.image-tag}}"
+    - name: suite
+      value: "{{item}}"
+```
+
+If `run-container-tests` is the shared runner for every suite, keep an explicit
+shell allow-list (`smoke|common|developer|software|system`) in the runner script
+so unsupported suite names fail immediately instead of silently drifting back to
+VM-only behavior.
+
 ### 4. Output parameters — use `script` with stdout
 
 For steps that produce a value consumed by downstream steps, write the result to stdout and nothing else:

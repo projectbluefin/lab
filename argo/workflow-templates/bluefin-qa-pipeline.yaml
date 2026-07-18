@@ -5,281 +5,61 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Full Bluefin QA pipeline: assert containerDisk exists in Zot, then run
-      parallel test lanes (smoke, developer, system). Each lane provisions a
-      fresh KubeVirt VM, runs the behave/qecore suite via SSH, and tears down
-      the VM on completion. On PR runs, posts a GitHub commit status on exit.
-      The digest-watch CronWorkflow is responsible for keeping the containerDisk
-      current — this pipeline fails fast if the disk is missing.
+      Container-only Bluefin QA pipeline: fan out the selected smoke, common,
+      developer, software, and system suites directly to run-container-tests.
+      This path runs the same container runner for every selected suite without
+      KubeVirt or containerDisk inputs.
   labels:
     app.kubernetes.io/component: qa-pipeline
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
   parallelism: 2
-  # Queuing lives on the pipeline template (qa-vm-fleet semaphore), not here:
-  # workflow-level locks are bypassed when image-poller/digest-watch invoke
-  # this pipeline via templateRef. parallelism caps in-workflow lane fan-out.
   activeDeadlineSeconds: 3600
-  # ── entrypoint ──────────────────────────────────────────────────────────────
   entrypoint: pipeline
-
-  # ── cleanup VM + hostDisk on any exit (success, failure, timeout) ──────────
-  # Also posts GitHub commit status when sha/repo params are supplied (PR runs).
-  onExit: cleanup-and-report
-
-  # ── parameters ──────────────────────────────────────────────────────────────
   arguments:
     parameters:
     - name: image
       value: "ghcr.io/projectbluefin/bluefin"
     - name: image-tag
       value: "testing"
-    - name: namespace
-      value: "bluefin-test"
-      # Comma-separated suite names matching tests/ subdirectories
     - name: suites
-      value: "smoke,developer,software"
-      # Used to select Ghostty fixtures on dakota builds
+      value: "smoke,common,developer,software,system"
     - name: variant
       value: "bluefin"
-    - name: ssh-key-secret
-      value: "bluefin-test-ssh-key"
-      # Tag for the containerDisk image in the local Zot registry.
-      # Defaults to image-tag for bluefin (testing → bluefin-containerdisk:testing).
-      # Override for lts: image-tag=testing (ghcr.io tag) + containerdisk-tag=lts-testing (zot tag).
-    - name: containerdisk-tag
-      value: "testing"
-      # git ref the test runner clones (test code + step defs). Default `main`;
-      # override to test a PR branch end-to-end without merging.
     - name: branch
       value: "main"
-      # Optional: supplied by ARC runner on PR runs; empty on nightly CronWorkflow runs.
-      # When sha is non-empty, the onExit handler posts a GitHub commit status.
     - name: pr-number
       value: ""
     - name: sha
       value: ""
     - name: repo
       value: ""
-    - name: vm-memory
-      value: "8Gi"
-      # Branch of projectbluefin/testsuite to clone for container test lanes.
-      # Default 'main'. Override to test a testsuite PR branch without merging.
     - name: testsuite-branch
       value: "main"
-
-  # ── pipeline DAG ─────────────────────────────────────────────────────────────
   templates:
   - name: pipeline
-    # One VM fleet cluster-wide. Template-level so every caller queues,
-    # including templateRef invocations from image-poller and PR pollers.
-    synchronization:
-      semaphores:
-      - configMapKeyRef:
-          name: workflow-semaphores
-          key: qa-vm-fleet
     dag:
       tasks:
-          # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.
-          # The digest-watch CronWorkflow is responsible for building it when GHCR changes.
-      - name: assert-cd
-        template: assert-cd
-        arguments:
-          parameters:
-          - name: containerdisk-tag
-            value: "{{workflow.parameters.containerdisk-tag}}"
-
-          # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down.
-          # NOTE: assert-cd is only relevant for system suite (containerDisk). Container test lanes
-          # (smoke/developer/software/common) pull the image directly from GHCR. assert-cd is kept
-          # in the depends chain so we don't run tests against a stale disk, but container lanes
-          # do not block the entire run when only container suites are requested.
       - name: test-lane
-        depends: "assert-cd.Succeeded || assert-cd.Failed"
-        withItems:
-        - smoke
-        - common
-        - developer
-        - software
-        - system
+        withItems: [smoke, common, developer, software, system]
         when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
-        template: lane
-        arguments:
-          parameters:
-          - name: suite
-            value: "{{item}}"
-          - name: vm-name
-                  # workflow.name is short (e.g. bluefin-qa-lts-7rvk5) and unique; using it
-                  # avoids the 63-char Kubernetes label-value limit that full UUID hits with
-                  # long variant names like "bluefin-lts-testing-developer-<36-char-uuid>".
-            value: "{{workflow.name}}-{{item}}"
-          - name: image-tag
-            value: "{{workflow.parameters.image-tag}}"
-          - name: containerdisk-tag
-            value: "{{workflow.parameters.containerdisk-tag}}"
-          - name: namespace
-            value: "{{workflow.parameters.namespace}}"
-          - name: variant
-            value: "{{workflow.parameters.variant}}"
-          - name: ssh-key-secret
-            value: "{{workflow.parameters.ssh-key-secret}}"
-          - name: branch
-            value: "{{workflow.parameters.branch}}"
-          - name: testsuite-branch
-            value: "{{workflow.parameters.testsuite-branch}}"
-          - name: vm-memory
-            value: "{{workflow.parameters.vm-memory}}"
-
-    # ── assert-cd: fail fast if containerDisk is missing from Zot ───────────
-    # Does NOT build — the digest-watch CronWorkflow owns that responsibility.
-  - name: assert-cd
-    inputs:
-      parameters:
-      - name: containerdisk-tag
-    script:
-      image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
-      command: [bash]
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-      source: |
-        set -euo pipefail
-        TAG="{{inputs.parameters.containerdisk-tag}}"
-        CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
-        DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
-          "docker://${CD_IMAGE}" 2>/dev/null || echo "")
-        if [[ -n "${DIGEST}" ]]; then
-          echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
-        else
-          echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
-          echo "The digest-watch CronWorkflow builds it when GHCR changes." >&2
-          echo "Check: argo list -n argo --field-selector metadata.name=~build-cd-sync" >&2
-          exit 1
-        fi
-
-    # ── lane: provision VM → run suite → teardown (per-suite) ────────────────
-  - name: lane
-    inputs:
-      parameters:
-      - name: suite
-      - name: vm-name
-      - name: image-tag
-      - name: containerdisk-tag
-      - name: namespace
-      - name: variant
-      - name: ssh-key-secret
-      - name: branch
-      - name: testsuite-branch
-      - name: vm-memory
-    steps:
-    - - name: provision
-        when: "{{inputs.parameters.suite}} == system"
-        templateRef:
-          name: provision-containerdisk-vm
-          template: provision-vm
-        arguments:
-          parameters:
-          - name: image-tag
-            value: "{{inputs.parameters.containerdisk-tag}}"
-          - name: vm-name
-            value: "{{inputs.parameters.vm-name}}"
-          - name: namespace
-            value: "{{inputs.parameters.namespace}}"
-          - name: vm-memory
-            value: "{{inputs.parameters.vm-memory}}"
-    - - name: run-tests-container
-        when: "{{inputs.parameters.suite}} != system"
         templateRef:
           name: run-container-tests
           template: run-container-tests
         arguments:
           parameters:
           - name: image
-            # Pass through the top-level image param so aurora (ghcr.io/ublue-os/aurora)
-            # and other non-projectbluefin images work without hardcoding the registry org.
             value: "{{workflow.parameters.image}}"
           - name: image-tag
-            value: "{{inputs.parameters.image-tag}}"
+            value: "{{workflow.parameters.image-tag}}"
           - name: suite
-            value: "{{inputs.parameters.suite}}"
+            value: "{{item}}"
           - name: variant
-            value: "{{inputs.parameters.variant}}"
+            value: "{{workflow.parameters.variant}}"
           - name: branch
-            value: "{{inputs.parameters.branch}}"
+            value: "{{workflow.parameters.branch}}"
           - name: testsuite-branch
-            value: "{{inputs.parameters.testsuite-branch}}"
+            value: "{{workflow.parameters.testsuite-branch}}"
           - name: behave-tags
             value: ""
-      - name: run-tests-vm
-        when: "{{inputs.parameters.suite}} == system"
-        templateRef:
-          name: run-gnome-tests
-          template: run-gnome-tests
-        arguments:
-          parameters:
-          - name: vm-ip
-            value: "{{steps.provision.outputs.parameters.vm-ip}}"
-          - name: suite
-            value: "{{inputs.parameters.suite}}"
-          - name: variant
-            value: "{{inputs.parameters.variant}}"
-          - name: ssh-key-secret
-            value: "{{inputs.parameters.ssh-key-secret}}"
-          - name: branch
-            value: "{{inputs.parameters.branch}}"
-          - name: containerdisk-tag
-            value: "{{inputs.parameters.containerdisk-tag}}"
-        hooks:
-          exit:
-            templateRef:
-              name: teardown-vm
-              template: teardown-vm
-            arguments:
-              parameters:
-              - name: vm-name
-                value: "{{inputs.parameters.vm-name}}"
-              - name: namespace
-                value: "{{inputs.parameters.namespace}}"
-    - - name: teardown
-        when: "{{inputs.parameters.suite}} == system"
-        templateRef:
-          name: teardown-vm
-          template: teardown-vm
-        arguments:
-          parameters:
-          - name: vm-name
-            value: "{{inputs.parameters.vm-name}}"
-          - name: namespace
-            value: "{{inputs.parameters.namespace}}"
-        continueOn:
-          failed: true
-
-  - name: cleanup-and-report
-    dag:
-      tasks:
-      - name: cleanup-vms
-        template: cleanup-orphan-vms
-
-  - name: cleanup-orphan-vms
-    script:
-      image: cgr.dev/chainguard/kubectl:latest-dev
-      command: [sh]
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
-      source: |
-        NS="{{workflow.parameters.namespace}}"
-        WF="{{workflow.name}}"
-        for SUITE in smoke common developer software system; do
-          kubectl delete vm -n "${NS}" "${WF}-${SUITE}" --ignore-not-found 2>/dev/null \
-            && echo "Cleaned ${WF}-${SUITE}" || true
-        done

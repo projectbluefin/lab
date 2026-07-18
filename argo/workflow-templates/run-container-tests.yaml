@@ -5,10 +5,11 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Runs GNOME/Wayland BDD tests (smoke, developer, software) directly inside
-      a Kubernetes pod built from the target bootc image, bypassing KubeVirt
-      virtualization. Uses dbus-run-session + qecore-headless for high-speed,
-      low-memory software-rendered e2e desktop testing.
+      Runs Bluefin BDD suites (smoke, common, developer, software, system)
+      directly inside a Kubernetes pod built from the target bootc image,
+      bypassing KubeVirt virtualization. Uses dbus-run-session +
+      qecore-headless for high-speed, low-memory software-rendered e2e desktop
+      testing.
   labels:
     app.kubernetes.io/component: test-runner
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -212,6 +213,14 @@ spec:
         export PATH="/home/bluefin-test/.local/bin:${PATH}"
         # testsuite uses its own PYTHONPATH root so 'tests.shared.*' imports resolve.
         export PYTHONPATH="/workspace/testsuite"
+
+        case "${SUITE}" in
+          smoke|common|developer|software|system) ;;
+          *)
+            echo "Unsupported container suite: ${SUITE}" >&2
+            exit 2
+            ;;
+        esac
 
         echo "Waiting for GNOME Shell AT-SPI to start..." >&2
         python3 /workspace/testsuite/tests/shared/wait_for_shell.py

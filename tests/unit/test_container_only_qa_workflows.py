@@ -19,3 +19,27 @@ def test_bluefin_image_poll_qa_is_container_only():
     )
     assert "name: run-container-tests" in content
     assert all(token not in content for token in FORBIDDEN)
+
+
+def test_image_poller_has_no_containerdisk_parameter_or_reference():
+    content = (ROOT / "argo/workflow-templates/image-poller.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "containerdisk-tag" not in content
+    assert "build-containerdisk" not in content
+
+
+def test_bluefin_container_only_pipeline_preserves_all_suite_lanes():
+    content = (ROOT / "argo/workflow-templates/bluefin-qa-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "withItems: [smoke, common, developer, software, system]" in content
+    assert 'value: "{{item}}"' in content
+
+
+def test_run_container_tests_explicitly_allows_system_suite():
+    content = (ROOT / "argo/workflow-templates/run-container-tests.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "smoke|common|developer|software|system" in content
+    assert "Unsupported container suite: ${SUITE}" in content

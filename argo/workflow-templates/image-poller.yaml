@@ -21,17 +21,10 @@ spec:
         value: "smoke,common,developer,software,system"
       - name: variant
         value: "bluefin"
-      # Zot containerdisk tag; defaults to image-tag when not set (works for bluefin:testing → "testing")
-      - name: containerdisk-tag
-        value: "testing"
       - name: branch
         value: "main"
       - name: testsuite-branch
         value: "main"
-      - name: vm-memory
-        value: "8Gi"
-      - name: ssh-key-secret
-        value: "bluefin-test-ssh-key"
 
   templates:
     - name: check-and-trigger
@@ -59,22 +52,14 @@ spec:
                   value: "{{workflow.parameters.image}}"
                 - name: image-tag
                   value: "{{workflow.parameters.image-tag}}"
-                - name: containerdisk-tag
-                  value: "{{workflow.parameters.containerdisk-tag}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
                 - name: suites
                   value: "{{workflow.parameters.suites}}"
                 - name: variant
                   value: "{{workflow.parameters.variant}}"
-                - name: vm-memory
-                  value: "{{workflow.parameters.vm-memory}}"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
                 - name: testsuite-branch
                   value: "{{workflow.parameters.testsuite-branch}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
           - name: update-digest
             depends: "check-digest.Succeeded && run-pipeline.Succeeded"
             when: "{{tasks.check-digest.outputs.parameters.changed}} == true"

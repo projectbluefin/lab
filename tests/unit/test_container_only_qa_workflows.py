@@ -132,6 +132,12 @@ def test_lts_smoke_recipe_uses_lts_image_and_variant():
     assert '-p variant="${variant}"' in justfile
 
 
+def test_migration_recipe_does_not_advertise_an_unsupported_lts_alias():
+    justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
+
+    assert "just run-migration-test lts-testing" not in justfile
+
+
 def test_scheduled_and_pr_image_qa_do_not_pass_vm_parameters():
     files = [
         ROOT / "argo/workflow-templates/pr-poller.yaml",

@@ -97,7 +97,6 @@ run-tests-matrix:
 
 # Run migration validation (bootc switch: ublue-os/bluefin → projectbluefin/bluefin)
 # Usage: just run-migration-test
-# Usage: just run-migration-test lts-testing
 run-migration-test tag=image_tag:
     argo submit --from workflowtemplate/bluefin-migration-test \
         -p image-tag="{{ tag }}" \

@@ -185,8 +185,11 @@ def test_cosmic_qa_uses_a_published_bootc_image():
     cosmic = (ROOT / "argo/workflow-templates/cosmic-qa-pipeline.yaml").read_text(
         encoding="utf-8"
     )
+    workflow_docs = (ROOT / "WORKFLOWS.md").read_text(encoding="utf-8")
 
     assert 'value: "cosmic-pr-33"' in cosmic
+    assert "| `image-tag` | `cosmic-pr-33` |" in workflow_docs
+    assert "-p image-tag=cosmic-pr-33" in workflow_docs
 
 
 def test_caller_contract_requires_forked_testsuite_repo_and_branch():

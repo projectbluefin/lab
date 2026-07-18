@@ -72,7 +72,7 @@ VM, or SSH stage exists on this path.
 | Parameter | Default | Notes |
 |---|---|---|
 | `image` | `ghcr.io/razorfinos-org/cosmic-build-meta` | Source image repo. |
-| `image-tag` | `latest` | Image tag under test. |
+| `image-tag` | `cosmic-pr-33` | Published COSMIC bootc image tag under test. |
 | `suites` | `smoke` | Test suite to execute. |
 | `variant` | `cosmic` | Set to `cosmic` for the COSMIC desktop environment. |
 | `branch` | `main` | Branch context recorded with published results. |
@@ -83,7 +83,7 @@ Wall-clock: a few minutes per selected suite; no VM provisioning stage.
 
 ```
 argo submit --from workflowtemplate/cosmic-qa-pipeline \
-  -p image-tag=latest -p suites=smoke --wait
+  -p image-tag=cosmic-pr-33 -p suites=smoke --wait
 ```
 
 ---

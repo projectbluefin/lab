@@ -94,6 +94,12 @@ jobs:
       - name: Refresh bst cache utilization (live cluster snapshot when reachable)
         run: python3 scripts/collect_bst_cache.py
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Refresh release verdict (ADR 0002)
+        run: python3 scripts/collect_release_verdict.py
+
       - name: Refresh page-owned datasets
         run: python3 scripts/generate_page_datasets.py --root .
 

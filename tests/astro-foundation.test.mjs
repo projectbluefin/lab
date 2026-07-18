@@ -57,9 +57,11 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /href="\/adoption\/"/, 'overview links to adoption at domain root');
   assert.match(html('docs/index.html'), /href="\/userspace\/"/, 'overview links to userspace at domain root');
   assert.match(html('docs/index.html'), /Ryzen AI MAX\+/i, 'overview renders control-plane Ryzen AI specs');
-  assert.match(html('docs/index.html'), /Zot OCI Registry Cache & Heat/i, 'overview renders Zot OCI cache section');
-  // Accept either :30501 (live LAN data) or :30500 (fallback when LAN unreachable, e.g. GitHub Actions)
-  assert.match(html('docs/index.html'), /:305(?:00|01)/i, 'overview renders zot-cache port details');
+  assert.match(html('docs/index.html'), /Is the last release good\?/i, 'overview renders release verdict triage section');
+  assert.match(html('docs/index.html'), /class="verdict-grid"/, 'overview renders per-lane verdict cards');
+  assert.match(html('docs/index.html'), /class="spark-grid"/, 'overview renders build duration sparklines');
+  assert.match(html('docs/index.html'), /What's degrading\?/i, 'overview renders degradation panel');
+  assert.doesNotMatch(html('docs/index.html'), /Zot OCI Registry Cache & Heat/i, 'fabricated registry heat panel is removed from overview');
   assert.match(html('docs/images/index.html'), /Unavailable|pending|coming soon/i, 'subpages show explicit unavailable state');
 
   // Regression guard: chart scripts must load echarts globally from a CDN classic script

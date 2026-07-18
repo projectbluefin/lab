@@ -1,5 +1,4 @@
 ---
-import { execSync } from 'node:child_process';
 import SiteLayout from '../layouts/SiteLayout.astro';
 import DataIntegrityBlock from '../components/DataIntegrityBlock.astro';
 import { serializeJsonScript } from '../lib/json-script';
@@ -11,6 +10,7 @@ import telemetry from '../../docs/data/factory-telemetry.json';
 import upstreamStatus from '../../docs/data/upstream-status.json';
 import bstCache from '../../docs/data/bst-cache.json';
 import testsMatrix from '../../docs/data/tests-matrix.json';
+import releaseVerdict from '../../docs/data/release-verdict.json';
 
 const baseUrl = import.meta.env.BASE_URL;
 
@@ -153,104 +153,99 @@ const nodeSpecs: Record<string, { cpu: string; gpu: string; ip: string; details:
   }
 };
 
-interface RegistryCatalog {
-  repositories: string[];
+// ── Release verdict (ADR 0002) ─────────────────────────────────
+const verdictRows = Array.isArray(releaseVerdict?.rows) ? releaseVerdict.rows : [];
+const verdictGeneratedAt = releaseVerdict?._meta?.generated_at || null;
+const verdictToneMap: Record<string, string> = { good: 'passed', bad: 'failed', pending: 'pending' };
+const inputToneMap: Record<string, string> = { passed: 'passed', failed: 'failed', pending: 'pending', unavailable: 'pending' };
+
+// ── Build duration / pass-fail sparklines from real GHA run history ──
+const laneSparkKeys = [
+  ['bluefin-stable', 'bluefin:stable'],
+  ['bluefin-testing', 'bluefin:testing'],
+  ['bluefin-lts-stable', 'bluefin-lts:stable'],
+  ['bluefin-lts-testing', 'bluefin-lts:testing'],
+  ['dakota', 'dakota'],
+] as const;
+const imageBuilds = (stats?.image_builds || {}) as Record<string, Array<{ overall?: string; started_at?: string; duration_min?: number; run_url?: string }>>;
+const laneSparks = laneSparkKeys.map(([key, label]) => {
+  const runs = (imageBuilds[key] || []).filter((r) => r.started_at).slice(-20);
+  return {
+    key,
+    label,
+    points: runs.map((r) => ({
+      t: r.started_at,
+      duration: r.duration_min ?? null,
+      passed: r.overall === 'passed',
+      url: r.run_url || null,
+    })),
+  };
+}).filter((s) => s.points.length > 0);
+
+// ── "What's degrading" — computed from real inputs only ─────────
+const degrading: Array<{ label: string; detail: string; tone: string; href: string | null }> = [];
+for (const row of verdictRows) {
+  if (row.verdict === 'bad') {
+    const failedInputs = ['build', 'qa', 'signature']
+      .filter((k) => row[k]?.status === 'failed')
+      .map((k) => `${k}: ${row[k]?.reason || 'failed'}`);
+    degrading.push({
+      label: `${row.lane} release is bad`,
+      detail: failedInputs.join(' · ') || 'one or more verdict inputs failed',
+      tone: 'failed',
+      href: row.build?.run_url || row.source_url || null,
+    });
+  }
+  if (row.qa?.status === 'pending' && row.qa?.reason) {
+    degrading.push({
+      label: `${row.lane} QA evidence stale`,
+      detail: row.qa.reason,
+      tone: 'pending',
+      href: null,
+    });
+  }
+}
+for (const spark of laneSparks) {
+  const pts = spark.points;
+  if (pts.length >= 6) {
+    const half = Math.floor(pts.length / 2);
+    const avg = (arr: typeof pts) => arr.reduce((s, p) => s + (p.duration || 0), 0) / (arr.length || 1);
+    const older = avg(pts.slice(0, half));
+    const recent = avg(pts.slice(half));
+    if (older > 0 && recent > older * 1.3) {
+      degrading.push({
+        label: `${spark.label} build duration trending up`,
+        detail: `recent runs average ${recent.toFixed(0)}m vs ${older.toFixed(0)}m before (+${Math.round(100 * (recent - older) / older)}%)`,
+        tone: 'pending',
+        href: null,
+      });
+    }
+  }
+  const lastThree = pts.slice(-3);
+  const failStreak = lastThree.length >= 2 && lastThree.every((p) => !p.passed);
+  if (failStreak) {
+    degrading.push({
+      label: `${spark.label} publishing builds failing`,
+      detail: `last ${lastThree.length} runs failed`,
+      tone: 'failed',
+      href: lastThree[lastThree.length - 1].url,
+    });
+  }
+}
+for (const row of upstreamRows) {
+  const ageLimit = (row.branch === 'testing' || row.branch === 'nightly') ? 7 : 14;
+  if (row.state === 'available' && typeof row.freshness_age_days === 'number' && row.freshness_age_days > ageLimit && row.group === 'projectbluefin') {
+    degrading.push({
+      label: `${row.variant}:${row.branch} release freshness`,
+      detail: `${row.freshness_age_days}d since last published release (threshold ${ageLimit}d)`,
+      tone: 'pending',
+      href: (row.source_url as string) || null,
+    });
+  }
 }
 
-let writableRepos: string[] = [];
-let cacheRepos: string[] = [];
-let buildSource: 'live' | 'fallback' = 'fallback';
-
-try {
-  const writableRes = execSync('curl -s --max-time 1.2 http://192.168.1.102:30500/v2/_catalog', { encoding: 'utf8' });
-  const writableData = JSON.parse(writableRes) as RegistryCatalog;
-  writableRepos = writableData.repositories || [];
-  
-  const cacheRes = execSync('curl -s --max-time 1.2 http://192.168.1.102:30501/v2/_catalog', { encoding: 'utf8' });
-  const cacheData = JSON.parse(cacheRes) as RegistryCatalog;
-  cacheRepos = cacheData.repositories || [];
-  
-  buildSource = 'live';
-} catch (e) {
-  writableRepos = ["bluefin-containerdisk", "dakota", "dakota-nvidia", "flatcar-containerdisk", "fsdk/lab-runner", "fsdk/qemu-img"];
-  cacheRepos = ["ghcr/flatcar/flatcar-sdk-amd64", "ghcr/projectbluefin/bluefin", "ghcr/projectbluefin/bluefin-lts"];
-  buildSource = 'fallback';
-}
-
-const getRepoHeat = (repo: string) => {
-  const name = repo.toLowerCase();
-  if (name.includes('bluefin') && !name.includes('lts')) {
-    return { percent: 96, label: 'Sizzling', color: 'linear-gradient(90deg, #f43f5e 0%, #f97316 50%, #eab308 100%)' };
-  }
-  if (name.includes('bluefin-lts')) {
-    return { percent: 78, label: 'Very Hot', color: 'linear-gradient(90deg, #ec4899 0%, #f43f5e 50%, #f97316 100%)' };
-  }
-  if (name.includes('lab-runner')) {
-    return { percent: 70, label: 'Hot', color: 'linear-gradient(90deg, #ec4899 0%, #f43f5e 100%)' };
-  }
-  if (name.includes('flatcar')) {
-    return { percent: 45, label: 'Warm', color: 'linear-gradient(90deg, #f43f5e 0%, #f97316 100%)' };
-  }
-  if (name.includes('qemu-img')) {
-    return { percent: 50, label: 'Warm', color: 'linear-gradient(90deg, #f97316 0%, #eab308 100%)' };
-  }
-  return { percent: 25, label: 'Cool', color: 'linear-gradient(90deg, #3b82f6 0%, #06b6d4 100%)' };
-};
-
-interface ManifestLayer {
-  size: number;
-}
-interface ImageManifest {
-  layers: ManifestLayer[];
-}
-
-const getRepoStats = (port: number, repo: string) => {
-  try {
-    const raw = execSync(`curl -s -H "Accept: application/vnd.oci.image.manifest.v1+json" --max-time 1.0 http://192.168.1.102:${port}/v2/${repo}/manifests/latest`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-    const data = JSON.parse(raw) as ImageManifest;
-    const layersCount = data.layers?.length || 0;
-    const sizeBytes = data.layers?.reduce((sum, layer) => sum + (layer.size || 0), 0) || 0;
-    return { layersCount, sizeBytes };
-  } catch (e) {
-    const isLabRunner = repo.includes('lab-runner');
-    const isQemu = repo.includes('qemu-img');
-    const isBluefin = repo.includes('bluefin-containerdisk');
-    return { 
-      layersCount: 1, 
-      sizeBytes: isLabRunner ? 87151516 : isQemu ? 53243659 : isBluefin ? 1205324365 : 0 
-    };
-  }
-};
-
-let totalStorageBytes = 0;
-let totalLayersCount = 0;
-
-writableRepos.forEach((repo) => {
-  const stats = getRepoStats(30500, repo);
-  totalStorageBytes += stats.sizeBytes;
-  totalLayersCount += stats.layersCount;
-});
-
-cacheRepos.forEach((repo) => {
-  const stats = getRepoStats(30501, repo);
-  totalStorageBytes += stats.sizeBytes;
-  totalLayersCount += stats.layersCount;
-});
-
-const totalStorageMb = (totalStorageBytes / (1024 * 1024)).toFixed(1);
-
-const registryChartPayload = {
-  writableCount: writableRepos.length,
-  cacheCount: cacheRepos.length,
-  totalStorageMb,
-  totalLayers: totalLayersCount,
-  reposHeat: [
-    ...writableRepos.map(repo => ({ name: repo, type: 'Writable', ...getRepoHeat(repo) })),
-    ...cacheRepos.map(repo => ({ name: repo, type: 'Cache', ...getRepoHeat(repo) }))
-  ].sort((a, b) => b.percent - a.percent)
-};
-
-const serializedRegistryChartData = serializeJsonScript(registryChartPayload);
+const triageSparkPayload = { lanes: laneSparks };
+const serializedTriageSparkData = serializeJsonScript(triageSparkPayload);
 
 // BuildStream / remote-execution cache usage across both cache drives
 const bstCacheRows = Array.isArray(bstCache?.rows) ? bstCache.rows : [];
@@ -300,6 +295,65 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     }
     .meta-bar a { color: #38bdf8; text-decoration: none; }
     .meta-bar a:hover { text-decoration: underline; }
+
+    /* ── SRE Triage ─────────────────────────────────────────── */
+    .verdict-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .verdict-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+    .verdict-card--good { border-color: rgba(16, 185, 129, 0.35); }
+    .verdict-card--bad { border-color: rgba(244, 63, 94, 0.45); background: linear-gradient(135deg, rgba(244, 63, 94, 0.08) 0%, rgba(15, 23, 42, 0.65) 100%); }
+    .verdict-card--pending { border-color: rgba(245, 158, 11, 0.3); }
+    .verdict-inputs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .verdict-input {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #94a3b8;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 999px;
+      padding: 0.18rem 0.55rem;
+    }
+    .verdict-input__dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; }
+    .verdict-input--passed .verdict-input__dot { background: #4ade80; }
+    .verdict-input--failed .verdict-input__dot { background: #f43f5e; }
+    .verdict-input--pending .verdict-input__dot { background: #fbbf24; }
+    .verdict-meta { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.72rem; color: #64748b; }
+    .verdict-meta .mono { font-family: ui-monospace, monospace; }
+    .verdict-note { font-size: 0.7rem; color: #fbbf24; line-height: 1.45; }
+    .spark-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .spark-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 0.9rem 1rem 0.5rem 1rem;
+    }
+    .degrading-panel {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.35) 0%, rgba(15, 23, 42, 0.55) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 16px;
+      padding: 0.75rem 1.25rem;
+      margin-bottom: 2.5rem;
+    }
 
     /* ── Section Titles ──────────────────────────────────────── */
     .section-title {
@@ -691,6 +745,106 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     </header>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  SRE TRIAGE — is the factory healthy? is the last release   -->
+    <!--  good? what's degrading? (ADR 0002)                          -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Is the last release good?</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Per-lane verdict under <a href="https://github.com/projectbluefin/lab/blob/main/docs/adr/0002-release-verdict-definition.md" style="color:#38bdf8; text-decoration:none;">ADR 0002</a>:
+      publishing build + lab QA on the exact digest + cosign signature. Security regression shown alongside, never gating.
+      {verdictGeneratedAt && <span> Collected {formatUtc(verdictGeneratedAt)}.</span>}
+    </p>
+    <div class="verdict-grid">
+      {verdictRows.map((row) => (
+        <article class={`verdict-card verdict-card--${row.verdict}`}>
+          <header style="display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="margin:0; font-size:1rem; color:#f1f5f9;">{row.lane}</h3>
+            <span class={`pill pill--${verdictToneMap[row.verdict] === 'passed' ? 'completed' : verdictToneMap[row.verdict]}`} style="text-transform:uppercase; font-weight:700;">
+              {row.verdict}
+            </span>
+          </header>
+          <div class="verdict-inputs">
+            {(['build', 'qa', 'signature'] as const).map((k) => {
+              const input = row[k] || {};
+              const tone = inputToneMap[input.status] || 'pending';
+              const title = input.reason || (k === 'qa' ? 'lab-sourced evidence' : input.status);
+              return (
+                <span class={`verdict-input verdict-input--${tone}`} title={title}>
+                  <span class="verdict-input__dot"></span>
+                  {k === 'qa' ? 'QA (lab)' : k}: {input.status}
+                </span>
+              );
+            })}
+            <span class="verdict-input verdict-input--pending" title={row.security_regression?.reason || 'unavailable'}>
+              <span class="verdict-input__dot"></span>
+              CVE regression: {row.security_regression?.status || 'unavailable'}
+            </span>
+          </div>
+          <div class="verdict-meta">
+            {row.digest ? (
+              <span class="mono" title={row.digest}>{row.digest.slice(0, 19)}…</span>
+            ) : (
+              <span style="color:#fbbf24;">{row.state_reason || 'digest unavailable'}</span>
+            )}
+            {row.build?.run_url && (
+              <a href={row.build.run_url} target="_blank" rel="noreferrer" style="color:#38bdf8; text-decoration:none;">build run ↗</a>
+            )}
+          </div>
+          {row.qa?.status === 'pending' && row.qa?.reason && (
+            <div class="verdict-note">{row.qa.reason}</div>
+          )}
+        </article>
+      ))}
+      {verdictRows.length === 0 && (
+        <div style="color:#fbbf24; font-size:0.85rem;">Release verdict dataset unavailable — collector has not published docs/data/release-verdict.json yet.</div>
+      )}
+    </div>
+
+    <h2 class="section-title">Is the factory healthy?</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Publishing build duration and pass/fail per lane — last {laneSparks.length ? Math.max(...laneSparks.map((s) => s.points.length)) : 0} GitHub Actions runs per lane, from factory-stats.json.
+    </p>
+    <div class="spark-grid">
+      {laneSparks.map((spark) => (
+        <article class="spark-card">
+          <header style="display:flex; justify-content:space-between; align-items:baseline;">
+            <h3 style="margin:0; font-size:0.85rem; color:#cbd5e1; font-family:ui-monospace,monospace;">{spark.label}</h3>
+            <span style={`font-size:0.72rem; font-weight:700; color:${spark.points[spark.points.length - 1].passed ? '#4ade80' : '#f87171'};`}>
+              {spark.points[spark.points.length - 1].passed ? 'last run passed' : 'last run failed'}
+            </span>
+          </header>
+          <div class="triage-spark" data-lane={spark.key} style="height: 84px;" role="img" aria-label={`Build duration trend for ${spark.label}`}></div>
+        </article>
+      ))}
+      {laneSparks.length === 0 && (
+        <div style="color:#fbbf24; font-size:0.85rem;">No publishing run history available in factory-stats.json.</div>
+      )}
+    </div>
+
+    <h2 class="section-title">What's degrading?</h2>
+    <div class="degrading-panel">
+      {degrading.length === 0 ? (
+        <div style="color:#4ade80; font-size:0.9rem; padding: 0.75rem 0;">No degradation signals from tracked inputs — verdicts, build trends, and release freshness are all inside thresholds.</div>
+      ) : (
+        <div class="dense-list">
+          {degrading.map((item) => (
+            <div class="dense-row" style="align-items:start;">
+              <div style="display:flex; align-items:baseline; gap:10px;">
+                <span class={`pill pill--${item.tone === 'failed' ? 'failed' : 'pending'}`} style="padding: 0.2rem 0.5rem; font-size: 0.72rem;">
+                  {item.tone === 'failed' ? 'failing' : 'degrading'}
+                </span>
+                <span style="font-weight:600;">{item.label}</span>
+              </div>
+              <div style="font-size:0.78rem; color:#94a3b8; text-align:right; max-width: 46ch;">
+                {item.href ? <a href={item.href} target="_blank" rel="noreferrer" style="color:#94a3b8;">{item.detail}</a> : item.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  AT A GLANCE (KPI)                                          -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <h2 class="section-title">Factory at a Glance</h2>
@@ -898,94 +1052,6 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <!--  REGISTRY CACHE & ACTIVITY WIDGET                            -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <h2 class="section-title">Registry Cache & Activity</h2>
-    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
-      Transparent pull-through mirrors, local storage caching, and real-time repository activity heat map.
-    </p>
-    <div class="nodes-grid">
-      <article class="node-card" style="grid-column: 1 / -1; background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);">
-        <header style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <h3>Zot OCI Registry Cache & Heat</h3>
-            <span class="pill pill--completed" style="background: rgba(34,197,94,.15); color: #4ade80; padding: 0.15rem 0.5rem; font-size: 0.72rem;">active</span>
-          </div>
-          <span style="font-size: 0.75rem; color: #64748b;">Source: {buildSource === 'live' ? 'Live ghost control-plane API' : 'Static snapshot fallback'}</span>
-        </header>
-
-        <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.6; margin: 0 0 1.5rem 0;">
-          To insulate the homelab against upstream rate limits, internet latency, and build bottlenecks, the control plane hosts a unified cache registry. containerd queries are transparently intercepted and directed to NodePorts on ghost. Local writable outputs compile containerDisk layers.
-        </p>
-
-        <div class="registry-flex-layout">
-          <!-- Left side: ECharts visualization & stats -->
-          <div style="display: flex; flex-direction: column; gap: 1rem; border-right: 1px solid rgba(255,255,255,0.06); padding-right: 1.5rem;">
-            <div id="userspace-registry-chart" class="chart-box-custom" role="img" aria-label="Registry heat metrics chart"></div>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: 0.5rem;">
-              <div class="app-meta-item" style="display: flex; flex-direction: column; gap: 0.1rem;">
-                <span style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Local Storage</span>
-                <p style="font-size: 1.1rem; font-weight: 700; color: #f1f5f9; margin: 0.15rem 0 0 0;">{totalStorageMb} MB</p>
-              </div>
-              <div class="app-meta-item" style="display: flex; flex-direction: column; gap: 0.1rem;">
-                <span style="font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Total Layers Tracked</span>
-                <p style="font-size: 1.1rem; font-weight: 700; color: #f1f5f9; margin: 0.15rem 0 0 0;">{totalLayersCount}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right side: Table and Activity Heat list -->
-          <div class="table-scroll" style="width: 100%;">
-            <table class="fp-table" style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
-              <thead>
-                <tr>
-                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Repository</th>
-                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Local Target</th>
-                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Type</th>
-                  <th scope="col" style="padding: 0.5rem 0.75rem; color: #64748b; text-transform: uppercase; font-size: 0.68rem; font-weight: 700;">Activity Heat</th>
-                </tr>
-              </thead>
-              <tbody>
-                {writableRepos.map((repo) => {
-                  const heat = getRepoHeat(repo);
-                  return (
-                    <tr>
-                      <th scope="row" class="cell-primary" style="padding: 0.6rem 0.75rem; color: #cbd5e1; font-weight: 600;">{repo}</th>
-                      <td class="cell-num" style="padding: 0.6rem 0.75rem; font-family: monospace; color: #8892b0;">:30500/{repo}</td>
-                      <td style="padding: 0.6rem 0.75rem;"><span class="pill pill--completed" style="background: rgba(34,197,94,.15); color: #4ade80; padding: 0.1rem 0.35rem; font-size: 0.65rem;">writable</span></td>
-                      <td class="heat-col-layout" style="padding: 0.6rem 0.75rem;">
-                        <span style="font-weight: 700; font-size: 0.72rem; color: #cbd5e1;">{heat.label} ({heat.percent}%)</span>
-                        <div class="heat-bar-container" style="width: 80px;">
-                          <div class="heat-glowing-bar" style={`width: ${heat.percent}%; background: ${heat.color};`} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {cacheRepos.map((repo) => {
-                  const heat = getRepoHeat(repo);
-                  return (
-                    <tr>
-                      <th scope="row" class="cell-primary" style="padding: 0.6rem 0.75rem; color: #cbd5e1; font-weight: 600;">{repo}</th>
-                      <td class="cell-num" style="padding: 0.6rem 0.75rem; font-family: monospace; color: #8892b0;">:30501/{repo}</td>
-                      <td style="padding: 0.6rem 0.75rem;"><span class="pill pill--pending" style="background: rgba(56,189,248,.15); color: #38bdf8; padding: 0.1rem 0.35rem; font-size: 0.65rem;">cache</span></td>
-                      <td class="heat-col-layout" style="padding: 0.6rem 0.75rem;">
-                        <span style="font-weight: 700; font-size: 0.72rem; color: #cbd5e1;">{heat.label} ({heat.percent}%)</span>
-                        <div class="heat-bar-container" style="width: 80px;">
-                          <div class="heat-glowing-bar" style={`width: ${heat.percent}%; background: ${heat.color};`} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </article>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  BST CACHE UTILIZATION ACROSS BOTH DRIVES                   -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <h2 class="section-title">BuildStream Cache Utilization</h2>
@@ -1074,18 +1140,73 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     </DataIntegrityBlock>
   </div>
   <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
-  <script id="registry-chart-payload" type="application/json" set:html={serializedRegistryChartData}></script>
+  <script id="triage-spark-payload" type="application/json" set:html={serializedTriageSparkData}></script>
   <script id="bst-cache-chart-payload" type="application/json" set:html={serializedBstChartData}></script>
   <script is:inline data-cfasync="false">
     function waitForCharts(attempt) {
       if (attempt === undefined) attempt = 0;
       if (window.echarts) {
-        bootRegistryChart(window.echarts);
+        bootTriageSparks(window.echarts);
         bootBstCacheChart(window.echarts);
         return;
       }
       if (attempt > 40) return;
       window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
+    }
+
+    function bootTriageSparks(echarts) {
+      const payloadNode = document.getElementById('triage-spark-payload');
+      if (!payloadNode) return;
+      const data = JSON.parse(payloadNode.textContent || '{}');
+      if (!data.lanes) return;
+      data.lanes.forEach(function(lane) {
+        const el = document.querySelector('.triage-spark[data-lane="' + lane.key + '"]');
+        if (!el || !lane.points || !lane.points.length) return;
+        const chart = echarts.init(el);
+        chart.setOption({
+          animation: false,
+          grid: { left: 34, right: 6, top: 8, bottom: 16 },
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1', fontSize: 11 },
+            formatter: function(params) {
+              const p = lane.points[params[0].dataIndex];
+              return (p.t || '') + '<br/>' +
+                (p.duration !== null ? p.duration + ' min' : 'duration unavailable') +
+                ' · ' + (p.passed ? 'passed' : 'failed');
+            }
+          },
+          xAxis: {
+            type: 'category',
+            data: lane.points.map(function(p) { return (p.t || '').slice(5, 10); }),
+            axisLabel: { color: '#64748b', fontSize: 8, interval: Math.max(1, Math.floor(lane.points.length / 5)) },
+            axisTick: { show: false },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#64748b', fontSize: 8, formatter: '{value}m' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: [{
+            type: 'line',
+            data: lane.points.map(function(p) { return p.duration; }),
+            smooth: true,
+            showSymbol: true,
+            symbolSize: 5,
+            lineStyle: { color: '#38bdf8', width: 1.5 },
+            itemStyle: {
+              color: function(params) {
+                return lane.points[params.dataIndex].passed ? '#4ade80' : '#f43f5e';
+              }
+            },
+            areaStyle: { color: 'rgba(56, 189, 248, 0.08)' }
+          }]
+        });
+        window.addEventListener('resize', function() { chart.resize(); });
+      });
     }
 
     function bootBstCacheChart(echarts) {
@@ -1159,78 +1280,6 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
           itemStyle: {
             borderColor: 'rgba(15, 23, 42, 0.8)',
             borderWidth: 2
-          }
-        }]
-      });
-
-      window.addEventListener('resize', function() {
-        chart.resize();
-      });
-    }
-
-    function bootRegistryChart(echarts) {
-      const payloadNode = document.getElementById('registry-chart-payload');
-      if (!payloadNode) return;
-      const data = JSON.parse(payloadNode.textContent || '{}');
-      const chartEl = document.getElementById('userspace-registry-chart');
-      if (!chartEl || !data.reposHeat) return;
-
-      const topRepos = data.reposHeat.slice(0, 5).reverse();
-      const chart = echarts.init(chartEl);
-
-      chart.setOption({
-        title: {
-          text: 'Top 5 Repositories by Activity Heat',
-          textStyle: { color: '#cbd5e1', fontSize: 11, fontWeight: 'bold' },
-          left: 'center',
-          top: 0
-        },
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'shadow' },
-          backgroundColor: 'rgba(15, 23, 42, 0.9)',
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          textStyle: { color: '#cbd5e1' }
-        },
-        grid: { left: 140, right: 30, top: 40, bottom: 20 },
-        xAxis: {
-          type: 'value',
-          max: 100,
-          axisLabel: { color: '#94a3b8', formatter: '{value}%', fontSize: 9 },
-          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-        },
-        yAxis: {
-          type: 'category',
-          data: topRepos.map(r => r.name),
-          axisLabel: {
-            color: '#94a3b8',
-            fontSize: 9,
-            formatter: function(val) {
-              return val.length > 22 ? val.substring(0, 19) + '...' : val;
-            }
-          }
-        },
-        series: [{
-          name: 'Activity Heat',
-          type: 'bar',
-          data: topRepos.map(r => r.percent),
-          label: {
-            show: true,
-            position: 'insideRight',
-            formatter: '{c}%',
-            color: '#ffffff',
-            fontWeight: 'bold',
-            fontSize: 9
-          },
-          itemStyle: {
-            borderRadius: [0, 4, 4, 0],
-            color: function(params) {
-              const r = topRepos[params.dataIndex];
-              if (r.percent >= 90) return '#f43f5e';
-              if (r.percent >= 70) return '#f97316';
-              if (r.percent >= 45) return '#eab308';
-              return '#38bdf8';
-            }
           }
         }]
       });

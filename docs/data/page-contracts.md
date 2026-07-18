@@ -194,3 +194,37 @@ Purpose: executive-readable adoption view for the `/adoption` page. Covers image
 | `tracked_image_lanes` | Total lanes from `variant-publishers.json` |
 | `lanes_with_pull_data` | Lanes with pull_count from container registry API (e.g., GHCR) present in docs/data/ |
 | `lanes_with_countme_data` | Lanes with countme_active_devices from Fedora countme infrastructure present in docs/data/ |
+
+## release-verdict.json (index / SRE triage)
+
+Written by `scripts/collect_release_verdict.py` (ADR 0002). One row per production lane
+(`bluefin-stable`, `bluefin-testing`, `bluefin-lts-stable`, `bluefin-lts-testing`, `dakota-testing`).
+
+### Top-level shape
+
+- `_meta`: `generated_at`, `source`, `verdict_definition` (pointer to ADR 0002)
+- `lanes[]`: one verdict row per lane
+
+### Lane row shape
+
+| Field | Meaning |
+| --- | --- |
+| `lane` | Stable lane id |
+| `image` / `tag` | GHCR image reference |
+| `digest` | Current manifest digest resolved anonymously from GHCR, or `null` when unavailable |
+| `verdict` | `good` iff build passed AND lab QA passed on this digest AND cosign keyless verify passed; `bad` when any input failed; `pending` when an input has no evidence for this digest |
+| `inputs.build` / `inputs.qa` / `inputs.signature` | Each `{status: passed\|failed\|pending\|unavailable, detail, source_url}` |
+| `state` / `state_reason` | Explicit availability contract |
+| `source_url` / `collected_at` / `derivation` | Provenance for the row |
+
+Notes:
+- Signature verification is keyless (`--certificate-identity-regexp '^https://github.com/projectbluefin/'`,
+  GitHub Actions OIDC issuer). Verify results are cached by digest in the previous JSON.
+- QA evidence must reference the current digest's build or newer; stale evidence yields `pending`, never `good`.
+- CVE counts are displayed alongside but never gate the verdict (ADR 0002).
+
+## history/release-verdict.ndjson
+
+Rolling append-only history of verdict transitions. One line per `(lane, digest)` change:
+`{recorded_at, lane, digest, verdict, inputs_summary}`. Retention: 365 days; the collector
+prunes older lines on each run. Rows never rewrite — a new digest or changed verdict appends.

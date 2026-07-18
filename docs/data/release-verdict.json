@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "_meta": {
+    "page": "index",
+    "description": "Per-lane release verdict (ADR 0002): build + lab QA + cosign signature per latest published digest",
+    "generated_at": "2026-07-18T23:16:48Z",
+    "starter_artifact": false,
+    "status": "live"
+  },
+  "summary_metrics": [
+    {
+      "id": "lanes_good",
+      "label": "Lanes with a good latest release",
+      "value": 0,
+      "total": 5,
+      "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/adr/0002-release-verdict-definition.md",
+      "collected_at": "2026-07-18T23:16:48Z",
+      "derivation": "count of lanes whose verdict is good under ADR 0002"
+    }
+  ],
+  "rows": [
+    {
+      "id": "bluefin-stable",
+      "lane": "bluefin-stable",
+      "variant": "bluefin",
+      "branch": "stable",
+      "image_ref": "ghcr.io/projectbluefin/bluefin:stable",
+      "digest": "sha256:af5929bafcaaa693d2fa6626cb62a7ee5580eb724003502991aa5c28be2032c3",
+      "verdict": "pending",
+      "build": {
+        "status": "passed",
+        "reason": null,
+        "run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29644397458",
+        "finished_at": "2026-07-18T13:19:06Z"
+      },
+      "qa": {
+        "status": "unavailable",
+        "reason": "no QA suites tracked for this lane",
+        "last_run": null,
+        "lab_sourced": true
+      },
+      "signature": {
+        "status": "passed",
+        "reason": null,
+        "method": "cosign keyless (GitHub Actions OIDC)"
+      },
+      "security_regression": {
+        "status": "unavailable",
+        "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
+      },
+      "source_url": "https://github.com/projectbluefin/bluefin",
+      "collected_at": "2026-07-18T23:16:48Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "state": "available",
+      "state_reason": null
+    },
+    {
+      "id": "bluefin-testing",
+      "lane": "bluefin-testing",
+      "variant": "bluefin",
+      "branch": "testing",
+      "image_ref": "ghcr.io/projectbluefin/bluefin:testing",
+      "digest": "sha256:3137b8a1afe9df7bf1ba1d5aee81a5c49d73fcdf342a173fce3b40f3bdcc8c15",
+      "verdict": "pending",
+      "build": {
+        "status": "passed",
+        "reason": null,
+        "run_url": "https://github.com/projectbluefin/bluefin/actions/runs/29644353849",
+        "finished_at": "2026-07-18T13:23:03Z"
+      },
+      "qa": {
+        "status": "pending",
+        "reason": "latest QA evidence (2026-06-29T12:00:00Z) predates the current build (2026-07-18T13:23:03Z); verdict awaits a lab run against the new digest",
+        "last_run": "2026-06-29T12:00:00Z",
+        "lab_sourced": true
+      },
+      "signature": {
+        "status": "passed",
+        "reason": null,
+        "method": "cosign keyless (GitHub Actions OIDC)"
+      },
+      "security_regression": {
+        "status": "unavailable",
+        "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
+      },
+      "source_url": "https://github.com/projectbluefin/bluefin",
+      "collected_at": "2026-07-18T23:16:48Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "state": "available",
+      "state_reason": null
+    },
+    {
+      "id": "bluefin-lts-stable",
+      "lane": "bluefin-lts-stable",
+      "variant": "bluefin-lts",
+      "branch": "stable",
+      "image_ref": "ghcr.io/projectbluefin/bluefin-lts:stable",
+      "digest": "sha256:53d9ae6c4274d1dd910a960cafbed038d0b1011cab4e4e8278b72949f176e28a",
+      "verdict": "pending",
+      "build": {
+        "status": "passed",
+        "reason": null,
+        "run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/28030661542",
+        "finished_at": "2026-06-23T14:05:54Z"
+      },
+      "qa": {
+        "status": "unavailable",
+        "reason": "no QA suites tracked for this lane",
+        "last_run": null,
+        "lab_sourced": true
+      },
+      "signature": {
+        "status": "passed",
+        "reason": null,
+        "method": "cosign keyless (GitHub Actions OIDC)"
+      },
+      "security_regression": {
+        "status": "unavailable",
+        "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
+      },
+      "source_url": "https://github.com/projectbluefin/bluefin-lts",
+      "collected_at": "2026-07-18T23:16:48Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "state": "available",
+      "state_reason": null
+    },
+    {
+      "id": "bluefin-lts-testing",
+      "lane": "bluefin-lts-testing",
+      "variant": "bluefin-lts",
+      "branch": "testing",
+      "image_ref": "ghcr.io/projectbluefin/bluefin-lts:testing",
+      "digest": "sha256:53d9ae6c4274d1dd910a960cafbed038d0b1011cab4e4e8278b72949f176e28a",
+      "verdict": "pending",
+      "build": {
+        "status": "passed",
+        "reason": null,
+        "run_url": "https://github.com/projectbluefin/bluefin-lts/actions/runs/29179563779",
+        "finished_at": "2026-07-12T04:38:55Z"
+      },
+      "qa": {
+        "status": "pending",
+        "reason": "latest QA evidence (2026-07-07T02:40:00Z) predates the current build (2026-07-12T04:38:55Z); verdict awaits a lab run against the new digest",
+        "last_run": "2026-07-07T02:40:00Z",
+        "lab_sourced": true
+      },
+      "signature": {
+        "status": "passed",
+        "reason": null,
+        "method": "cosign keyless (GitHub Actions OIDC)"
+      },
+      "security_regression": {
+        "status": "unavailable",
+        "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
+      },
+      "source_url": "https://github.com/projectbluefin/bluefin-lts",
+      "collected_at": "2026-07-18T23:16:48Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "state": "available",
+      "state_reason": null
+    },
+    {
+      "id": "dakota-testing",
+      "lane": "dakota-testing",
+      "variant": "dakota",
+      "branch": "testing",
+      "image_ref": "ghcr.io/projectbluefin/dakota:testing",
+      "digest": "sha256:d0f3f42a40b96223d8ed292c6f40d6f9cee4e456e447bed858b4563b8c3ced37",
+      "verdict": "bad",
+      "build": {
+        "status": "failed",
+        "reason": "latest publishing run concluded fail",
+        "run_url": "https://github.com/projectbluefin/dakota/actions/runs/29646357228",
+        "finished_at": "2026-07-18T20:32:50Z"
+      },
+      "qa": {
+        "status": "pending",
+        "reason": "latest QA evidence (2026-07-07T03:10:00Z) predates the current build (2026-07-18T20:32:50Z); verdict awaits a lab run against the new digest",
+        "last_run": "2026-07-07T03:10:00Z",
+        "lab_sourced": true
+      },
+      "signature": {
+        "status": "failed",
+        "reason": "error during command execution: no signatures found",
+        "method": "cosign keyless (GitHub Actions OIDC)"
+      },
+      "security_regression": {
+        "status": "unavailable",
+        "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
+      },
+      "source_url": "https://github.com/projectbluefin/dakota",
+      "collected_at": "2026-07-18T23:16:48Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "state": "available",
+      "state_reason": null
+    }
+  ]
+}

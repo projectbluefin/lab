@@ -38,7 +38,9 @@ def test_bluefin_pipeline_validates_raw_suites_against_exact_allow_list():
     content = PIPELINE.read_text(encoding="utf-8")
     assert "- name: validate-suites" in content
     assert '- name: suites\n            value: "{{workflow.parameters.suites}}"' in content
-    assert 'IFS=\',\' read -r -a raw_suites <<< "{{inputs.parameters.suites}}"' in content
+    assert '- name: SUITES\n        value: "{{inputs.parameters.suites}}"' in content
+    assert 'IFS=\',\' read -r -a raw_suites <<< "$SUITES"' in content
+    assert "{{inputs.parameters.suites}}" not in content.split("source: |", 1)[1]
     assert "case \"${suite}\" in" in content
     assert "smoke|common|developer|software|system) ;;" in content
 

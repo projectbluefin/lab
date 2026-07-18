@@ -77,6 +77,9 @@ spec:
     script:
       image: ghcr.io/projectbluefin/lab-runner:latest
       command: [bash]
+      env:
+      - name: SUITES
+        value: "{{inputs.parameters.suites}}"
       resources:
         requests:
           cpu: 100m
@@ -86,7 +89,7 @@ spec:
           memory: 256Mi
       source: |
         set -euo pipefail
-        IFS=',' read -r -a raw_suites <<< "{{inputs.parameters.suites}}"
+        IFS=',' read -r -a raw_suites <<< "$SUITES"
         for suite in "${raw_suites[@]}"; do
           case "${suite}" in
             smoke|common|developer|software|system) ;;

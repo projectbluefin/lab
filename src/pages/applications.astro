@@ -430,7 +430,7 @@ const serializePayload = serializeJsonScript({
         <div class="kpi-card__title">Application Health</div>
         <div>
           <div class="kpi-card__value">{summary.healthy_apps} Healthy</div>
-          <div class="kpi-card__sub">0 degraded · {summary.degraded_apps} other state</div>
+          <div class="kpi-card__sub">{summary.healthy_apps} Healthy · {summary.degraded_apps} degraded/other</div>
         </div>
       </div>
 
@@ -462,8 +462,8 @@ const serializePayload = serializeJsonScript({
       <article class="chart-card">
         <div class="chart-header">
           <p class="status-card__eyebrow">Resource Consumption</p>
-          <h3>CPU & Memory vs Requests</h3>
-          <p>Active workload allocations mapped relative to configured requests.</p>
+          <h3>Memory Allocations vs Requests</h3>
+          <p>Active workload memory allocations mapped relative to configured requests.</p>
         </div>
         <div id="app-resources-chart" class="chart-surface"></div>
       </article>
@@ -613,6 +613,55 @@ const serializePayload = serializeJsonScript({
           ))}
         </div>
       </section>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  RAW DATA AND EVIDENCE LINKS                                -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Data Insights & Raw Telemetry</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Direct links to the structured JSON contracts powering this GitOps Applications dashboard for active auditing and inspection.
+    </p>
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 2.5rem;">
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Sync Status Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/gitops-status.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            gitops-status.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">ArgoCD Application health and sync drift</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Resource Metrics Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/app-resource-usage.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            app-resource-usage.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Pod CPU & memory consumptions vs limits</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Compliance Scorecard Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/policy-compliance.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            policy-compliance.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Registry allowlist and storage rule audits</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Rollout History Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/gitops-deployments.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            gitops-deployments.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Recent ArgoCD deployment and sync timelines</div>
+        </div>
+      </article>
     </div>
   </div>
 

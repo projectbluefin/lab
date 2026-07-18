@@ -83,7 +83,7 @@ def main():
                 history = status.get("history", [])
                 for h in history:
                     started_at = h.get("deployStartedAt")
-                    finished_at = h.get("deployFinishedAt")
+                    finished_at = h.get("deployedAt")
                     revision = h.get("revision", "unknown")
                     history_id = h.get("id")
                     

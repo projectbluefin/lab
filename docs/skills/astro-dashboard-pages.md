@@ -147,3 +147,23 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - [ ] Overview image cards preserve row-level evidence/state from `docs/data/upstream-status.json`
 - [ ] Contributor cluster cards show node-to-node link context directly on or near each node card
 - [ ] Missing screenshots display high-fidelity 16:9 placeholder blocks with educational copy and run commands instead of hiding the visual evidence section
+
+## Release verdict triage (index)
+
+The index page is the SRE triage view. Its top three sections are driven by:
+
+- `docs/data/release-verdict.json` — written by `scripts/collect_release_verdict.py`
+  (ADR 0002: good = build passed + lab QA passed on digest + cosign keyless verify).
+  Contract documented in `docs/data/page-contracts.md`.
+- `docs/data/history/release-verdict.ndjson` — append-only verdict transitions, 365d cap.
+- Per-lane build-duration sparklines computed in `index.astro` frontmatter from
+  `factory-stats.json` `image_builds` (last 20 runs per lane); rendered via the
+  `triage-spark-payload` JSON script + `bootTriageSparks` ECharts renderer.
+
+Rules learned the hard way:
+
+- Never render fabricated fallback data when a live source is unreachable at build
+  time (the old registry heat panel did exactly that). Missing data renders an
+  explicit unavailable state or the panel is cut.
+- Prefer trend sparklines over point-in-time badges when history exists in
+  repo-tracked JSON/NDJSON.

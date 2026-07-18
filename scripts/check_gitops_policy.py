@@ -22,11 +22,17 @@ def extract_images_from_yaml(content):
     images = []
     lines = content.split('\n')
     for line in lines:
-        if "image-lint-ignore" in line or "registry-lint-ignore" in line:
+        stripped = line.strip()
+        if stripped.startswith('#') or "image-lint-ignore" in line or "registry-lint-ignore" in line:
             continue
-        m = re.search(r'image:\s*["\']?([^"\'\s]+)["\']?', line)
-        if m:
-            images.append(m.group(1))
+        if "image:" in line:
+            if "{{" in line or "}}" in line or "declares" in line:
+                continue
+            m = re.search(r'image:\s*["\']?([^"\'\s]+)["\']?', line)
+            if m:
+                img = m.group(1)
+                if not img.startswith(("{{", "$")):
+                    images.append(img)
     return images
 
 def is_registry_allowed(image):
@@ -40,6 +46,9 @@ def is_registry_allowed(image):
         
     parts = image.split("/")
     first = parts[0]
+    
+    if ":" in first:
+        first = first.split(":")[0]
     
     if "." not in first and "localhost" not in first:
         # Implicit docker.io
@@ -83,20 +92,30 @@ def main():
                             "detail": f"Banned registry for image '{img}'"
                         })
                 
-                # Check hostPath
-                hostpaths = re.findall(r'path:\s*["\']?([^"\'\s]+)["\']?', content)
-                for hp in hostpaths:
-                    # Filter for hostPath section in yaml context
-                    if "hostPath" in content:
-                        git_hostpath_checks += 1
-                        # Approved hostPaths are: /var/tmp/knuckle-test, /var/mnt/ghost-data, local-path configs, or within scripts
-                        if hp.startswith("/") and not hp.startswith(("/var/tmp/knuckle-test", "/var/mnt/ghost-data", "/var/log", "/run/containerd")):
-                            # Check if it looks like a script comment or script line rather than hostPath
-                            if "hostPath:" in content:
-                                git_hostpath_violations.append({
-                                    "source": f"git:{y_file}",
-                                    "detail": f"Potentially unauthorized hostPath allocation on root disk: '{hp}'"
-                                })
+                # Check hostPath in a stateful way
+                lines = content.split('\n')
+                in_hostpath = False
+                hostpath_indent = 0
+                for line in lines:
+                    indent = len(line) - len(line.lstrip())
+                    if "hostPath:" in line:
+                        in_hostpath = True
+                        hostpath_indent = indent
+                        continue
+                    if in_hostpath:
+                        if line.strip() == "" or (indent <= hostpath_indent and line.strip() != "-"):
+                            in_hostpath = False
+                        elif "path:" in line:
+                            m = re.search(r'path:\s*["\']?([^"\'\s]+)["\']?', line)
+                            if m:
+                                hp = m.group(1)
+                                git_hostpath_checks += 1
+                                if hp.startswith("/") and not hp.startswith(("/var/tmp/knuckle-test", "/var/mnt/ghost-data", "/var/log", "/run/containerd")):
+                                    git_hostpath_violations.append({
+                                        "source": f"git:{y_file}",
+                                        "detail": f"Potentially unauthorized hostPath allocation on root disk: '{hp}'"
+                                    })
+                            in_hostpath = False
                                 
                 # Check Node Selector Pinning
                 node_selectors = re.findall(r'nodeSelector:\s*([^\n]+)', content)

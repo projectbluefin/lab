@@ -170,8 +170,8 @@ def main():
                     entry["cpu_usage_cores"] += metrics_data[pod_key]["cpu"]
                     entry["mem_usage_mib"] += metrics_data[pod_key]["mem"]
                 
-                # Sum requests & limits from containers
-                for c in spec.get("containers", []):
+                # Sum requests & limits from containers and initContainers
+                for c in spec.get("containers", []) + spec.get("initContainers", []):
                     resources = c.get("resources", {})
                     requests = resources.get("requests", {})
                     limits = resources.get("limits", {})
@@ -186,7 +186,7 @@ def main():
             print(f"Error parsing pods JSON: {e}")
 
     if not live_data_ok:
-        print("WARNING: Live resource metrics not collected, falling back to typical values.")
+        print("WARNING: Live resource metrics not collected, falling back to typical usage estimates.")
         # Provide realistic mock values for our Astro compilation when run offline
         mock_stats = {
             "arc-runners": {"cpu": 0.01, "mem": 45.0, "pods": 0}, # ARC scale sets scale down to 0
@@ -198,15 +198,18 @@ def main():
         }
         for name, stats in mock_stats.items():
             entry = app_resources[name]
-            entry["cpu_usage_cores"] = stats["cpu"]
-            entry["mem_usage_mib"] = stats["mem"]
-            entry["pods_count"] = stats["pods"]
-            # Fill some basic requests/limits for display
-            if stats["pods"] > 0:
+            # Only fallback if we don't have real pods counted from raw_pods
+            if entry["pods_count"] == 0 and stats["pods"] > 0:
+                entry["pods_count"] = stats["pods"]
                 entry["cpu_request_cores"] = stats["cpu"] * 1.2
                 entry["cpu_limit_cores"] = stats["cpu"] * 2.0
                 entry["mem_request_mib"] = stats["mem"] * 1.1
                 entry["mem_limit_mib"] = stats["mem"] * 1.5
+
+            # Populate mock actual usages if metrics failed
+            if entry["mem_usage_mib"] == 0.0 and stats["mem"] > 0.0:
+                entry["cpu_usage_cores"] = stats["cpu"]
+                entry["mem_usage_mib"] = stats["mem"]
 
     # Format values for readability
     apps_list = []

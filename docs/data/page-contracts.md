@@ -202,18 +202,21 @@ Written by `scripts/collect_release_verdict.py` (ADR 0002). One row per producti
 
 ### Top-level shape
 
-- `_meta`: `generated_at`, `source`, `verdict_definition` (pointer to ADR 0002)
-- `lanes[]`: one verdict row per lane
+- `schema_version`, `_meta` (`generated_at`, `description`, `status`)
+- `summary_metrics[]`: `lanes_good` and related counters
+- `rows[]`: one verdict row per lane
 
-### Lane row shape
+### Row shape
 
 | Field | Meaning |
 | --- | --- |
-| `lane` | Stable lane id |
-| `image` / `tag` | GHCR image reference |
+| `id` / `lane` | Stable lane id |
+| `variant` / `branch` | Image variant and stream |
+| `image_ref` | GHCR image reference |
 | `digest` | Current manifest digest resolved anonymously from GHCR, or `null` when unavailable |
 | `verdict` | `good` iff build passed AND lab QA passed on this digest AND cosign keyless verify passed; `bad` when any input failed; `pending` when an input has no evidence for this digest |
-| `inputs.build` / `inputs.qa` / `inputs.signature` | Each `{status: passed\|failed\|pending\|unavailable, detail, source_url}` |
+| `build` / `qa` / `signature` | Each `{status: passed\|failed\|pending\|unavailable, detail, source_url}` |
+| `security_regression` | CVE regression signal, displayed alongside but never gating (ADR 0002) |
 | `state` / `state_reason` | Explicit availability contract |
 | `source_url` / `collected_at` / `derivation` | Provenance for the row |
 
@@ -226,5 +229,5 @@ Notes:
 ## history/release-verdict.ndjson
 
 Rolling append-only history of verdict transitions. One line per `(lane, digest)` change:
-`{recorded_at, lane, digest, verdict, inputs_summary}`. Retention: 365 days; the collector
+`{recorded_at, lane, digest, verdict, build, qa, signature}`. Retention: 365 days; the collector
 prunes older lines on each run. Rows never rewrite — a new digest or changed verdict appends.

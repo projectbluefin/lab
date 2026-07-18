@@ -168,49 +168,6 @@ To handle any lag in upstream FSDK container image rebuilds, use an inline on-de
 
 A runtime `/bin/sh: not found` or missing-coreutils failure from a CLI image usually means the image is distroless, not that the WorkflowTemplate syntax is wrong.
 
-### 4b. Script parameters: interpolate into `env`, not shell source
-
-When a `script.source` block needs a workflow or input parameter, pass it through
-`script.env` and let the shell read the environment variable. Do **not** splice
-`{{inputs.parameters.*}}` or `{{workflow.parameters.*}}` directly into Bash source;
-that turns Argo templating into shell text and makes injection review harder.
-
-```yaml
-# ✅ CORRECT — parameter becomes container env, script reads "$SUITES"
-- name: validate-suites
-  inputs:
-    parameters:
-      - name: suites
-  script:
-    image: ghcr.io/projectbluefin/lab-runner:latest
-    command: [bash]
-    env:
-      - name: SUITES
-        value: "{{inputs.parameters.suites}}"
-    source: |
-      set -euo pipefail
-      IFS=',' read -r -a raw_suites <<< "$SUITES"
-      for suite in "${raw_suites[@]}"; do
-        case "${suite}" in
-          smoke|common|developer|software|system) ;;
-          *)
-            echo "Unsupported suites value: ${suite}" >&2
-            exit 1
-            ;;
-        esac
-      done
-
-# ✗ WRONG — raw Argo interpolation embedded inside shell source
-- name: validate-suites
-  script:
-    source: |
-      IFS=',' read -r -a raw_suites <<< "{{inputs.parameters.suites}}"
-```
-
-This pattern is verified against `/argoproj/argo-workflows`: script templates are
-container-like templates with `env` support, and workflow/global parameters are
-valid in `env.value` fields.
-
 ### 5. Always use `onExit` or `hooks` for teardown
 
 Every pipeline that provisions a VM must have a guaranteed teardown. When the pipeline is run directly as a workflow, root-level `spec.onExit` executes:

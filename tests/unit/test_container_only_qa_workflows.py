@@ -57,3 +57,26 @@ def test_run_container_tests_explicitly_allows_system_suite():
     )
     assert "smoke|common|developer|software|system" in content
     assert "Unsupported container suite: ${SUITE}" in content
+
+
+def test_scheduled_and_pr_image_qa_do_not_pass_vm_parameters():
+    files = [
+        ROOT / "argo/workflow-templates/pr-poller.yaml",
+        *sorted((ROOT / "manifests").glob("image-poll-*.yaml")),
+        ROOT / "manifests/nightly-smoke.yaml",
+        ROOT / "manifests/nightly-smoke-lts.yaml",
+        ROOT / "manifests/nightly-dakota.yaml",
+    ]
+    forbidden = ("containerdisk-tag", "ssh-key-secret", "vm-memory")
+
+    for path in files:
+        content = path.read_text(encoding="utf-8")
+        assert all(token not in content for token in forbidden), path.name
+
+
+def test_dakota_and_cosmic_qa_are_container_only():
+    for name in ("dakota-qa-pipeline.yaml", "cosmic-qa-pipeline.yaml"):
+        content = (ROOT / "argo/workflow-templates" / name).read_text(encoding="utf-8")
+        assert "name: run-container-tests" in content
+        assert "provision-containerdisk-vm" not in content
+        assert "run-gnome-tests" not in content

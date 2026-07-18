@@ -9,12 +9,10 @@ metadata:
     app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
-  # Suspended: the VM-based dakota-qa-pipeline path requires bootc install
-  # to-disk, which fails on Dakota's composefs-oci backend because bootupd is
-  # not included. Resume only after build-containerdisk succeeds for Dakota or
-  # an alternative VM-boot path is implemented. Use dakota-container-qa-pipeline
-  # for image-level regression coverage in the meantime.
-  suspend: true
+  # Active: Dakota now runs through the container-only dakota-qa-pipeline path,
+  # so the digest poller can dispatch suite runs without any containerDisk or
+  # VM provisioning arguments.
+  suspend: false
   schedules:
     - "8/10 * * * *"
   timezone: "UTC"
@@ -35,20 +33,12 @@ spec:
           value: "latest"
         - name: state-key
           value: "digest-dakota-latest"
-        - name: namespace
-          value: "bluefin-test"
         - name: suites
           value: "smoke"
         - name: variant
           value: "dakota"
-        - name: containerdisk-tag
-          value: "dakota-latest"
-        - name: ssh-key-secret
-          value: "bluefin-test-ssh-key"
         - name: branch
           value: "main"
-        - name: vm-memory
-          value: "8Gi"
     entrypoint: check-and-trigger
     templates:
       - name: check-and-trigger
@@ -78,17 +68,9 @@ spec:
                     value: "{{workflow.parameters.image}}"
                   - name: image-tag
                     value: "{{workflow.parameters.image-tag}}"
-                  - name: containerdisk-tag
-                    value: "{{workflow.parameters.containerdisk-tag}}"
-                  - name: namespace
-                    value: "{{workflow.parameters.namespace}}"
                   - name: suites
                     value: "{{workflow.parameters.suites}}"
                   - name: variant
                     value: "{{workflow.parameters.variant}}"
-                  - name: ssh-key-secret
-                    value: "{{workflow.parameters.ssh-key-secret}}"
                   - name: branch
                     value: "{{workflow.parameters.branch}}"
-                  - name: vm-memory
-                    value: "{{workflow.parameters.vm-memory}}"

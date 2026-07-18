@@ -1,7 +1,6 @@
 # CronWorkflow: nightly LTS smoke suite at 02:30 UTC.
-# bluefin-qa-pipeline's assert-cd step fails fast if the containerdisk is missing
-# from Zot — it does not build one inline. digest-watch (5-min CronWorkflow) is
-# solely responsible for keeping the lts-testing containerdisk current.
+# bluefin-qa-pipeline now runs container-only suites directly from the OCI image,
+# so this CronWorkflow needs only the image/tag/suite/variant payload.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -37,13 +36,7 @@ spec:
           value: "ghcr.io/projectbluefin/bluefin-lts"
         - name: image-tag
           value: "testing"
-        - name: containerdisk-tag
-          value: "lts-testing"
-        - name: namespace
-          value: "bluefin-lts-test"
         - name: suites
           value: "smoke,developer,system"
-        - name: ssh-key-secret
-          value: "bluefin-test-ssh-key"
-        - name: vm-memory
-          value: "8Gi"
+        - name: variant
+          value: "bluefin-lts"

@@ -22,14 +22,14 @@ def test_image_poller_templates_do_not_self_reference_containerdisk_tag_defaults
     )
 
 
-def test_image_poller_cron_manifests_set_containerdisk_tag_explicitly():
-    missing = []
+def test_image_poller_cron_manifests_do_not_pass_containerdisk_tag():
+    offenders = []
 
     for manifest in sorted((ROOT / "manifests").glob("image-poll-*.yaml")):
         content = manifest.read_text(encoding="utf-8")
         if "workflowTemplateRef:\n      name: image-poller" not in content:
             continue
-        if "name: containerdisk-tag" not in content:
-            missing.append(manifest.name)
+        if "containerdisk-tag" in content:
+            offenders.append(manifest.name)
 
-    assert not missing, f"missing containerdisk-tag in: {', '.join(missing)}"
+    assert not offenders, f"obsolete containerdisk-tag in: {', '.join(offenders)}"

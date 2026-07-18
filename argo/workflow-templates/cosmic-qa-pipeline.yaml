@@ -5,36 +5,25 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      End-to-end COSMIC QA pipeline: assert containerDisk exists in Zot, then run
-      parallel test lanes (smoke, developer, system). Each lane provisions a
-      fresh KubeVirt VM, runs the behave/qecore suite via SSH, and tears down
-      the VM on completion. On PR runs, posts a GitHub commit status on exit.
+      Container-only COSMIC QA pipeline: run the selected suite directly through
+      run-container-tests without provisioning a KubeVirt VM or containerDisk.
   labels:
     app.kubernetes.io/component: qa-pipeline
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  # VM concurrency is managed by k8s scheduler via virt-launcher pod memory requests (8Gi/VM).
   activeDeadlineSeconds: 3600
   entrypoint: pipeline
-  onExit: cleanup-and-report
-
   arguments:
     parameters:
     - name: image
       value: "ghcr.io/razorfinos-org/cosmic-build-meta"
     - name: image-tag
       value: "latest"
-    - name: namespace
-      value: "bluefin-test"
     - name: suites
       value: "smoke"
     - name: variant
       value: "cosmic"
-    - name: ssh-key-secret
-      value: "bluefin-test-ssh-key"
-    - name: containerdisk-tag
-      value: "cosmic-latest"
     - name: branch
       value: "main"
     - name: pr-number
@@ -43,165 +32,51 @@ spec:
       value: ""
     - name: repo
       value: ""
-    - name: vm-memory
-      value: "8Gi"
-
+    - name: testsuite-branch
+      value: "main"
   templates:
-
   - name: pipeline
     dag:
       tasks:
-          # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.
-      - name: assert-cd
-        template: assert-cd
+      - name: validate-suites
+        template: validate-suites
         arguments:
           parameters:
-          - name: containerdisk-tag
-            value: "{{workflow.parameters.containerdisk-tag}}"
-
-          # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down
+          - name: suites
+            value: "{{workflow.parameters.suites}}"
       - name: test-lane
-        depends: "assert-cd.Succeeded"
-        withItems:
-        - smoke
+        depends: "validate-suites.Succeeded"
+        withItems: [smoke]
         when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
-        template: lane
+        templateRef:
+          name: run-container-tests
+          template: run-container-tests
         arguments:
           parameters:
-          - name: suite
-            value: "{{item}}"
-          - name: vm-name
-            value: "{{workflow.name}}-{{item}}"
+          - name: image
+            value: "{{workflow.parameters.image}}"
           - name: image-tag
             value: "{{workflow.parameters.image-tag}}"
-          - name: containerdisk-tag
-            value: "{{workflow.parameters.containerdisk-tag}}"
-          - name: namespace
-            value: "{{workflow.parameters.namespace}}"
+          - name: suite
+            value: "{{item}}"
           - name: variant
             value: "{{workflow.parameters.variant}}"
-          - name: ssh-key-secret
-            value: "{{workflow.parameters.ssh-key-secret}}"
           - name: branch
             value: "{{workflow.parameters.branch}}"
-          - name: vm-memory
-            value: "{{workflow.parameters.vm-memory}}"
-
-    # ── assert-cd: fail fast if containerDisk is missing from Zot ───────────
-  - name: assert-cd
+          - name: testsuite-branch
+            value: "{{workflow.parameters.testsuite-branch}}"
+          - name: behave-tags
+            value: ""
+  - name: validate-suites
     inputs:
       parameters:
-      - name: containerdisk-tag
+      - name: suites
     script:
-      image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
-      command: [sh]
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
-      source: |
-        set -eu
-        TAG="{{inputs.parameters.containerdisk-tag}}"
-        CD_IMAGE="192.168.1.102:30500/cosmic-containerdisk:${TAG}"
-        DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
-          "docker://${CD_IMAGE}" 2>/dev/null || echo "")
-        if [ -n "${DIGEST}" ]; then
-          echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
-        else
-          echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
-          exit 1
-        fi
-
-    # ── lane: provision VM → run suite → teardown (per-suite) ────────────────
-  - name: lane
-    inputs:
-      parameters:
-      - name: suite
-      - name: vm-name
-      - name: image-tag
-      - name: containerdisk-tag
-      - name: namespace
-      - name: variant
-      - name: ssh-key-secret
-      - name: branch
-      - name: vm-memory
-    steps:
-    - - name: provision
-        templateRef:
-          name: provision-containerdisk-vm
-          template: provision-vm
-        arguments:
-          parameters:
-          - name: image-tag
-            value: "{{inputs.parameters.containerdisk-tag}}"
-          - name: vm-name
-            value: "{{inputs.parameters.vm-name}}"
-          - name: namespace
-            value: "{{inputs.parameters.namespace}}"
-          - name: vm-memory
-            value: "{{inputs.parameters.vm-memory}}"
-          - name: containerdisk-repo
-            value: "cosmic-containerdisk"
-          - name: app-label
-            value: "cosmic-test"
-          - name: label-prefix
-            value: "cosmic.io"
-    - - name: run-tests
-        templateRef:
-          name: run-gnome-tests
-          template: run-gnome-tests
-        arguments:
-          parameters:
-          - name: vm-ip
-            value: "{{steps.provision.outputs.parameters.vm-ip}}"
-          - name: suite
-            value: "{{inputs.parameters.suite}}"
-          - name: variant
-            value: "{{inputs.parameters.variant}}"
-          - name: ssh-key-secret
-            value: "{{inputs.parameters.ssh-key-secret}}"
-          - name: branch
-            value: "{{inputs.parameters.branch}}"
-          - name: containerdisk-tag
-            value: "{{inputs.parameters.containerdisk-tag}}"
-        hooks:
-          exit:
-            templateRef:
-              name: teardown-vm
-              template: teardown-vm
-            arguments:
-              parameters:
-              - name: vm-name
-                value: "{{inputs.parameters.vm-name}}"
-              - name: namespace
-                value: "{{inputs.parameters.namespace}}"
-    - - name: teardown
-        templateRef:
-          name: teardown-vm
-          template: teardown-vm
-        arguments:
-          parameters:
-          - name: vm-name
-            value: "{{inputs.parameters.vm-name}}"
-          - name: namespace
-            value: "{{inputs.parameters.namespace}}"
-        continueOn:
-          failed: true
-
-    # ── onExit handler: optional GitHub commit status post ───────────────────
-  - name: cleanup-and-report
-    dag:
-      tasks:
-      - name: cleanup-vms
-        template: cleanup-orphan-vms
-
-  - name: cleanup-orphan-vms
-    script:
-      image: cgr.dev/chainguard/kubectl:latest-dev
-      command: [sh]
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      command: [bash]
+      env:
+      - name: SUITES
+        value: "{{inputs.parameters.suites}}"
       resources:
         requests:
           cpu: 100m
@@ -210,9 +85,14 @@ spec:
           cpu: 500m
           memory: 256Mi
       source: |
-        NS="{{workflow.parameters.namespace}}"
-        WF="{{workflow.name}}"
-        for SUITE in smoke developer software system; do
-          kubectl delete vm -n "${NS}" "${WF}-${SUITE}" --ignore-not-found 2>/dev/null \
-            && echo "Cleaned ${WF}-${SUITE}" || true
+        set -euo pipefail
+        IFS=',' read -r -a raw_suites <<< "$SUITES"
+        for suite in "${raw_suites[@]}"; do
+          case "${suite}" in
+            smoke) ;;
+            *)
+              echo "Unsupported suites value: ${suite}" >&2
+              exit 1
+              ;;
+          esac
         done

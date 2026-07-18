@@ -116,6 +116,24 @@ Use `templateRef` for cross-WorkflowTemplate calls:
       value: "{{tasks.provision.outputs.parameters.vm-ip}}"
 ```
 
+### 3a. Container-only QA caller contract
+
+The container-only QA templates (`bluefin-qa-pipeline`, `dakota-qa-pipeline`,
+and any CronWorkflow/PR caller that feeds them) accept only the OCI-centric
+payload:
+
+- `image`
+- `image-tag`
+- `suites`
+- `variant`
+- `branch`
+- `testsuite-branch`
+
+Do **not** pass legacy VM-era parameters such as `containerdisk-tag`,
+`ssh-key-secret`, `vm-memory`, or caller-side `namespace` blocks. For testsuite
+PRs, override `testsuite-branch` with the PR branch; keep other repos on
+`main`.
+
 ### 4. Output parameters — use `script` with stdout
 
 For steps that produce a value consumed by downstream steps, write the result to stdout and nothing else:
@@ -754,10 +772,9 @@ kubectl patch workflow <name> -n argo -p '{"spec":{"shutdown":"Stop"}}' --type=m
 
 **Dakota lanes and the mutex:** keep the lanes separate.
 - `dakota-commit-poller` → `dakota-build-pipeline` (BuildStream publish lane) is expected to run.
-- `image-poll-dakota` → `dakota-qa-pipeline` (VM QA lane) stays suspended while that lane still
-  requires `bootc install to-disk` on images without UKI support.
+- `image-poll-dakota` → `dakota-qa-pipeline` is the active container-only QA lane.
 If mutex contention appears, stop stale failed workflows holding `ghost-heavy-compute`; do not
-blanket-stop all Dakota build-publish runs.
+blanket-stop all Dakota build-publish runs or suspend the active QA poller.
 
 ### 20a. Dakota BuildStream publish lane output tags
 
@@ -1052,7 +1069,7 @@ The clean, standard Kubernetes/Argo solution is to mount an `emptyDir: {}` volum
 - A downstream `when` condition that references `{{tasks.X.outputs.result}}` where task X has its own `when` guard — if X is Skipped its output is undefined and the downstream task silently skips too. Fix: let X always run; handle the bypass inside the script (see §18).
 - A `force=true` rebuild workflow where only 1–2 nodes appear (DAG + a Skipped check) and no build step ever runs — this is the §18 `when`/Skipped output bug, not a semaphore or mutex issue
 - Post-processing K8sGPT JSON with `for item in data.get("results", [])` or `len(data["results"])` without normalizing first — namespace-scoped empty scans can emit `"results": null`, which crashes the script and then triggers a second Argo missing-output-path error. Normalize with `results = data.get("results") or []` before iterating or counting.
-- Unsuspending `image-poll-dakota` while `dakota-qa-pipeline` still depends on `bootc install to-disk` for images without UKI support.
+- Passing `containerdisk-tag`, `ssh-key-secret`, `vm-memory`, or caller-side `namespace` parameters into `bluefin-qa-pipeline`/`dakota-qa-pipeline` after the container-only migration — those callers must send only `image`, `image-tag`, `suites`, `variant`, `branch`, and `testsuite-branch`.
 - Any Argo CronWorkflow script template in `argo` namespace without explicit `resources.requests` and `resources.limits` — the `argo-quota` admission check rejects pod creation.
 - Any pod containing `initContainers` (like `git-sync` in `run-gnome-tests.yaml`) that lacks explicit `resources.requests` and `resources.limits` blocks — the `argo-quota` admission controller evaluates all containers in a pod (including init containers), and will reject the entire pod if any container lacks resource definitions.
 - `orphan-pod-gc` memory capped too low (128Mi) — large pod inventories can OOM the cleanup step (`exit code 137`) and silently skip GC.

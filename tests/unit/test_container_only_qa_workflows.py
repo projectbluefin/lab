@@ -79,6 +79,49 @@ def test_container_runner_never_falls_back_to_a_different_testsuite_revision():
     assert "falling back to main" not in content
 
 
+def test_image_poll_qa_has_no_legacy_containerdisk_producer():
+    deleted_assets = (
+        ROOT / "argo/workflow-templates/build-containerdisk.yaml",
+        ROOT / "argo/workflow-templates/digest-watch.yaml",
+        ROOT / "manifests/digest-watch-cron.yaml",
+        ROOT / "tests/unit/test_build_containerdisk_workflow.py",
+    )
+
+    assert all(not path.exists() for path in deleted_assets)
+
+    matrix = (ROOT / "argo/bluefin-test-matrix.yaml").read_text(encoding="utf-8")
+    semaphores = (ROOT / "manifests/workflow-semaphores.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "name: run-container-tests" in matrix
+    assert "build-containerdisk" not in matrix
+    assert "containerdisk-tag" not in matrix
+    assert "qa-vm-fleet" not in semaphores
+    assert "containerdisk-build" not in semaphores
+
+
+def test_unrelated_vm_workflows_keep_their_shared_helpers():
+    shared_templates = (
+        ROOT / "argo/workflow-templates/provision-containerdisk-vm.yaml",
+        ROOT / "argo/workflow-templates/run-gnome-tests.yaml",
+        ROOT / "argo/workflow-templates/teardown-vm.yaml",
+        ROOT / "argo/workflow-templates/collect-vm-logs.yaml",
+    )
+
+    assert all(path.exists() for path in shared_templates)
+
+    knuckle = (ROOT / "argo/workflow-templates/knuckle-qa-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+    migration = (ROOT / "argo/workflow-templates/bluefin-migration-test.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "name: run-gnome-tests" in knuckle
+    assert "name: teardown-vm" in knuckle
+    assert "name: provision-containerdisk-vm" in migration
+    assert "name: teardown-vm" in migration
+
+
 def test_scheduled_and_pr_image_qa_do_not_pass_vm_parameters():
     files = [
         ROOT / "argo/workflow-templates/pr-poller.yaml",

@@ -2,19 +2,8 @@
 #
 # Template-level semaphores are the only lock type that binds across ALL
 # callers, including workflow-of-workflows invocations via templateRef.
-# The old workflow-level bluefin-qa-global mutex only queued directly
-# submitted Workflows — image-poller and digest-watch called the same
-# pipeline templates via templateRef and bypassed it entirely, letting
-# poll bursts spawn unbounded VM fleets and starve node memory requests
-# (observed 2026-07-08: 95% memory requested on exo-0, host daemons OOM
-# pressure, buildbarn workers unschedulable).
 #
 # Keys:
-#   qa-vm-fleet        — QA pipelines that provision KubeVirt VM fleets
-#                        (bluefin-qa-pipeline, dakota-qa-pipeline). One at a
-#                        time: each fleet is up to 5 VMs x 8Gi requests.
-#   containerdisk-build — build-containerdisk runs (bootc install,
-#                        4Gi + 100Gi PVC each). Two at a time, one per node.
 #   bst-build          — Dakota/Cosmic BuildStream build lanes.
 #                        Keep two lanes admitted so bluefin + bluefin-nvidia
 #                        can run concurrently and both buildbarn workers remain
@@ -29,7 +18,5 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 data:
-  qa-vm-fleet: "1"
-  containerdisk-build: "2"
   bst-build: "2"
   bst-build-manual: "2"

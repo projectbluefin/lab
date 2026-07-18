@@ -59,35 +59,6 @@ argocd-status:
     argocd app get testing-lab
     argocd app get testing-lab-infra
 
-# ── Disk image management ────────────────────────────────────────────────────
-
-# Pre-build golden disk for a given tag (idempotent — skips if disk already exists)
-# Pubkey is injected from the bluefin-test-ssh-key secret automatically.
-# Usage: just ensure-disk
-# Usage: just ensure-disk lts
-ensure-disk tag=image_tag:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    img="ghcr.io/projectbluefin/bluefin"
-    if [[ "{{ tag }}" == *lts* ]]; then
-        img="ghcr.io/projectbluefin/bluefin-lts"
-    fi
-    argo submit --from workflowtemplate/build-containerdisk \
-        -p image="${img}" \
-        -p image-tag="{{ tag }}" \
-        -n {{ argo_ns }} \
-        --watch
-
-# Patch an existing golden disk's SSH config (no SSH to node required)
-# Use after secret rotation or when SSH auth fails on an existing disk.
-# Usage: just patch-disk
-# Usage: just patch-disk lts
-patch-disk tag=image_tag:
-    argo submit --from workflowtemplate/patch-golden-disk \
-        -p image-tag="{{ tag }}" \
-        -n {{ argo_ns }} \
-        --watch
-
 # ── Test execution ───────────────────────────────────────────────────────────
 
 # Run smoke tests against latest (or BLUEFIN_IMAGE_TAG)
@@ -107,16 +78,9 @@ run-tests-tag tag:
         -n {{ argo_ns }} \
         --watch
 
-# Run matrix tests (latest + lts in parallel)
-# Optional: PR_TITLE and PR_NUMBER env vars for annotations
+# Run smoke tests for testing and lts-testing images in parallel.
 run-tests-matrix:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    PR_TITLE="${PR_TITLE:-}"
-    PR_NUMBER="${PR_NUMBER:-}"
     argo submit argo/bluefin-test-matrix.yaml \
-        -p pr-title="${PR_TITLE}" \
-        -p pr-number="${PR_NUMBER}" \
         -n {{ argo_ns }} \
         --watch
 

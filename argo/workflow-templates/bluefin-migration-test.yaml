@@ -53,6 +53,20 @@ spec:
     steps:
     - - arguments:
           parameters:
+          - name: image
+            value: '{{workflow.parameters.legacy-image}}'
+          - name: image-tag
+            value: '{{workflow.parameters.image-tag}}'
+          - name: containerdisk-tag
+            value: '{{workflow.parameters.image-tag}}'
+          - name: force
+            value: 'true'
+        name: build-migration-source
+        templateRef:
+          name: build-bluefin-migration-containerdisk
+          template: build-containerdisk
+    - - arguments:
+          parameters:
           - name: image-tag
             value: '{{workflow.parameters.image-tag}}'
           - name: vm-name
@@ -1111,4 +1125,3 @@ spec:
         templateRef:
           name: teardown-vm
           template: teardown-vm
-

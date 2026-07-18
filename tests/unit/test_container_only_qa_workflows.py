@@ -122,6 +122,21 @@ def test_unrelated_vm_workflows_keep_their_shared_helpers():
     assert "name: teardown-vm" in migration
 
 
+def test_migration_rebuilds_its_own_containerdisk_source():
+    builder = ROOT / "argo/workflow-templates/build-bluefin-migration-containerdisk.yaml"
+    migration = (ROOT / "argo/workflow-templates/bluefin-migration-test.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert builder.exists()
+    assert "name: build-bluefin-migration-containerdisk" in migration
+    assert "template: build-containerdisk" in migration
+    assert "value: 'true'" in migration
+    assert migration.index("name: build-bluefin-migration-containerdisk") < migration.index(
+        "name: provision-containerdisk-vm"
+    )
+
+
 def test_lts_smoke_recipe_uses_lts_image_and_variant():
     justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
 

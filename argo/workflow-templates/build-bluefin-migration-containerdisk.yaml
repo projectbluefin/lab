@@ -1,0 +1,596 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: build-bluefin-migration-containerdisk
+  namespace: argo
+  annotations:
+    description: |
+      Build the fresh containerDisk source required only by bluefin-migration-test.
+      The migration workflow invokes this template with force=true before it
+      provisions its VM, so the guest always starts from the requested image.
+spec:
+  serviceAccountName: argo
+  activeDeadlineSeconds: 14400  # 4h; allows queued workflows to stay pending without timing out before they execute
+  volumeClaimGC:
+    strategy: OnWorkflowCompletion
+  volumeClaimTemplates:
+  - metadata:
+      name: staging
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 100Gi
+  entrypoint: build-containerdisk
+  arguments:
+    parameters:
+    - name: image
+      value: "ghcr.io/projectbluefin/bluefin"
+    - name: image-tag
+      value: "testing"
+    - name: containerdisk-tag
+      value: "testing"
+    - name: force
+      value: "true"
+      # disk-size: raw disk pre-allocation for bootc install to-disk.
+      # bootc docs: root partition takes all remaining space after EFI (512 MiB) + BIOS (1 MiB).
+      # No upstream minimum is specified — size is image-dependent.
+      # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/man/bootc-install-to-disk.8.md
+      #
+      # Measured compressed layer sizes via skopeo inspect (2026-06):
+      #   bluefin:testing  4295 MB compressed → 25G  (native host SELinux; no relabeling pass needed; fits)
+      #   bluefin-lts      3153 MB compressed → 25G  (native xfs; CentOS/RHEL grubx64.efi has xfs.mod; fits)
+      #   aurora           3405 MB compressed → 30G  (non-native; 25G failed with 282 kB remaining at end of relabeling)
+      #   bazzite          4712 MB compressed → 40G  (non-native; not yet measured; scaled from aurora's empirical ratio)
+      #   dakota           2927 MB compressed → blocked  (composefs image: declares bootloader=systemd + composefs=yes but ships no UKI; bootc install to-disk requires a signed UKI for composefs path; needs upstream fix or golden-disk approach like GnomeOS)
+      # To re-measure: skopeo inspect docker://<image>:<tag> | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(l['Size'] for l in d['LayersData'])//1024//1024,'MB')"
+    - name: disk-size
+      value: "25G"
+    - name: filesystem
+      value: ""
+  templates:
+
+    # ─── Top-level DAG ────────────────────────────────────────────────────────
+
+  - name: build-containerdisk
+    inputs:
+      parameters:
+      - name: image              # e.g. ghcr.io/projectbluefin/bluefin
+      - name: image-tag          # e.g. testing, lts-testing
+      - name: containerdisk-tag      # tag to push: 192.168.1.102:30500/bluefin-containerdisk:<tag>
+      - name: force              # "true" skips check and always rebuilds
+        value: "true"
+      - name: disk-size          # raw disk pre-allocation for bootc install
+        value: "25G"
+      - name: filesystem
+        value: ""
+    dag:
+      tasks:
+          # check always runs; when force=true it short-circuits to "missing" inside the script.
+      - name: check
+        template: check
+        arguments:
+          parameters:
+          - name: containerdisk-tag
+            value: "{{inputs.parameters.containerdisk-tag}}"
+          - name: force
+            value: "{{inputs.parameters.force}}"
+
+          # Skipped only when check outputs "exists" (already up-to-date).
+      - name: install-to-disk
+        depends: "check.Succeeded"
+        when: "'{{tasks.check.outputs.result}}' != 'exists'"
+        template: install-to-disk
+        arguments:
+          parameters:
+          - name: image
+            value: "{{inputs.parameters.image}}"
+          - name: image-tag
+            value: "{{inputs.parameters.image-tag}}"
+          - name: containerdisk-tag
+            value: "{{inputs.parameters.containerdisk-tag}}"
+          - name: disk-size
+            value: "{{inputs.parameters.disk-size}}"
+          - name: filesystem
+            value: "{{inputs.parameters.filesystem}}"
+
+          # Skipped when check=exists (install-to-disk skipped → this skips too).
+      - name: convert-and-push
+        depends: install-to-disk.Succeeded
+        template: convert-and-push
+        arguments:
+          parameters:
+          - name: image
+            value: "{{inputs.parameters.image}}"
+          - name: image-tag
+            value: "{{inputs.parameters.image-tag}}"
+          - name: containerdisk-tag
+            value: "{{inputs.parameters.containerdisk-tag}}"
+          - name: disk-size
+            value: "{{inputs.parameters.disk-size}}"
+
+    # ─── check ────────────────────────────────────────────────────────────────
+    # Checks whether the containerDisk image already exists in the local Zot registry.
+    # Outputs: "exists" | "missing"
+    # When force=true, always outputs "missing" without a network call.
+
+  - name: check
+    inputs:
+      parameters:
+      - name: containerdisk-tag
+      - name: force
+        value: "false"
+    script:
+      image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      source: |
+        set -euo pipefail
+        if [[ "{{inputs.parameters.force}}" == "true" ]]; then
+          echo "missing"
+          exit 0
+        fi
+        TAG="{{inputs.parameters.containerdisk-tag}}"
+        CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
+        EXISTS=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
+          "docker://${CD_IMAGE}" 2>/dev/null || echo "")
+        if [[ -n "$EXISTS" ]]; then
+          echo "exists"
+        else
+          echo "missing"
+        fi
+
+    # ─── install-to-disk ──────────────────────────────────────────────────────
+    # Uses podman to run the Bluefin image and invoke bootc install to-disk.
+    # This is the supported automation path: bootc needs to run inside a podman
+    # container to detect its source image and root filesystem correctly.
+
+  - name: install-to-disk
+    activeDeadlineSeconds: 14400  # 4h; bootc install-to-disk can exceed the earlier 2h limit for large images.
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+      - name: containerdisk-tag
+      - name: disk-size
+        value: "25G"
+      - name: filesystem
+        value: ""
+    volumes:
+    - name: dev
+      hostPath:
+        path: /dev
+    - name: run-udev
+      hostPath:
+        path: /run/udev
+    script:
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      command: [bash]
+      securityContext:
+        privileged: true
+        runAsUser: 0
+      resources:
+        requests:
+          cpu: "4"
+          memory: 4Gi
+        limits:
+          cpu: "8"
+          memory: 12Gi
+      env:
+      - name: SSH_AUTHORIZED_KEYS
+        valueFrom:
+          secretKeyRef:
+            name: bluefin-test-ssh-key
+            key: id_ed25519.pub
+      # Enable direct-io for the loopback device; reduces page-cache pressure
+      # and avoids double-buffering for large raw disk images.
+      # Source: https://github.com/bootc-dev/bootc/blob/main/docs/src/bootc-install.md
+      - name: BOOTC_DIRECT_IO
+        value: "on"
+      volumeMounts:
+      - name: dev
+        mountPath: /dev
+      - name: run-udev
+        mountPath: /run/udev
+      - name: staging
+        mountPath: /var/mnt/ghost-data/bluefin-cd-build
+      source: |
+        set -euo pipefail
+        TAG="{{inputs.parameters.containerdisk-tag}}"
+        IMAGE_TAG="{{inputs.parameters.image-tag}}"
+        IMAGE="{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+        STAGING="/var/mnt/ghost-data/bluefin-cd-build/${TAG}"
+        DISK="${STAGING}/disk.raw"
+        BUILDLOG="${STAGING}/build.log"
+        CACHE_ROOT="/var/mnt/ghost-data/bluefin-cd-build/_containers-storage"
+        RUN_ROOT="/var/mnt/ghost-data/bluefin-cd-build/_containers-runroot"
+
+        mkdir -p "${STAGING}"
+        exec > >(tee -a "${BUILDLOG}") 2>&1
+
+        echo "[BUILD] start: $(date -u) image=${IMAGE} disk-size={{inputs.parameters.disk-size}}"
+        mkdir -p "${CACHE_ROOT}" "${RUN_ROOT}"
+        STORAGE_CONF="${STAGING}/storage.conf"
+        cat > "${STORAGE_CONF}" <<EOF
+        [storage]
+        driver = "overlay"
+        graphroot = "${CACHE_ROOT}"
+        runroot = "${RUN_ROOT}"
+        EOF
+        export CONTAINERS_STORAGE_CONF="${STORAGE_CONF}"
+        echo "[BUILD] containers storage graphroot=${CACHE_ROOT}"
+
+        # Configure local pull-through registry cache (Zot) and local target registry
+        mkdir -p /etc/containers/registries.conf.d
+        cat > /etc/containers/registries.conf.d/bluefin-local-zot.conf <<'EOF'
+        [[registry]]
+        location = "192.168.1.102:30500"
+        insecure = true
+
+        [[registry]]
+        location = "ghcr.io"
+        [[registry.mirror]]
+        location = "192.168.1.102:30501/ghcr"
+        insecure = true
+
+        [[registry]]
+        location = "quay.io"
+        [[registry.mirror]]
+        location = "192.168.1.102:30501/quay"
+        insecure = true
+
+        [[registry]]
+        location = "docker.io"
+        [[registry.mirror]]
+        location = "192.168.1.102:30501/docker"
+        insecure = true
+        EOF
+
+        # Overwrite default policy.json with insecureAcceptAnything to bypass
+        # signature checks for build-containerdisk runs
+        mkdir -p /etc/containers
+        cat > /etc/containers/policy.json <<'EOF'
+        {
+            "default": [
+                {
+                    "type": "insecureAcceptAnything"
+                }
+            ]
+        }
+        EOF
+
+        if [[ -f "${DISK}" ]]; then
+          echo "Removing stale disk: ${DISK}"
+          losetup -j "${DISK}" | cut -d: -f1 | xargs -r losetup -d 2>/dev/null || true
+          rm -f "${DISK}"
+        fi
+
+        truncate -s "{{inputs.parameters.disk-size}}" "${DISK}"
+
+        echo "${SSH_AUTHORIZED_KEYS}" > "${STAGING}/root-ssh-keys"
+
+        if [[ ! -f /usr/libexec/bootupd ]]; then
+          mkdir -p /usr/libexec
+          printf '#!/bin/sh\nexec bootc exec-in-host-mount-namespace bootupd "$@"\n' \
+            > /usr/libexec/bootupd
+          chmod +x /usr/libexec/bootupd
+          echo '[INNER] bootupd wrapper injected via bootc exec-in-host-mount-namespace'
+        fi
+
+        # fsetxattr EINVAL fix
+        if which gcc &>/dev/null; then
+          FSETXATTR_WRAP="${STAGING}/fsetxattr_wrap.c"
+          FSETXATTR_WRAPPER="${STAGING}/fsetxattr_wrapper.so"
+          printf '%s\n' \
+            '#define _GNU_SOURCE' \
+            '#include <dlfcn.h>' \
+            '#include <string.h>' \
+            '#include <errno.h>' \
+            '#include <stddef.h>' \
+            'typedef int (*fn_t)(int,const char*,const void*,size_t,int);' \
+            'int fsetxattr(int fd,const char*n,const void*v,size_t s,int f){' \
+            '  static fn_t real;' \
+            '  if(!real)real=(fn_t)dlsym(RTLD_NEXT,"fsetxattr");' \
+            '  int r=real(fd,n,v,s,f);' \
+            '  if(r==-1&&errno==EINVAL&&n&&strncmp(n,"security.",9)==0){errno=0;return 0;}' \
+            '  return r;}' \
+            > "${FSETXATTR_WRAP}"
+          gcc -shared -fPIC -o "${FSETXATTR_WRAPPER}" "${FSETXATTR_WRAP}" -ldl
+          export LD_PRELOAD="${FSETXATTR_WRAPPER}"
+          echo '[INNER] fsetxattr wrapper compiled and loaded'
+        fi
+
+        # Use the image's native filesystem unless --filesystem override is specified.
+        # bluefin:testing → Fedora → btrfs (native).
+        # bluefin-lts:testing → CentOS/RHEL → xfs (native).
+        # Aurora/Bazzite are Fedora-family images and bootc install to-disk expects btrfs there too.
+        # Dakota stays blocked by composefs/UKI, but still uses btrfs when the build path is exercised.
+        FS_ARG=""
+        if [[ -n "{{inputs.parameters.filesystem}}" ]]; then
+          FS_ARG="--filesystem {{inputs.parameters.filesystem}}"
+        else
+          case "${IMAGE}" in
+            ghcr.io/projectbluefin/bluefin-lts:*) FS_ARG="--filesystem xfs" ;;
+            ghcr.io/projectbluefin/bluefin:*|ghcr.io/ublue-os/aurora:*|ghcr.io/ublue-os/bazzite:*|ghcr.io/projectbluefin/dakota:*) FS_ARG="--filesystem btrfs" ;;
+          esac
+        fi
+        if [[ -n "${FS_ARG}" ]]; then
+          echo "[BUILD] filesystem args: ${FS_ARG}"
+        else
+          echo "[BUILD] filesystem args: <none>"
+        fi
+
+        # Inject missing host binaries via bootc exec-in-host-mount-namespace.
+        # The FSDK server image lacks dosfstools (mkfs.fat/mkdosfs) and podman.
+        # bootc needs mkfs.fat to format the EFI partition and podman to init
+        # the containers-storage imgstorage (CStorage::create runs "podman images").
+        mkdir -p /var/usrlocal/sbin /var/usrlocal/bin
+        for TOOL in mkfs.fat mkdosfs; do
+          if ! command -v "${TOOL}" >/dev/null 2>&1; then
+            printf '#!/bin/sh\nexec bootc exec-in-host-mount-namespace %s "$@"\n' "${TOOL}" \
+              > "/var/usrlocal/sbin/${TOOL}"
+            chmod +x "/var/usrlocal/sbin/${TOOL}"
+            echo "[BUILD] ${TOOL} wrapper injected via bootc exec-in-host-mount-namespace"
+          fi
+        done
+        for TOOL in podman skopeo; do
+          if ! command -v "${TOOL}" >/dev/null 2>&1; then
+            if [ "${TOOL}" = skopeo ]; then
+              printf '#!/bin/sh\nbootc exec-in-host-mount-namespace mkdir -p /var/tmp\nexport TMPDIR=/var/tmp\nexec bootc exec-in-host-mount-namespace %s --tls-verify=false "$@"\n' "${TOOL}" \
+                > "/var/usrlocal/bin/${TOOL}"
+            else
+              printf '#!/bin/sh\nbootc exec-in-host-mount-namespace mkdir -p /var/tmp\nexport TMPDIR=/var/tmp\nexec bootc exec-in-host-mount-namespace %s "$@"\n' "${TOOL}" \
+                > "/var/usrlocal/bin/${TOOL}"
+            fi
+            chmod +x "/var/usrlocal/bin/${TOOL}"
+            echo "[BUILD] ${TOOL} wrapper injected via bootc exec-in-host-mount-namespace"
+          fi
+        done
+        export PATH="/var/usrlocal/sbin:/var/usrlocal/bin:${PATH}"
+        mkdir -p /var/tmp
+        export TMPDIR="/var/tmp"
+
+        # bootc requires a bootable source image. bluefin-server-bootc is a
+        # server payload image, so derive a temporary copy with the standard
+        # bootc compatibility label + kernel layout, push it to the local
+        # registry, then install from docker:// (containers-storage pulls can hang
+        # in experimental-image-proxy for this image).
+        BOOTABLE_IMAGE_LOCAL="localhost/${TAG}-bootable:latest"
+        BOOTABLE_IMAGE_REMOTE="192.168.1.102:30500/bluefin-server-bootable:${TAG}"
+        BOOTABLE_CTX="${STAGING}/bootable-build"
+        mkdir -p "${BOOTABLE_CTX}"
+
+        printf '%s\n' \
+          '#!/bin/bash' \
+          'mkdir -p /sysroot/tmp 2>/dev/null' \
+          'echo "=== findmnt-wrapper called ===" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          'echo "args: $*" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          'echo "pwd: $(pwd)" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          'if [[ "$*" == *"-J"* ]] && [[ "$*" == *"--output=SOURCE,FSTYPE,OPTIONS,UUID"* ]]; then' \
+          '  path="${@: -1}"' \
+          '  if [[ "$path" == -* ]]; then' \
+          '    path="."' \
+          '  fi' \
+          '  real_path=$(readlink -f "$path" 2>/dev/null || echo "$path")' \
+          '  echo "path resolved: $path -> $real_path" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          '  loop_dev=$(ls /dev/loop*p3 2>/dev/null | head -n 1 | sed "s/p3$//")' \
+          '  if [ -z "$loop_dev" ]; then' \
+          '    loop_dev="/dev/loop0"' \
+          '  fi' \
+          '  echo "loop_dev: $loop_dev" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          '  if [ "$real_path" = "/boot" ] || [[ "$real_path" == "/boot/"* ]]; then' \
+          '    OUT="{\"filesystems\": [{\"source\": \"${loop_dev}p2\", \"fstype\": \"vfat\", \"options\": \"rw,relatime\", \"uuid\": \"1234-5678\"}]}"' \
+          '  else' \
+          '    OUT="{\"filesystems\": [{\"source\": \"${loop_dev}p3\", \"fstype\": \"btrfs\", \"options\": \"rw,relatime,subvol=/\", \"uuid\": \"7ae86aa6-e733-41e6-bed7-7fda4b6f4e9b\"}]}"' \
+          '  fi' \
+          '  echo "returning mock json: $OUT" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          '  echo "$OUT"' \
+          'else' \
+          '  echo "delegating to findmnt.orig" >> /sysroot/tmp/findmnt-wrapper.log 2>/dev/null' \
+          '  exec /usr/bin/findmnt.orig "$@"' \
+          'fi' \
+          > "${BOOTABLE_CTX}/findmnt-wrapper"
+
+        printf '%s\n' \
+          "FROM ${IMAGE}" \
+          "LABEL containers.bootc=1" \
+          'RUN set -eux; kver=$(basename /usr/lib/modules/*); test -e "/usr/lib/modules/${kver}/vmlinuz" || cp /boot/vmlinuz "/usr/lib/modules/${kver}/vmlinuz"' \
+          'COPY findmnt-wrapper /tmp/findmnt-wrapper' \
+          'RUN set -eux; \' \
+          '    CANONICAL_PATHS=""; \' \
+          '    for p in /usr/bin/findmnt /usr/sbin/findmnt /bin/findmnt /sbin/findmnt; do \' \
+          '        if [ -f "$p" ]; then \' \
+          '            CAN_PATH=$(readlink -f "$p"); \' \
+          '            if [[ " ${CANONICAL_PATHS} " != *" ${CAN_PATH} "* ]]; then \' \
+          '                CANONICAL_PATHS="${CANONICAL_PATHS} ${CAN_PATH}"; \' \
+          '            fi; \' \
+          '        fi; \' \
+          '    done; \' \
+          '    if [ -n "${CANONICAL_PATHS}" ]; then \' \
+          '        for CAN_PATH in ${CANONICAL_PATHS}; do \' \
+          '            mv "${CAN_PATH}" "${CAN_PATH}.orig"; \' \
+          '            cp /tmp/findmnt-wrapper "${CAN_PATH}"; \' \
+          '            chmod +x "${CAN_PATH}"; \' \
+          '            echo "findmnt wrapper installed at ${CAN_PATH}"; \' \
+          '        done; \' \
+          '    else \' \
+          '        echo "findmnt binary not found, skipping wrapper"; \' \
+          '    fi; \' \
+          '    rm -f /tmp/findmnt-wrapper' \
+          > "${BOOTABLE_CTX}/Containerfile"
+        echo "[BUILD] deriving bootable source image ${BOOTABLE_IMAGE_LOCAL}"
+        podman build --tls-verify=false -t "${BOOTABLE_IMAGE_LOCAL}" -f "${BOOTABLE_CTX}/Containerfile" "${BOOTABLE_CTX}"
+        podman push --tls-verify=false "${BOOTABLE_IMAGE_LOCAL}" "docker://${BOOTABLE_IMAGE_REMOTE}"
+        SOURCE_IMGREF="docker://${BOOTABLE_IMAGE_REMOTE}"
+        echo "[BUILD] SOURCE_IMGREF=${SOURCE_IMGREF}"
+
+        # Inject bootupd config to skip boot partition UUID writing.
+        # Works around the findmnt bug on btrfs subvolumes inside bubblewrap container setup:
+        # inspect_filesystem / findmnt returns ENOENT (os error 2) because / is a btrfs subvolume.
+        # skip-boot-uuid=true uses --with-static-configs instead of --write-uuid, avoiding the check completely.
+        mkdir -p /etc/bootc/install
+        printf '[install.bootupd]\nskip-boot-uuid = true\n' > /etc/bootc/install/05-custom.toml
+        echo "[BUILD] Injected bootupd config to skip-boot-uuid"
+
+        bootc install to-disk \
+          ${FS_ARG} \
+          --source-imgref "${SOURCE_IMGREF}" \
+          --generic-image \
+          --target-no-signature-verification \
+          --disable-selinux \
+          --root-ssh-authorized-keys "${STAGING}/root-ssh-keys" \
+          --via-loopback \
+          "${DISK}"
+
+        # Some images disable the runtime services the lab depends on.
+        # Bluefin needs qemu-guest-agent for KubeVirt accessCredentials, and
+        # the lab also needs sshd.service to be enabled in the ostree deployment.
+        echo "[POST-INSTALL] Enabling qemu-guest-agent.service and sshd.service for lab access..."
+        LOOP_DEV=$(losetup -f --show -P "${DISK}")
+        SYSROOT=$(mktemp -d)
+        SSHD_ENABLED=false
+        QGA_ENABLED=false
+        for PARTNUM in 4 3 2; do
+          PART="${LOOP_DEV}p${PARTNUM}"
+          [ -b "${PART}" ] || continue
+          if mount "${PART}" "${SYSROOT}" 2>/dev/null; then
+            # Exclude backing/ (composefs object store). Target deploy/<hash>.0 (deployed filesystem).
+            # find -path "*/foo/*" matches slashes, so use -not -path to exclude backing/.
+            DEPLOY_DIR=$(find "${SYSROOT}/ostree/deploy" -maxdepth 5 -name "*.0" -type d \
+              -not -path "*/backing/*" 2>/dev/null | head -1)
+            if [ -n "${DEPLOY_DIR}" ]; then
+              QGA_WANTS="${DEPLOY_DIR}/etc/systemd/system/multi-user.target.wants/qemu-guest-agent.service"
+              if [ ! -e "${QGA_WANTS}" ]; then
+                mkdir -p "$(dirname "${QGA_WANTS}")"
+                ln -sf /usr/lib/systemd/system/qemu-guest-agent.service "${QGA_WANTS}"
+                echo "[POST-INSTALL] qemu-guest-agent.service enabled in ${DEPLOY_DIR}"
+              else
+                echo "[POST-INSTALL] qemu-guest-agent.service already enabled"
+              fi
+              QGA_ENABLED=true
+
+              WANTS="${DEPLOY_DIR}/etc/systemd/system/multi-user.target.wants/sshd.service"
+              if [ ! -e "${WANTS}" ]; then
+                mkdir -p "$(dirname "${WANTS}")"
+                ln -sf /usr/lib/systemd/system/sshd.service "${WANTS}"
+                echo "[POST-INSTALL] sshd.service enabled in ${DEPLOY_DIR}"
+              else
+                echo "[POST-INSTALL] sshd.service already enabled"
+              fi
+              SSHD_ENABLED=true
+
+              # Restore original findmnt binaries by finding all findmnt.orig in the deployed system root
+              echo "[POST-INSTALL] Restoring original findmnt binaries..."
+              find "${DEPLOY_DIR}" -name "findmnt.orig" | while read -r orig_file; do
+                base_dir=$(dirname "${orig_file}")
+                mv "${orig_file}" "${base_dir}/findmnt"
+                echo "[POST-INSTALL] Restored findmnt in ${base_dir}"
+              done
+
+              umount "${SYSROOT}"
+              break
+            fi
+            umount "${SYSROOT}"
+          fi
+        done
+        rmdir "${SYSROOT}" 2>/dev/null || true
+        losetup -d "${LOOP_DEV}" 2>/dev/null || true
+        if [ "${QGA_ENABLED}" = false ]; then
+          echo "[POST-INSTALL] WARNING: could not find ostree deploy dir to enable qemu-guest-agent"
+        fi
+        if [ "${SSHD_ENABLED}" = false ]; then
+          echo "[POST-INSTALL] WARNING: could not find ostree deploy dir to enable sshd"
+        fi
+
+  - name: convert-and-push
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+      - name: containerdisk-tag
+      - name: disk-size
+    script:
+      image: quay.io/fedora/fedora:latest
+      command: [sh]
+      securityContext:
+        privileged: true
+        runAsUser: 0
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+      volumeMounts:
+      - name: staging
+        mountPath: /var/mnt/ghost-data/bluefin-cd-build
+      source: |
+        set -euo pipefail
+
+        dnf install -y qemu-img jq buildah
+
+        # Flush all page-cache dirty pages to disk before reading the raw disk.
+        # The install-to-disk pod's btrfs writes land in the kernel page cache for
+        # disk.raw; without sync, qemu-img may read stale on-disk blocks if the
+        # NVMe hasn't received the flushed writes yet.
+        sync
+
+        TAG="{{inputs.parameters.containerdisk-tag}}"
+        STAGING="/var/mnt/ghost-data/bluefin-cd-build/${TAG}"
+        RAW="${STAGING}/disk.raw"
+        QCOW="${STAGING}/containerdisk.qcow2"
+        DEST="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
+
+        echo "Converting ${RAW} to qcow2..."
+        qemu-img convert -f raw -O qcow2 -p "${RAW}" "${QCOW}"
+        echo "qcow2 size: $(du -sh "${QCOW}" | cut -f1)"
+
+        echo "Building containerDisk OCI image..."
+        cat << 'JSON' > "${STAGING}/containerDisk.json"
+        {
+          "volumes": [
+            {
+              "image": "disk.qcow2",
+              "capacity": "{{inputs.parameters.disk-size}}"
+            }
+          ]
+        }
+        JSON
+        CTR=$(buildah from scratch)
+        buildah copy --chown 107:107 "${CTR}" "${QCOW}" /disk/disk.qcow2
+        buildah copy "${CTR}" "${STAGING}/containerDisk.json" /containerDisk.json
+        buildah commit "${CTR}" "${DEST}"
+
+        echo "Pushing to ${DEST}..."
+        buildah push --tls-verify=false "${DEST}"
+        buildah rm "${CTR}" 2>/dev/null || true
+
+        # Update the image-polling-digests ConfigMap so check() can detect staleness.
+        TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+        CACERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        IMAGE="{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+        REMOTE_DIGEST=$(skopeo inspect --no-creds "docker://${IMAGE}" 2>/dev/null \
+          | jq -r .Digest \
+          || echo "")
+        if [[ -n "${REMOTE_DIGEST}" ]]; then
+          curl -sf --cacert "${CACERT}" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/strategic-merge-patch+json" \
+            -X PATCH \
+            "https://kubernetes.default.svc/api/v1/namespaces/argo/configmaps/image-polling-digests" \
+            -d "{\"data\":{\"containerdisk-${TAG}\": \"${REMOTE_DIGEST}\"}}" \
+            > /dev/null && echo "Updated digest: containerdisk-${TAG}=${REMOTE_DIGEST}" \
+            || echo "WARN: digest update failed (non-fatal)"
+        fi
+
+        echo "Cleaning staging..."
+        rm -f "${RAW}" "${QCOW}"
+
+        echo "Done: ${DEST}"

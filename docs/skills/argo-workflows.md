@@ -176,6 +176,21 @@ outputs:
 
 This keeps workflows self-contained while still exposing machine-readable output in workflow status (`argo get` / `kubectl get wf -o json`).
 
+#### Aggregating JSON output parameters from loops
+
+When a step runs `withItems` or `withParam` and each iteration emits a JSON object via `outputs.parameters.valueFrom.path`, referencing `{{steps.<step>.outputs.parameters.<name>}}` returns a JSON array. Argo stores each value as a string, so the aggregated array may contain either JSON-encoded strings or already-parsed objects depending on the runtime version and how the value was produced. Make the consumer robust to both shapes:
+
+```bash
+# inside the aggregate step
+SUMMARIES='{{steps.scan-lane.outputs.parameters.summary}}'
+echo "$SUMMARIES" | jq '
+  (if (length > 0 and (.[0] | type) == "string") then map(fromjson) else . end) as $items |
+  $items[] | .
+'
+```
+
+This avoids `jq` parse errors when the aggregated values arrive as strings and keeps the template compatible if Argo later normalizes them to objects.
+
 **`ghcr.io/projectbluefin/lab-runner:latest`** is the preferred, organization-owned FSDK container for pollers, GC, and CronWorkflows in this cluster. It contains `kubectl`, `oras`, `skopeo`, `curl`, `jq`, and full shell capabilities prebuilt. Using organization-owned containers eliminates external runtime package-manager download dependencies and improves offline resiliency.
 
 For steps that still use other images, **`cgr.dev/chainguard/kubectl:latest-dev`** can be used as a fallback if it needs both `kubectl` and `bash`. `registry.k8s.io/kubectl` is distroless (no shell — `nc`, `bash /dev/tcp` all fail).

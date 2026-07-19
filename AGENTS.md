@@ -29,6 +29,11 @@ Before changing anything, load the relevant skill file from `docs/skills/`:
 
 **At end of every non-trivial session:** run the write-back loop in `docs/skills/skill-improvement.md`. Every session produces two outputs: the work and the learning.
 
+Release verdict and dashboard data conventions are documented in
+[`docs/adr/0002-release-verdict-definition.md`](docs/adr/0002-release-verdict-definition.md)
+and [`docs/data/page-contracts.md`](docs/data/page-contracts.md). Agents working
+on the dashboard or QA gates should read both before changing collectors or pages.
+
 ## What This Repo Is
 
 Bluefin QA pipeline: Argo Workflows + KubeVirt + ArgoCD + behave/dogtail.

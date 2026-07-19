@@ -63,3 +63,39 @@ fix has shipped — that signal punishes releasing, which is backwards.
   renders an explicit `unavailable`/pending verdict — never inferred good.
 - Changing what gates the verdict requires amending this ADR, not editing
   a collector.
+
+## Amendment — Gating suite split
+
+Date: 2026-07-19
+
+### Decision
+
+A lane's **QA verdict gate** is satisfied by its gating suites only. The gating
+suites are:
+
+- `smoke`
+- `system`
+- `flatcar` (for the flatcar lane only)
+
+The following suites are **informational**: displayed, tracked, and linked, but
+never blocking:
+
+- `developer`
+- `software`
+- `common`
+
+### Rationale
+
+Gating suites verify the platform contract: boot, bootc/atomic guarantees,
+read-only `/usr`, staged upgrades, and rollback behavior. This matches the repo's
+stated north star of proving Bluefin as an image-based, atomic operating system.
+Informational suites cover decoupled user-space layers (Homebrew, Flatpak,
+Podman, Bazaar, Firefox, desktop cosmetics) that must integrate cleanly without
+mutating the host image.
+
+### Implementation
+
+`scripts/collect_release_verdict.py` computes the QA gate by counting only the
+gating suites for the lane. Informational suite results are still emitted in the
+dashboard contract for visibility and trend analysis, but they do not influence
+the `good`/`bad`/`pending` verdict.

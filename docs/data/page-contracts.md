@@ -57,6 +57,7 @@ Purpose: one row per `(variant, branch, suite)` result for the `/tests` page.
 
 - `_meta`
 - `summary_metrics[]`
+- `suite_roles`: map of suite name to `"gate"` or `"info"`.
 - `dimensions`: distinct variants/branches/suites for filters.
 - `rows[]`: concrete matrix cells.
 
@@ -66,6 +67,7 @@ Purpose: one row per `(variant, branch, suite)` result for the `/tests` page.
 | --- | --- |
 | `id` | Stable matrix key (`bluefin-testing-smoke`) |
 | `variant` / `branch` / `suite` | Page filter dimensions |
+| `role` | `"gate"` for gating suites (`smoke`, `system`, `flatcar`) or `"info"` for informational suites (`developer`, `software`, `common`) |
 | `result_status` | Published status from `docs/results/*.json` |
 | `last_run` | Workflow completion time for the current cell |
 | `workflow_name` | Workflow evidence for drill-down |
@@ -74,6 +76,9 @@ Purpose: one row per `(variant, branch, suite)` result for the `/tests` page.
 | `history_points` | Count of historical entries already published |
 | `results_path` / `screenshot_path` / `screenshot_url` | Artifact links |
 | `state` / `state_reason` | Explicit availability contract |
+| `enrollment_issue_url` | Link to the enrollment tracking issue for unenrolled variants; `null` for normal rows |
+| `flake_flips` | Number of pass/fail status transitions across the row's recorded run history |
+| `runs_recorded` | Number of runs recorded for this row in `docs/data/history/test-runs.ndjson` |
 | `source_url` / `collected_at` / `derivation` | Provenance for the row |
 
 ## `docs/data/applications-matrix.json`
@@ -231,3 +236,124 @@ Notes:
 Rolling append-only history of verdict transitions. One line per `(lane, digest)` change:
 `{recorded_at, lane, digest, verdict, build, qa, signature}`. Retention: 365 days; the collector
 prunes older lines on each run. Rows never rewrite — a new digest or changed verdict appends.
+
+## NDJSON history contracts
+
+Time-series evidence accumulates as git-tracked rolling NDJSON under
+`docs/data/history/`. Collectors append new lines, deduplicate by natural key,
+and retain raw lines for 180 days. GitHub Actions artifacts store only bulky
+evidence (screenshots, logs, SBOMs); dashboards link to those artifacts but
+never parse them directly.
+
+### Shared rules
+
+- Append-only at write time; duplicate natural keys are ignored during ingest.
+- Each line is a self-contained JSON object.
+- Retention: raw lines kept for 180 days. Compaction beyond 180 days is a future
+  concern and is documented as out-of-scope here.
+- Provenance fields (`source_url`, `recorded_at`) are required on every line.
+
+### `docs/data/history/test-runs.ndjson`
+
+One line per suite run.
+
+Producer: `scripts/collect_test_history.py` (appends after each lab run).
+
+Consumer: `/tests` page and index triage mini-suite indicators.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `recorded_at` | ISO8601 | When the history line was recorded |
+| `variant` | string | Image variant (`bluefin`, `bluefin-lts`, `dakota`, ...) |
+| `branch` | string | Stream (`testing`, `stable`) |
+| `suite` | string | Suite name (`smoke`, `system`, `developer`, `software`, `common`, `flatcar`) |
+| `role` | `"gate"` or `"info"` | Whether the suite is gating or informational for the lane |
+| `workflow_name` | string | Argo workflow that executed the suite |
+| `status` | `"passed"` or `"failed"` | Terminal suite status |
+| `scenarios_total` | int | Total scenarios executed |
+| `scenarios_failed` | int | Scenarios that failed |
+| `failed_scenarios` | string[] | Names of failed scenarios, empty when none |
+| `digest` | string or null | Tested image digest when known |
+
+Dedup key: `(variant, branch, suite, workflow_name)`.
+
+### `docs/data/history/build-runs.ndjson`
+
+One line per terminal build run.
+
+Producer: `scripts/collect_factory_builds.py` for `plane=publish` (GitHub Actions
+runs of `projectbluefin/{bluefin,bluefin-lts,dakota}`) and
+`scripts/collect_lab_builds.py` for `plane=lab` (Argo pipeline build runs).
+
+Consumer: `/builds` page, index build-duration sparklines, release-verdict build
+input.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `recorded_at` | ISO8601 | When the history line was recorded |
+| `plane` | `"publish"` or `"lab"` | `publish` for upstream GHA builds; `lab` for Argo pipeline runs |
+| `repo` | string | Source repository (`projectbluefin/bluefin`, ...) |
+| `lane` | string | Lane id (`bluefin-testing`, ...) |
+| `run_id` | string | Unique run identifier from the producing system |
+| `status` | `"passed"` or `"failed"` | Terminal build status |
+| `started_at` | ISO8601 | Build start time |
+| `finished_at` | ISO8601 | Build end time |
+| `duration_min` | number | Duration in minutes |
+| `run_url` | string | Canonical run URL |
+| `failure_stage` | string or null | Failed stage name when `status` is `failed` |
+
+Dedup key: `(plane, run_id)`.
+
+### `docs/data/history/cve-summary.ndjson`
+
+One line per lane per nightly grype scan.
+
+Producer: `nightly-cve-scan` CronWorkflow (lab-side grype scan of published lane
+digests), collected by `scripts/collect_cve_summary.py`.
+
+Consumer: `/security` page, release-verdict CVE regression display.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `recorded_at` | ISO8601 | When the scan was recorded |
+| `lane` | string | Lane id (`bluefin-testing`, ...) |
+| `digest` | string or null | Scanned image digest |
+| `critical` | int | Critical CVE count |
+| `high` | int | High CVE count |
+| `medium` | int | Medium CVE count |
+| `low` | int | Low CVE count |
+| `fixable` | int | CVEs with available fixes |
+| `total` | int | Total CVE count |
+
+This file is non-gating per ADR 0002. It is displayed alongside the verdict as a
+trend signal.
+
+### `docs/data/enrollment-issues.json`
+
+Mapping of unenrolled matrix variants to their open tracking issues in
+`projectbluefin/lab`.
+
+Producer: `scripts/collect_enrollment_issues.py`.
+
+Consumer: `/tests` matrix page.
+
+```json
+{
+  "schema_version": "1.0",
+  "_meta": { "generated_at": "...", "description": "...", "status": "..." },
+  "variants": {
+    "aurora": { "issue_number": 123, "issue_url": "https://github.com/projectbluefin/lab/issues/123" },
+    "bazzite": { "issue_number": 124, "issue_url": "https://github.com/projectbluefin/lab/issues/124" },
+    "fedora-kinoite": { ... },
+    "fedora-silverblue": { ... },
+    "snosi": { ... },
+    "cosmic": { ... },
+    "gnomeos": { ... },
+    "fedora-bootc": { ... }
+  }
+}
+```
+
+Policy: unenrolled variants stay in the tests matrix greyed out, each cell
+linking its enrollment issue. The collector emits these rows; the page never
+fabricates them.

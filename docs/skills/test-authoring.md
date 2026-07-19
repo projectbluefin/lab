@@ -55,6 +55,26 @@ tests/                            (in projectbluefin/testsuite)
 Add `.feature` files and step implementations in the appropriate suite directory.
 Tag new/unstable scenarios `@wip` until they pass reliably in CI.
 
+### Suite roles (gating vs informational)
+
+A lane's release-verdict QA gate counts only gating suites. All other tracked
+suites are informational: displayed, tracked, and linked, but never blocking.
+
+Gating suites:
+
+- `smoke` — boot and core identity
+- `system` — bootc/atomic contract (`bootc status`, read-only `/usr`, staged upgrades, rollback)
+- `flatcar` — for the flatcar lane only
+
+Informational suites:
+
+- `developer` — Homebrew, Podman, Ptyxis
+- `software` — Bazaar, Flatpak CLI
+- `common` — Flatpak model, portals, polkit, immutable OS parity
+
+When adding a scenario, prefer expanding `system/` over an informational suite.
+The bootc contract is the lab's north star.
+
 ### 2. qecore-headless session startup (required incantation)
 
 ```bash

@@ -78,6 +78,10 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 77. When pulling in container registries or caches data (e.g. Zot local and Zot cache), execute live queries at pre-render build-time using `execSync` with defensive timeouts and stashing, falling back gracefully to static mock snapshots to ensure builds never fail offline or under homelab network latency. Standard compliant OCI registry endpoints (such as `/v2/<repo>/manifests/latest`) should be queried with media-type Accept headers to calculate exact OCI local storage size (bytes) and OCI layers counts.
 78. To prevent hardcoded application lists from drifting out of sync with test repos, implement build-time auto-discovery of BDD features (e.g. behave `.feature` files) by polling the test suite repository's recursive directory tree (`/git/trees/main?recursive=1`) at prerender-time, dynamically generating fully-linked cards and terminal execute instructions for any unmapped test suites.
 79. For site layouts, enforce dark color-schemes (`<meta name="color-scheme" content="dark" />`), include standard favicon and Open Graph/Twitter meta tags referencing page parameters, and add a focusable skip-to-content link targeting the main content wrapper. Highlight active navigation links dynamically using `Astro.url.pathname` rather than hardcoding simple props like `current`, supporting custom path prefixes and base URLs.
+80. **Load rolling NDJSON history in Astro frontmatter at prerender time.** Read `docs/data/history/*.ndjson` line-by-line, parse and validate each record, then embed the array as a JSON script blob for browser-side charts. Do not fetch history client-side; the page must remain a static evidence page.
+81. **Replace single-value vanity cards with dense charts when a trend exists.** If a metric has historical records, render a line, area, or bar chart instead of a KPI box. Keep only panels that expose a real number, trend, or evidence link with `source_url` provenance.
+82. **Compute rolling percentile bands honestly.** When showing p50/p95 bands on per-lane duration trends, use a rolling window and render the raw points only with an explicit note when a lane has fewer than the required runs. Never fabricate a band from insufficient data.
+83. **Keep one resize owner per page.** If multiple chart containers exist, push every `echarts.init()` instance into a single array and attach one `window.addEventListener('resize', ...)` handler that resizes all of them.
 80. On `src/pages/index.astro`, treat `docs/data/upstream-status.json` as the canonical image-status contract (lane rows keyed by `variant + branch`), with `docs/data/factory-stats.json` as fallback only so row-level `state_reason` and evidence links stay consistent.
 81. For contributor cluster visuals, keep USB4 link context attached to node cards (box-to-box chips/badges) unless a detached topology diagram is explicitly requested.
 81. When asserting evidence links in unit tests (e.g. tests checking if the built pages link to raw source/evidence URLs), design the assertion regex to be flexible. As image streams transition from pending/unavailable (having only a generic repo releases link) to available (having a specific GHCR package container version link), hardcoded URL assertions will break.
@@ -169,3 +173,40 @@ Rules learned the hard way:
   repo-tracked JSON/NDJSON.
 - **Fast Build GHA Bypass:** Always check `!!process.env.GITHUB_ACTIONS` before initiating any build-time LAN network calls, local Zot API curls, or skopeo inspections. Immediately skip those commands and return static snapshots when compiled under GHA to prevent slow build-time timeouts.
 - **Digest-Pinned QA Verdicts:** Match the tested image digest (recorded during test execution in `tests-matrix.json`) against the currently published GHCR tag digest. If they diverge, the release verdict is marked `pending` rather than `good` to prevent stale QA runs from verifying a fresh untested build.
+
+## Layered page design
+
+Dashboard pages serve two audiences: maintainers fixing things and users learning
+about the project. Every page must lead with operator triage content in the first
+screenful: health, trends, failures, and evidence links. Educational prose sits
+below the fold.
+
+Rules:
+
+- Empty label-only boxes are banned. Every panel must render real data plus a
+  `source_url`, or an explicit unavailable state with a `state_reason`.
+- Prefer dense ECharts visualizations — line charts, sparklines, stacked areas,
+  rolling histograms — over gauges or single-value cards when historical data
+  exists.
+- The first scrollable screen must answer "what is broken and where is the
+  evidence?" before any explanatory text appears.
+
+## Consuming NDJSON history
+
+Pages that show trends read rolling NDJSON from `docs/data/history/` at
+prerender time. Treat these files as append-only time series.
+
+Guidelines:
+
+- Load lines into memory and parse with `JSON.parse` or a streaming NDJSON
+  parser; keep only the fields the page needs.
+- Dedupe by the natural key documented in `docs/data/page-contracts.md` before
+  rendering; collectors append, but repeated builds must not double-count rows.
+- Slice time ranges (30d, 90d, 180d) client-side from the full deserialized
+  payload so the static page ships one dataset and filtering requires no extra
+  network round trips.
+- For unavailable or empty history, render an explicit empty-state panel that
+  names the missing file and reason instead of omitting the chart section.
+- Do not parse GitHub Actions artifacts directly. Artifacts hold screenshots,
+  logs, and SBOMs; link to them from the page but derive chart data from the
+  repo-tracked NDJSON lines.

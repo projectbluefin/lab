@@ -71,6 +71,7 @@ def test_container_runner_uses_a_nested_systemd_target_with_bounded_resources():
     assert "systemctl is-active dbus systemd-logind" in content
     assert "podman exec" in content
     assert "podman rm --force" in content
+    assert "--shm-size" not in content
     assert "provision-containerdisk-vm" not in content
     assert "bootc install to-disk" not in content
 

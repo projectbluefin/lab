@@ -52,10 +52,11 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
 - **Purpose:** The actual BuildStream compile step for Dakota — builds
   `oci/bluefin.bst`, then its dependent `oci/bluefin-nvidia.bst`, and pushes both to
   the local Zot registry. This is what populates/warms the Dakota build cache.
-- **Distribution:** `build-mode=re` is mandatory. Cache-only, automatic fallback,
-  runner-local execution, and remote-cache-only execution are failures, not
-  alternatives. Scheduler-driven placement selects the coordinator; no task
-  pins it to a node.
+- **Distribution:** `build-mode=re` is mandatory. A fresh USB4 `up` observation
+  and a Ready BuildBarn worker are required on both `ghost` and `exo-0` before
+  admission. Cache-only, Ethernet-backed, automatic fallback, runner-local
+  execution, and remote-cache-only execution are failures, not alternatives.
+  Scheduler-driven placement selects the coordinator; no task pins it to a node.
 - **Capacity:** The coordinator uses four fetchers, two BuildStream builders and
   pushers, and eight jobs per action. Two BuildBarn workers expose one action
   slot each, so both workers can execute concurrently without oversubscribing a
@@ -144,10 +145,10 @@ different problems and do not overlap:
 
 Buildbarn topology (2 storage shards, 1 scheduler, 2 frontend replicas, 1
 worker+runner DaemonSet pair per node — storage replicas spread with
-`podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. Dakota requires
-the real BuildBarn execution grid. If an action needs unavailable runner
-capabilities, the workflow must fail for repair; it must not use a local or
-cache-only fallback.
+`podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. Every BST lane
+requires the real BuildBarn execution grid over a fresh USB4 link between
+`ghost` and `exo-0`. If a link, worker, or action is unavailable, the workflow
+must fail for repair; it must not use an Ethernet, local, or cache-only fallback.
 
 ## Cache Warming (Pollers)
 
@@ -164,10 +165,9 @@ cache writes and remote execution while leaving upstream mirrors read-only. Cold
 runs may fetch from upstream source origins, but cache writes stay in-cluster via
 Buildbarn.
 
-**`bluefin-server-build-pipeline` has no poller at all** — manual-trigger only,
-and deliberately local-cache-only (commit `22c7d2ad`, "use local-cache path... for
-extreme stability"). It is cold by design on every run; this is an intentional
-trade-off, not a gap.
+**`bluefin-server-build-pipeline` has no poller at all** — it is manual-trigger
+only and uses the same USB4-gated BuildBarn remote-execution contract as every
+other BST lane.
 
 **`nightly-dakota` does not warm anything** — it's wired to `dakota-qa-pipeline`
 (test runner against pre-built images), not `dakota-build-pipeline` (the actual

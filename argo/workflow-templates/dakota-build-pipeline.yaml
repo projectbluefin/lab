@@ -167,24 +167,40 @@ spec:
             cpu: 200m
             memory: 128Mi
         source: |
-          set -uo pipefail
+          set -euo pipefail
           REQUESTED="{{inputs.parameters.build-mode}}"
-          MODE=re
-          case "${REQUESTED}" in
-            re)
-              MODE=re
-              ;;
-            cache-only|auto)
-              echo "Dakota build-mode '${REQUESTED}' is forbidden; distributed mode ('re') is required" >&2
+          if [[ "${REQUESTED}" != "re" ]]; then
+            echo "Dakota build-mode '${REQUESTED}' is forbidden; only distributed mode ('re') is permitted" >&2
+            exit 1
+          fi
+
+          MAX_AGE_SECONDS=60
+          NOW="$(date -u +%s)"
+          for NODE in ghost exo-0; do
+            LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}')"
+            OBSERVED_AT="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link-observed-at}')"
+            READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
+
+            if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
+              echo "USB4 BuildBarn gate rejected ${NODE}: link=${LINK:-missing} observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
               exit 1
-              ;;
-            *)
-              echo "unknown build-mode '${REQUESTED}'; expected 're'" >&2
+            fi
+            if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
+              echo "USB4 BuildBarn gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
               exit 1
-              ;;
-          esac
-          echo "build mode: ${MODE}"
-          printf '%s' "${MODE}" > /tmp/mode
+            fi
+          done
+
+          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|"}{.status.containerStatuses[*].ready}{"\n"}{end}')"
+          for NODE in ghost exo-0; do
+            if ! grep -Eq "^${NODE}\|Running\|true true$" <<<"${WORKERS}"; then
+              echo "USB4 BuildBarn gate rejected: no Ready worker on ${NODE}" >&2
+              exit 1
+            fi
+          done
+
+          echo "USB4-backed BuildBarn remote execution admitted"
+          printf '%s' re > /tmp/mode
 
     - name: run-bst-step
       inputs:

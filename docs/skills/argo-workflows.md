@@ -74,7 +74,7 @@ placed on any healthy node without depending on a node-local root-disk cache.
 
 For distributed BuildStream runs, fix the shared config or template first and then stop/re-submit the workflow once; do not let Argo keep retrying a pod that is failing for a known configuration reason. Repeated retries burn node CPU and memory, overfill the namespace queue, and make the cluster look resource-constrained even when the underlying config issue is trivial.
 
-A BuildStream run is only "distributed" when BuildBarn remote execution is actually engaged. Remote artifact caches alone are not distributed builds. Before calling any BuildStream build distributed, require three independent pieces of evidence: (1) `projects.<name>.remote-execution` appears in the generated BuildStream config for the project, (2) BuildStream startup logs report a Remote Execution Configuration pointing at the BuildBarn frontend, and (3) current action activity is visible on BuildBarn workers (`kubectl logs -n buildbarn` or BuildBarn dashboards). Cache-only or local-driver BuildStream behavior is a failed operational state, not a supported fallback, and must fail fast unless you are intentionally running a contained diagnosis after a known remote-execution failure.
+A BuildStream run is only "distributed" when BuildBarn remote execution is actually engaged over USB4. Remote artifact caches alone are not distributed builds. Before admission, require fresh `lab.projectbluefin.io/usb4-link=up` observations and Ready workers on both `ghost` and `exo-0`. Before calling any BuildStream build distributed, require three independent pieces of evidence: (1) `projects.<name>.remote-execution` appears in the generated BuildStream config for the project, (2) BuildStream startup logs report a Remote Execution Configuration pointing at the BuildBarn frontend, and (3) current action activity is visible on BuildBarn workers (`kubectl logs -n buildbarn` or BuildBarn dashboards). Cache-only, Ethernet-backed, or local-driver BuildStream behavior is a failed operational state, not a supported fallback, and must fail fast.
 
 ### 2. Parameter passing — always explicit
 
@@ -437,19 +437,9 @@ the server's `MaxRecvMsgSize` ceiling. Neither bazel-remote nor Buildbarn fronte
 
 **Policy:** This is a remote-execution infrastructure failure. Do **not** switch the Dakota lane to pod-local cache-only execution as a routine fix. Cache-only or local-driver BuildStream behavior is a failed operational state and must fail fast. The correct remediation is to fix the RE/CAS infrastructure (frontend `MaxRecvMsgSize`, batching limits, or worker configuration), not to mask it by moving execution local.
 
-**Contained diagnosis only:** If you are intentionally reproducing or isolating a known remote-execution failure, you may run a bounded, labelled pod-local build with these settings. It must not be presented as a normal distributed build and must not be left in templates as a fallback:
-1. Remove remote cache server blocks from Dakota config generation (`cache.storage-service`, `artifacts`, project cache overrides).
-2. Keep execution local in workflow pods (no `remote-execution` block).
-3. **Pod-local builds are slower, require extended deadlines, and require scaled CPU requests/limits to saturate physical worker cores:**
-   - `activeDeadlineSeconds: 7200` (2h per step, vs prior 5400s) for full bootstrap + source fetch with retries + buffer
-   - `scheduler.network-retries: 8` (vs 4) to handle transient GitHub source fetch timeouts
-   - `source.fetch-timeout: 300` (5m, vs BuildStream default 30s) to allow slow fetches on high-latency networks
-   - **CPU and Memory Scaling:** Pods must request `8` CPUs (`limits: 12`) and `12Gi` Memory (`limits: 16Gi`) to fully saturate physical worker node cores and avoid thread throttling under heavy BuildStream compilation.
-   - **Persistent Local Caching:** Use a workflow PVC with
-     `storageClassName: local-path`, not a `hostPath`. The local-path provisioner
-     binds it after scheduler placement below the node's configured non-root data
-     mount. Never use `/var/tmp` or another root-backed cache path.
-4. Re-run a fresh Dakota workflow; stale submissions snapshot old template values at submit time.
+**Response:** Stop the workflow, repair the USB4 link, BuildBarn service, or
+worker configuration, and resubmit after the gate is healthy. Do not create a
+pod-local diagnostic lane in a tracked workflow or use it to warm caches.
 
 ```bash
 # Lint workflow-templates (offline, cross-file refs resolve)

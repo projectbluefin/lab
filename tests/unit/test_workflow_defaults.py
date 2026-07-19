@@ -54,6 +54,35 @@ def test_dakota_requires_distributed_capacity_matched_execution():
     assert "Verified BuildStream remote execution configuration" in pipeline
 
 
+def test_bst_pipelines_require_fresh_usb4_backed_remote_execution():
+    for filename in (
+        "dakota-build-pipeline.yaml",
+        "cosmic-build-pipeline.yaml",
+        "bluefin-server-build-pipeline.yaml",
+    ):
+        pipeline = (ROOT / "argo/workflow-templates" / filename).read_text(
+            encoding="utf-8"
+        )
+
+        assert "set -euo pipefail" in pipeline
+        assert "for NODE in ghost exo-0" in pipeline
+        assert "usb4-link" in pipeline
+        assert "usb4-link-observed-at" in pipeline
+        assert "kubectl get pods -n buildbarn -l app=worker" in pipeline
+        assert "template: bst-build-local" not in pipeline
+        assert "name: bst-build-local" not in pipeline
+
+
+def test_usb4_monitor_publishes_a_fresh_observation_on_every_probe():
+    monitor = (ROOT / "manifests/usb4-link-monitor.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "lab.projectbluefin.io/usb4-link-observed-at" in monitor
+    assert "date -u +%s" in monitor
+    assert "N % 20" not in monitor
+
+
 def test_dakota_persists_sources_in_buildbarn():
     config_map = yaml.safe_load(
         (ROOT / "manifests/buildstream-remote-cache-config.yaml").read_text(

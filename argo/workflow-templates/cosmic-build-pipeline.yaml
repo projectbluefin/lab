@@ -123,22 +123,40 @@ spec:
             cpu: 200m
             memory: 128Mi
         source: |
-          set -uo pipefail
+          set -euo pipefail
           REQUESTED="{{inputs.parameters.build-mode}}"
-          MODE=re
-          case "${REQUESTED}" in
-            re) MODE=re ;;
-            auto|cache-only|local)
-              echo "cosmic build-mode '${REQUESTED}' is forbidden; distributed mode ('re') is required" >&2
+          if [[ "${REQUESTED}" != "re" ]]; then
+            echo "COSMIC build-mode '${REQUESTED}' is forbidden; only distributed mode ('re') is permitted" >&2
+            exit 1
+          fi
+
+          MAX_AGE_SECONDS=60
+          NOW="$(date -u +%s)"
+          for NODE in ghost exo-0; do
+            LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}')"
+            OBSERVED_AT="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link-observed-at}')"
+            READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
+
+            if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
+              echo "USB4 BuildBarn gate rejected ${NODE}: link=${LINK:-missing} observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
               exit 1
-              ;;
-            *)
-              echo "unknown build-mode '${REQUESTED}'; expected 're'" >&2
+            fi
+            if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
+              echo "USB4 BuildBarn gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
               exit 1
-              ;;
-          esac
-          echo "build mode: ${MODE}"
-          printf '%s' "${MODE}" > /tmp/mode
+            fi
+          done
+
+          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|"}{.status.containerStatuses[*].ready}{"\n"}{end}')"
+          for NODE in ghost exo-0; do
+            if ! grep -Eq "^${NODE}\|Running\|true true$" <<<"${WORKERS}"; then
+              echo "USB4 BuildBarn gate rejected: no Ready worker on ${NODE}" >&2
+              exit 1
+            fi
+          done
+
+          echo "USB4-backed BuildBarn remote execution admitted"
+          printf '%s' re > /tmp/mode
 
     - name: run-bst-step
       inputs:
@@ -153,7 +171,7 @@ spec:
         tasks:
           - name: bst-re
             template: bst-build-re
-            when: "{{inputs.parameters.mode}} == 're'"
+            when: "{{=inputs.parameters.mode == 're'}}"
             arguments:
               parameters:
                 - name: element
@@ -168,24 +186,6 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{inputs.parameters.mode}}"
-          - name: bst-local
-            template: bst-build-local
-            when: "{{inputs.parameters.mode}} == 'local'"
-            arguments:
-              parameters:
-                - name: element
-                  value: "{{inputs.parameters.element}}"
-                - name: tag
-                  value: "{{inputs.parameters.tag}}"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{inputs.parameters.mode}}"
-
     - name: bst-build-re
       priorityClassName: bst-build
       # 2026-07-11: Raised 5400 -> 43200 (dakota parity). A cold local BST
@@ -193,8 +193,8 @@ spec:
       # killed healthy at 94 min by this step deadline.
       activeDeadlineSeconds: 43200
       retryStrategy:
-        # First RE attempt may hit Buildbarn sandbox issues; retries fall back
-        # to cache-only automatically. Extra retries help transient failures.
+        # Every retry remains distributed; repair BuildBarn rather than compiling
+        # locally if an action fails.
         limit: "5"
         retryPolicy: "Always"
       inputs:
@@ -298,165 +298,10 @@ spec:
                   push: false
           EOF
 
-          # Since we are in the RE-coordinator template, RE is always enabled
-          # on first try, but we respect the retry attempt and drop RE on retry.
-          ATTEMPT="{{retries}}"
-          if [[ "${ATTEMPT}" == "0" ]]; then
-            echo "=== Distributed build: remote execution enabled (USB4 link up) ==="
-            sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
-          else
-            echo "=== Coordinator retry fallback to Cache-only (attempt=${ATTEMPT}) ==="
-          fi
-
-          echo "=== Building ${ELEMENT} ==="
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              -o x86_64_v3 true \
-              build "${ELEMENT}"
-
-          echo "=== Exporting ${ELEMENT} ==="
-          EXPORT_DIR="/tmp/export-$(basename ${ELEMENT} .bst)"
-          mkdir -p "${EXPORT_DIR}"
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              -o x86_64_v3 true \
-              artifact checkout "${ELEMENT}" \
-              --directory "${EXPORT_DIR}"
-
-          echo "=== Pushing to local Zot ==="
-          if command -v skopeo >/dev/null 2>&1; then
-            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:latest"
-          else
-            IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
-            podman rmi "${IMAGE_ID}" 2>/dev/null || true
-          fi
-
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="
-
-    - name: bst-build-local
-      priorityClassName: bst-build
-      # Pin local builds to exo-0. Ghost is the control-plane node and repeatedly
-      # preempts BST build pods for higher-priority VM workloads. exo-0 is a
-      # dedicated worker with enough memory for the build bubblewrap sandboxes.
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - exo-0
-      # 2026-07-11: Raised 5400 -> 43200 (dakota parity); cold local builds
-      # exceed 90 min. See bst-build-re note above.
-      activeDeadlineSeconds: 43200
-      retryStrategy:
-        # Transient GitHub HTTPS read timeouts (30s) on cargo/git dependencies
-        # are the main failure mode in local mode. Give the lane several chances
-        # before failing the whole workflow.
-        limit: "5"
-        retryPolicy: "Always"
-      inputs:
-        parameters:
-          - name: element
-          - name: tag
-          - name: ref
-          - name: repo
-          - name: registry
-          - name: mode
-      volumes:
-        - name: fuse
-          hostPath:
-            path: /dev/fuse
-        - name: bst-cache
-          # Share local-build cache across cosmic variants; see bst-build-re.
-          # Revert to per-tag paths once projectbluefin/lab#271 is resolved.
-          ephemeral:
-            volumeClaimTemplate:
-              spec:
-                accessModes: [ReadWriteOnce]
-                storageClassName: local-path
-                resources:
-                  requests:
-                    storage: 200Gi
-        - name: buildstream-config
-          configMap:
-            name: buildstream-remote-cache
-            items:
-              - key: dakota-buildstream.conf
-                path: buildstream.conf
-              - key: remote-execution.conf
-                path: remote-execution.conf
-      script:
-        image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
-        command: [bash]
-        securityContext:
-          privileged: true
-          seLinuxOptions:
-            type: spc_t
-        env:
-          - name: GRPC_POLL_STRATEGY
-            value: poll
-          - name: GRPC_ENABLE_FORK_SUPPORT
-            value: "1"
-          # See bst-build-re for rationale: dulwich git-lfs smudge workaround.
-          - name: GIT_LFS_SKIP_SMUDGE
-            value: "1"
-        resources:
-          requests:
-            cpu: "4"
-            memory: 14Gi
-          limits:
-            cpu: "8"
-            memory: 28Gi
-        volumeMounts:
-          - name: fuse
-            mountPath: /dev/fuse
-          - name: bst-cache
-            mountPath: /root/.cache/buildstream
-          - name: buildstream-config
-            mountPath: /etc/buildstream
-            readOnly: true
-        source: |
-          set -euo pipefail
-
-          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
-          BST_CONF=/tmp/buildstream-cluster.conf
-          ELEMENT="{{inputs.parameters.element}}"
-          TAG="{{inputs.parameters.tag}}"
-          REF="{{inputs.parameters.ref}}"
-          REPO="{{inputs.parameters.repo}}"
-
-          echo "=== Cloning cosmic-build-meta @ ${REF} ==="
-          rm -rf /src
-          git clone --depth=1 --branch "${REF}" "${REPO}" /src
-          cd /src
-          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
-
-          cat >> /tmp/buildstream-cluster.conf <<EOF
-          projects:
-            ${PROJECT_NAME}:
-              artifacts:
-                override-project-caches: false
-                servers:
-                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  push: true
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-              source-caches:
-                override-project-caches: false
-                servers:
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-          EOF
-
-          # Since we are in the local-fallback template, it is always cache-only
-          echo "=== Cache-only build (attempt={{retries}}) ==="
+          # Every retry remains distributed. A failed action is infrastructure to
+          # repair, never a reason to compile on the coordinator.
+          echo "=== Distributed build: remote execution enabled (USB4 link up) ==="
+          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

@@ -1,7 +1,10 @@
 # Efficient Multi-Node BuildStream RE and Semaphore Scaling
 
 Date: 2026-07-10
-Status: approved
+Status: superseded
+
+> Superseded by the USB4-only BuildStream policy. Current worker capacity and
+> admission rules live in `AGENTS.md` and `docs/skills/cluster-tooling.md`.
 
 ## Problem
 

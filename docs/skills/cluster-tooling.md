@@ -47,10 +47,13 @@ metadata:
    PVC provisioning fails on an unconfigured node instead of falling back to
    that node's root disk.
 
-## Ethernet mode (USB4 data plane down)
+## USB4 is a hard BuildStream admission requirement
 
 When the ghost<->exo-0 USB4 link is down (see RUNBOOK), all cross-node traffic
-rides 2.5GbE. The cluster stays good at ingesting BST builds via:
+falls back to 2.5GbE, but **no BuildStream build may run**. Repair the link and
+wait for fresh `lab.projectbluefin.io/usb4-link=up` observations on both nodes
+before submitting or retrying. An Ethernet-backed, cache-only, runner-local, or
+remote-cache-only run is not an acceptable substitute.
 
 - **Shared Buildbarn storage**: artifact and source caches use the scheduler-managed
   Buildbarn storage service. Do not add node-local `hostPath` caches; they bypass
@@ -64,14 +67,17 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   Kubernetes selects a schedulable node and the local-path provisioner binds
   the PVC below that node's configured data mount. Do not select a node or
   bind-mount a cache path to influence placement.
-- **Dakota lane policy:** `dakota-build-pipeline` accepts only `build-mode=re`.
-  Runner-local, cache-only, automatic fallback, and remote-cache-only execution
-  are prohibited. Before treating a run as distributed, verify its generated
-  `projects.bluefin.remote-execution` configuration, BuildStream RE startup, and
-  current worker action activity. The lane uses a two-slot `bst-build` semaphore
-  and workflow-owned 200Gi `local-path` cache PVCs. `oci/bluefin-nvidia.bst`
-  waits for its Bluefin parent artifact. The Dakota commit poller pins the
-  checkout to the exact GitHub SHA it observed.
+- **BST lane policy:** Dakota, COSMIC, and Bluefin Server accept only
+  `build-mode=re`. Before admission, every lane requires a fresh USB4 `up`
+  annotation and a Ready BuildBarn worker on both `ghost` and `exo-0`.
+  Runner-local, cache-only, Ethernet-backed, automatic fallback, and
+  remote-cache-only execution are prohibited. Before treating a run as
+  distributed, verify its generated `projects.<name>.remote-execution`
+  configuration, BuildStream RE startup, and current worker action activity.
+  Dakota uses a two-slot `bst-build` semaphore and workflow-owned 200Gi
+  `local-path` cache PVCs. `oci/bluefin-nvidia.bst` waits for its Bluefin parent
+  artifact. The Dakota commit poller pins the checkout to the exact GitHub SHA
+  it observed.
 - **Buildbarn RE sandbox device nodes**: `bb_runner` with
   `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
   `/dev/random`, and `/dev/urandom` are missing inside the chroot. The cluster-side
@@ -79,7 +85,8 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   minimal `/worker/dev` tree with those nodes, and `manifests/buildbarn-config.yaml`
   sets `bb_runner.devDirectoryPath` to `/worker/dev`. That removes the old
   device-node failure mode without requiring a cache-only fallback for this
-  specific issue.
+  specific issue. A failing RE action must stop the build for repair; never
+  route the work to a local or Ethernet-backed fallback.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

@@ -51,10 +51,11 @@ For Bluefin and Dakota image-poll QA, **bootc OCI images are tested directly as 
 Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
 MCP is optional.
 
-Dakota BST runs require `build-mode=re`. If BuildBarn remote execution is
-unhealthy, fail, diagnose, and repair it; do not select local cache-only or
-automatic fallback. A valid distributed run has two Ready workers and observable
-worker actions.
+Every BST run requires `build-mode=re`, fresh USB4 `up` observations on both
+`ghost` and `exo-0`, two Ready BuildBarn workers, and observable worker actions.
+If any precondition or remote execution is unhealthy, fail, diagnose, and
+repair it. Do not select local, cache-only, Ethernet-backed, or automatic
+fallback.
 
 ---
 

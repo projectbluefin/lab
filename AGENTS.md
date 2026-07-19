@@ -42,18 +42,19 @@ Agents should treat that as the primary culture of the project, not as a side co
 
 ## Core Tenet: Maximize Safe Distributed BuildStream Capacity
 
-**Distributed BuildBarn remote execution is mandatory for every BuildStream
+**USB4-backed BuildBarn remote execution is mandatory for every BuildStream
 build.** A driver Pod using remote artifact caches while compiling locally is a
 failure, not a distributed build and not an acceptable fallback. Cache-only,
-runner-local, and single-node BST execution are prohibited unless a diagnosed
-remote-execution failure is being isolated in a deliberately bounded
-investigation.
+runner-local, single-node, and Ethernet-backed BST execution are prohibited.
 
-Before a build is admitted, prove that its generated configuration contains
+Before a build is admitted, the USB4 monitor must have a fresh `up` observation
+on both `ghost` and `exo-0`, and a Ready BuildBarn worker must run on each node.
+Then prove that its generated configuration contains
 `projects.<name>.remote-execution`, BuildStream reports `Remote Execution
 Configuration` at startup, and live actions reach BuildBarn workers on
-scheduler-selected nodes. Stop any run that fails those checks; do not spend
-cluster time on a local substitute.
+scheduler-selected nodes. Stop any run that fails those checks. Repair the
+link, grid, or cache and resubmit; there is no local, cache-only, or Ethernet
+fallback.
 
 BuildBarn remote execution, scheduler-driven placement, and non-root
 `WaitForFirstConsumer` PVCs are required. Do not serialize independent BST
@@ -114,15 +115,16 @@ key secret rotation, PR queue steps, safe cleanup, bootstrap, and live fact look
 
 ## Core Tenet: Verified Distributed BuildStream Execution
 
-**A healthy Dakota BuildStream build uses BuildBarn remote execution. No
-runner-local, cache-only, or remote-cache-only substitute is acceptable.**
+**A healthy BuildStream build uses USB4-backed BuildBarn remote execution. No
+runner-local, cache-only, Ethernet-backed, or remote-cache-only substitute is
+acceptable.**
 
 Use scheduler-driven placement and approved non-root PVC storage. Match BuildStream
 concurrency to the live BuildBarn grid; do not serialize healthy worker capacity.
-Before calling a build distributed, verify all three: the generated per-project
-remote-execution configuration, BuildStream's RE startup output, and current
-actions on Ready BuildBarn workers. If RE fails, stop, diagnose, and repair the
-grid—never silently fall back to a local build.
+Before calling a build distributed, verify the fresh USB4 gate on both nodes,
+the generated per-project remote-execution configuration, BuildStream's RE
+startup output, and current actions on Ready BuildBarn workers. If RE fails,
+stop, diagnose, and repair the grid—never silently fall back.
 
 ## Core Tenet: Knuckle VM Lifecycle Is Argo-Native
 

@@ -1,6 +1,7 @@
 # manifests/bst-build-priorityclass.yaml
-# BST build pods must run above lab-test-vm (1,000,000). Multi-hour cache-only
-# builds lose all progress when preempted by short-lived image-poll VMs, so
+# USB4-backed distributed BST build pods must run above lab-test-vm (1,000,000).
+# Long-running remote-execution coordinators lose all progress when preempted by
+# short-lived image-poll VMs, so
 # builds take scheduling precedence over polling VMs. Active QA VMs can still
 # coexist; if the cluster is truly full, lower-priority work is preempted first.
 apiVersion: scheduling.k8s.io/v1

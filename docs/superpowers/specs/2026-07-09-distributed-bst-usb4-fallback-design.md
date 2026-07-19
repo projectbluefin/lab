@@ -1,7 +1,10 @@
 # Distributed BST Builds over USB4 with Ethernet Cache-Only Fallback
 
 Date: 2026-07-09
-Status: approved
+Status: superseded
+
+> Superseded by the USB4-only BuildStream policy: a down, stale, or unverified
+> USB4 link fails admission. Ethernet and cache-only fallbacks are prohibited.
 
 ## Problem
 

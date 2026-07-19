@@ -42,10 +42,12 @@
 
 Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.
 
-Dakota BST submissions require `build-mode=re`; local cache-backed, automatic
-fallback, and remote-cache-only paths are prohibited. Confirm the generated
-BuildStream configuration, both Ready BuildBarn workers, and live worker action
-activity before calling a run distributed.
+Every BST submission requires `build-mode=re` and fresh USB4 `up` observations
+on both `ghost` and `exo-0`; the workflow rejects any other state. Local,
+cache-backed, Ethernet-backed, automatic-fallback, and remote-cache-only paths
+are prohibited. Confirm the generated BuildStream configuration, both Ready
+BuildBarn workers, and live worker action activity before calling a run
+distributed.
 
 ---
 

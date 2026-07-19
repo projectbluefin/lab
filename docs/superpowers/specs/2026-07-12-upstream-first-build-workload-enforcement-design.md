@@ -1,5 +1,8 @@
 # Upstream-First Build Workload Enforcement Design
 
+> Superseded where it permits cache-only BuildStream work. Current policy
+> requires USB4-backed BuildBarn remote execution for every BST build.
+
 ## Goal
 
 Restore Kubernetes as the sole admission and placement authority for build and

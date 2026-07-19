@@ -101,6 +101,7 @@ def test_native_systemd_runner_uses_a_scheduler_managed_target_pod():
     assert 'rm -f /etc/resolv.conf' in content
     assert "bash -s <<'TARGET_SETUP'" in content
     assert "bluefin-test:x:1000:1000" in content
+    assert "today=$(( $(date +%s) / 86400 ))" in content
     assert "bluefin-test ALL=(ALL) NOPASSWD: ALL" in content
     assert "runuser -u bluefin-test -- env" in content
     assert "qecore-headless" in content

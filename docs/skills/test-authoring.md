@@ -291,7 +291,10 @@ and Behave must run inside that target, never under Argo emissary PID 1.
    `/etc/resolv.conf` symlink dangling. Stream the runner's Kubernetes-provided
    resolver into `/workspace/resolv.conf`, then replace the target's symlink
    before cloning or installing dependencies.
-4. **Python Pip Bootstrapping:** Minimal bootc target images do not always
+4. **Autologin test user:** Give the disposable `bluefin-test` account a shadow
+   `lastchg` value based on the current day. A zero value forces a password
+   change and causes GDM's PAM autologin to fail before qecore starts.
+5. **Python Pip Bootstrapping:** Minimal bootc target images do not always
    include `pip`. Bootstrap it with `python3 -m ensurepip --default-pip`, then
    install qecore, dogtail, and Behave inside the disposable target.
 

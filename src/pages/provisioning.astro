@@ -394,37 +394,6 @@ const updateTime = payload.updatedAt;
     </div>
   </header>
 
-  <section class="info-card">
-    <h2>Provisioning Architecture</h2>
-    <p>
-      Test VMs boot from OCI <strong>containerDisk</strong> images stored in the local Zot registry
-      (<code>192.168.1.102:30500</code>). Each pipeline run pulls the disk image and launches a fresh
-      KubeVirt VM. The VM is torn down on exit. This replaces the older golden-disk hostDisk workflow
-      that relied on btrfs reflink copies on the ghost node.
-    </p>
-    <ul>
-      <li>
-        <strong>No host-side btrfs reflink:</strong> The hypervisor does not keep a raw golden disk
-        tree that is reflink-copied per VM. Disks are distributed as compressed OCI layers and
-        unpacked by containerd at runtime.
-      </li>
-      <li>
-        <strong>Guest filesystems vary by variant:</strong> Bluefin non-LTS uses btrfs; Bluefin LTS
-        uses xfs; Flatcar uses ext4. The filesystem is chosen by the upstream image, not by the
-        provisioning layer.
-      </li>
-      <li>
-        <strong>VMs float across nodes:</strong> ContainerDisk VMs schedule on any KubeVirt-capable
-        node. PVC-backed lanes (Knuckle) co-schedule on the node that owns the PVC.
-      </li>
-      <li>
-        <strong>SSH keys are injected at runtime:</strong> KubeVirt accessCredentials propagate the
-        public key via the QEMU guest agent after boot. No key material is baked into the published
-        disk image.
-      </li>
-    </ul>
-  </section>
-
   <section>
     <div class="section-title">Fleet Overview</div>
     <div class="kpi-grid">
@@ -563,25 +532,24 @@ const updateTime = payload.updatedAt;
     </div>
   </section>
 
-  <section class="integrity-panel">
-    <h4>Data Integrity Posture</h4>
-    <ul class="integrity-list">
-      <li>
-        Node capacity, utilization, and containerDisk build counts are read from
-        <code>docs/data/factory-stats.json</code>.
-      </li>
-      <li>
-        ContainerDisk availability, digest, size, and creation time are queried live from the local
-        Zot registry at build time; when ghost is unreachable the page falls back to the catalog
-        definition and marks the disk unavailable.
-      </li>
-      <li>
-        Guest filesystem labels are derived from the bootc install-to-disk logic in
-        argo/workflow-templates/build-containerdisk.yaml and are not inferred from disk names.
-      </li>
+  <section class="info-card">
+    <h2>Provisioning Architecture</h2>
+    <p>
+      Test VMs boot from OCI <strong>containerDisk</strong> images stored in the local Zot registry
+      (<code>192.168.1.102:30500</code>). Each pipeline run pulls the disk image and launches a fresh
+      KubeVirt VM. The VM is torn down on exit.
+    </p>
+    <ul>
+      <li>ContainerDisk VMs schedule on any KubeVirt-capable node; PVC-backed lanes co-schedule on the PVC node.</li>
+      <li>Bluefin non-LTS uses btrfs; Bluefin LTS uses xfs; Flatcar uses ext4.</li>
+      <li>SSH keys are injected at runtime via KubeVirt accessCredentials; no key material is baked into images.</li>
     </ul>
-    <a href={`${baseUrl}data/factory-stats.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8; text-decoration: none;">Open raw dataset</a>
   </section>
+
+  <p style="font-size: 0.85rem; color: #64748b; margin-top: 2rem;">
+    Provenance: node capacity and containerDisk build counts from docs/data/factory-stats.json; disk catalog live-polled from ghost Zot (fallback marks unavailable).
+    <a href={`${baseUrl}data/factory-stats.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+  </p>
 
   <script type="application/json" id="provisioning-chart-data" set:html={serializedPayload}></script>
   <script>

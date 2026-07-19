@@ -825,23 +825,6 @@ const generatedAt = new Date().toISOString();
       </div>
     </div>
 
-    <!-- Registry Compliance -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">OCI Compliance</div>
-      <div>
-        <div class="kpi-card__value">v1.1.0</div>
-        <div class="kpi-card__sub">distSpecVersion compliant</div>
-      </div>
-    </div>
-
-    <!-- GC Interval -->
-    <div class="kpi-card kpi-card--warning">
-      <div class="kpi-card__title">GC Interval</div>
-      <div>
-        <div class="kpi-card__value">24h</div>
-        <div class="kpi-card__sub">with 1h orphan delay</div>
-      </div>
-    </div>
   </div>
 
   <!-- FSDK HORIZONTAL REGISTRY LIST -->
@@ -877,18 +860,6 @@ const generatedAt = new Date().toISOString();
 
             <div class="terminal-block">
               <span class="terminal-prompt">$</span> <code>podman pull 192.168.1.102:30500/{container.name}:latest</code>
-            </div>
-          </div>
-
-          <!-- Sparklines Column -->
-          <div class="card-sparklines">
-            <div class="sparkline-box">
-              <span class="sparkline-title">Pulls (14d)</span>
-              <div class="sparkline-chart" id={`pull-spark-${container.id}`} data-chart-data={JSON.stringify(container.pulls_sparkline)}></div>
-            </div>
-            <div class="sparkline-box">
-              <span class="sparkline-title">Build (s)</span>
-              <div class="sparkline-chart" id={`build-spark-${container.id}`} data-chart-data={JSON.stringify(container.build_sparkline)}></div>
             </div>
           </div>
 
@@ -946,39 +917,6 @@ const generatedAt = new Date().toISOString();
     })}
   </div>
 
-  <!-- CI/CD EXPERT TELEMETRY CARD GRID -->
-  <h2 class="section-title">CI/CD Expert Registry Telemetry</h2>
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-card__title">Bandwidth Egress</div>
-      <div>
-        <div class="kpi-card__value">48.2 MB/s</div>
-        <div class="kpi-card__sub">Peak daily download speed</div>
-      </div>
-    </div>
-    <div class="kpi-card kpi-card--success">
-      <div class="kpi-card__title">Cache Bypass Saving</div>
-      <div>
-        <div class="kpi-card__value">94.2%</div>
-        <div class="kpi-card__sub">Local cache hits on registry :30501</div>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-card__title">Reflink Storage saved</div>
-      <div>
-        <div class="kpi-card__value">65.4%</div>
-        <div class="kpi-card__sub">Btrfs copy-on-write sharing</div>
-      </div>
-    </div>
-    <div class="kpi-card kpi-card--success">
-      <div class="kpi-card__title">BuildStream Cache</div>
-      <div>
-        <div class="kpi-card__value">1,240 items</div>
-        <div class="kpi-card__sub">Remote artifact volume on :8980</div>
-      </div>
-    </div>
-  </div>
-
   <!-- OCI Storage & Compilation Metrics -->
   <h2 class="section-title">OCI Storage & Compilation Metrics</h2>
   <div class="chart-grid">
@@ -1000,19 +938,6 @@ const generatedAt = new Date().toISOString();
       <h2>FSDK compilation status</h2>
       <p>Presence of verified compiled BuildStream OCI outputs published in the local writable registry.</p>
       <div id="userspace-fsdk-status-chart" class="chart-box-custom" role="img" aria-label="FSDK container status chart"></div>
-    </article>
-  </div>
-
-  <!-- EXPERT CHARTS -->
-  <div class="chart-grid" style="grid-template-columns: 1fr;">
-    <!-- OCI Layer Storage Efficiency -->
-    <article class="chart-panel-custom">
-      <div class="app-kickass-card__header" style="margin-bottom: 0.5rem;">
-        <p class="status-card__eyebrow">Storage compression efficiency</p>
-      </div>
-      <h2>OCI layer compression ratio</h2>
-      <p>Analysis of compressed (gzip/zstd) layer size compared to absolute uncompressed layer filesystem footprint.</p>
-      <div id="userspace-compression-chart" class="chart-box-custom" role="img" aria-label="OCI Layer Compression Ratio Chart"></div>
     </article>
   </div>
 
@@ -1071,27 +996,11 @@ projects:
     </table>
   </div>
 
-  <!-- DATA INTEGRITY DISCLOSURE -->
-  <h2 class="section-title">Data Integrity Posture</h2>
-  <div class="integrity-panel">
-    <h4>Registry-derived contract · v2</h4>
-    <div class="stat-dl" style="margin-bottom: 1rem;">
-      <div class="stat-dl-item">
-        <dt>Build source</dt>
-        <dd style="font-size: 0.9rem; color: #10b981;">{buildSource === 'live' ? 'live polled' : 'fallback'}</dd>
-      </div>
-      <div class="stat-dl-item">
-        <dt>Status</dt>
-        <dd style="font-size: 0.9rem; color: #22c55e;">online</dd>
-      </div>
-    </div>
-    <ul class="integrity-list">
-      <li><strong>Evidence-backed authenticity:</strong> Userspace container listings, repository namespaces, and active caching layers are retrieved directly from the live Zot local registries on ghost (<code>:30500</code> and <code>:30501</code>) at build-time.</li>
-      <li><strong>Defensive offline fallback:</strong> In case the homelab registries are unreachable during compilation, the page automatically resolves to a local verified snapshot of active container layers, ensuring build resiliency.</li>
-      <li><strong>No synthetic data:</strong> Registry sizes, repositories, and tags are never fabricated. Only verified elements published in the catalog are marked as active.</li>
-    </ul>
-    <a href={`${baseUrl}data/factory-telemetry.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open telemetry raw dataset</a>
-  </div>
+  <p style="font-size: 0.85rem; color: #64748b; margin-top: 2rem;">
+    Registry source: {buildSource === 'live' ? 'live Zot catalog on ghost' : 'fallback snapshot'}.
+    Updated {formatUtc(generatedAt)}.
+    <a href={`${baseUrl}data/factory-telemetry.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+  </p>
 
   <script id="userspace-page-data" type="application/json" set:html={serializedChartData}></script>
   <script
@@ -1119,8 +1028,6 @@ projects:
       if (attempt > 40) {
         renderUnavailable('userspace-registry-dist-chart', 'ECharts failed to load.');
         renderUnavailable('userspace-fsdk-status-chart', 'FSDK chart failed to load.');
-        renderUnavailable('userspace-bandwidth-chart', 'Bandwidth chart failed to load.');
-        renderUnavailable('userspace-compression-chart', 'Compression ratio chart failed to load.');
         return;
       }
 
@@ -1132,45 +1039,11 @@ projects:
 
       const distContainer = document.getElementById('userspace-registry-dist-chart');
       const fsdkContainer = document.getElementById('userspace-fsdk-status-chart');
-      const bandwidthContainer = document.getElementById('userspace-bandwidth-chart');
-      const compressionContainer = document.getElementById('userspace-compression-chart');
 
       if (!distContainer || !fsdkContainer) return;
 
       const distData = Array.isArray(pageData.distribution) ? pageData.distribution : [];
       const fsdkData = Array.isArray(pageData.fsdkStatus) ? pageData.fsdkStatus : [];
-
-      const sparklineCharts = [];
-
-      // Initialize sparklines
-      document.querySelectorAll('.sparkline-chart').forEach((el) => {
-        const id = el.id;
-        const dataAttr = el.getAttribute('data-chart-data');
-        if (!dataAttr) return;
-        const data = JSON.parse(dataAttr);
-        const chart = echarts.init(el);
-        const isPull = id.startsWith('pull-spark');
-        const lineColor = isPull ? '#10b981' : '#38bdf8';
-        const areaColor = isPull ? 'rgba(16, 185, 129, 0.08)' : 'rgba(56, 189, 248, 0.08)';
-
-        chart.setOption({
-          grid: { left: 2, right: 2, top: 2, bottom: 2 },
-          xAxis: { type: 'category', show: false },
-          yAxis: { type: 'value', show: false },
-          series: [
-            {
-              type: 'line',
-              data: data,
-              smooth: true,
-              showSymbol: false,
-              lineStyle: { width: 1.5, color: lineColor },
-              areaStyle: { color: areaColor }
-            }
-          ],
-          tooltip: { show: false }
-        });
-        sparklineCharts.push(chart);
-      });
 
       /* ── 1. REGISTRY DISTRIBUTION PIE ──────────────────────── */
       if (distData.length > 0) {
@@ -1237,52 +1110,11 @@ projects:
         });
       }
 
-      /* ── 4. COMPRESSION RATIO CHART ────────────────────────── */
-      if (compressionContainer && pageData.compression) {
-        const cChart = echarts.init(compressionContainer);
-        cChart.setOption({
-          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-          backgroundColor: 'transparent',
-          legend: { top: 0, textStyle: { color: '#cbd5e1' }, data: ['Compressed Size', 'Uncompressed footprint'] },
-          grid: { left: 140, right: 30, top: 40, bottom: 40 },
-          xAxis: {
-            type: 'value',
-            axisLabel: { color: '#94a3b8', formatter: '{value} MB' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-          },
-          yAxis: {
-            type: 'category',
-            data: pageData.compression.map((item) => item.name),
-            axisLabel: { color: '#cbd5e1' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-          },
-          series: [
-            {
-              name: 'Compressed Size',
-              type: 'bar',
-              stack: 'total',
-              itemStyle: { color: '#38bdf8' },
-              data: pageData.compression.map((item) => item.compressed)
-            },
-            {
-              name: 'Uncompressed footprint',
-              type: 'bar',
-              stack: 'total',
-              itemStyle: { color: '#1e293b' },
-              data: pageData.compression.map((item) => parseFloat((item.uncompressed - item.compressed).toFixed(1)))
-            }
-          ]
-        });
-      }
-
       window.addEventListener('resize', () => {
         const dInst = echarts.getInstanceByDom(distContainer);
         dInst?.resize();
         const fInst = echarts.getInstanceByDom(fsdkContainer);
         fInst?.resize();
-        const cInst = echarts.getInstanceByDom(compressionContainer);
-        cInst?.resize();
-        sparklineCharts.forEach((chart) => chart.resize());
       });
     }
 

@@ -34,8 +34,8 @@ test('provisioning page renders architecture, nodes, containerDisks, and evidenc
 
   assert.match(
     provisioningPage,
-    /No host-side btrfs reflink/i,
-    'provisioning page explicitly corrects the btrfs reflink misconception',
+    /Hypervisor Capacity/i,
+    'provisioning page renders the hypervisor capacity panel',
   );
 
   assert.match(
@@ -70,8 +70,8 @@ test('provisioning page renders architecture, nodes, containerDisks, and evidenc
 
   assert.match(
     provisioningPage,
-    /Data Integrity Posture/i,
-    'provisioning page renders the data integrity disclosure panel',
+    /Provenance: node capacity and containerDisk build counts/i,
+    'provisioning page renders the provenance disclosure line',
   );
 
   assert.match(

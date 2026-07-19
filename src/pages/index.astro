@@ -1,6 +1,5 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
-import DataIntegrityBlock from '../components/DataIntegrityBlock.astro';
 import { serializeJsonScript } from '../lib/json-script';
 
 // Build-time static JSON loads
@@ -845,57 +844,6 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <!--  AT A GLANCE (KPI)                                          -->
-    <!-- ═══════════════════════════════════════════════════════════ -->
-    <h2 class="section-title">Factory at a Glance</h2>
-    <div class="kpi-grid">
-      <!-- Runs in Window -->
-      <div class="kpi-card">
-        <div class="kpi-card__title">Runs in Window</div>
-        <div>
-          <div class="kpi-card__value">{totalRunsCount}</div>
-          <div class="kpi-card__sub">recent pipeline workflow runs</div>
-        </div>
-      </div>
-
-      <!-- Passing Runs -->
-      <div class="kpi-card kpi-card--success">
-        <div class="kpi-card__title">Passed runs</div>
-        <div>
-          <div class="kpi-card__value">{passedRunsCount}</div>
-          <div class="kpi-card__sub">verified releases & builds</div>
-        </div>
-      </div>
-
-      <!-- Failing Runs -->
-      <div class="kpi-card kpi-card--warning">
-        <div class="kpi-card__title">Failing runs</div>
-        <div>
-          <div class="kpi-card__value">{failedRunsCount}</div>
-          <div class="kpi-card__sub">currently needing triage</div>
-        </div>
-      </div>
-
-      <!-- Open Bugs -->
-      <div class="kpi-card">
-        <div class="kpi-card__title">Open bugs</div>
-        <div>
-          <div class="kpi-card__value">{openBugs.length}</div>
-          <div class="kpi-card__sub">active GitHub issues</div>
-        </div>
-      </div>
-
-      <!-- Test Coverage Scenarios -->
-      <div class="kpi-card kpi-card--success">
-        <div class="kpi-card__title">Verified scenarios</div>
-        <div>
-          <div class="kpi-card__value">{(testCoverageTotal - testCoverageFailed).toLocaleString()}</div>
-          <div class="kpi-card__sub">behave assertions passing</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  IMAGE STATUS                                               -->
     <!-- ═══════════════════════════════════════════════════════════ -->
     <h2 class="section-title">Image status</h2>
@@ -978,7 +926,6 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
       Who's donating cycles to test Bluefin right now — each card is a real machine running real tests.
     </p>
     <div id="cluster-canvas-wrap">
-    <svg id="fabric-svg" aria-hidden="true" data-astro-cid-lcdefpme="" width="1360" height="478.79998779296875" viewBox="0 0 1360 478.79998779296875"><defs><filter id="tb4-glow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#fb923c" flood-opacity="0.85"></feDropShadow></filter></defs><path d="M 503.8000183105469 45.60009765625 L 503.8000183105469 6.60009765625 L 159.39999389648438 6.60009765625 L 159.39999389648438 45.60009765625" fill="none" stroke="rgba(251, 146, 96, 0.12)" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"></path><path d="M 503.8000183105469 45.60009765625 L 503.8000183105469 6.60009765625 L 159.39999389648438 6.60009765625 L 159.39999389648438 45.60009765625" fill="none" stroke="#fb923c" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" filter="url(#tb4-glow)"></path><path d="M 503.8000183105469 45.60009765625 L 503.8000183105469 6.60009765625 L 159.39999389648438 6.60009765625 L 159.39999389648438 45.60009765625" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="miter" stroke-dasharray="8 20" stroke-dashoffset="0" style="animation: 0.6s linear infinite tb4-dash-fwd;"></path><path d="M 496.8000183105469 45.60009765625 L 496.8000183105469 14.60009765625 L 167.39999389648438 14.60009765625 L 167.39999389648438 45.60009765625" fill="none" stroke="rgba(251, 146, 96, 0.12)" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter"></path><path d="M 495.8000183105469 45.60009765625 L 495.8000183105469 14.60009765625 L 167.39999389648438 14.60009765625 L 167.39999389648438 45.60009765625" fill="none" stroke="#fb923c" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" filter="url(#tb4-glow)"></path><path d="M 496.8000183105469 45.60009765625 L 496.8000183105469 14.60009765625 L 167.39999389648438 14.60009765625 L 167.39999389648438 45.60009765625" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="square" stroke-linejoin="miter" stroke-dasharray="8 20" stroke-dashoffset="0" style="animation: 0.6s linear infinite tb4-dash-rev;"></path><a xlink:href="https://github.com/projectbluefin/lab/blob/main/docs/ghost-lab-architecture.md#data-plane--40-gbps-usb4-daisy-chain-mesh" target="_blank" rel="noreferrer" style="cursor: pointer; pointer-events: auto;"><rect x="247.60000610351562" y="-2.39990234375" width="176" height="26" rx="13" fill="#0b0f19" stroke="#fb923c" stroke-width="1.5"></rect><text x="335.6000061035156" y="10.60009765625" text-anchor="middle" dominant-baseline="central" fill="#fb923c" font-size="10.5" font-family="ui-monospace, monospace" font-weight="700" letter-spacing="0.05em">40G · USB4 / Thunderbolt</text></a></svg>
     <div class="nodes-grid">
       {clusterNodes.map((node) => (
         <article class="node-card" data-node-name={node.name}>
@@ -1128,167 +1075,166 @@ const serializedBstChartData = serializeJsonScript(bstChartPayload);
     <!-- ═══════════════════════════════════════════════════════════ -->
     <!--  DATA INTEGRITY DISCLOSURE                                   -->
     <!-- ═══════════════════════════════════════════════════════════ -->
-    <h2 class="section-title">Data Integrity Posture</h2>
-    <DataIntegrityBlock
-      generatedAt={formatUtc(stats?._meta?.generated)}
-      status={telemetrySnapshot.state || 'unknown'}
-      datasetUrl={`${baseUrl}data/factory-stats.json`}
-    >
-      <li><strong>Evidence-backed authenticity:</strong> Overview status and image release metrics are dynamically parsed at build-time from verified GitHub Releases feeds and homelab cluster data.</li>
-      <li><strong>No synthetic variables:</strong> Out of {totalRunsCount} total recorded pipeline runs in this window, {passedRunsCount} passed cleanly, {failedRunsCount} failed, and {runningRunsCount} are currently active. Gaps stay completely explicit.</li>
-      <li><strong>Audit-friendly pipelines:</strong> Direct lineage link to active repository configuration files and workflow triggers ensures transparency.</li>
-    </DataIntegrityBlock>
+    <p style="font-size: 0.85rem; color: #64748b; margin-top: 2rem;">
+      Data source: <a href={`${baseUrl}data/factory-stats.json`} style="color: #38bdf8; text-decoration: none;">factory-stats.json</a>
+      {stats?._meta?.generated && <span> · updated {formatUtc(stats._meta.generated)}</span>}
+    </p>
   </div>
   <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
   <script id="triage-spark-payload" type="application/json" set:html={serializedTriageSparkData}></script>
   <script id="bst-cache-chart-payload" type="application/json" set:html={serializedBstChartData}></script>
   <script is:inline data-cfasync="false">
-    function waitForCharts(attempt) {
-      if (attempt === undefined) attempt = 0;
-      if (window.echarts) {
-        bootTriageSparks(window.echarts);
-        bootBstCacheChart(window.echarts);
-        return;
-      }
-      if (attempt > 40) return;
-      window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
-    }
+    (function() {
+      const charts = [];
 
-    function bootTriageSparks(echarts) {
-      const payloadNode = document.getElementById('triage-spark-payload');
-      if (!payloadNode) return;
-      const data = JSON.parse(payloadNode.textContent || '{}');
-      if (!data.lanes) return;
-      data.lanes.forEach(function(lane) {
-        const el = document.querySelector('.triage-spark[data-lane="' + lane.key + '"]');
-        if (!el || !lane.points || !lane.points.length) return;
-        const chart = echarts.init(el);
-        chart.setOption({
-          animation: false,
-          grid: { left: 34, right: 6, top: 8, bottom: 16 },
-          tooltip: {
-            trigger: 'axis',
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            borderColor: 'rgba(255, 255, 255, 0.1)',
-            textStyle: { color: '#cbd5e1', fontSize: 11 },
-            formatter: function(params) {
-              const p = lane.points[params[0].dataIndex];
-              return (p.t || '') + '<br/>' +
-                (p.duration !== null ? p.duration + ' min' : 'duration unavailable') +
-                ' · ' + (p.passed ? 'passed' : 'failed');
-            }
-          },
-          xAxis: {
-            type: 'category',
-            data: lane.points.map(function(p) { return (p.t || '').slice(5, 10); }),
-            axisLabel: { color: '#64748b', fontSize: 8, interval: Math.max(1, Math.floor(lane.points.length / 5)) },
-            axisTick: { show: false },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-          },
-          yAxis: {
-            type: 'value',
-            axisLabel: { color: '#64748b', fontSize: 8, formatter: '{value}m' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
-          },
-          series: [{
-            type: 'line',
-            data: lane.points.map(function(p) { return p.duration; }),
-            smooth: true,
-            showSymbol: true,
-            symbolSize: 5,
-            lineStyle: { color: '#38bdf8', width: 1.5 },
-            itemStyle: {
-              color: function(params) {
-                return lane.points[params.dataIndex].passed ? '#4ade80' : '#f43f5e';
+      function bootTriageSparks(echarts) {
+        const payloadNode = document.getElementById('triage-spark-payload');
+        if (!payloadNode) return;
+        const data = JSON.parse(payloadNode.textContent || '{}');
+        if (!data.lanes) return;
+        data.lanes.forEach(function(lane) {
+          const el = document.querySelector('.triage-spark[data-lane="' + lane.key + '"]');
+          if (!el || !lane.points || !lane.points.length) return;
+          const chart = echarts.init(el);
+          charts.push(chart);
+          chart.setOption({
+            animation: false,
+            grid: { left: 34, right: 6, top: 8, bottom: 16 },
+            tooltip: {
+              trigger: 'axis',
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+              textStyle: { color: '#cbd5e1', fontSize: 11 },
+              formatter: function(params) {
+                const p = lane.points[params[0].dataIndex];
+                return (p.t || '') + '<br/>' +
+                  (p.duration !== null ? p.duration + ' min' : 'duration unavailable') +
+                  ' · ' + (p.passed ? 'passed' : 'failed');
               }
             },
-            areaStyle: { color: 'rgba(56, 189, 248, 0.08)' }
-          }]
+            xAxis: {
+              type: 'category',
+              data: lane.points.map(function(p) { return (p.t || '').slice(5, 10); }),
+              axisLabel: { color: '#64748b', fontSize: 8, interval: Math.max(1, Math.floor(lane.points.length / 5)) },
+              axisTick: { show: false },
+              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+            },
+            yAxis: {
+              type: 'value',
+              axisLabel: { color: '#64748b', fontSize: 8, formatter: '{value}m' },
+              splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+            },
+            series: [{
+              type: 'line',
+              data: lane.points.map(function(p) { return p.duration; }),
+              smooth: true,
+              showSymbol: true,
+              symbolSize: 5,
+              lineStyle: { color: '#38bdf8', width: 1.5 },
+              itemStyle: {
+                color: function(params) {
+                  return lane.points[params.dataIndex].passed ? '#4ade80' : '#f43f5e';
+                }
+              },
+              areaStyle: { color: 'rgba(56, 189, 248, 0.08)' }
+            }]
+          });
         });
-        window.addEventListener('resize', function() { chart.resize(); });
-      });
-    }
+      }
 
-    function bootBstCacheChart(echarts) {
-      const payloadNode = document.getElementById('bst-cache-chart-payload');
-      if (!payloadNode) return;
-      const data = JSON.parse(payloadNode.textContent || '{}');
-      const chartEl = document.getElementById('bst-cache-chart');
-      if (!chartEl || !data.cells) return;
+      function bootBstCacheChart(echarts) {
+        const payloadNode = document.getElementById('bst-cache-chart-payload');
+        if (!payloadNode) return;
+        const data = JSON.parse(payloadNode.textContent || '{}');
+        const chartEl = document.getElementById('bst-cache-chart');
+        if (!chartEl || !data.cells) return;
 
-      const heatData = [];
-      data.drives.forEach((drive, driveIdx) => {
-        data.caches.forEach((cacheLabel, cacheIdx) => {
-          const cell = data.cells[driveIdx][cacheIdx];
-          heatData.push([driveIdx, cacheIdx, cell.state === 'available' ? cell.percent : null, cell]);
+        const heatData = [];
+        data.drives.forEach(function(drive, driveIdx) {
+          data.caches.forEach(function(cacheLabel, cacheIdx) {
+            const cell = data.cells[driveIdx][cacheIdx];
+            heatData.push([driveIdx, cacheIdx, cell.state === 'available' ? cell.percent : null, cell]);
+          });
         });
-      });
 
-      const chart = echarts.init(chartEl);
-      chart.setOption({
-        tooltip: {
-          backgroundColor: 'rgba(15, 23, 42, 0.95)',
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          textStyle: { color: '#cbd5e1' },
-          formatter: function(params) {
-            const cell = params.data[3];
-            if (cell.state !== 'available') {
-              return `${data.caches[params.data[1]]} on ${data.drives[params.data[0]]}<br/>unavailable: ${cell.state_reason || 'no data'}`;
-            }
-            const usedMb = cell.used_bytes != null ? (cell.used_bytes / (1024 * 1024)).toFixed(2) : '?';
-            const capMb = cell.capacity_bytes != null ? (cell.capacity_bytes / (1024 * 1024)).toFixed(0) : '?';
-            return `${data.caches[params.data[1]]} on ${data.drives[params.data[0]]}<br/>${cell.percent}% used (${usedMb} MB / ${capMb} MB)`;
-          }
-        },
-        grid: { left: 90, right: 20, top: 20, bottom: 30 },
-        xAxis: {
-          type: 'category',
-          data: data.drives,
-          splitArea: { show: true },
-          axisLabel: { color: '#94a3b8', fontSize: 10, fontWeight: 'bold' }
-        },
-        yAxis: {
-          type: 'category',
-          data: data.caches,
-          splitArea: { show: true },
-          axisLabel: { color: '#94a3b8', fontSize: 10 }
-        },
-        visualMap: {
-          min: 0,
-          max: 100,
-          show: true,
-          orient: 'horizontal',
-          left: 'center',
-          bottom: -5,
-          textStyle: { color: '#94a3b8', fontSize: 9 },
-          inRange: { color: ['#1e293b', '#38bdf8', '#eab308', '#f97316', '#f43f5e'] }
-        },
-        series: [{
-          name: 'Cache utilization',
-          type: 'heatmap',
-          data: heatData,
-          label: {
-            show: true,
-            color: '#f1f5f9',
-            fontSize: 10,
-            fontWeight: 'bold',
+        const chart = echarts.init(chartEl);
+        charts.push(chart);
+        chart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' },
             formatter: function(params) {
               const cell = params.data[3];
-              return cell.state === 'available' ? `${cell.percent}%` : 'N/A';
+              if (cell.state !== 'available') {
+                return data.caches[params.data[1]] + ' on ' + data.drives[params.data[0]] + '<br/>unavailable: ' + (cell.state_reason || 'no data');
+              }
+              const usedMb = cell.used_bytes != null ? (cell.used_bytes / (1024 * 1024)).toFixed(2) : '?';
+              const capMb = cell.capacity_bytes != null ? (cell.capacity_bytes / (1024 * 1024)).toFixed(0) : '?';
+              return data.caches[params.data[1]] + ' on ' + data.drives[params.data[0]] + '<br/>' + cell.percent + '% used (' + usedMb + ' MB / ' + capMb + ' MB)';
             }
           },
-          itemStyle: {
-            borderColor: 'rgba(15, 23, 42, 0.8)',
-            borderWidth: 2
-          }
-        }]
-      });
+          grid: { left: 90, right: 20, top: 20, bottom: 30 },
+          xAxis: {
+            type: 'category',
+            data: data.drives,
+            splitArea: { show: true },
+            axisLabel: { color: '#94a3b8', fontSize: 10, fontWeight: 'bold' }
+          },
+          yAxis: {
+            type: 'category',
+            data: data.caches,
+            splitArea: { show: true },
+            axisLabel: { color: '#94a3b8', fontSize: 10 }
+          },
+          visualMap: {
+            min: 0,
+            max: 100,
+            show: true,
+            orient: 'horizontal',
+            left: 'center',
+            bottom: -5,
+            textStyle: { color: '#94a3b8', fontSize: 9 },
+            inRange: { color: ['#1e293b', '#38bdf8', '#eab308', '#f97316', '#f43f5e'] }
+          },
+          series: [{
+            name: 'Cache utilization',
+            type: 'heatmap',
+            data: heatData,
+            label: {
+              show: true,
+              color: '#f1f5f9',
+              fontSize: 10,
+              fontWeight: 'bold',
+              formatter: function(params) {
+                const cell = params.data[3];
+                return cell.state === 'available' ? cell.percent + '%' : 'N/A';
+              }
+            },
+            itemStyle: {
+              borderColor: 'rgba(15, 23, 42, 0.8)',
+              borderWidth: 2
+            }
+          }]
+        });
+      }
+
+      function waitForCharts(attempt) {
+        if (attempt === undefined) attempt = 0;
+        if (window.echarts) {
+          bootTriageSparks(window.echarts);
+          bootBstCacheChart(window.echarts);
+          return;
+        }
+        if (attempt > 40) return;
+        window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
+      }
 
       window.addEventListener('resize', function() {
-        chart.resize();
+        charts.forEach(function(chart) { chart.resize(); });
       });
-    }
 
-    waitForCharts();
+      waitForCharts();
+    })();
   </script>
 </SiteLayout>

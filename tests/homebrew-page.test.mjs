@@ -143,7 +143,7 @@ test('homebrew data tables span the full grid width and stay scrollable when squ
 
 test('homebrew page renders migrated tap coverage instead of the starter empty state', () => {
   const homebrewPage = html('docs/adoption/index.html');
-  assert.match(homebrewPage, /Homebrew data is partially available/i);
+  assert.match(homebrewPage, /Homebrew data: \d+ of \d+ lanes available/i);
   assert.match(homebrewPage, /bluefin\/brewfile/i);
   assert.doesNotMatch(homebrewPage, /No Homebrew analytics data is published for any tracked lane/i);
 });

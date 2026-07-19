@@ -451,12 +451,11 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     </div>
   </div>
 
-  <!-- Redesigned Area Charts (including Chart 1: Cumulative Installations) and Sankey Chart -->
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem; margin-top: 1rem;">
-    <!-- Chart 1: Cumulative Installations Area Chart -->
+    <!-- Active Devices Trend -->
     <div class="dashboard-panel" style="margin-bottom: 0;">
       <div class="panel-header">
-        <h3>Cumulative Installations</h3>
+        <h3>Active Devices Trend</h3>
         <div class="btn-group" id="countme-range-btns">
           <button class="toggle-btn" data-range="30">30d</button>
           <button class="toggle-btn" data-range="90">90d</button>
@@ -464,41 +463,17 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
           <button class="toggle-btn" data-range="all">All</button>
         </div>
       </div>
-      <div class="chart-box" id="cumulative-installations-chart" style="height: 320px;"></div>
-      <div class="chart-caption">
-        Real-world fleet density. Cumulative installations tracked via privacy-preserving system count-me metrics over time.
-      </div>
-    </div>
-    
-    <!-- Sankey Flow Chart -->
-    <div class="dashboard-panel" style="margin-bottom: 0;">
-      <div class="panel-header">
-        <h3>Ecosystem Share Flow</h3>
-      </div>
-      <div class="chart-box" id="adoption-sankey-chart" style="height: 320px;"></div>
-      <div class="chart-caption">
-        Ecosystem distribution flow. Flow of active devices from Upstream operating system base to Downstream custom variants and their branches.
-      </div>
-    </div>
-  </div>
-
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
-    <!-- Active Devices Trend (Monthly/Weekly Area Chart) -->
-    <div class="dashboard-panel" style="margin-bottom: 0;">
-      <div class="panel-header">
-        <h3>Active Devices Trend</h3>
-      </div>
       <div class="chart-box" id="countme-trend-chart" style="height: 320px;"></div>
     </div>
-    
+
     <!-- Ecosystem Share Pie Chart -->
     <div class="dashboard-panel" style="margin-bottom: 0;">
       <div class="panel-header">
-        <h3>Ecosystem Share Pie</h3>
+        <h3>Ecosystem Share</h3>
       </div>
       <div class="chart-box" id="ecosystem-pie-chart" style="height: 320px;"></div>
       <div class="footnote" style="margin-top: 1.25rem; color: #64748b; font-size: 0.82rem; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.75rem;">
-        <strong>Upstream Bedrock Note:</strong> This chart displays the custom downstream images built by Universal Blue (Bazzite, Bluefin, Aurora, etc.). Upstream base operating systems like <strong>Fedora Silverblue</strong> and <strong>Fedora Kinoite</strong> are not tracked here because they report natively to the official Fedora infrastructure, serving as the immutable bedrock of our supply chain.
+        Latest-week share of custom downstream images tracked via countme. Source: <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none;">adoption-metrics.json</a>.
       </div>
     </div>
   </div>
@@ -517,119 +492,6 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     ))}
   </section>
 
-  <!-- Active Devices KPI Grid -->
-  <h2 class="kpi-section-title">Active Devices</h2>
-  <div class="kpi-grid">
-    <!-- Total Card -->
-    <div class="kpi-card kpi-card--total">
-      <div class="kpi-card__title">Total Active Devices <span class="kpi-card__trend trend--up">Up 0.2%</span></div>
-      <div>
-        <div class="kpi-card__value">87,045</div>
-        <div class="kpi-card__sub">/ this week</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-total"></div>
-    </div>
-    <!-- Bazzite Card -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Bazzite <span class="kpi-card__trend trend--down">Down 0.5%</span></div>
-      <div>
-        <div class="kpi-card__value">79,622</div>
-        <div class="kpi-card__sub">/ this week (transplanted: 71,550)</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-bazzite"></div>
-    </div>
-    <!-- Bluefin Card -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Bluefin <span class="kpi-card__trend trend--up">Up 1.2%</span></div>
-      <div>
-        <div class="kpi-card__value">3,560</div>
-        <div class="kpi-card__sub">/ this week (transplanted: 3,502)</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-bluefin"></div>
-    </div>
-    <!-- Bluefin-LTS Card -->
-    <div class="kpi-card" style="opacity: 0.75;">
-      <div class="kpi-card__title">Bluefin-LTS <span class="kpi-card__trend trend--neutral">Flat</span></div>
-      <div>
-        <div class="kpi-card__value" style="font-size: 1.5rem; font-weight: 600; line-height: 2rem; margin: 0.5rem 0 0.25rem 0;">Awaiting Data</div>
-        <div class="kpi-card__sub">Telemetry pending</div>
-      </div>
-    </div>
-    <!-- Aurora Card -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Aurora <span class="kpi-card__trend trend--up">Up 0.8%</span></div>
-      <div>
-        <div class="kpi-card__value">2,622</div>
-        <div class="kpi-card__sub">/ this week (transplanted: 2,527)</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-aurora"></div>
-    </div>
-    <!-- Dakota Card -->
-    <div class="kpi-card" style="opacity: 0.75;">
-      <div class="kpi-card__title">Dakota <span class="kpi-card__trend trend--neutral">Flat</span></div>
-      <div>
-        <div class="kpi-card__value" style="font-size: 1.5rem; font-weight: 600; line-height: 2rem; margin: 0.5rem 0 0.25rem 0;">Awaiting Data</div>
-        <div class="kpi-card__sub">Telemetry pending</div>
-      </div>
-    </div>
-    <!-- Flatcar Card -->
-    <div class="kpi-card" style="opacity: 0.75;">
-      <div class="kpi-card__title">Flatcar <span class="kpi-card__trend trend--neutral">Flat</span></div>
-      <div>
-        <div class="kpi-card__value" style="font-size: 1.5rem; font-weight: 600; line-height: 2rem; margin: 0.5rem 0 0.25rem 0;">Awaiting Data</div>
-        <div class="kpi-card__sub">Telemetry pending</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Image Pulls Section -->
-  <h2 class="kpi-section-title">Image Pulls</h2>
-  <div class="explainer-box" style="margin-bottom: 1rem;">
-    Quay.io container image pulls - source: public registry API
-  </div>
-  <div class="kpi-grid">
-    <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">All Tracked Images</div>
-      <div>
-        <div class="kpi-card__value">1.8M</div>
-        <div class="kpi-card__sub">/ 30 days · 421.5K / 7d</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-pulls-total"></div>
-    </div>
-    <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">Fedora CoreOS <span class="verified-badge">Verified</span></div>
-      <div>
-        <div class="kpi-card__value">1.5M</div>
-        <div class="kpi-card__sub">/ 30 days · 348.6K / 7d</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-pulls-coreos"></div>
-    </div>
-    <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">Fedora bootc <span class="verified-badge">Verified</span></div>
-      <div>
-        <div class="kpi-card__value">159.0K</div>
-        <div class="kpi-card__sub">/ 30 days · 39.5K / 7d</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-pulls-fedora"></div>
-    </div>
-    <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">CentOS bootc <span class="verified-badge">Verified</span></div>
-      <div>
-        <div class="kpi-card__value">91.8K</div>
-        <div class="kpi-card__sub">/ 30 days · 20.8K / 7d</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-pulls-centos"></div>
-    </div>
-    <div class="kpi-card kpi-card-link">
-      <div class="kpi-card__title">AlmaLinux bootc <span class="verified-badge">Verified</span></div>
-      <div>
-        <div class="kpi-card__value">49.1K</div>
-        <div class="kpi-card__sub">/ 30 days · 12.6K / 7d</div>
-      </div>
-      <div class="kpi-card__sparkline" id="sparkline-pulls-almalinux"></div>
-    </div>
-  </div>
-
   <div class="dashboard-panel">
     <div class="panel-header">
       <h3>Image Pull Trend</h3>
@@ -639,58 +501,20 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       </div>
     </div>
     <div class="chart-box" id="quay-trend"></div>
+    <div class="chart-caption">
+      Quay.io public registry pulls by day. Source: <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none;">adoption-metrics.json</a>.
+    </div>
   </div>
 
   <!-- Project DORA Health Section -->
   <h2 class="kpi-section-title">Project DORA Health</h2>
-  <div class="dora-grid">
-    <div class="dora-card">
-      <div class="dora-card__name">Bluefin</div>
-      <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">165.1 deploys/wk</div>
-      <div class="dora-card__stat">50.3% fail rate</div>
+  <div class="dashboard-panel" style="margin-bottom: 2.5rem;">
+    <div class="panel-header">
+      <h3>Deployment Frequency Trend</h3>
     </div>
-    <div class="dora-card">
-      <div class="dora-card__name">Aurora</div>
-      <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">9.5 deploys/wk</div>
-      <div class="dora-card__stat">17.0% fail rate</div>
-    </div>
-    <div class="dora-card">
-      <div class="dora-card__name">Bazzite</div>
-      <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">6.5 deploys/wk</div>
-      <div class="dora-card__stat">27.7% fail rate</div>
-    </div>
-    <div class="dora-card">
-      <div class="dora-card__name">ublue-os</div>
-      <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">17.3 deploys/wk</div>
-      <div class="dora-card__stat">20.2% fail rate</div>
-    </div>
-    <div class="dora-card">
-      <div class="dora-card__name">uCore</div>
-      <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">17.3 deploys/wk</div>
-      <div class="dora-card__stat">16.7% fail rate</div>
-    </div>
-    <div class="dora-card">
-      <div class="dora-card__name">Zirconium</div>
-      <div class="dora-card__level" style="color: #34d399;">High</div>
-      <div class="dora-card__stat">11.5 deploys/wk</div>
-      <div class="dora-card__stat">16.2% fail rate</div>
-    </div>
-    <div class="dora-card">
-      <div class="dora-card__name">bootcrew</div>
-      <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">21.0 deploys/wk</div>
-      <div class="dora-card__stat">24.2% fail rate</div>
-    </div>
-    <div class="dora-card">
-      <div class="dora-card__name">BlueBuild</div>
-      <div class="dora-card__level" style="color: #fbbf24;">Medium</div>
-      <div class="dora-card__stat">2.8 deploys/wk</div>
-      <div class="dora-card__stat">59.2% fail rate</div>
+    <div class="chart-box" id="dora-trend-chart" style="height: 320px;"></div>
+    <div class="chart-caption">
+      Monthly deployment-frequency index by project from docs/data/adoption-metrics.json. Higher is more frequent.
     </div>
   </div>
 
@@ -745,50 +569,28 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
 
   <!-- OpenSSF Scorecard Section -->
   <h2 class="kpi-section-title">OpenSSF Scorecard</h2>
-  <div class="sc-grid">
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/bluefin" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for ublue-os/bluefin">
-      <div class="sc-card__name">bluefin</div>
-      <div class="sc-card__score" style="color: #4ade80;">7.5/10</div>
-      <div class="sc-card__date">2026-06-29</div>
-    </a>
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/bluefin-lts" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for ublue-os/bluefin-lts">
-      <div class="sc-card__name">bluefin-lts</div>
-      <div class="sc-card__score" style="color: #64748b;">N/A</div>
-      <div class="sc-card__date">Not Indexed</div>
-    </a>
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/aurora" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for ublue-os/aurora">
-      <div class="sc-card__name">aurora</div>
-      <div class="sc-card__score" style="color: #4ade80;">7.8/10</div>
-      <div class="sc-card__date">2026-06-29</div>
-    </a>
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/bazzite" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for ublue-os/bazzite">
-      <div class="sc-card__name">bazzite</div>
-      <div class="sc-card__score" style="color: #4ade80;">8.0/10</div>
-      <div class="sc-card__date">2026-06-28</div>
-    </a>
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/main" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for ublue-os/main">
-      <div class="sc-card__name">main</div>
-      <div class="sc-card__score" style="color: #64748b;">N/A</div>
-      <div class="sc-card__date">Not Indexed</div>
-    </a>
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/akmods" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for ublue-os/akmods">
-      <div class="sc-card__name">akmods</div>
-      <div class="sc-card__score" style="color: #4ade80;">7.9/10</div>
-      <div class="sc-card__date">2026-06-26</div>
-    </a>
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/ucore" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for ublue-os/ucore">
-      <div class="sc-card__name">ucore</div>
-      <div class="sc-card__score" style="color: #64748b;">N/A</div>
-      <div class="sc-card__date">Not Indexed</div>
-    </a>
-    <a href="https://securityscorecards.dev/viewer/?uri=github.com/projectbluefin/common" target="_blank" rel="noopener noreferrer" class="sc-card" aria-label="OpenSSF Scorecard for projectbluefin/common">
-      <div class="sc-card__name">common</div>
-      <div class="sc-card__score" style="color: #fbbf24;">6.4/10</div>
-      <div class="sc-card__date">2026-06-27</div>
-    </a>
-  </div>
+  {dataset.openssf_scorecard && dataset.openssf_scorecard.length > 0 ? (
+    <div class="sc-grid">
+      {dataset.openssf_scorecard.map((card) => {
+        const uri = card.repo === 'common'
+          ? 'https://securityscorecards.dev/viewer/?uri=github.com/projectbluefin/common'
+          : `https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/${card.repo}`;
+        return (
+          <a href={uri} target="_blank" rel="noopener noreferrer" class="sc-card" aria-label={`OpenSSF Scorecard for ${card.repo}`}>
+            <div class="sc-card__name">{card.repo}</div>
+            <div class="sc-card__score" style={`color: ${card.indexed ? (parseFloat(card.score) >= 7 ? '#4ade80' : '#fbbf24') : '#64748b'};`}>
+              {card.indexed ? card.score : 'Not indexed'}
+            </div>
+            <div class="sc-card__date">{card.date ? formatUtc(card.date) : '—'}</div>
+          </a>
+        );
+      })}
+    </div>
+  ) : (
+    <div class="explainer-box">OpenSSF Scorecard data unavailable in adoption-metrics.json.</div>
+  )}
   <div class="footnote">
-    Scores from <a href="https://securityscorecards.dev" target="_blank" rel="noopener">OpenSSF Scorecard</a>. Click a card to view the full report.
+    Scores from <a href="https://securityscorecards.dev" target="_blank" rel="noopener">OpenSSF Scorecard</a>. Click a card to view the full report. Source: <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none;">adoption-metrics.json</a>.
   </div>
 
   <!-- Trends and Distribution Charts -->
@@ -831,18 +633,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       <div class="chart-box-16-9" id="bluefin-trend-chart"></div>
     </div>
 
-    <!-- 3. Bluefin-LTS (Placeholder) -->
-    <div class="dashboard-panel" style="margin-bottom: 0; display: flex; flex-direction: column;">
-      <div class="panel-header">
-        <h3>Bluefin-LTS Active Devices</h3>
-      </div>
-      <div class="chart-box-16-9 chart-empty" style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(30,41,59,0.15); border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px; color: #94a3b8; text-align: center; padding: 1.5rem; flex-grow: 1;">
-        <h4 style="margin: 0; color: #cbd5e1; font-size: 1rem; font-weight: 700;">Telemetry Pending</h4>
-        <p style="font-size: 0.78rem; margin: 0.25rem 0 0 0; color: #64748b;">Active check-ins data collection is not yet enabled for Bluefin-LTS.</p>
-      </div>
-    </div>
-
-    <!-- 4. Aurora -->
+    <!-- 3. Aurora -->
     <div class="dashboard-panel" style="margin-bottom: 0;">
       <div class="panel-header">
         <h3>Aurora Active Devices</h3>
@@ -856,27 +647,6 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       <div class="chart-box-16-9" id="aurora-trend-chart"></div>
     </div>
 
-    <!-- 5. Dakota (Placeholder) -->
-    <div class="dashboard-panel" style="margin-bottom: 0; display: flex; flex-direction: column;">
-      <div class="panel-header">
-        <h3>Dakota Active Devices</h3>
-      </div>
-      <div class="chart-box-16-9 chart-empty" style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(30,41,59,0.15); border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px; color: #94a3b8; text-align: center; padding: 1.5rem; flex-grow: 1;">
-        <h4 style="margin: 0; color: #cbd5e1; font-size: 1rem; font-weight: 700;">Telemetry Pending</h4>
-        <p style="font-size: 0.78rem; margin: 0.25rem 0 0 0; color: #64748b;">Active check-ins data collection is not yet enabled for Dakota.</p>
-      </div>
-    </div>
-
-    <!-- 6. Flatcar (Placeholder) -->
-    <div class="dashboard-panel" style="margin-bottom: 0; display: flex; flex-direction: column;">
-      <div class="panel-header">
-        <h3>Flatcar Active Devices</h3>
-      </div>
-      <div class="chart-box-16-9 chart-empty" style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(30,41,59,0.15); border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px; color: #94a3b8; text-align: center; padding: 1.5rem; flex-grow: 1;">
-        <h4 style="margin: 0; color: #cbd5e1; font-size: 1rem; font-weight: 700;">Telemetry Pending</h4>
-        <p style="font-size: 0.78rem; margin: 0.25rem 0 0 0; color: #64748b;">Active check-ins data collection is not yet enabled for Flatcar.</p>
-      </div>
-    </div>
   </div>
 
   <!-- Factory Specific Metrics & Integration Gaps details (Original widgets, required by tests) -->
@@ -969,9 +739,6 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       <article class="status-card" id="adoption-trust" style="grid-column: 1 / -1;">
         <p class="status-card__eyebrow">Publisher trust and provenance</p>
         <h2 id="trust-summary-cards">Trust summary cards</h2>
-        <p class="callout-note">
-          Trust summary cards monitor OCI image build-time attestation metrics across publisher groups (such as <code>projectbluefin</code> and <code>ublue-os</code>). These checks verify build transparency and provenance before runtime execution.
-        </p>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
           {trustCards.map((card) => (
             <div class="signal-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 1.25rem; background: rgba(30, 41, 59, 0.25); display: flex; flex-direction: column; justify-content: space-between;">
@@ -1053,20 +820,10 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         </dl>
         <p class="table-note">{dataset._meta.description}</p>
 
-        <div class="integrity-disclosure" style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 1rem;">
-          <h4 style="font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.5rem;">Data Integrity Posture Disclosures</h4>
-          <ul class="status-list table-note" style="padding-left: 1rem; list-style-type: disc;">
-            <li>Adoption data available for {laneStats.available} of {laneStats.total} lanes.</li>
-            <li>{laneStats.withoutPullData} of {laneStats.total} lanes lack registry pull-count data from the container registry API.</li>
-            <li>No registry pull-count data or distro-wide countme client reports are simulated. Lanes show "No registry pull-count data" or zero active devices rather than disappearing.</li>
-            <li>If registry pull.count data is unavailable/pending, it remains explicitly marked.</li>
-            <li>Countme snapshot disclosure: active-device coverage is partially available from repo-owned migrated artifacts in <code>docs/data/</code>. Pull-count data is still unavailable until an in-scope registry source is committed, and those gaps stay visible per lane.</li>
-            <li>{laneStats.withoutCountmeData} of {laneStats.total} lanes lack active-device estimates from Fedora countme infrastructure.</li>
-            <li>{unavailableTrustCards.length} of {trustCards.length} trust cards are incomplete due to missing publisher metadata.</li>
-          </ul>
-        </div>
-
-        <a href={`${baseUrl}data/adoption-metrics.json`} style="margin-top: 1rem; display: inline-block;">Open raw dataset</a>
+        <p class="table-note">
+          {laneStats.available} of {laneStats.total} lanes have data; {laneStats.withoutPullData} lack pull counts and {laneStats.withoutCountmeData} lack countme data.
+          <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+        </p>
       </article>
     </section>
   </div>
@@ -1420,29 +1177,10 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
          </div>
        </>
      )}
-    <h2 class="kpi-section-title" style="border-left-color: #fb923c; margin-top: 2rem;">Data Integrity Posture (Homebrew)</h2>
-    <div style="background: rgba(15, 23, 42, 0.35); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 16px; padding: 1.25rem 1.5rem; margin-bottom: 2rem;">
-      <h4 style="font-size: 0.85rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 0.75rem 0;">Collector-derived contract - {hbDataset.schema_version}</h4>
-      <div class="stat-dl" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-        <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
-          <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Generated at</dt>
-          <dd style="font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0;">{formatUtc(hbDataset._meta.generated_at)}</dd>
-        </div>
-        <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
-          <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Status</dt>
-          <dd style="font-size: 1.35rem; font-weight: 800; color: #fbbf24; margin: 0.2rem 0 0 0;">{hbDataset._meta.status}</dd>
-        </div>
-      </div>
-      <ul style="margin: 0; padding-left: 1.25rem; color: #64748b; font-size: 0.85rem; line-height: 1.7; list-style-type: disc;">
-        <li>Homebrew integration status: <span class="pill-ok" style="background: rgba(34,197,94,.15); color: #4ade80; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700;">Homebrew data is partially available</span></li>
-        <li>Formula-level analytics from formulae.brew.sh are merged with repo-tracked Tap scope Brewfile packages.</li>
-        <li>{hbUnavailableRows.length} of {hbRows.length} lanes lack Homebrew analytics data from formulae.brew.sh or upstream tap repos.</li>
-        <li>{hbTaps.length} Homebrew tap(s) explicitly tracked in this dataset.</li>
-        <li>No Homebrew install or download counts are fabricated. Data gaps stay labeled rather than disappearing.</li>
-        <li>This page reads repo-owned migrated Homebrew artifacts committed under <code>docs/data/</code>. Mapped tap lanes reuse transplanted Brewfile package totals, higher-density lane markers stay visible, and unmatched lanes remain explicitly unavailable.</li>
-        <li>Global formula analytics transplanted for a 115-package tap (e.g. bluefin/brewfile) and 20-package tap (e.g. bazzite/brewfile) are reused across branches.</li>
-      </ul>
-    </div>
+    <p style="font-size: 0.85rem; color: #64748b; margin-top: 2rem;">
+      Homebrew data: {hbAvailableRows.length} of {hbRows.length} lanes available. Updated {formatUtc(hbDataset._meta.generated_at)}.
+      <a href={`${baseUrl}data/homebrew-ecosystem.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+    </p>
   </div>
 
   <script id="adoption-page-data" type="application/json" set:html={serializedPageData}></script>
@@ -1473,111 +1211,14 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
       winblues: '#ec4899'
     };
 
-    function bootSparklines() {
-      // Sparklines inside Active Devices KPI Cards
-      const sparklineData = {
-        total: [45000, 52000, 55000, 58000, 62000, 68000, 72000, 75000, 78000, 81000, 85000, 87045],
-        bazzite: [38000, 44000, 47000, 50000, 54000, 59000, 63000, 66000, 69000, 72000, 76000, 79622],
-        bluefin: [2800, 2900, 3100, 2800, 3200, 3100, 3300, 3200, 3400, 3300, 3450, 3560],
-        aurora: [1800, 1950, 2100, 1900, 2200, 2300, 2400, 2350, 2500, 2450, 2550, 2622],
-        secureblue: [450, 520, 610, 590, 680, 750, 810, 790, 860, 910, 950, 976]
-      };
-
-      Object.entries(sparklineData).forEach(([key, values]) => {
-        const el = document.getElementById('sparkline-' + key);
-        if (!el) return;
-        const color = chartColorPalette[key];
-        const spark = window.echarts.init(el);
-        spark.setOption({
-          grid: { left: 0, right: 0, top: 2, bottom: 2 },
-          xAxis: { type: 'category', show: false },
-          yAxis: { type: 'value', show: false, min: 'dataMin' },
-          series: [{
-            type: 'line',
-            data: values,
-            showSymbol: false,
-            smooth: true,
-            lineStyle: { width: 1.5, color: color },
-            areaStyle: {
-              color: {
-                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                colorStops: [
-                  { offset: 0, color: color + '25' },
-                  { offset: 1, color: color + '00' }
-                ]
-              }
-            }
-          }]
-        });
-      });
-
-      // Sparklines for Image Pulls Cards
-      const pullsSparklineData = {
-        total: [65070,71697,39400,68405,69455,64732,62477,53021,51191,54385,55229,55892,61485,68153,57962,57168,60847,59919,58188,57941,60121,52309,51785,59589,55625,60507,66100,67742,55107,56819],
-        coreos: [55245,62492,33954,56001,54913,52645,50632,45579,44177,43269,43697,43977,50729,55753,51036,50824,50639,50444,47807,47032,48034,45618,45348,47068,44761,47556,54135,55787,49412,49850],
-        fedora: [4528,4937,2571,6252,6885,4870,5095,4954,4051,6096,5487,6038,5537,7191,4598,4019,5708,4953,5262,6189,5682,4546,4095,6849,5787,6638,7099,5613,3700,3769],
-        centos: [3982,3643,1644,5206,5042,4324,4418,2026,2284,3029,4042,3878,3451,2925,1714,1780,2501,2594,3147,2118,3915,1551,1748,3484,3014,4208,2573,4019,1375,2156],
-        almalinux: [1315,625,1231,946,2615,2893,2332,462,679,1991,2003,1999,1768,2284,614,545,1999,1928,1972,2602,2490,594,594,2188,2063,2105,2293,2323,620,1044]
-      };
-
-      Object.entries(pullsSparklineData).forEach(([key, values]) => {
-        const el = document.getElementById('sparkline-pulls-' + key);
-        if (!el) return;
-        const color = key === 'total' ? chartColorPalette.total : chartColorPalette.bluefin;
-        const spark = window.echarts.init(el);
-        spark.setOption({
-          grid: { left: 0, right: 0, top: 2, bottom: 2 },
-          xAxis: { type: 'category', show: false },
-          yAxis: { type: 'value', show: false, min: 'dataMin' },
-          series: [{
-            type: 'line',
-            data: values,
-            showSymbol: false,
-            smooth: true,
-            lineStyle: { width: 1.5, color: color },
-            areaStyle: {
-              color: {
-                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                colorStops: [
-                  { offset: 0, color: color + '25' },
-                  { offset: 1, color: color + '00' }
-                ]
-              }
-            }
-          }]
-        });
-      });
-    }
-
-    function bootCumulativeInstallationsChart() {
-      const container = document.getElementById('cumulative-installations-chart');
-      if (!container || !pageData || !pageData.countmeTrend) return;
-      const chart = window.echarts.init(container);
-      const dates = pageData.countmeTrend.monthly.map(d => d.week_start);
-      const series = pageData.countmeTrend.DISTROS.map((distro, idx) => {
-        const color = {
-          bazzite: '#0ea5e9',
-          bluefin: '#a78bfa',
-          aurora: '#10b981',
-          secureblue: '#f59e0b',
-          wayblue: '#6366f1',
-          winblues: '#ec4899',
-          origami: '#f43f5e'
-        }[distro] || '#6366f1';
-        
-        return {
-          name: pageData.countmeTrend.LABELS[idx],
-          type: 'line',
-          stack: 'total',
-          areaStyle: { opacity: 0.6 },
-          emphasis: { focus: 'series' },
-          showSymbol: false,
-          smooth: true,
-          lineStyle: { width: 1.5, color: color },
-          itemStyle: { color: color },
-          data: pageData.countmeTrend.monthly.map(d => d.distros[distro] || 0)
-        };
-      });
+    function bootDoraTrendChart() {
+      const el = document.getElementById('dora-trend-chart');
+      if (!el || !pageData || !pageData.doraComparison) return;
+      const chart = window.echarts.init(el);
+      const labels = pageData.doraComparison.labels || [];
+      const datasets = pageData.doraComparison.datasets || [];
+      const palette = ['#a78bfa', '#10b981', '#f59e0b', '#6366f1', '#ec4899', '#f43f5e', '#38bdf8', '#22c55e'];
+      const varMap = { blue: '#3b82f6', green: '#10b981', orange: '#f97316', purple: '#8b5cf6', indigo: '#6366f1', yellow: '#eab308', red: '#ef4444' };
 
       chart.setOption({
         tooltip: {
@@ -1595,69 +1236,32 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         xAxis: {
           type: 'category',
           boundaryGap: false,
-          data: dates,
+          data: labels,
           axisLabel: { color: '#94a3b8' },
           axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
         },
         yAxis: {
           type: 'value',
+          min: 0,
           axisLabel: { color: '#94a3b8' },
           splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
         },
-        series: series
-      });
-    }
-
-    function bootAdoptionSankeyChart() {
-      const el = document.getElementById('adoption-sankey-chart');
-      if (!el) return;
-      const chart = window.echarts.init(el);
-      chart.setOption({
-        tooltip: {
-          trigger: 'item',
-          triggerOn: 'mousemove',
-          backgroundColor: 'rgba(15, 23, 42, 0.9)',
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          textStyle: { color: '#cbd5e1' }
-        },
-        series: [{
-          type: 'sankey',
-          layout: 'none',
-          emphasis: { focus: 'adjacency' },
-          data: [
-            { name: 'Upstream Bedrock', itemStyle: { color: '#4f46e5' } },
-            { name: 'Bazzite', itemStyle: { color: '#0ea5e9' } },
-            { name: 'Bluefin', itemStyle: { color: '#a78bfa' } },
-            { name: 'Aurora', itemStyle: { color: '#10b981' } },
-            { name: 'secureblue', itemStyle: { color: '#f59e0b' } },
-            { name: 'wayblue', itemStyle: { color: '#6366f1' } },
-            { name: 'winblues', itemStyle: { color: '#ec4899' } },
-            { name: 'Origami', itemStyle: { color: '#f43f5e' } },
-            { name: 'Stable Branch', itemStyle: { color: '#14b8a6' } },
-            { name: 'Testing Branch', itemStyle: { color: '#f59e0b' } }
-          ],
-          links: [
-            { source: 'Upstream Bedrock', target: 'Bazzite', value: 79622 },
-            { source: 'Upstream Bedrock', target: 'Bluefin', value: 3560 },
-            { source: 'Upstream Bedrock', target: 'Aurora', value: 2622 },
-            { source: 'Upstream Bedrock', target: 'secureblue', value: 976 },
-            { source: 'Upstream Bedrock', target: 'wayblue', value: 241 },
-            { source: 'Upstream Bedrock', target: 'winblues', value: 18 },
-            { source: 'Upstream Bedrock', target: 'Origami', value: 6 },
-            { source: 'Bazzite', target: 'Stable Branch', value: 71550 },
-            { source: 'Bazzite', target: 'Testing Branch', value: 8072 },
-            { source: 'Bluefin', target: 'Stable Branch', value: 3502 },
-            { source: 'Bluefin', target: 'Testing Branch', value: 58 },
-            { source: 'Aurora', target: 'Stable Branch', value: 2527 },
-            { source: 'Aurora', target: 'Testing Branch', value: 95 },
-            { source: 'secureblue', target: 'Stable Branch', value: 976 },
-            { source: 'wayblue', target: 'Stable Branch', value: 241 },
-            { source: 'winblues', target: 'Stable Branch', value: 18 },
-            { source: 'Origami', target: 'Stable Branch', value: 6 }
-          ],
-          lineStyle: { color: 'source', curveness: 0.5 },
-          label: { color: '#cbd5e1', fontSize: 11 }
-        }]
+        series: datasets.map(function(ds, idx) {
+          var hex = palette[idx % palette.length];
+          if (ds.color && ds.color.indexOf('var(--') === 0) {
+            var name = ds.color.replace('var(--', '').replace(')', '');
+            if (varMap[name]) hex = varMap[name];
+          }
+          return {
+            name: ds.label || ('Project ' + idx),
+            type: 'line',
+            showSymbol: false,
+            smooth: false,
+            itemStyle: { color: hex },
+            lineStyle: { width: 2 },
+            data: Array.isArray(ds.values) ? ds.values : []
+          };
+        })
       });
     }
 
@@ -2282,8 +1886,7 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
         }
       }
 
-      lazyInit('cumulative-installations-chart', bootCumulativeInstallationsChart);
-      lazyInit('adoption-sankey-chart', bootAdoptionSankeyChart);
+      lazyInit('dora-trend-chart', bootDoraTrendChart);
       lazyInit('countme-trend-chart', bootCountmeTrendChart);
       lazyInit('ecosystem-pie-chart', bootEcosystemPieChart);
       lazyInit('quay-trend', bootQuayTrendChart);
@@ -2310,13 +1913,13 @@ const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== nul
     function waitForCharts(attempt) {
       if (attempt === undefined) attempt = 0;
       if (window.echarts) {
-        bootSparklines();
         setupLazyLoading();
         return;
       }
       if (attempt > 40) {
-        renderUnavailable('cumulative-installations-chart', 'ECharts failed to load. Table below remains the source of truth.');
-        renderUnavailable('adoption-sankey-chart', 'Sankey chart unavailable because the chart runtime did not load.');
+        renderUnavailable('dora-trend-chart', 'Chart runtime failed to load.');
+        renderUnavailable('countme-trend-chart', 'Chart runtime failed to load.');
+        renderUnavailable('quay-trend', 'Chart runtime failed to load.');
         return;
       }
       window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);

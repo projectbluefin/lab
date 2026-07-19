@@ -749,32 +749,43 @@ const serializePayload = serializeJsonScript({
 
       if (complianceContainer && pageData.compliance) {
         const rules = pageData.compliance.rules || [];
+        const labels = rules.map(r => r.name);
+        const passed = rules.map(r => r.total_checked - r.violations_count);
+        const failed = rules.map(r => r.violations_count);
         const chart = echarts.init(complianceContainer);
         chart.setOption({
           backgroundColor: 'transparent',
-          tooltip: { trigger: 'item' },
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
           legend: {
-            orient: 'vertical',
-            left: 'left',
-            textStyle: { color: '#cbd5e1', fontSize: 10 }
+            textStyle: { color: '#cbd5e1', fontSize: 10 },
+            data: ['Passed', 'Violations']
+          },
+          grid: { left: 15, right: 15, top: 40, bottom: 10, containLabel: true },
+          xAxis: {
+            type: 'value',
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          yAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
           },
           series: [
             {
-              name: 'Compliance Pass Rate',
-              type: 'pie',
-              radius: ['45%', '70%'],
-              avoidLabelOverlap: false,
-              itemStyle: { borderRadius: 10, borderColor: '#0f172a', borderWidth: 2 },
-              label: { show: false, position: 'center' },
-              emphasis: {
-                label: { show: true, fontSize: 13, fontWeight: 'bold', color: '#cbd5e1' }
-              },
-              labelLine: { show: false },
-              data: rules.map(r => ({
-                value: r.total_checked - r.violations_count,
-                name: r.name,
-                itemStyle: { color: r.status === 'passed' ? '#10b981' : '#f43f5e' }
-              }))
+              name: 'Passed',
+              type: 'bar',
+              stack: 'compliance',
+              data: passed,
+              itemStyle: { color: '#10b981', borderRadius: [4, 0, 0, 4] }
+            },
+            {
+              name: 'Violations',
+              type: 'bar',
+              stack: 'compliance',
+              data: failed,
+              itemStyle: { color: '#f43f5e', borderRadius: [0, 4, 4, 0] }
             }
           ]
         });

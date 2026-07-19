@@ -38,7 +38,7 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /factory-dashboard/, 'overview keeps the dashboard shell');
   assert.doesNotMatch(html('docs/index.html'), /factory-dashboard\.js/, 'legacy dashboard script is removed');
   assert.doesNotMatch(html('docs/index.html'), /factory-dashboard\.css/, 'legacy dashboard style is removed');
-  assert.match(html('docs/index.html'), /class="kpi-grid"/, 'overview renders build-time KPI cards');
+  assert.match(html('docs/index.html'), /Is the last release good\?/i, 'overview leads with the release verdict triage section');
   assert.match(html('docs/index.html'), /class="nodes-grid"/, 'overview renders contributor nodes');
   assert.match(html('docs/index.html'), /class="image-status-grid"/, 'overview renders image status section');
   assert.match(html('docs/index.html'), /href="\/images\/"/, 'overview links to images at domain root');
@@ -113,22 +113,21 @@ test('Astro build emits multipage factory routes into docs', () => {
 test('tests page renders matrix views, chart mounts, evidence links, and unavailable states', () => {
   const testsPage = html('docs/tests/index.html');
 
-  assert.match(testsPage, /Reliability trends/i, 'tests page shows reliability trend chart section');
-  assert.match(testsPage, /Failure concentration/i, 'tests page shows failure concentration chart section');
-  assert.match(testsPage, /Suite\/variant view/i, 'tests page shows suite variant chart section');
+  assert.match(testsPage, /Pass-rate trends per lane-suite/i, 'tests page shows pass-rate trend chart section');
+  assert.match(testsPage, /Suite\/variant heatmap/i, 'tests page shows suite variant heatmap section');
+  assert.match(testsPage, /Flaky rows and run history sparklines/i, 'tests page shows flaky rows panel');
   assert.match(testsPage, /bluefin-testing-smoke/i, 'tests page renders available matrix row details');
   assert.match(testsPage, /results\/bluefin-testing-smoke\.json/i, 'tests page links results evidence');
-  assert.match(testsPage, /Result file exists, but no completed run is published for this matrix cell yet\./i, 'tests page keeps unavailable states explicit');
-  
-  // Premium features assertions
-  assert.match(testsPage, /Tests at a Glance/i, 'tests page renders beautiful title for KPI scorecard');
-  assert.match(testsPage, /Verified scenarios/i, 'tests page renders Verified scenarios KPI card');
+  assert.match(testsPage, /Not Enrolled|Awaiting Test Run Evidence/i, 'tests page keeps unavailable states explicit');
+
+  // KPI and lane verdict strip
+  assert.match(testsPage, /Tests at a glance/i, 'tests page renders KPI scorecard');
+  assert.match(testsPage, /Lanes good/i, 'tests page renders lanes good KPI');
+  assert.match(testsPage, /Gating pass rate/i, 'tests page renders gating pass rate KPI');
+  assert.match(testsPage, /Flaky rows/i, 'tests page renders flaky rows KPI');
   assert.match(testsPage, /progress-bar/i, 'tests page renders inline progress bars for pass rates');
-  assert.match(testsPage, /Data Integrity Posture/i, 'tests page renders Data Integrity Posture section');
-  assert.match(testsPage, /Evidence-backed authenticity/i, 'tests page renders evidence-backed authenticity disclosure');
-  assert.match(testsPage, /Triage & Local Execution Runbook/i, 'tests page renders triage runbook section');
-  assert.match(testsPage, /Permission denied \(publickey\) at SSH wait/i, 'tests page runbook lists common publickey log symptom');
-  
+  assert.match(testsPage, /Triage & local execution runbook/i, 'tests page renders triage runbook section');
+
   // Toggles, copying, and search
   assert.match(testsPage, /Expand All/i, 'tests page renders Expand All toggle button');
   assert.match(testsPage, /Collapse All/i, 'tests page renders Collapse All toggle button');
@@ -159,7 +158,7 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
   assert.match(userspacePage, /FSDK images built/i, 'userspace page renders build KPI card');
   assert.match(userspacePage, /OCI local storage/i, 'userspace page renders Zot OCI local storage card');
   assert.match(userspacePage, /Registry Layers/i, 'userspace page renders Zot layers count card');
-  assert.match(userspacePage, /OCI Compliance/i, 'userspace page renders OCI Compliance specification card');
+  assert.match(userspacePage, /Freedesktop SDK Container Images/i, 'userspace page renders the FSDK container images heading');
   assert.match(userspacePage, /Freedesktop SDK custom containers/i, 'userspace page renders tracked custom containers section');
   assert.match(userspacePage, /fsdk\/lab-runner/i, 'userspace page includes lab-runner OCI image');
   assert.match(userspacePage, /elements\/oci\/lab-runner\.bst/i, 'userspace page includes buildstream element path');
@@ -174,7 +173,7 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
   assert.doesNotMatch(userspacePage, /Registry Heat \/ Activity/i, 'fabricated registry heat column is removed');
   assert.doesNotMatch(userspacePage, /Sizzling/i, 'fabricated sizzling heat metric label is removed');
   assert.doesNotMatch(userspacePage, /heat-glowing-bar/i, 'fabricated heat glowing bar is removed');
-  assert.match(userspacePage, /Data Integrity Posture/i, 'userspace page renders Data Integrity Posture section');
+  assert.match(userspacePage, /Raw dataset/i, 'userspace page keeps the raw dataset provenance link');
 });
 
 test('evidence page renders triage charts, coordinate overlays, gallery, and data integrity disclosure', () => {
@@ -186,5 +185,5 @@ test('evidence page renders triage charts, coordinate overlays, gallery, and dat
   assert.match(evidencePage, /AT-SPI Coordinate Map Overlay/i, 'evidence page renders coordinate overlay section');
   assert.match(evidencePage, /Visual Evidence Gallery/i, 'evidence page renders visual evidence gallery section');
   assert.match(evidencePage, /Failure Runbooks/i, 'evidence page renders failure runbooks section');
-  assert.match(evidencePage, /Data Integrity Posture/i, 'evidence page renders data integrity posture section');
+  assert.match(evidencePage, /Provenance: run metrics from docs\/data\/factory-stats\.json/i, 'evidence page renders the provenance footer line');
 });

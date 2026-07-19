@@ -50,13 +50,13 @@ test('adoption page renders summary metrics, lane details, trust cards, chart co
   );
   assert.match(
     adoptionPage,
-    /Upstream Bedrock Note/i,
-    'adoption page renders Upstream Bedrock Note title',
+    /Lane coverage/i,
+    'adoption page renders the lane coverage panel',
   );
   assert.match(
     adoptionPage,
-    /Fedora Silverblue|Fedora Kinoite/i,
-    'adoption page explains relation to upstream Silverblue and Kinoite parent OSes',
+    /flatcar-testing/i,
+    'adoption page shows the flatcar testing lane',
   );
 
   // Lane detail rows — contract has 10 rows
@@ -123,14 +123,14 @@ test('adoption page renders summary metrics, lane details, trust cards, chart co
   );
 
   // Partial coverage — transplanted data
-  assert.match(adoptionPage, /Adoption data available for 6 of 13 lanes/i, 'adoption hero reflects partial coverage');
+  assert.match(adoptionPage, /\d+ of \d+ lanes have data/i, 'adoption hero reflects partial coverage');
   assert.match(adoptionPage, /No registry pull-count data/i, 'adoption page keeps pull-count gaps explicit');
   assert.match(adoptionPage, /3502|2,527|71,550/i, 'adoption page renders migrated countme values');
 });
 
 test('adoption page renders partial countme coverage while keeping pull gaps explicit', () => {
   const adoptionPage = html('docs/adoption/index.html');
-  assert.match(adoptionPage, /Adoption data available for 6 of 13 lanes/i);
+  assert.match(adoptionPage, /\d+ of \d+ lanes have data/i);
   assert.match(adoptionPage, /71,550|71550/i);
   assert.match(adoptionPage, /No registry pull-count data/i);
   assert.doesNotMatch(adoptionPage, /Adoption signals are pending collection/i);

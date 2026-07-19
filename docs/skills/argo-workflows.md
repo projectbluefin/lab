@@ -853,11 +853,24 @@ never directly under Argo emissary PID 1.
   qecore; print its journal and fail if that state is unavailable.
 - Because mounting a new `/run` invalidates the image resolver symlink, copy
   the runner Pod's Kubernetes resolver into the target before Git or pip use.
+- Target image pulls through Zot can take up to 600 seconds; size the Argo
+  `resource` template timeout accordingly.
+- Do not overwrite qecore's desktop session environment with fake `/home`
+  runtime-bus values; the real login session D-Bus socket and bus address must
+  remain intact.
+- Pass test-suite inputs through a durable target file, not environment
+  variables: qecore does not forward arbitrary env vars into the desktop
+  session.
 - Delete the owner-referenced target in the runner's EXIT trap as a prompt
   cleanup fallback.
 
-This runner tests the OCI userspace and desktop session. Tests requiring a
-bootloader, kernel, initramfs, or physical hardware remain outside its scope.
+This runner validates the OCI userspace, systemd/logind startup, resolver
+repair, qecore, and GDM bootstrap. Tests requiring a bootloader, kernel,
+initramfs, or physical hardware remain outside its scope.
+
+**Not yet the production caller path:** a full smoke suite currently loses its
+GNOME D-Bus/Wayland session, so use this probe only for targeted desktop
+bootstrap validation until that instability is resolved.
 
 For pipelines that need shared scratch space across steps (e.g. installer binaries, target disks),
 use Argo's `volumeClaimTemplates` at the workflow spec level. Argo auto-creates the PVC at workflow

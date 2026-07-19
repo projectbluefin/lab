@@ -61,13 +61,15 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   Kubernetes selects a schedulable node and the local-path provisioner binds
   the PVC below that node's configured data mount. Do not select a node or
   bind-mount a cache path to influence placement.
-- **Dakota lane policy:** `dakota-build-pipeline` defaults to `build-mode=cache-only`
-  for ordinary builds so the lane stays on the local BuildStream path and avoids
-  the 1-CPU RE coordinator pod. The explicit RE mode remains `build-mode=re`; the
-  normal `auto` path is forced to `cache-only` so ordinary Dakota runs stay on
-  the local cache-only lane unless someone is explicitly debugging the distributed
-  path. The dakota commit poller also pins the checkout to the exact GitHub SHA it
-  observed, so the lab build follows the same revision that GitHub is building.
+- **Dakota lane policy:** `dakota-build-pipeline` is a distributed BuildBarn
+  remote-execution lane; only `build-mode=re` is accepted. The
+  `detect-build-mode` step validates the requested mode and rejects
+  `cache-only`, `auto`, and any unknown value, so ordinary Dakota runs cannot
+  fall back to a local cache-only path. The lane uses one serialized
+  `bst-build` semaphore and per-variant workflow-owned 200Gi `local-path` cache
+  PVCs. The dakota commit poller also pins the checkout to the exact GitHub SHA
+  it observed, so the lab build follows the same revision that GitHub is
+  building.
 - **Buildbarn RE sandbox device nodes**: `bb_runner` with
   `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
   `/dev/random`, and `/dev/urandom` are missing inside the chroot. The cluster-side
@@ -94,7 +96,7 @@ and blocked Buildbarn storage scheduling on `exo-0` until the Job was removed.
 
 ## BST build scheduling: avoid preemption
 
-BST build pods use the `bst-build` PriorityClass. Long cache-only builds lose all
+BST build pods use the `bst-build` PriorityClass. Long builds lose all
 progress when preempted, so `bst-build` (1,500,000) is set higher than
 `lab-test-vm` (1,000,000). Builds therefore take scheduling precedence over
 short-lived image-poll VMs, while still remaining below kubevirt/system critical
@@ -116,7 +118,8 @@ reverse.
 
 2. **Serialize high-memory BST variants.** Do not run two 14 GiB BST build pods
 in parallel; the second pod may be forced onto a node without enough headroom.
-The Dakota pipeline already runs base and NVIDIA variants sequentially.
+The Dakota pipeline schedules the base and NVIDIA variants in parallel, but
+the single `bst-build` semaphore ensures only one RE build pod runs at a time.
 
 3. **Limit the `bst-build` semaphore to 1.** The semaphore in
 `manifests/workflow-semaphores.yaml` gates all BST build lanes. Set
@@ -492,43 +495,19 @@ cache writeback and remote execution. Workflow-local state belongs on a
 PVC-backed workspace, while the shared Buildbarn frontend provides cluster-wide
 artifact reuse. Neither cache layer may use a root-backed `hostPath`.
 
-### 0. USB4-gated remote execution (link-state fallback)
+### 0. Dakota build mode policy
 
-Remote execution fans action input roots out across nodes. That is only safe on
-the ghost<->exo-0 USB4 data plane (10.99.0.0/30, table-40 policy routing) —
-over 1 GbE it saturates the LAN and starves the control plane. The lab
-therefore gates RE on live link state:
+`argo/workflow-templates/dakota-build-pipeline.yaml` is a distributed BuildBarn
+remote-execution lane. Only `build-mode=re` is accepted:
 
-- `manifests/usb4-link-monitor.yaml`: DaemonSet on ghost + exo-0 annotates each
-  node with `lab.projectbluefin.io/usb4-link: up|down` (operstate + carrier +
-  TCP probe of the peer's kubelet over the tb subnet, every 15 s).
-- `dakota-build-pipeline` runs a `detect-build-mode` step first: `re` only when
-  both annotations are `up` (or `-p build-mode=re` forces it); anything else —
-  including missing annotations — fails safe to `cache-only`.
-- In `cache-only` mode bst builds locally in the pod and uses Buildbarn purely
-  for artifact pulling/pushing.
-
-> ⚠️ **CRITICAL SRE Operational Guidance on Thunderbolt Link Down and DNS Routing Override**:
-> If the physical USB4/Thunderbolt link is down, the static table-40 policy routing rules persisted in NetworkManager on `exo-0` and `ghost` would match pod traffic destined for the other node's pod CIDR (e.g., `10.42.0.0/24` for ghost) and try to route it over `thunderbolt0` (which has `NO-CARRIER`), silently blackholing all cross-node pod-to-pod and DNS traffic.
->
-> **The SRE Solution (DNS routed strictly over Ethernet)**:
-> To isolate the control plane and make cluster discovery completely immune to USB4 link drops, DNS queries and responses (UDP/TCP port 53) are routed strictly over the Ethernet LAN interface. This is enforced at priority `5208` (higher than the USB4 route priority `5209`), steering port 53 traffic via the `main` table.
->
-> This override is dynamically maintained and auto-injected every 15 seconds by the `usb4-link-monitor` DaemonSet using host namespaces:
-> - Outbound queries/replies: `nsenter -t 1 -m -n -- /usr/sbin/ip rule add ipproto [udp|tcp] [dport|sport] 53 lookup main pref 5208`
->
-> If the physical link is down, data-plane pod-to-pod traffic can be fell back to Ethernet by deactivating the NM connection:
-> 1. On `exo-0`, deactivate the NM Thunderbolt connection: `sudo nmcli con down "Wired connection 2"`
-> 2. On `ghost`, delete the stale routing rule: `sudo ip rule del priority 5209`
->
-> All DNS queries and responses remain completely unaffected and healthy over Ethernet throughout, preventing cluster outages!
-  as artifact/source cache (bounded transfers, ethernet-safe).
-- Retries always force cache-only (`{{retries}} > 0`): a mid-build link drop
-  fails the attempt and the retry rides the cache instead of RE.
-- The RE endpoint snippet lives in the `remote-execution.conf` key of the
-  `buildstream-remote-cache` ConfigMap; the baseline `dakota-buildstream.conf`
-  is cache-only. Pipelines append the snippet per-project only in RE mode.
-- Spec: `docs/superpowers/specs/2026-07-09-distributed-bst-usb4-fallback-design.md`
+- The `detect-build-mode` step validates the supplied mode. It outputs `re` when
+  `build-mode=re` and exits with an error for `cache-only`, `auto`, or any
+  unknown value. There is no cache-only fallback for Dakota.
+- The build pods always mount `remote-execution.conf` from the
+  `buildstream-remote-cache` ConfigMap and always append the RE project snippet,
+  so every run uses the shared Buildbarn frontend for remote execution and
+  artifact cache writeback.
+- Retries do not change the mode; a failed Dakota build retries in `re` mode.
 
 ### 1. Shared Buildbarn frontend
 - **Endpoint**: `grpc://frontend.buildbarn.svc.cluster.local:8980`

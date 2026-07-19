@@ -267,30 +267,41 @@ See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
 
 ### 11. Containerized E2E Testing (Preferred for Userland/GUI Suites)
 
-For standard application and GNOME Shell BDD testing (smoke, developer, software), we run tests directly inside a non-privileged Kubernetes pod built from the target bootc OCI image. This bypasses KubeVirt VM overhead and speeds up scheduling.
+For Bluefin desktop BDD testing, `run-container-tests` runs a Kubernetes-native
+Podman host and starts the requested bootc OCI image as a nested systemd
+container. This bypasses KubeVirt VM and containerDisk overhead while giving
+qecore the systemd, logind, D-Bus, and GDM host it requires.
 
 #### Core Containerized Testing Rules:
-1. **Lightweight D-Bus Bootstrap:** Do not run a full systemd inside the pod as PID 1. Instead, wrap execution in `dbus-run-session` to manage the session bus and Wayland display automatically:
+1. **Nested systemd boundary:** The outer Argo pod is privileged only so Podman
+   can boot the disposable target with `--systemd=always`. qecore and Behave
+   execute with `podman exec` inside that target; do not invoke qecore directly
+   under Argo emissary PID 1:
    ```bash
-   dbus-run-session -- qecore-headless --session-type wayland --session-desktop gnome /tmp/run-behave.sh
+   podman run --detach --systemd=always --name bluefin-qa-target "$IMAGE"
+   podman exec bluefin-qa-target qecore-headless \
+     --session-type wayland --session-desktop gnome /workspace/run-behave.sh
    ```
-2. **Minimal Pod Security Context:** Never run containerized e2e test pods in privileged mode. Use standard non-root settings:
+2. **Bounded privileged runtime:** Keep privilege confined to the outer Podman
+   host and remove the nested target in an EXIT trap. The runner requests
+   2 CPU, 4 Gi memory, and 12 Gi ephemeral storage, with limits of 4 CPU,
+   8 Gi memory, and 24 Gi ephemeral storage. Do not add a node pin, VMI,
+   raw-disk build, or containerDisk step:
    ```yaml
    securityContext:
-     runAsUser: 1000
-     runAsGroup: 1000
-     allowPrivilegeEscalation: false
-     capabilities:
-       drop: [ALL]
+     privileged: true
+     runAsUser: 0
+     allowPrivilegeEscalation: true
    ```
-3. **Required Pod Volumes:**
-   - `shm`: `emptyDir` with `medium: Memory` mounted at `/dev/shm` (POSIX shared memory for Wayland/Mutter software rendering).
-   - `home`: `emptyDir` mounted at `/home/bluefin-test` (writable home directory).
-4. **XDG_RUNTIME_DIR & dbus ownership (CRITICAL):** When a pod runs as non-root (UID 1000), mounting an `emptyDir` volume directly at `/run/user/1000` results in the directory being owned by `root` (UID 0). This causes `dbus-run-session` to crash immediately. To solve this, always configure `XDG_RUNTIME_DIR` to a subdirectory inside `/home/bluefin-test` (e.g. `/home/bluefin-test/run`), create and `chmod 700` it in your start script, and set both `DBUS_SESSION_BUS_ADDRESS` and `AT_SPI_BUS_ADDRESS` to `unix:path=/home/bluefin-test/run/bus`.
-5. **Python Pip Bootstrapping:** Minimal ostree/bootc container images do not pre-install Python's `pip` module. You must bootstrap `pip` under `/home/bluefin-test/.local/bin` using `python3 -m ensurepip --user` or falling back to fetching `get-pip.py` on-the-fly before invoking `pip install`.
-6. **Required Environment Enforcements:**
-   - `LIBGL_ALWAYS_SOFTWARE=1` and `GALLIUM_DRIVER=llvmpipe` (forces CPU software rendering, eliminating GPU/DRM host dependency).
-   - `XDG_SESSION_TYPE=wayland` and `XDG_SESSION_DESKTOP=gnome` (enforces correct session type).
+3. **Required volumes:** Use `emptyDir` for `/workspace`, `/tmp/results`,
+   `/var/lib/containers`, and `/run/containers`. Mount the workspace read-only
+   and result directory read-write into the nested target.
+4. **Readiness check:** Wait for nested `systemctl is-system-running` and active
+   `dbus` plus `systemd-logind` before invoking qecore. On timeout, emit the
+   nested journal and fail.
+5. **Python Pip Bootstrapping:** Minimal bootc target images do not always
+   include `pip`. Bootstrap it with `python3 -m ensurepip --default-pip`, then
+   install qecore, dogtail, and Behave inside the disposable nested target.
 
 ## Verification
 

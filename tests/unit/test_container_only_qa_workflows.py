@@ -59,6 +59,22 @@ def test_run_container_tests_explicitly_allows_system_suite():
     assert "Unsupported container suite: ${SUITE}" in content
 
 
+def test_container_runner_uses_a_nested_systemd_target_with_bounded_resources():
+    content = (ROOT / "argo/workflow-templates/run-container-tests.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "privileged: true" in content
+    assert 'ephemeral-storage: 12Gi' in content
+    assert 'ephemeral-storage: 24Gi' in content
+    assert "podman run --detach --systemd=always" in content
+    assert "systemctl is-active dbus systemd-logind" in content
+    assert "podman exec" in content
+    assert "podman rm --force" in content
+    assert "provision-containerdisk-vm" not in content
+    assert "bootc install to-disk" not in content
+
+
 def test_pr_poller_uses_the_exact_testsuite_pr_source():
     content = (ROOT / "argo/workflow-templates/pr-poller.yaml").read_text(
         encoding="utf-8"

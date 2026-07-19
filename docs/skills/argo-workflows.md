@@ -835,7 +835,26 @@ argo submit --from workflowtemplate/dakota-container-qa-pipeline \
 Keep the VM-based `dakota-qa-pipeline` suspended until a successful `build-containerdisk` run
 proves the VM-boot path works.
 
-### 21. Per-workflow ephemeral storage — volumeClaimTemplates
+### 22. Per-workflow ephemeral storage — volumeClaimTemplates
+
+### 21. Nested-systemd desktop QA
+
+`run-container-tests` is the container-native desktop runner. Its outer
+Podman container is privileged solely to start the requested target OCI image
+with `podman run --systemd=always`; qecore runs inside the nested target,
+never directly under Argo emissary PID 1.
+
+- Keep the outer runner scheduler-driven: no `nodeSelector`, hostPath, VMI, raw
+  disk, or containerDisk.
+- Use `emptyDir` storage for the Podman graphroot and runroot. Its resource
+  envelope is request `2 CPU`, `4Gi` memory, `12Gi` ephemeral storage and limit
+  `4 CPU`, `8Gi` memory, `24Gi` ephemeral storage.
+- Wait for the nested systemd instance plus `dbus` and `systemd-logind` before
+  running qecore.
+- Always force-remove the named nested target through a shell EXIT trap.
+
+This runner tests the OCI userspace and desktop session. Tests requiring a
+bootloader, kernel, initramfs, or physical hardware remain outside its scope.
 
 For pipelines that need shared scratch space across steps (e.g. installer binaries, target disks),
 use Argo's `volumeClaimTemplates` at the workflow spec level. Argo auto-creates the PVC at workflow
@@ -900,7 +919,7 @@ ADD --chown=107:107 disk.raw /disk/
 ```
 UID 107 = qemu. Required — omitting `--chown` causes VM boot failure (permission denied on disk).
 
-### 22. Log access — Argo is sufficient, no separate stack needed
+### 23. Log access — Argo is sufficient, no separate stack needed
 
 Argo Server retains all workflow pod logs for the workflow TTL period (7 days success,
 30 days failure via `workflow-controller-configmap`). No separate log aggregation stack

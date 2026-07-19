@@ -6,10 +6,9 @@ metadata:
   annotations:
     description: |
       Runs Bluefin BDD suites (smoke, common, developer, software, system)
-      directly inside a Kubernetes pod built from the target bootc image,
-      bypassing KubeVirt virtualization. Uses dbus-run-session +
-      qecore-headless for high-speed, low-memory software-rendered e2e desktop
-      testing.
+      inside a nested, systemd-booted target OCI container. The privileged
+      Podman host remains Kubernetes-native and bypasses KubeVirt
+      virtualization; qecore-headless runs against the nested GDM session.
   labels:
     app.kubernetes.io/component: test-runner
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -67,146 +66,94 @@ spec:
         TSBRANCH="{{inputs.parameters.testsuite-branch}}"
         git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}" /workspace/testsuite
         echo "Cloned testsuite @ ${TSBRANCH}"
-    - name: ensure-passwd
-      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+    script:
+      image: quay.io/podman/stable:latest
       imagePullPolicy: IfNotPresent
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
       securityContext:
+        # Podman needs a writable cgroup hierarchy to boot the nested systemd host.
+        privileged: true
         runAsUser: 0
-      volumeMounts:
-      - mountPath: /mnt/passwd
-        name: passwd
-      command: [sh, -c]
-      args:
-      - |
-        set -euo pipefail
-        # Images such as Dakota's composefs-oci rootfs do not include a UID 1000
-        # regular user, but dbus-run-session requires the UID to resolve in
-        # /etc/passwd. Copy the image's passwd/group into a shared emptyDir and
-        # append a test user entry when missing. The main container mounts these
-        # copies at /etc/passwd and /etc/group so it can run as UID 1000.
-        cp /etc/passwd /mnt/passwd/passwd
-        cp /etc/group /mnt/passwd/group
-        if ! grep -q '^bluefin-test:' /mnt/passwd/passwd; then
-          echo 'bluefin-test:x:1000:1000:bluefin-test:/home/bluefin-test:/bin/bash' >> /mnt/passwd/passwd
-        fi
-        if ! grep -q '^bluefin-test:' /mnt/passwd/group; then
-          echo 'bluefin-test:x:1000:' >> /mnt/passwd/group
-        fi
-    container:
-      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
-      imagePullPolicy: IfNotPresent
-      securityContext:
-        # Software rendering does not require root or CAP_SYS_ADMIN. Run as non-root (1000).
-        runAsUser: 1000
-        runAsGroup: 1000
-        allowPrivilegeEscalation: false
-        capabilities:
-          drop:
-          - ALL
+        allowPrivilegeEscalation: true
       resources:
         requests:
-          cpu: "1"
-          memory: 2Gi
-        limits:
           cpu: "2"
           memory: 4Gi
+          ephemeral-storage: 12Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          ephemeral-storage: 24Gi
       env:
+      - name: IMAGE
+        value: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
       - name: SUITE
         value: "{{inputs.parameters.suite}}"
       - name: VARIANT
         value: "{{inputs.parameters.variant}}"
       - name: BEHAVE_TAGS
         value: "{{inputs.parameters.behave-tags}}"
-      - name: HOME
-        value: /home/bluefin-test
-      - name: XDG_RUNTIME_DIR
-        value: /home/bluefin-test/run
-      - name: DBUS_SESSION_BUS_ADDRESS
-        value: unix:path=/home/bluefin-test/run/bus
-      - name: AT_SPI_BUS_ADDRESS
-        value: unix:path=/home/bluefin-test/run/bus
-      - name: XDG_SESSION_TYPE
-        value: wayland
-      - name: XDG_SESSION_DESKTOP
-        value: gnome
-      - name: GDK_BACKEND
-        value: wayland
-      - name: CLUTTER_BACKEND
-        value: wayland
-      - name: LIBGL_ALWAYS_SOFTWARE
-        value: "1"
-      - name: GALLIUM_DRIVER
-        value: llvmpipe
-      - name: LANG
-        value: C.UTF-8
-      - name: LC_ALL
-        value: C.UTF-8
-      - name: GITHUB_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: github-token
-            key: token
-            optional: true
       volumeMounts:
       - mountPath: /workspace
         name: workspace
-      - mountPath: /dev/shm
-        name: shm
-      - mountPath: /home/bluefin-test
-        name: home
-      - mountPath: /tmp
-        name: tmp
-      - mountPath: /etc/passwd
-        name: passwd
-        subPath: passwd
-      - mountPath: /etc/group
-        name: passwd
-        subPath: group
-      command: [bash, -c]
-      args:
-      - |
+      - mountPath: /tmp/results
+        name: results
+      - mountPath: /var/lib/containers
+        name: containers-storage
+      - mountPath: /run/containers
+        name: containers-runroot
+      command: [bash]
+      source: |
         set -euo pipefail
-        mkdir -p /tmp/results /home/bluefin-test/.local/bin /home/bluefin-test/run
-        chmod 700 /home/bluefin-test/run
-        export PATH="/home/bluefin-test/.local/bin:${PATH}"
+        TARGET_NAME="bluefin-qa-target"
+        STORAGE_CONF=/tmp/storage.conf
+        cat >"${STORAGE_CONF}" <<'EOF'
+        [storage]
+        driver = "overlay"
+        graphroot = "/var/lib/containers/storage"
+        runroot = "/run/containers/storage"
+        EOF
+        export CONTAINERS_STORAGE_CONF="${STORAGE_CONF}"
+        trap 'podman rm --force "${TARGET_NAME}" >/dev/null 2>&1 || true' EXIT
 
-        echo "Installing Python dependencies (behave, qecore, dogtail)..." >&2
-        if ! python3 -m pip --version &>/dev/null; then
-          echo "pip not found, attempting to bootstrap..." >&2
-          python3 -m ensurepip --user --default-pip 2>&1 || {
-            echo "ensurepip failed, downloading get-pip.py..." >&2
-            curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --user --quiet || true
-          }
+        command -v podman >/dev/null || {
+          echo "Podman is required for nested systemd QA" >&2
+          exit 1
+        }
+        mkdir -p /tmp/results
+        podman run --detach --systemd=always --privileged --shm-size=1g \
+          --name "${TARGET_NAME}" \
+          --volume /workspace:/workspace:ro \
+          --volume /tmp/results:/tmp/results \
+          "${IMAGE}" >/dev/null
+
+        ready=false
+        for _ in $(seq 1 60); do
+          state=$(podman exec "${TARGET_NAME}" systemctl is-system-running 2>/dev/null || true)
+          if [[ "${state}" == "running" || "${state}" == "degraded" ]] \
+            && podman exec "${TARGET_NAME}" systemctl is-active dbus systemd-logind >/dev/null; then
+            ready=true
+            break
+          fi
+          sleep 2
+        done
+        if [[ "${ready}" != true ]]; then
+          echo "Nested systemd host did not reach a usable session state" >&2
+          podman exec "${TARGET_NAME}" journalctl --no-pager || true
+          exit 1
         fi
 
-        python3 -m pip install --quiet --user qecore dogtail behave 2>&1 || {
-          echo "Warning: Pip installation returned warning/error, checking if packages work" >&2
-        }
-
-        # Add symlinks for qecore commands. When pip installs executables
-        # directly into ~/.local/bin the source and target are identical;
-        # skip those to avoid a non-zero ln exit under set -e.
-        for f in /home/bluefin-test/.local/bin/qecore_*; do
-          if [ -f "$f" ]; then
-            target="/home/bluefin-test/.local/bin/$(basename "$f")"
-            if [ "$f" != "$target" ]; then
-              ln -sf "$f" "$target"
-            fi
+        echo "Installing test-only Python dependencies in nested target..." >&2
+        podman exec "${TARGET_NAME}" bash -c '
+          set -euo pipefail
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            python3 -m ensurepip --default-pip
           fi
-        done
+          python3 -m pip install --quiet qecore dogtail behave
+        '
 
-        # Write runner script
-        cat >/tmp/run-behave.sh <<'EOF'
+        cat >/workspace/run-behave.sh <<'EOF'
         #!/bin/bash
         set -euo pipefail
-        export PATH="/home/bluefin-test/.local/bin:${PATH}"
         # testsuite uses its own PYTHONPATH root so 'tests.shared.*' imports resolve.
         export PYTHONPATH="/workspace/testsuite"
 
@@ -239,85 +186,48 @@ spec:
 
         echo "${BEHAVE_RC}" > /tmp/results/behave-rc.txt
         EOF
-        chmod +x /tmp/run-behave.sh
+        chmod +x /workspace/run-behave.sh
 
-        echo "Bootstrapping dbus-run-session + qecore-headless..." >&2
-        # --allow-duplication is required in the container: the constrained
-        # process tree makes qecore-headless think it is a duplicate of an
-        # already-running instance and exit before executing the test script.
-        dbus-run-session -- qecore-headless \
+        echo "Running qecore against the nested systemd/GDM host..." >&2
+        QECORE_RC=0
+        podman exec \
+          --env SUITE \
+          --env BEHAVE_TAGS \
+          "${TARGET_NAME}" \
+          qecore-headless \
           --session-type wayland \
           --session-desktop gnome \
-          --allow-duplication \
-          /tmp/run-behave.sh
+          /workspace/run-behave.sh || QECORE_RC=$?
 
-        BEHAVE_RC=$(cat /tmp/results/behave-rc.txt 2>/dev/null || echo "1")
+        BEHAVE_RC=$(cat /tmp/results/behave-rc.txt 2>/dev/null || printf '%s' "${QECORE_RC}")
 
-        # Push back results if GITHUB_TOKEN is present
-        if [[ -n "${GITHUB_TOKEN:-}" && -f /tmp/results/results.json ]]; then
-          echo "Publishing containerized test results back to repo..." >&2
-          rm -rf /tmp/lab-code
-          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
-          # Derive image slug for website results JSON.
-          # Convention matches run-gnome-tests.yaml:
-          #   bluefin:testing     -> bluefin-testing
-          #   bluefin:lts-testing -> bluefin-lts-testing (VARIANT contains 'lts')
-          #   aurora:testing      -> aurora-testing      (VARIANT=aurora, image-tag=testing)
-          #   snosi:latest        -> snosi-latest        (VARIANT=snosi, image-tag=latest)
-          #   dakota:testing      -> dakota-testing
-          #   bazzite:testing     -> bazzite-testing
-          IMAGE_TAG="{{inputs.parameters.image-tag}}"
-          case "${VARIANT}" in
-            aurora|bazzite|dakota|snosi)
-              IMG_SLUG="${VARIANT}-${IMAGE_TAG}" ;;
-            *lts*)
-              IMG_SLUG="bluefin-lts-${IMAGE_TAG}" ;;
-            *)
-              IMG_SLUG="bluefin-${IMAGE_TAG}" ;;
-          esac
-
-          python3 /tmp/lab-code/scripts/publish_test_results.py \
-            /tmp/results/results.json \
-            "${IMG_SLUG}" \
-            "${SUITE}" \
-            "{{workflow.name}}" \
-            "${GITHUB_TOKEN}" || echo "Warning: failed to publish test results" >&2
-        else
-          echo "No GITHUB_TOKEN or missing results.json - skipping publication" >&2
-        fi
-
-        # Persist results to ghost host volume if mounted (for historical collection)
-        RESULT_DIR="/var/mnt/ghost-data/test-results/{{workflow.name}}/${SUITE}"
-        mkdir -p "${RESULT_DIR}"
-        cp -r /tmp/results/. "${RESULT_DIR}/" 2>/dev/null || true
-
-        # Write final result summary
-        python3 -c "
+        if [[ -f /tmp/results/results.json ]]; then
+          python3 - <<'PY'
         import json
-        try:
-            data = json.load(open('/tmp/results/results.json'))
-            failed = sum(1 for f in data for s in f.get('elements',[]) if s.get('status') == 'failed')
-            total  = sum(len(f.get('elements',[])) for f in data)
-            summary = f'{total - failed}/{total} scenarios passed'
-            open('/tmp/results/result-summary.txt', 'w').write(summary)
-            print(summary)
-        except Exception:
-            open('/tmp/results/result-summary.txt', 'w').write('Execution failed')
-            print('results.json not found')
-        "
+
+        with open("/tmp/results/results.json", encoding="utf-8") as result_file:
+            data = json.load(result_file)
+        failed = sum(
+            1 for feature in data for scenario in feature.get("elements", [])
+            if scenario.get("status") == "failed"
+        )
+        total = sum(len(feature.get("elements", [])) for feature in data)
+        summary = f"{total - failed}/{total} scenarios passed"
+        with open("/tmp/results/result-summary.txt", "w", encoding="utf-8") as summary_file:
+            summary_file.write(summary)
+        print(summary)
+        PY
+        else
+          printf 'Execution failed' >/tmp/results/result-summary.txt
+        fi
 
         exit "${BEHAVE_RC}"
     volumes:
     - name: workspace
       emptyDir: {}
-    - name: xrd
+    - name: results
       emptyDir: {}
-    - name: shm
-      emptyDir:
-        medium: Memory
-    - name: home
+    - name: containers-storage
       emptyDir: {}
-    - name: tmp
-      emptyDir: {}
-    - name: passwd
+    - name: containers-runroot
       emptyDir: {}

@@ -161,7 +161,7 @@ spec:
 
         trap 'kubectl delete pod "${TARGET_POD}" -n "{{workflow.namespace}}" --ignore-not-found --wait=false' EXIT
         kubectl wait --for=condition=Ready "pod/${TARGET_POD}" \
-          -n "{{workflow.namespace}}" --timeout=180s
+          -n "{{workflow.namespace}}" --timeout=600s
 
         ready=false
         for _ in $(seq 1 60); do

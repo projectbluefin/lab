@@ -1229,11 +1229,15 @@ def main() -> int:
     collected_at = args.collected_at or now_utc_iso()
     warn_if_surface_drifted_from_testsuite(root)
     
-    # Run GitOps dashboard collector scripts
-    subprocess.run([sys.executable, str(root / "scripts/refresh_gitops_stats.py")], check=False)
-    subprocess.run([sys.executable, str(root / "scripts/collect_app_resources.py")], check=False)
-    subprocess.run([sys.executable, str(root / "scripts/check_gitops_policy.py")], check=False)
-    
+    # Run GitOps dashboard collector scripts (same dir, so importable directly)
+    import refresh_gitops_stats, collect_app_resources, check_gitops_policy
+    for collector in (refresh_gitops_stats, collect_app_resources, check_gitops_policy):
+        try:
+            collector.main()
+        except Exception as exc:  # match old subprocess check=False behavior
+            print(f"warning: {collector.__name__} failed: {exc}", file=sys.stderr)
+
+
     write_page_datasets(root, collected_at)
     return 0
 

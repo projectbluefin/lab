@@ -167,3 +167,5 @@ Rules learned the hard way:
   explicit unavailable state or the panel is cut.
 - Prefer trend sparklines over point-in-time badges when history exists in
   repo-tracked JSON/NDJSON.
+- **Fast Build GHA Bypass:** Always check `!!process.env.GITHUB_ACTIONS` before initiating any build-time LAN network calls, local Zot API curls, or skopeo inspections. Immediately skip those commands and return static snapshots when compiled under GHA to prevent slow build-time timeouts.
+- **Digest-Pinned QA Verdicts:** Match the tested image digest (recorded during test execution in `tests-matrix.json`) against the currently published GHCR tag digest. If they diverge, the release verdict is marked `pending` rather than `good` to prevent stale QA runs from verifying a fresh untested build.

@@ -92,6 +92,7 @@ def test_native_systemd_runner_uses_a_scheduler_managed_target_pod():
     assert "action: create" in content
     assert "kind: Pod" in content
     assert "setOwnerReference: true" in content
+    assert "serviceAccountName: argo" in content
     assert 'command: ["/usr/lib/systemd/systemd"]' in content
     assert "privileged: true" in content
     assert "kubectl exec" in content

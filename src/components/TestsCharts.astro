@@ -1,5 +1,6 @@
 ---
 import { serializeJsonScript } from '../lib/json-script';
+import testsChartsScript from '../scripts/tests-charts.js?url';
 
 interface ChartHistoryPoint {
   run_date: string;
@@ -232,7 +233,6 @@ const payloadJson = serializeJsonScript(payload);
   </div>
 
   <script type="application/json" id="tests-chart-data" set:html={payloadJson}></script>
-  <script>
-    import '../scripts/tests-charts.js';
-  </script>
+  <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
+  <script is:inline src={testsChartsScript} defer data-cfasync="false"></script>
 </section>

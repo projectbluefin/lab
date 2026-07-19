@@ -43,7 +43,7 @@ test('Astro build emits multipage factory routes into docs', () => {
   assert.match(html('docs/index.html'), /class="image-status-grid"/, 'overview renders image status section');
   assert.match(html('docs/index.html'), /href="\/images\/"/, 'overview links to images at domain root');
   assert.match(html('docs/index.html'), /site-nav__link[^>]*>Overview</, 'top nav shows Overview tab');
-  assert.match(html('docs/tests/index.html'), /src="\/_astro\/TestsCharts\.[^"]+"/, 'tests page keeps bundled chart script');
+  assert.match(html('docs/tests/index.html'), /src="\/_astro\/tests-charts\.[^"]+\.js" defer data-cfasync="false"/, 'tests page keeps the Rocket-Loader-exempt chart script');
   assert.match(html('docs/images/index.html'), /src="\/_astro\/upstream-page\.[^"]+"[^>]* data-cfasync="false"/, 'images page keeps Cloudflare-safe chart script');
   const adoptionPage = html('docs/adoption/index.html');
   assert.match(adoptionPage, /data-cfasync="false"/, 'adoption page keeps Cloudflare-safe chart script');

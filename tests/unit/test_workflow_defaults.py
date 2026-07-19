@@ -33,3 +33,16 @@ def test_image_poller_cron_manifests_do_not_pass_containerdisk_tag():
             offenders.append(manifest.name)
 
     assert not offenders, f"obsolete containerdisk-tag in: {', '.join(offenders)}"
+
+
+def test_dakota_patch_sync_fetches_junction_commit_ids():
+    pipeline = (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'GNOME_COMMIT="${GNOME_REF##*-g}"' in pipeline
+    assert 'FDS_COMMIT="${FDS_REF##*-g}"' in pipeline
+    assert 'git fetch --depth=1 origin "${GNOME_COMMIT}"' in pipeline
+    assert 'git fetch --depth=1 origin "${FDS_COMMIT}"' in pipeline
+    assert 'git fetch --depth=1 origin "${GNOME_REF}"' not in pipeline
+    assert 'git fetch --depth=1 origin "${FDS_REF}"' not in pipeline

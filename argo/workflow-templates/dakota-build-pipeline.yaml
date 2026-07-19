@@ -342,11 +342,15 @@ spec:
             (
               cd /tmp/upstream-patches/gnome-build-meta
               GNOME_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/gnome-build-meta.bst | tr -d '\r')
-              git fetch --depth=1 origin "${GNOME_REF}" || true
-              git checkout --detach "${GNOME_REF}" || git checkout --detach FETCH_HEAD || true
-              if [[ -d patches/gnome-build-meta ]]; then
-                rm -rf /src/patches/gnome-build-meta
-                cp -a patches/gnome-build-meta /src/patches/gnome-build-meta
+              GNOME_COMMIT="${GNOME_REF##*-g}"
+              if git fetch --depth=1 origin "${GNOME_COMMIT}"; then
+                git checkout --detach FETCH_HEAD
+                if [[ -d patches/gnome-build-meta ]]; then
+                  rm -rf /src/patches/gnome-build-meta
+                  cp -a patches/gnome-build-meta /src/patches/gnome-build-meta
+                fi
+              else
+                echo "WARN: unable to fetch gnome-build-meta commit ${GNOME_COMMIT}; continuing without patch sync"
               fi
             )
           else
@@ -357,11 +361,15 @@ spec:
             (
               cd /tmp/upstream-patches/freedesktop-sdk
               FDS_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/freedesktop-sdk.bst | tr -d '\r')
-              git fetch --depth=1 origin "${FDS_REF}" || true
-              git checkout --detach "${FDS_REF}" || git checkout --detach FETCH_HEAD || true
-              if [[ -d patches/freedesktop-sdk ]]; then
-                rm -rf /src/patches/freedesktop-sdk
-                cp -a patches/freedesktop-sdk /src/patches/freedesktop-sdk
+              FDS_COMMIT="${FDS_REF##*-g}"
+              if git fetch --depth=1 origin "${FDS_COMMIT}"; then
+                git checkout --detach FETCH_HEAD
+                if [[ -d patches/freedesktop-sdk ]]; then
+                  rm -rf /src/patches/freedesktop-sdk
+                  cp -a patches/freedesktop-sdk /src/patches/freedesktop-sdk
+                fi
+              else
+                echo "WARN: unable to fetch freedesktop-sdk commit ${FDS_COMMIT}; continuing without patch sync"
               fi
             )
           else

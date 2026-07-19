@@ -120,7 +120,7 @@ spec:
           exit 1
         }
         mkdir -p /tmp/results
-        podman run --detach --systemd=always --privileged \
+        podman run --detach --systemd=always --network host --privileged \
           --name "${TARGET_NAME}" \
           --volume /workspace:/workspace:ro \
           --volume /tmp/results:/tmp/results \

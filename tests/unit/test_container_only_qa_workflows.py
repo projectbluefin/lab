@@ -68,6 +68,7 @@ def test_container_runner_uses_a_nested_systemd_target_with_bounded_resources():
     assert 'ephemeral-storage: 12Gi' in content
     assert 'ephemeral-storage: 24Gi' in content
     assert "podman run --detach --systemd=always" in content
+    assert "--network host" in content
     assert "systemctl is-active dbus systemd-logind" in content
     assert "podman exec" in content
     assert "podman rm --force" in content

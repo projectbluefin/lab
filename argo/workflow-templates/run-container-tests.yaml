@@ -119,16 +119,12 @@ spec:
           echo "Podman is required for nested systemd QA" >&2
           exit 1
         }
-        DNS_SERVER=$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf)
-        if [[ -z "${DNS_SERVER}" ]]; then
-          echo "No DNS resolver configured for nested systemd QA" >&2
-          exit 1
-        fi
         mkdir -p /tmp/results
-        podman run --detach --systemd=always --network host --dns "${DNS_SERVER}" --privileged \
+        podman run --detach --systemd=always --network host --privileged \
           --name "${TARGET_NAME}" \
           --volume /workspace:/workspace:ro \
           --volume /tmp/results:/tmp/results \
+          --volume /etc/resolv.conf:/etc/resolv.conf:ro \
           "${IMAGE}" >/dev/null
 
         ready=false

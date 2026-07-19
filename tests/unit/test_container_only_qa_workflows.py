@@ -97,6 +97,8 @@ def test_native_systemd_runner_uses_a_scheduler_managed_target_pod():
     assert '--timeout=600s' in content
     assert "privileged: true" in content
     assert "kubectl exec" in content
+    assert 'tee /workspace/resolv.conf < /etc/resolv.conf' in content
+    assert 'rm -f /etc/resolv.conf' in content
     assert "kubectl delete pod" in content
     assert "nodeSelector:" not in content
     assert "containerDisk" not in content

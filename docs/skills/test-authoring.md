@@ -265,43 +265,35 @@ See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
 - Omission of `behave` from the VM pip install block for non-system suites inside `run-gnome-tests.yaml` — results in exit code 127 ("command not found") at suite run-time
 - Empty behave environment hooks (like `before_scenario`, `after_scenario`) that do nothing in `environment.py` — dead boilerplate; delete them so the file is clean
 
-### 11. Containerized E2E Testing (Preferred for Userland/GUI Suites)
+### 11. Native-systemd E2E Testing
 
-For Bluefin desktop BDD testing, `run-container-tests` runs a Kubernetes-native
-Podman host and starts the requested bootc OCI image as a nested systemd
-container. This bypasses KubeVirt VM and containerDisk overhead while giving
-qecore the systemd, logind, D-Bus, and GDM host it requires.
+`run-systemd-container-tests` proves desktop testing in a scheduler-managed
+Kubernetes target Pod, without KubeVirt, a disk artifact, or nested Podman.
+It creates a privileged disposable target Pod with systemd as PID 1; qecore
+and Behave must run inside that target, never under Argo emissary PID 1.
 
 #### Core Containerized Testing Rules:
-1. **Nested systemd boundary:** The outer Argo pod is privileged only so Podman
-   can boot the disposable target with `--systemd=always`. qecore and Behave
-   execute with `podman exec` inside that target; do not invoke qecore directly
-   under Argo emissary PID 1:
-   ```bash
-   podman run --detach --systemd=always --name bluefin-qa-target "$IMAGE"
-   podman exec bluefin-qa-target qecore-headless \
-     --session-type wayland --session-desktop gnome /workspace/run-behave.sh
-   ```
-2. **Bounded privileged runtime:** Keep privilege confined to the outer Podman
-   host and remove the nested target in an EXIT trap. The runner requests
-   2 CPU, 4 Gi memory, and 12 Gi ephemeral storage, with limits of 4 CPU,
-   8 Gi memory, and 24 Gi ephemeral storage. Do not add a node pin, VMI,
-   raw-disk build, or containerDisk step:
+1. **Native systemd boundary:** Create the target with an Argo `resource`
+   template and set its owner reference to the Workflow. The runner waits for
+   `systemctl is-system-running`, `dbus`, and `systemd-logind` before invoking
+   qecore, and deletes the target in an EXIT trap.
+2. **Bounded privileged runtime:** Keep privilege confined to the target Pod.
+   Request 2 CPU, 4 Gi memory, and 20 Gi ephemeral storage, with limits of
+   4 CPU, 8 Gi memory, and 40 Gi ephemeral storage. Do not add a node pin,
+   VMI, raw-disk build, or containerDisk step:
    ```yaml
    securityContext:
      privileged: true
      runAsUser: 0
      allowPrivilegeEscalation: true
    ```
-3. **Required volumes:** Use `emptyDir` for `/workspace`, `/tmp/results`,
-   `/var/lib/containers`, and `/run/containers`. Mount the workspace read-only
-   and result directory read-write into the nested target.
-4. **Readiness check:** Wait for nested `systemctl is-system-running` and active
-   `dbus` plus `systemd-logind` before invoking qecore. On timeout, emit the
-   nested journal and fail.
-5. **Python Pip Bootstrapping:** Minimal bootc target images do not always
+3. **Resolver repair:** The memory-backed `/run` volume leaves the image's
+   `/etc/resolv.conf` symlink dangling. Stream the runner's Kubernetes-provided
+   resolver into `/workspace/resolv.conf`, then replace the target's symlink
+   before cloning or installing dependencies.
+4. **Python Pip Bootstrapping:** Minimal bootc target images do not always
    include `pip`. Bootstrap it with `python3 -m ensurepip --default-pip`, then
-   install qecore, dogtail, and Behave inside the disposable nested target.
+   install qecore, dogtail, and Behave inside the disposable target.
 
 ## Verification
 

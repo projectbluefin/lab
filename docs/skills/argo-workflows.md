@@ -837,21 +837,24 @@ proves the VM-boot path works.
 
 ### 22. Per-workflow ephemeral storage — volumeClaimTemplates
 
-### 21. Nested-systemd desktop QA
+### 21. Native-systemd desktop QA
 
-`run-container-tests` is the container-native desktop runner. Its outer
-Podman container is privileged solely to start the requested target OCI image
-with `podman run --systemd=always`; qecore runs inside the nested target,
+`run-systemd-container-tests` is the container-native desktop QA probe. An
+Argo `resource` template creates a privileged target Pod with systemd as PID 1
+and a Workflow owner reference; its runner executes qecore inside the target,
 never directly under Argo emissary PID 1.
 
-- Keep the outer runner scheduler-driven: no `nodeSelector`, hostPath, VMI, raw
-  disk, or containerDisk.
-- Use `emptyDir` storage for the Podman graphroot and runroot. Its resource
-  envelope is request `2 CPU`, `4Gi` memory, `12Gi` ephemeral storage and limit
-  `4 CPU`, `8Gi` memory, `24Gi` ephemeral storage.
-- Wait for the nested systemd instance plus `dbus` and `systemd-logind` before
-  running qecore.
-- Always force-remove the named nested target through a shell EXIT trap.
+- Keep both target and runner scheduler-driven: no `nodeSelector`, hostPath,
+  VMI, raw disk, or containerDisk.
+- Use memory-backed `emptyDir` for `/run` and `emptyDir` for `/workspace`. The
+  target requests `2 CPU`, `4Gi` memory, and `20Gi` ephemeral storage, with
+  limits of `4 CPU`, `8Gi` memory, and `40Gi` ephemeral storage.
+- Wait for systemd plus active `dbus` and `systemd-logind` before running
+  qecore; print its journal and fail if that state is unavailable.
+- Because mounting a new `/run` invalidates the image resolver symlink, copy
+  the runner Pod's Kubernetes resolver into the target before Git or pip use.
+- Delete the owner-referenced target in the runner's EXIT trap as a prompt
+  cleanup fallback.
 
 This runner tests the OCI userspace and desktop session. Tests requiring a
 bootloader, kernel, initramfs, or physical hardware remain outside its scope.

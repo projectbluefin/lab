@@ -182,8 +182,15 @@ spec:
           exit 1
         fi
 
+        # Mounting the target's volatile /run leaves the image resolver symlink
+        # dangling. Use the runner's Kubernetes-provided resolver instead.
+        kubectl exec -i -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          tee /workspace/resolv.conf < /etc/resolv.conf
+
         kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- bash -lc "
           set -euo pipefail
+          rm -f /etc/resolv.conf
+          install -m 0644 /workspace/resolv.conf /etc/resolv.conf
           mkdir -p /workspace
           git clone --depth 1 --branch \"${TSBRANCH}\" \"${TSREPO}\" /workspace/testsuite
           if ! python3 -m pip --version >/dev/null 2>&1; then

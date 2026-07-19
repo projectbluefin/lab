@@ -150,6 +150,15 @@ spec:
             python3 -m ensurepip --default-pip
           fi
           python3 -m pip install --quiet qecore dogtail behave
+          if ! grep -q "^bluefin-test:" /etc/passwd; then
+            echo "bluefin-test:x:1000:1000:Bluefin QA:/home/bluefin-test:/bin/bash" >>/etc/passwd
+          fi
+          if ! grep -q "^bluefin-test:" /etc/group; then
+            echo "bluefin-test:x:1000:" >>/etc/group
+          fi
+          mkdir -p /home/bluefin-test/run /tmp/results
+          chown -R 1000:1000 /home/bluefin-test /tmp/results
+          chmod 700 /home/bluefin-test/run
         '
 
         cat >/workspace/run-behave.sh <<'EOF'
@@ -192,8 +201,17 @@ spec:
         echo "Running qecore against the nested systemd/GDM host..." >&2
         QECORE_RC=0
         podman exec \
+          --user 1000:1000 \
           --env SUITE \
           --env BEHAVE_TAGS \
+          --env HOME=/home/bluefin-test \
+          --env XDG_RUNTIME_DIR=/home/bluefin-test/run \
+          --env DBUS_SESSION_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+          --env AT_SPI_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+          --env XDG_SESSION_TYPE=wayland \
+          --env XDG_SESSION_DESKTOP=gnome \
+          --env LIBGL_ALWAYS_SOFTWARE=1 \
+          --env GALLIUM_DRIVER=llvmpipe \
           "${TARGET_NAME}" \
           qecore-headless \
           --session-type wayland \

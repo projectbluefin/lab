@@ -4,29 +4,25 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Dakota ref to warm"
+        description: "Dakota ref to build with USB4-backed remote execution"
         required: true
         default: "testing"
-      element:
-        description: "BST element to build"
-        required: true
-        default: "oci/bluefin.bst"
 
 # Container mode requires a container: block on every job. The runner pod is
 # tiny; heavy work is submitted to the cluster as an Argo Workflow so the
 # actual build pods get full cluster resources.
 jobs:
-  warm-bst-cache:
+  build-dakota:
     runs-on: ghost-runners
     container:
       image: ghcr.io/projectbluefin/arc-runner:latest
     steps:
-      - name: Submit BST warm-cache build to the cluster
+      - name: Submit distributed Dakota build to the cluster
         run: |
           argo submit -n argo \
-            --from workflowtemplate/dakota-buildstream-warm-cache \
+            --from workflowtemplate/dakota-build-pipeline \
             -p ref="${{ github.event.inputs.ref }}" \
-            -p element="${{ github.event.inputs.element }}" \
+            -p build-mode=re \
             --wait
 
   # This job shows a lightweight step that runs entirely inside the small

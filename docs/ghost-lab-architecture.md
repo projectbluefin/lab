@@ -159,7 +159,7 @@ and is the canonical build cache/remote-exec mechanism for BuildStream (`bst`) j
   `bb-remote-asset.buildbarn.svc.cluster.local:8984`.
 
 BuildStream jobs (`dakota-build-pipeline`, `cosmic-build-pipeline`,
-`bluefin-server-build-pipeline`, `bst-qa-pipeline`, `dakota-buildstream-warm-cache`) point
+`bluefin-server-build-pipeline`, `bst-qa-pipeline`) point
 their artifact and remote-execution config at the shared frontend. Source caches use
 the paired Remote Asset index and frontend CAS,
 so build actions are genuinely distributed across the `worker` DaemonSet pods on both
@@ -180,7 +180,7 @@ runner pods idle.
   `bluefin-ghost-arc` GitHub App installation can request these runners.
 - **Container mode:** each Actions job declares a `container:` image and runs as a
   separate Kubernetes pod. Heavy work is submitted back into Argo Workflows
-  (e.g., `argo submit --from workflowtemplate/dakota-buildstream-warm-cache
+  (e.g., `argo submit --from workflowtemplate/dakota-build-pipeline
   --wait`) so the small runner pod coordinates while real build pods consume
   cluster CPU/memory.
 - **Personal scale set:** maintainers who want the same runners on personal repos

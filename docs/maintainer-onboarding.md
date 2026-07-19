@@ -103,10 +103,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Submit BST warm-cache build
+      - name: Submit distributed Dakota build
         run: |
-          argo submit --from workflowtemplate/dakota-buildstream-warm-cache \
-            --parameter cache-key="${{ github.sha }}" \
+          argo submit --from workflowtemplate/dakota-build-pipeline \
+            --parameter ref=testing \
+            --parameter build-mode=re \
             --wait
 ```
 

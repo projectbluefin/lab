@@ -166,30 +166,6 @@ just run-bst-build                    # testing branch, default repo
 just run-bst-build main               # build from main
 ```
 
-### `dakota-buildstream-warm-cache`
-
-Runs a single BuildStream build against the Dakota checkout to warm the shared
-Buildbarn remote cache before the main Dakota build pipeline starts. It reuses
-`buildstream-remote-cache`'s checked-in config, mounts a pod-local BuildStream
-cache, and exits after the warm-up build completes so it stays lightweight and
-safe. This is the pre-seeding step that makes later full builds more likely to
-hit the shared object and action cache instead of falling back to expensive cold
-fetches.
-
-| Parameter | Default | Notes |
-|---|---|---|
-| `ref` | `testing` | Dakota git branch/ref to clone |
-| `repo` | `https://github.com/projectbluefin/dakota.git` | Dakota git repo |
-| `element` | `oci/bluefin.bst` | BuildStream element to warm the cache for |
-| `registry` | `192.168.1.102:30500` | Registry endpoint for the builder image |
-
-```
-argo submit --from workflowtemplate/dakota-buildstream-warm-cache \
-  -p ref=testing -p element=oci/bluefin.bst --wait
-```
-
----
-
 ## COSMIC BST builds
 
 ### `cosmic-build-pipeline`

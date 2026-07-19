@@ -83,6 +83,12 @@ def test_usb4_monitor_publishes_a_fresh_observation_on_every_probe():
     assert "N % 20" not in monitor
 
 
+def test_no_standalone_cache_warming_buildstream_workflow_remains():
+    assert not (
+        ROOT / "argo/workflow-templates/dakota-buildstream-warm-cache.yaml"
+    ).exists()
+
+
 def test_dakota_persists_sources_in_buildbarn():
     config_map = yaml.safe_load(
         (ROOT / "manifests/buildstream-remote-cache-config.yaml").read_text(

@@ -66,11 +66,12 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   `detect-build-mode` step validates the requested mode and rejects
   `cache-only`, `auto`, and any unknown value, so ordinary Dakota runs cannot
   fall back to a local cache-only path. The lane uses the two-slot `bst-build`
-  semaphore and per-variant workflow-owned 200Gi `local-path` cache PVCs, so
-  its base and NVIDIA variants can run concurrently on scheduler-selected
-  nodes. The dakota commit poller also pins the checkout to the exact GitHub
-  SHA it observed, so the lab build follows the same revision that GitHub is
-  building.
+  semaphore and per-variant workflow-owned 200Gi `local-path` cache PVCs.
+  `oci/bluefin-nvidia.bst` declares `oci/bluefin.bst` as a build dependency, so
+  its workflow task must wait for Bluefin's artifact; BuildBarn then distributes
+  the available actions across scheduler-selected workers. The dakota commit
+  poller also pins the checkout to the exact GitHub SHA it observed, so the lab
+  build follows the same revision that GitHub is building.
 - **Buildbarn RE sandbox device nodes**: `bb_runner` with
   `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
   `/dev/random`, and `/dev/urandom` are missing inside the chroot. The cluster-side
@@ -117,11 +118,12 @@ Mitigations:
 owns the value. Raising it lets builds preempt polling VMs instead of the
 reverse.
 
-2. **Use verified parallel BST capacity.** Keep independent variants concurrent
-when BuildBarn workers and node requests have safe headroom. The Dakota pipeline
-uses two `bst-build` slots so base and NVIDIA builds can run on separate
-scheduler-selected nodes; reassess live worker and node capacity before raising
-or lowering that limit.
+2. **Use verified parallel BST capacity.** Keep independent work concurrent when
+BuildBarn workers and node requests have safe headroom. Respect actual
+BuildStream graph dependencies: Dakota's NVIDIA image requires the Bluefin OCI
+artifact, so it must wait for that artifact rather than racing an empty remote
+cache. Reassess live worker and node capacity before raising or lowering the
+two-slot `bst-build` limit.
 
 3. **Clear stale semaphore holders before reducing capacity.** The semaphore in
 `manifests/workflow-semaphores.yaml` gates all BST build lanes. Confirm terminal

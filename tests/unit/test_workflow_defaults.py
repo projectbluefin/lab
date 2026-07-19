@@ -46,3 +46,12 @@ def test_dakota_patch_sync_fetches_junction_commit_ids():
     assert 'git fetch --depth=1 origin "${FDS_COMMIT}"' in pipeline
     assert 'git fetch --depth=1 origin "${GNOME_REF}"' not in pipeline
     assert 'git fetch --depth=1 origin "${FDS_REF}"' not in pipeline
+
+
+def test_dakota_nvidia_build_waits_for_its_bluefin_parent_artifact():
+    pipeline = (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    nvidia_task = pipeline.split("          - name: build-bluefin-nvidia", 1)[1]
+    assert "depends: build-bluefin.Succeeded" in nvidia_task

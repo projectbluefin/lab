@@ -3,7 +3,7 @@
   "_meta": {
     "page": "index",
     "description": "Per-lane release verdict (ADR 0002): build + lab QA + cosign signature per latest published digest",
-    "generated_at": "2026-07-18T23:50:46Z",
+    "generated_at": "2026-07-19T18:28:27Z",
     "starter_artifact": false,
     "status": "live"
   },
@@ -14,7 +14,7 @@
       "value": 0,
       "total": 5,
       "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/adr/0002-release-verdict-definition.md",
-      "collected_at": "2026-07-18T23:50:46Z",
+      "collected_at": "2026-07-19T18:28:27Z",
       "derivation": "count of lanes whose verdict is good under ADR 0002"
     }
   ],
@@ -25,7 +25,7 @@
       "variant": "bluefin",
       "branch": "stable",
       "image_ref": "ghcr.io/projectbluefin/bluefin:stable",
-      "digest": "sha256:af5929bafcaaa693d2fa6626cb62a7ee5580eb724003502991aa5c28be2032c3",
+      "digest": "sha256:3a35002c35d179bc55c95970086f2cc0ce183aa1df10a6ef1e97e1bcad6be35e",
       "verdict": "pending",
       "build": {
         "status": "passed",
@@ -35,9 +35,14 @@
       },
       "qa": {
         "status": "unavailable",
-        "reason": "no lab QA run has published results for this lane yet",
+        "reason": "no gate lab QA run has published results for this lane yet",
         "last_run": null,
-        "lab_sourced": true
+        "lab_sourced": true,
+        "informational": {
+          "status": "unavailable",
+          "reason": "no informational QA suites tracked for this lane",
+          "rows": []
+        }
       },
       "signature": {
         "status": "passed",
@@ -49,8 +54,8 @@
         "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
       },
       "source_url": "https://github.com/projectbluefin/bluefin",
-      "collected_at": "2026-07-18T23:50:46Z",
-      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "collected_at": "2026-07-19T18:28:27Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA gating suites only (smoke/system gate; flatcar gate for the flatcar lane; developer/software/common informational) + cosign keyless verify per digest; QA evidence older than the current build renders pending.",
       "state": "available",
       "state_reason": null
     },
@@ -60,7 +65,7 @@
       "variant": "bluefin",
       "branch": "testing",
       "image_ref": "ghcr.io/projectbluefin/bluefin:testing",
-      "digest": "sha256:3137b8a1afe9df7bf1ba1d5aee81a5c49d73fcdf342a173fce3b40f3bdcc8c15",
+      "digest": "sha256:8ebb37a6dc058f4dca24c643dfeab6f4d864c313069b7b38374134abf2ed2041",
       "verdict": "pending",
       "build": {
         "status": "passed",
@@ -70,9 +75,94 @@
       },
       "qa": {
         "status": "pending",
-        "reason": "QA evidence pending for suite(s): common, developer, smoke, software, system against digest sha256:3137b",
-        "last_run": "2026-06-29T12:00:00Z",
-        "lab_sourced": true
+        "reason": "gate QA evidence pending for suite(s): smoke, system against digest sha256:8ebb3",
+        "last_run": "2026-06-25T01:21:48Z",
+        "lab_sourced": true,
+        "informational": {
+          "status": "pending",
+          "reason": "informational QA evidence pending for suite(s): common, developer, software against digest sha256:8ebb3",
+          "rows": [
+            {
+              "id": "bluefin-testing-common",
+              "variant": "bluefin",
+              "branch": "testing",
+              "suite": "common",
+              "role": "info",
+              "result_status": "failed",
+              "last_run": "2026-06-24T18:29:10Z",
+              "workflow_name": "testsuite-550-fix-smoke-use-ssh-aware-steps-vld65",
+              "digest": null,
+              "scenarios_total": 114,
+              "scenarios_failed": 69,
+              "pass_rate": 39.47,
+              "history_points": 2,
+              "results_path": "results/bluefin-testing-common.json",
+              "screenshot_path": null,
+              "screenshot_url": "https://projectbluefin.github.io/lab/screenshots/bluefin-testing-common-latest.png",
+              "state": "available",
+              "state_reason": null,
+              "enrollment_issue_url": null,
+              "flake_flips": 0,
+              "runs_recorded": 2,
+              "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-common.json",
+              "collected_at": "2026-07-19T18:27:49Z",
+              "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-common.json; compute pass_rate when scenarios_total > 0; attach suite role and flake metrics."
+            },
+            {
+              "id": "bluefin-testing-developer",
+              "variant": "bluefin",
+              "branch": "testing",
+              "suite": "developer",
+              "role": "info",
+              "result_status": "passed",
+              "last_run": "2026-06-25T02:04:33Z",
+              "workflow_name": "nightly-smoke-1782352800",
+              "digest": null,
+              "scenarios_total": 21,
+              "scenarios_failed": 0,
+              "pass_rate": 100.0,
+              "history_points": 5,
+              "results_path": "results/bluefin-testing-developer.json",
+              "screenshot_path": null,
+              "screenshot_url": "https://projectbluefin.github.io/lab/screenshots/bluefin-testing-developer-latest.png",
+              "state": "available",
+              "state_reason": null,
+              "enrollment_issue_url": null,
+              "flake_flips": 1,
+              "runs_recorded": 4,
+              "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-developer.json",
+              "collected_at": "2026-07-19T18:27:49Z",
+              "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-developer.json; compute pass_rate when scenarios_total > 0; attach suite role and flake metrics."
+            },
+            {
+              "id": "bluefin-testing-software",
+              "variant": "bluefin",
+              "branch": "testing",
+              "suite": "software",
+              "role": "info",
+              "result_status": "passed",
+              "last_run": "2026-06-29T12:00:00Z",
+              "workflow_name": "nightly-bluefin-testing-software-ab12c",
+              "digest": null,
+              "scenarios_total": 5,
+              "scenarios_failed": 0,
+              "pass_rate": 100.0,
+              "history_points": 3,
+              "results_path": "results/bluefin-testing-software.json",
+              "screenshot_path": null,
+              "screenshot_url": null,
+              "state": "available",
+              "state_reason": null,
+              "enrollment_issue_url": null,
+              "flake_flips": 1,
+              "runs_recorded": 3,
+              "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-software.json",
+              "collected_at": "2026-07-19T18:27:49Z",
+              "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-testing-software.json; compute pass_rate when scenarios_total > 0; attach suite role and flake metrics."
+            }
+          ],
+          "last_run": "2026-06-29T12:00:00Z"
+        }
       },
       "signature": {
         "status": "passed",
@@ -84,8 +174,8 @@
         "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
       },
       "source_url": "https://github.com/projectbluefin/bluefin",
-      "collected_at": "2026-07-18T23:50:46Z",
-      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "collected_at": "2026-07-19T18:28:27Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA gating suites only (smoke/system gate; flatcar gate for the flatcar lane; developer/software/common informational) + cosign keyless verify per digest; QA evidence older than the current build renders pending.",
       "state": "available",
       "state_reason": null
     },
@@ -95,7 +185,7 @@
       "variant": "bluefin-lts",
       "branch": "stable",
       "image_ref": "ghcr.io/projectbluefin/bluefin-lts:stable",
-      "digest": "sha256:53d9ae6c4274d1dd910a960cafbed038d0b1011cab4e4e8278b72949f176e28a",
+      "digest": "sha256:58293f46c890e97836bed80b9e71bf47b0a17065844816f6e607f1190b04406f",
       "verdict": "pending",
       "build": {
         "status": "passed",
@@ -105,9 +195,14 @@
       },
       "qa": {
         "status": "unavailable",
-        "reason": "no lab QA run has published results for this lane yet",
+        "reason": "no gate lab QA run has published results for this lane yet",
         "last_run": null,
-        "lab_sourced": true
+        "lab_sourced": true,
+        "informational": {
+          "status": "unavailable",
+          "reason": "no informational QA suites tracked for this lane",
+          "rows": []
+        }
       },
       "signature": {
         "status": "passed",
@@ -119,8 +214,8 @@
         "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
       },
       "source_url": "https://github.com/projectbluefin/bluefin-lts",
-      "collected_at": "2026-07-18T23:50:46Z",
-      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "collected_at": "2026-07-19T18:28:27Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA gating suites only (smoke/system gate; flatcar gate for the flatcar lane; developer/software/common informational) + cosign keyless verify per digest; QA evidence older than the current build renders pending.",
       "state": "available",
       "state_reason": null
     },
@@ -130,7 +225,7 @@
       "variant": "bluefin-lts",
       "branch": "testing",
       "image_ref": "ghcr.io/projectbluefin/bluefin-lts:testing",
-      "digest": "sha256:53d9ae6c4274d1dd910a960cafbed038d0b1011cab4e4e8278b72949f176e28a",
+      "digest": "sha256:58293f46c890e97836bed80b9e71bf47b0a17065844816f6e607f1190b04406f",
       "verdict": "pending",
       "build": {
         "status": "passed",
@@ -140,9 +235,68 @@
       },
       "qa": {
         "status": "pending",
-        "reason": "QA evidence pending for suite(s): developer, smoke, software, system against digest sha256:53d9a",
+        "reason": "gate QA evidence pending for suite(s): smoke, system against digest sha256:58293",
         "last_run": "2026-07-07T02:40:00Z",
-        "lab_sourced": true
+        "lab_sourced": true,
+        "informational": {
+          "status": "pending",
+          "reason": "informational QA evidence pending for suite(s): developer, software against digest sha256:58293",
+          "rows": [
+            {
+              "id": "bluefin-lts-testing-developer",
+              "variant": "bluefin-lts",
+              "branch": "testing",
+              "suite": "developer",
+              "role": "info",
+              "result_status": "passed",
+              "last_run": "2026-07-07T02:35:00Z",
+              "workflow_name": "nightly-lts-developer-7u8i9",
+              "digest": null,
+              "scenarios_total": 21,
+              "scenarios_failed": 0,
+              "pass_rate": 100.0,
+              "history_points": 1,
+              "results_path": "results/bluefin-lts-testing-developer.json",
+              "screenshot_path": null,
+              "screenshot_url": "https://projectbluefin.github.io/lab/screenshots/bluefin-lts-testing-developer-latest.png",
+              "state": "available",
+              "state_reason": null,
+              "enrollment_issue_url": null,
+              "flake_flips": 0,
+              "runs_recorded": 1,
+              "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-developer.json",
+              "collected_at": "2026-07-19T18:27:49Z",
+              "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-lts-testing-developer.json; compute pass_rate when scenarios_total > 0; attach suite role and flake metrics."
+            },
+            {
+              "id": "bluefin-lts-testing-software",
+              "variant": "bluefin-lts",
+              "branch": "testing",
+              "suite": "software",
+              "role": "info",
+              "result_status": "passed",
+              "last_run": "2026-06-29T12:30:00Z",
+              "workflow_name": "nightly-lts-testing-software-de34f",
+              "digest": null,
+              "scenarios_total": 5,
+              "scenarios_failed": 0,
+              "pass_rate": 100.0,
+              "history_points": 2,
+              "results_path": "results/bluefin-lts-testing-software.json",
+              "screenshot_path": null,
+              "screenshot_url": null,
+              "state": "available",
+              "state_reason": null,
+              "enrollment_issue_url": null,
+              "flake_flips": 0,
+              "runs_recorded": 2,
+              "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-lts-testing-software.json",
+              "collected_at": "2026-07-19T18:27:49Z",
+              "derivation": "Join docs/data/test-surface.json row with docs/results/bluefin-lts-testing-software.json; compute pass_rate when scenarios_total > 0; attach suite role and flake metrics."
+            }
+          ],
+          "last_run": "2026-07-07T02:35:00Z"
+        }
       },
       "signature": {
         "status": "passed",
@@ -154,8 +308,8 @@
         "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
       },
       "source_url": "https://github.com/projectbluefin/bluefin-lts",
-      "collected_at": "2026-07-18T23:50:46Z",
-      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "collected_at": "2026-07-19T18:28:27Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA gating suites only (smoke/system gate; flatcar gate for the flatcar lane; developer/software/common informational) + cosign keyless verify per digest; QA evidence older than the current build renders pending.",
       "state": "available",
       "state_reason": null
     },
@@ -175,9 +329,68 @@
       },
       "qa": {
         "status": "pending",
-        "reason": "QA evidence pending for suite(s): developer, smoke, software, system against digest sha256:d0f3f",
+        "reason": "gate QA evidence pending for suite(s): smoke, system against digest sha256:d0f3f",
         "last_run": "2026-07-07T03:10:00Z",
-        "lab_sourced": true
+        "lab_sourced": true,
+        "informational": {
+          "status": "pending",
+          "reason": "informational QA evidence pending for suite(s): developer, software against digest sha256:d0f3f",
+          "rows": [
+            {
+              "id": "dakota-testing-developer",
+              "variant": "dakota",
+              "branch": "testing",
+              "suite": "developer",
+              "role": "info",
+              "result_status": "passed",
+              "last_run": "2026-07-07T03:05:00Z",
+              "workflow_name": "nightly-dakota-developer-45fgh",
+              "digest": null,
+              "scenarios_total": 21,
+              "scenarios_failed": 0,
+              "pass_rate": 100.0,
+              "history_points": 1,
+              "results_path": "results/dakota-testing-developer.json",
+              "screenshot_path": null,
+              "screenshot_url": "https://projectbluefin.github.io/lab/screenshots/dakota-testing-developer-latest.png",
+              "state": "available",
+              "state_reason": null,
+              "enrollment_issue_url": null,
+              "flake_flips": 0,
+              "runs_recorded": 1,
+              "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-developer.json",
+              "collected_at": "2026-07-19T18:27:49Z",
+              "derivation": "Join docs/data/test-surface.json row with docs/results/dakota-testing-developer.json; compute pass_rate when scenarios_total > 0; attach suite role and flake metrics."
+            },
+            {
+              "id": "dakota-testing-software",
+              "variant": "dakota",
+              "branch": "testing",
+              "suite": "software",
+              "role": "info",
+              "result_status": "failed",
+              "last_run": "2026-06-29T13:00:00Z",
+              "workflow_name": "nightly-dakota-testing-software-gh56i",
+              "digest": null,
+              "scenarios_total": 5,
+              "scenarios_failed": 1,
+              "pass_rate": 80.0,
+              "history_points": 2,
+              "results_path": "results/dakota-testing-software.json",
+              "screenshot_path": null,
+              "screenshot_url": null,
+              "state": "available",
+              "state_reason": null,
+              "enrollment_issue_url": null,
+              "flake_flips": 1,
+              "runs_recorded": 2,
+              "source_url": "https://github.com/projectbluefin/lab/blob/main/docs/results/dakota-testing-software.json",
+              "collected_at": "2026-07-19T18:27:49Z",
+              "derivation": "Join docs/data/test-surface.json row with docs/results/dakota-testing-software.json; compute pass_rate when scenarios_total > 0; attach suite role and flake metrics."
+            }
+          ],
+          "last_run": "2026-07-07T03:05:00Z"
+        }
       },
       "signature": {
         "status": "failed",
@@ -189,8 +402,8 @@
         "reason": "publisher-side CVE summary export not yet wired (phase 3); displayed alongside, never gating (ADR 0002)"
       },
       "source_url": "https://github.com/projectbluefin/dakota",
-      "collected_at": "2026-07-18T23:50:46Z",
-      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+      "collected_at": "2026-07-19T18:28:27Z",
+      "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA gating suites only (smoke/system gate; flatcar gate for the flatcar lane; developer/software/common informational) + cosign keyless verify per digest; QA evidence older than the current build renders pending.",
       "state": "available",
       "state_reason": null
     }

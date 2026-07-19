@@ -6,12 +6,28 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
 REPO_SLUG = 'projectbluefin/lab'
 PAGES_BASE = 'https://factory.projectbluefin.io'
+
+# Gating split per ADR 0002 gating amendment: smoke/system (and flatcar for the
+# flatcar lane) are gate; developer/software/common are informational.
+SUITE_ROLES = {
+    'smoke': 'gate',
+    'system': 'gate',
+    'flatcar': 'gate',
+    'developer': 'info',
+    'software': 'info',
+    'common': 'info',
+}
+
+TEST_RUNS_HISTORY_PATH = Path('docs/data/history/test-runs.ndjson')
+TEST_RUNS_HISTORY_DAYS = 180
+
+ENROLLMENT_ISSUES_PATH = Path('docs/data/enrollment-issues.json')
 
 
 def now_utc_iso() -> str:
@@ -46,6 +62,142 @@ def row_state(last_run: str | None) -> tuple[str, str | None]:
 SUITE_TO_TESTSUITE_DIR = {
     'system': 'lifecycle',
 }
+
+
+def load_enrollment_issues(root: Path) -> dict[str, dict]:
+    """Return variant -> issue metadata for variants not yet enrolled in QA."""
+    path = root / ENROLLMENT_ISSUES_PATH
+    if not path.exists():
+        return {}
+    try:
+        doc = load_json(path)
+        return (doc.get('variants') or {})
+    except Exception:
+        return {}
+
+
+def _iter_test_run_records(result: dict, variant: str, branch: str, suite: str, collected_at: str):
+    """Yield normalized test-run records from a docs/results/*.json file."""
+    role = SUITE_ROLES.get(suite, 'info')
+    status = result.get('status')
+    failed_scenarios = list(result.get('failed_scenarios') or [])
+    current_wf = result.get('workflow_name')
+    if current_wf and result.get('last_run') and status in ('passed', 'failed'):
+        yield {
+            'recorded_at': collected_at,
+            'variant': variant,
+            'branch': branch,
+            'suite': suite,
+            'role': role,
+            'workflow_name': current_wf,
+            'status': status,
+            'scenarios_total': result.get('scenarios', 0),
+            'scenarios_failed': result.get('failed', 0),
+            'failed_scenarios': failed_scenarios,
+            'digest': result.get('digest'),
+        }
+    for h in result.get('history', []) or []:
+        run_date = h.get('run_date') or h.get('run')
+        wf = h.get('workflow_name')
+        hstatus = h.get('status')
+        if not run_date or not wf or hstatus not in ('passed', 'failed'):
+            continue
+        yield {
+            'recorded_at': collected_at,
+            'variant': variant,
+            'branch': branch,
+            'suite': suite,
+            'role': role,
+            'workflow_name': wf,
+            'status': hstatus,
+            'scenarios_total': h.get('scenarios', 0),
+            'scenarios_failed': h.get('failed', 0),
+            'failed_scenarios': failed_scenarios if wf == current_wf else [],
+            'digest': None,
+        }
+
+
+def append_test_runs_history(root: Path, results_by_path: dict[str, dict], surface_cells: list[dict], collected_at: str) -> int:
+    """Seed/append docs/data/history/test-runs.ndjson from docs/results/*.json.
+
+    Dedup key: (variant, branch, suite, workflow_name).
+    Retention: lines older than TEST_RUNS_HISTORY_DAYS are dropped.
+    """
+    path = root / TEST_RUNS_HISTORY_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = []
+    existing_keys: set[tuple[str, str, str, str]] = set()
+    if path.exists():
+        with path.open() as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                existing.append(rec)
+                existing_keys.add((
+                    rec.get('variant'),
+                    rec.get('branch'),
+                    rec.get('suite'),
+                    rec.get('workflow_name'),
+                ))
+
+    path_to_cell = {cell['results_path']: cell for cell in surface_cells}
+    new_records = []
+    for rel_path, result in results_by_path.items():
+        cell = path_to_cell.get(rel_path)
+        if not cell:
+            continue
+        variant = cell['variant']
+        branch = cell['branch']
+        suite = cell['suite']
+        for record in _iter_test_run_records(result, variant, branch, suite, collected_at):
+            key = (record['variant'], record['branch'], record['suite'], record['workflow_name'])
+            if key in existing_keys:
+                continue
+            new_records.append(record)
+            existing_keys.add(key)
+
+    all_records = existing + new_records
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=TEST_RUNS_HISTORY_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    all_records = [r for r in all_records if (r.get('recorded_at') or collected_at) >= cutoff]
+
+    with path.open('w') as handle:
+        for record in all_records:
+            handle.write(json.dumps(record, separators=(',', ':')) + '\n')
+    return len(new_records)
+
+
+def _row_flake_signal(result: dict | None) -> tuple[int, int]:
+    """Return (status_flips, runs_recorded) for a result file's chronological runs."""
+    if not result:
+        return 0, 0
+    runs = []
+    seen: set[tuple[str, str]] = set()
+    current_wf = result.get('workflow_name')
+    if result.get('last_run') and current_wf and result.get('status') in ('passed', 'failed'):
+        key = (result['last_run'], current_wf)
+        if key not in seen:
+            seen.add(key)
+            runs.append({'run_date': result['last_run'], 'status': result['status']})
+    for h in result.get('history', []) or []:
+        run_date = h.get('run_date') or h.get('run')
+        wf = h.get('workflow_name')
+        status = h.get('status')
+        if not run_date or not wf or status not in ('passed', 'failed'):
+            continue
+        key = (run_date, wf)
+        if key in seen:
+            continue
+        seen.add(key)
+        runs.append({'run_date': run_date, 'status': status})
+    runs.sort(key=lambda r: r['run_date'])
+    flips = sum(1 for i in range(1, len(runs)) if runs[i - 1]['status'] != runs[i]['status'])
+    return flips, len(runs)
 
 
 def warn_if_surface_drifted_from_testsuite(root: Path) -> None:
@@ -300,15 +452,21 @@ def build_upstream_status(root: Path, collected_at: str) -> dict:
 
 def build_tests_matrix(root: Path, collected_at: str) -> dict:
     results_by_path = load_results_by_relative_path(root)
+    enrollment = load_enrollment_issues(root)
+    surface_cells = list(iter_surface_cells(root))
     rows = []
     variants = set()
     branches = set()
     suites = set()
 
-    for cell in iter_surface_cells(root):
+    # Normal rows from the tracked test surface, excluding variants that are not
+    # yet enrolled in the QA pipeline (those are emitted uniformly below).
+    for cell in surface_cells:
         variant = cell['variant']
         branch = cell['branch']
         suite = cell['suite']
+        if variant in enrollment:
+            continue
         relative_results_path = cell['results_path']
         result = results_by_path.get(relative_results_path, {})
         last_run = result.get('last_run')
@@ -322,6 +480,7 @@ def build_tests_matrix(root: Path, collected_at: str) -> dict:
         screenshot_url = result.get('screenshot_url')
         if not screenshot_url and screenshot_path:
             screenshot_url = pages_url(screenshot_path)
+        flake_flips, runs_recorded = _row_flake_signal(result)
 
         rows.append(
             {
@@ -329,6 +488,7 @@ def build_tests_matrix(root: Path, collected_at: str) -> dict:
                 'variant': variant,
                 'branch': branch,
                 'suite': suite,
+                'role': SUITE_ROLES.get(suite, 'info'),
                 'result_status': result.get('status', 'missing'),
                 'last_run': last_run,
                 'workflow_name': result.get('workflow_name'),
@@ -342,11 +502,14 @@ def build_tests_matrix(root: Path, collected_at: str) -> dict:
                 'screenshot_url': screenshot_url,
                 'state': state,
                 'state_reason': state_reason,
+                'enrollment_issue_url': None,
+                'flake_flips': flake_flips,
+                'runs_recorded': runs_recorded,
                 'source_url': normalize_result_source_url(relative_results_path, result),
                 'collected_at': collected_at,
                 'derivation': (
                     f'Join docs/data/test-surface.json row with docs/{relative_results_path}; '
-                    'compute pass_rate when scenarios_total > 0.'
+                    'compute pass_rate when scenarios_total > 0; attach suite role and flake metrics.'
                 ),
             }
         )
@@ -354,14 +517,64 @@ def build_tests_matrix(root: Path, collected_at: str) -> dict:
         branches.add(branch)
         suites.add(suite)
 
+    # Ensure the full suite dimension exists even if the surface is empty.
+    suites.update(SUITE_ROLES.keys())
+
+    # Uniformly emit unavailable rows for every unenrolled variant x suite.
+    enrollment_reason = 'Not enrolled in the QA pipeline yet; tracking issue open.'
+    for variant, details in sorted(enrollment.items()):
+        issue_url = details.get('issue_url')
+        for suite in sorted(suites):
+            rows.append(
+                {
+                    'id': f'{variant}-testing-{suite}',
+                    'variant': variant,
+                    'branch': 'testing',
+                    'suite': suite,
+                    'role': SUITE_ROLES.get(suite, 'info'),
+                    'result_status': 'missing',
+                    'last_run': None,
+                    'workflow_name': None,
+                    'digest': None,
+                    'scenarios_total': 0,
+                    'scenarios_failed': 0,
+                    'pass_rate': None,
+                    'history_points': 0,
+                    'results_path': None,
+                    'screenshot_path': None,
+                    'screenshot_url': None,
+                    'state': 'unavailable',
+                    'state_reason': enrollment_reason,
+                    'enrollment_issue_url': issue_url,
+                    'flake_flips': 0,
+                    'runs_recorded': 0,
+                    'source_url': issue_url or repo_blob_url('docs/data/enrollment-issues.json'),
+                    'collected_at': collected_at,
+                    'derivation': (
+                        'Unenrolled variant row derived from docs/data/enrollment-issues.json; '
+                        'no QA results are collected yet.'
+                    ),
+                }
+            )
+            variants.add(variant)
+            branches.add('testing')
+
+    # Seed/append the rolling test-runs history from every result file we joined.
+    appended_history = append_test_runs_history(root, results_by_path, surface_cells, collected_at)
+
     completed_rows = [row for row in rows if row['state'] == 'available']
     unavailable_rows = [row for row in rows if row['state'] == 'unavailable']
+    flaky_rows = [row for row in rows if row.get('flake_flips', 0) >= 2]
 
     return {
-        'schema_version': 'v1',
+        'schema_version': 'v2',
         '_meta': {
             'page': 'tests',
-            'description': 'Collector-derived contract for the multipage tests matrix view.',
+            'description': (
+                'Collector-derived contract for the multipage tests matrix view. '
+                'Schema v2 adds suite_roles, unenrolled variant rows, flake metrics, '
+                'and git-tracked test-runs.ndjson history.'
+            ),
             'generated_at': collected_at,
             'starter_artifact': False,
             'status': 'partial' if unavailable_rows else 'ready',
@@ -376,7 +589,7 @@ def build_tests_matrix(root: Path, collected_at: str) -> dict:
                 'state_reason': None,
                 'source_url': repo_blob_url('docs/data/test-surface.json'),
                 'collected_at': collected_at,
-                'derivation': 'Count rows in docs/data/test-surface.json surface[].',
+                'derivation': 'Count rows emitted by the collector for the tests matrix.',
             },
             {
                 'id': 'rows_with_completed_runs',
@@ -398,9 +611,21 @@ def build_tests_matrix(root: Path, collected_at: str) -> dict:
                 'state_reason': None,
                 'source_url': repo_blob_url('docs/data/test-surface.json'),
                 'collected_at': collected_at,
-                'derivation': 'Count matrix rows still marked unavailable after joining published results.',
+                'derivation': 'Count matrix rows still marked unavailable after joining published results and enrollment issues.',
+            },
+            {
+                'id': 'flaky_rows',
+                'label': 'Flaky matrix rows',
+                'value': len(flaky_rows),
+                'unit': 'count',
+                'state': 'available',
+                'state_reason': None,
+                'source_url': repo_blob_url('docs/data/history/test-runs.ndjson'),
+                'collected_at': collected_at,
+                'derivation': 'Count matrix rows with at least two pass/fail status flips in their recorded run history.',
             },
         ],
+        'suite_roles': SUITE_ROLES,
         'dimensions': {
             'variants': sorted(variants),
             'branches': sorted(branches),

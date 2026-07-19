@@ -118,48 +118,92 @@ def latest_build(image_builds, key):
     return max(dated, key=lambda r: r["started_at"])
 
 
-def qa_input(tests_rows, variant, branch, build_finished_at, current_digest):
-    """QA gate from tests-matrix rows for the lane."""
-    rows = [r for r in tests_rows if r.get("variant") == variant and r.get("branch") == branch]
+def _qa_substatus(rows, build_finished_at, current_digest, label):
+    """Compute a pass/fail/pending/unavailable status for a subset of QA rows."""
     if not rows:
-        return {"status": "unavailable", "reason": "no QA suites tracked for this lane", "rows": []}
+        return {
+            "status": "unavailable",
+            "reason": f"no {label} QA suites tracked for this lane",
+            "rows": rows,
+        }
     ran = [r for r in rows if r.get("last_run")]
     if not ran:
-        return {"status": "unavailable", "reason": "no lab QA run has published results for this lane yet", "rows": rows}
-    
+        return {
+            "status": "unavailable",
+            "reason": f"no {label} lab QA run has published results for this lane yet",
+            "rows": rows,
+        }
+
     latest = max(r["last_run"] for r in ran)
     failed_suites = []
     pending_suites = []
-    
+
     for r in rows:
         if not r.get("last_run"):
             pending_suites.append(r.get("suite"))
             continue
-            
+
         suite_digest = r.get("digest")
         if suite_digest and current_digest:
-            is_match = (suite_digest == current_digest)
+            is_match = suite_digest == current_digest
         else:
             is_match = bool(build_finished_at and r["last_run"] >= build_finished_at)
-            
+
         if not is_match:
             pending_suites.append(r.get("suite"))
         elif r.get("result_status") == "failed":
             failed_suites.append(r.get("suite"))
-            
+
     if pending_suites:
         return {
             "status": "pending",
-            "reason": f"QA evidence pending for suite(s): " + ", ".join(pending_suites) + f" against digest {current_digest[:12] if current_digest else 'none'}",
-            "rows": rows, "last_run": latest,
+            "reason": (
+                f"{label} QA evidence pending for suite(s): "
+                + ", ".join(pending_suites)
+                + f" against digest {current_digest[:12] if current_digest else 'none'}"
+            ),
+            "rows": rows,
+            "last_run": latest,
         }
     if failed_suites:
         return {
             "status": "failed",
-            "reason": f"QA suite(s) failing: " + ", ".join(failed_suites),
-            "rows": rows, "last_run": latest,
+            "reason": f"{label} QA suite(s) failing: " + ", ".join(failed_suites),
+            "rows": rows,
+            "last_run": latest,
         }
     return {"status": "passed", "reason": None, "rows": rows, "last_run": latest}
+
+
+def qa_input(tests_rows, variant, branch, build_finished_at, current_digest):
+    """QA gate from tests-matrix rows for the lane.
+
+    Gating considers only suites whose role is "gate" (smoke, system, flatcar).
+    Informational suites (developer, software, common) are reported separately
+    and never block the lane verdict (ADR 0002 gating amendment).
+    """
+    rows = [r for r in tests_rows if r.get("variant") == variant and r.get("branch") == branch]
+    if not rows:
+        return {
+            "status": "unavailable",
+            "reason": "no QA suites tracked for this lane",
+            "rows": [],
+            "informational": {"status": "unavailable", "reason": "no QA suites tracked for this lane", "rows": []},
+        }
+
+    gate_rows = [r for r in rows if r.get("role") == "gate"]
+    info_rows = [r for r in rows if r.get("role") == "info"]
+
+    gate = _qa_substatus(gate_rows, build_finished_at, current_digest, "gate")
+    info = _qa_substatus(info_rows, build_finished_at, current_digest, "informational")
+
+    return {
+        "status": gate["status"],
+        "reason": gate["reason"],
+        "rows": gate["rows"],
+        "last_run": gate.get("last_run"),
+        "informational": info,
+    }
 
 
 def append_history(new_rows, now):
@@ -268,7 +312,13 @@ def main():
             "digest": digest,
             "verdict": verdict,
             "build": {"status": build_input["status"], "reason": build_input["reason"], "run_url": build_input["run_url"], "finished_at": build_input["finished_at"]},
-            "qa": {"status": qa["status"], "reason": qa["reason"], "last_run": qa.get("last_run"), "lab_sourced": True},
+            "qa": {
+                "status": qa["status"],
+                "reason": qa["reason"],
+                "last_run": qa.get("last_run"),
+                "lab_sourced": True,
+                "informational": qa.get("informational", {"status": "unavailable", "reason": "informational suite status unavailable", "rows": []}),
+            },
             "signature": {"status": sig_status, "reason": sig_reason, "method": "cosign keyless (GitHub Actions OIDC)"},
             "security_regression": {
                 "status": "unavailable",
@@ -276,7 +326,11 @@ def main():
             },
             "source_url": f"https://github.com/{repository.split('/')[0]}/{repository.split('/')[1]}",
             "collected_at": now,
-            "derivation": "ADR 0002: build (factory-stats image_builds) + lab QA (tests-matrix) + cosign keyless verify per digest; QA evidence older than the current build renders pending",
+            "derivation": (
+                "ADR 0002: build (factory-stats image_builds) + lab QA gating suites only "
+                "(smoke/system gate; flatcar gate for the flatcar lane; developer/software/common informational) "
+                "+ cosign keyless verify per digest; QA evidence older than the current build renders pending."
+            ),
             "state": state,
             "state_reason": None if digest else "lane digest unresolvable from GHCR",
         }

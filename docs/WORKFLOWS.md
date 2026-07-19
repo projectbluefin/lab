@@ -50,29 +50,19 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
 
 ### dakota-build-pipeline
 - **Purpose:** The actual BuildStream compile step for Dakota — builds
-  `oci/bluefin.bst` and `oci/bluefin-nvidia.bst` in parallel and pushes both to
+  `oci/bluefin.bst`, then its dependent `oci/bluefin-nvidia.bst`, and pushes both to
   the local Zot registry. This is what populates/warms the Dakota build cache.
-- **Distribution:** Dakota defaults to `build-mode=auto`; the workflow uses
-  the distributed Buildbarn/RE path whenever the USB4 data plane annotations on
-  `ghost` and `exo-0` report `up`, and falls back to the local cache-only lane
-  only when the RE plane is unavailable. The warm-cache pre-step is scheduled by
-  the cluster like any other build pod, without node pinning, so distributed
-  builds keep using the shared Buildbarn cache/execution plane.
-- **Cache:** Uses the shared Buildbarn cache/execution path for artifact writes,
-  remote execution, and cache reuse only, with a pod-local BuildStream cache kept
-  for fast per-pod retry state. The workflow uses a checked-in BuildStream config
-  and a warm-cache pre-step so the shared object, action, and remote-asset caches
-  are primed before the main build. Dakota now defaults to `build-mode=cache-only`
-  while the current BuildBarn remote-execution sandbox remains unstable in the
-  webkitgtk path; explicit `build-mode=re` remains available for operators who
-  need to test the RE lane, while the normal `auto` path is forced to
-  `cache-only` so a regular build does not fall onto the 1-CPU RE coordinator
-  lane. The semaphore for the
-  heavy BuildStream step lives on the actual `bst-build-local`/`bst-build-re`
-  templates, so retries can re-enter the lane instead of getting stuck behind a
-  parent-template lock.
-- **Priority:** `priorityClassName: bst-build` — preemptable by `lab-test-vm`
-  pods on resource contention.
+- **Distribution:** `build-mode=re` is mandatory. Cache-only, automatic fallback,
+  runner-local execution, and remote-cache-only execution are failures, not
+  alternatives. Scheduler-driven placement selects the coordinator; no task
+  pins it to a node.
+- **Capacity:** The coordinator uses four fetchers, two BuildStream builders and
+  pushers, and eight jobs per action. Two BuildBarn workers expose one action
+  slot each, so both workers can execute concurrently without oversubscribing a
+  runner. The workflow verifies its generated remote-execution configuration
+  before it invokes BuildStream.
+- **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
+  short-lived lab test workloads.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
   [Cache Warming](#cache-warming-pollers)). The poller resolves the current
   GitHub SHA for `dakota:testing` and passes that exact commit into the local
@@ -154,13 +144,10 @@ different problems and do not overlap:
 
 Buildbarn topology (2 storage shards, 1 scheduler, 2 frontend replicas, 1
 worker+runner DaemonSet pair per node — storage replicas spread with
-`podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. It **cannot**
-run the real dakota/bluefin-server OCI builds — those require privileges
-Buildbarn's runner deliberately does not grant. For Dakota, the BuildStream lane
-uses the shared Buildbarn cache path for artifact writes and only opts into remote
-execution when the USB4 data-plane is confirmed up; if the link is down or a
-retry happens, it falls back to the low-concurrency, cache-only path so the
-cluster stays usable over 2.5GbE.
+`podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. Dakota requires
+the real BuildBarn execution grid. If an action needs unavailable runner
+capabilities, the workflow must fail for repair; it must not use a local or
+cache-only fallback.
 
 ## Cache Warming (Pollers)
 

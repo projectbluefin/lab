@@ -404,6 +404,11 @@ spec:
 
           echo "=== Distributed build: remote execution enabled ==="
           sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
+          if ! grep -q '^    remote-execution:$' /tmp/buildstream-cluster.conf; then
+            echo "BuildStream remote execution configuration is missing" >&2
+            exit 1
+          fi
+          echo "=== Verified BuildStream remote execution configuration ==="
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

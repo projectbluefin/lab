@@ -112,6 +112,18 @@ For canonical commands — workflow submission, ArgoCD actions, CronWorkflow ope
 key secret rotation, PR queue steps, safe cleanup, bootstrap, and live fact lookup — see
 [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md).
 
+## Core Tenet: Verified Distributed BuildStream Execution
+
+**A healthy Dakota BuildStream build uses BuildBarn remote execution. No
+runner-local, cache-only, or remote-cache-only substitute is acceptable.**
+
+Use scheduler-driven placement and approved non-root PVC storage. Match BuildStream
+concurrency to the live BuildBarn grid; do not serialize healthy worker capacity.
+Before calling a build distributed, verify all three: the generated per-project
+remote-execution configuration, BuildStream's RE startup output, and current
+actions on Ready BuildBarn workers. If RE fails, stop, diagnose, and repair the
+grid—never silently fall back to a local build.
+
 ## Core Tenet: Knuckle VM Lifecycle Is Argo-Native
 
 **`ssh $GHOST kubectl/virtctl` is a policy violation. No WorkflowTemplate may add `ssh $GHOST` calls.**

@@ -8,20 +8,17 @@ metadata:
     app.kubernetes.io/component: buildstream
 
 data:
-  # Cache-only baseline: artifact push + source cache are bounded transfers,
-  # safe on 1 GbE. The remote-execution block lives in remote-execution.conf
-  # and is appended by pipelines only when the USB4 data-plane link is up
-  # (see manifests/usb4-link-monitor.yaml and the dakota-build-pipeline
-  # detect-build-mode step) — RE input-root fan-out over ethernet saturates
-  # the LAN and starves the control plane.
+  # Dakota's coordinator fetches four artifacts/sources concurrently. Two
+  # BuildBarn workers each expose one action slot, so admit two remote builds
+  # and permit eight jobs within each action (the runner CPU limit).
   dakota-buildstream.conf: |
     scheduler:
       network-retries: 8
-      fetchers: 1
-      builders: 1
-      pushers: 1
+      fetchers: 4
+      builders: 2
+      pushers: 2
     build:
-      max-jobs: 1
+      max-jobs: 8
  
     artifacts:
       override-project-caches: false

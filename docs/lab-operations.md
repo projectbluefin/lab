@@ -46,12 +46,15 @@ For Bluefin and Dakota image-poll QA, **bootc OCI images are tested directly as 
 | Validate a bootc OCI image change | `just run-tests-tag <testing\|lts-testing\|stable\|lts-stable>` or `just run-tests-matrix` |
 | Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate Flatcar | `just run-flatcar-smoke` |
-| Submit Dakota BST build pipeline (bluefin + nvidia, defaults to cache-only) | `just run-bst-build [ref=testing]` |
+| Submit Dakota distributed BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
 
 Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
 MCP is optional.
 
-For Dakota BST runs, the default path remains `build-mode=cache-only`. The Buildbarn RE runtime now includes a minimal chroot `/dev` tree (`/worker/dev`), so the old missing device-node failure is fixed; override to `re` or `auto` only when you are explicitly debugging the RE lane and have verified the runtime fix is live.
+Dakota BST runs require `build-mode=re`. If BuildBarn remote execution is
+unhealthy, fail, diagnose, and repair it; do not select local cache-only or
+automatic fallback. A valid distributed run has two Ready workers and observable
+worker actions.
 
 ---
 

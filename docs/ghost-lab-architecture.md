@@ -50,9 +50,8 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 - Live link state is published as the node annotation
   `lab.projectbluefin.io/usb4-link: up|down` by the `usb4-link-monitor`
   DaemonSet (`manifests/usb4-link-monitor.yaml`). Build pipelines gate
-  Buildbarn remote execution on it — RE when both nodes report `up`,
-  cache-only builds otherwise (see
-  `docs/superpowers/specs/2026-07-09-distributed-bst-usb4-fallback-design.md`).
+  Buildbarn remote execution on it. Dakota requires RE; a transport or worker
+  failure fails the workflow for repair rather than permitting a local fallback.
 - **Traffic Steering Design (Linux Policy Routing)**: Since the default k3s flannel CNI is
   configured with `flannel-backend: host-gw` (Host Gateway, no VxLAN encapsulation), routing
   can be optimized natively at the host kernel layer using policy routing rules (`ip rule`).

@@ -35,6 +35,23 @@ def test_image_poller_cron_manifests_do_not_pass_containerdisk_tag():
     assert not offenders, f"obsolete containerdisk-tag in: {', '.join(offenders)}"
 
 
+def test_dakota_requires_distributed_capacity_matched_execution():
+    config = (ROOT / "manifests/buildstream-remote-cache-config.yaml").read_text(
+        encoding="utf-8"
+    )
+    pipeline = (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "fetchers: 4" in config
+    assert "builders: 2" in config
+    assert "pushers: 2" in config
+    assert "max-jobs: 8" in config
+    assert "nodeSelector:\n        kubernetes.io/hostname: ghost" not in pipeline
+    assert "build-bluefin.Succeeded" in pipeline
+    assert "Verified BuildStream remote execution configuration" in pipeline
+
+
 def test_dakota_patch_sync_fetches_junction_commit_ids():
     pipeline = (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
         encoding="utf-8"

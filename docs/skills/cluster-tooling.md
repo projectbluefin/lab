@@ -35,7 +35,10 @@ metadata:
    - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`) while also listing the upstream artifact/source cache URLs as read-only fallback servers so BuildStream can pull prebuilt objects instead of recompiling bootstrap toolchains.
    - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
    - when the checkout uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream remote caches instead of diverging on local patch-set differences.
-   - keep each BuildStream driver's local concurrency bounded (`fetchers/builders/pushers: 1`, `build.max-jobs: 1`), while using BuildBarn and the workflow semaphore to run independent variants across the verified cluster capacity.
+   - match BuildStream concurrency to live BuildBarn capacity. Dakota uses four
+     coordinator fetchers, two builders/pushers for its two one-slot workers,
+     and eight jobs per action for the runner CPU limit. Do not serialize a
+     healthy distributed build or call cache traffic distributed execution.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
 6. Never use a root filesystem for persistent workload data or a `hostPath` build
@@ -61,17 +64,14 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   Kubernetes selects a schedulable node and the local-path provisioner binds
   the PVC below that node's configured data mount. Do not select a node or
   bind-mount a cache path to influence placement.
-- **Dakota lane policy:** `dakota-build-pipeline` is a distributed BuildBarn
-  remote-execution lane; only `build-mode=re` is accepted. The
-  `detect-build-mode` step validates the requested mode and rejects
-  `cache-only`, `auto`, and any unknown value, so ordinary Dakota runs cannot
-  fall back to a local cache-only path. The lane uses the two-slot `bst-build`
-  semaphore and per-variant workflow-owned 200Gi `local-path` cache PVCs.
-  `oci/bluefin-nvidia.bst` declares `oci/bluefin.bst` as a build dependency, so
-  its workflow task must wait for Bluefin's artifact; BuildBarn then distributes
-  the available actions across scheduler-selected workers. The dakota commit
-  poller also pins the checkout to the exact GitHub SHA it observed, so the lab
-  build follows the same revision that GitHub is building.
+- **Dakota lane policy:** `dakota-build-pipeline` accepts only `build-mode=re`.
+  Runner-local, cache-only, automatic fallback, and remote-cache-only execution
+  are prohibited. Before treating a run as distributed, verify its generated
+  `projects.bluefin.remote-execution` configuration, BuildStream RE startup, and
+  current worker action activity. The lane uses a two-slot `bst-build` semaphore
+  and workflow-owned 200Gi `local-path` cache PVCs. `oci/bluefin-nvidia.bst`
+  waits for its Bluefin parent artifact. The Dakota commit poller pins the
+  checkout to the exact GitHub SHA it observed.
 - **Buildbarn RE sandbox device nodes**: `bb_runner` with
   `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
   `/dev/random`, and `/dev/urandom` are missing inside the chroot. The cluster-side
@@ -98,7 +98,7 @@ and blocked Buildbarn storage scheduling on `exo-0` until the Job was removed.
 
 ## BST build scheduling: avoid preemption
 
-BST build pods use the `bst-build` PriorityClass. Long builds lose all
+BST build pods use the `bst-build` PriorityClass. Long distributed builds lose all
 progress when preempted, so `bst-build` (1,500,000) is set higher than
 `lab-test-vm` (1,000,000). Builds therefore take scheduling precedence over
 short-lived image-poll VMs, while still remaining below kubevirt/system critical
@@ -500,19 +500,14 @@ cache writeback and remote execution. Workflow-local state belongs on a
 PVC-backed workspace, while the shared Buildbarn frontend provides cluster-wide
 artifact reuse. Neither cache layer may use a root-backed `hostPath`.
 
-### 0. Dakota build mode policy
+### 0. Mandatory remote execution
 
-`argo/workflow-templates/dakota-build-pipeline.yaml` is a distributed BuildBarn
-remote-execution lane. Only `build-mode=re` is accepted:
-
-- The `detect-build-mode` step validates the supplied mode. It outputs `re` when
-  `build-mode=re` and exits with an error for `cache-only`, `auto`, or any
-  unknown value. There is no cache-only fallback for Dakota.
-- The build pods always mount `remote-execution.conf` from the
-  `buildstream-remote-cache` ConfigMap and always append the RE project snippet,
-  so every run uses the shared Buildbarn frontend for remote execution and
-  artifact cache writeback.
-- Retries do not change the mode; a failed Dakota build retries in `re` mode.
+Dakota builds must use BuildBarn remote execution regardless of transport path.
+If remote execution is unhealthy, fail the workflow, diagnose it, and repair the
+grid; do not fall back to a runner-local or cache-only build. The
+`remote-execution.conf` ConfigMap key is appended under the Dakota project in
+the generated BuildStream configuration. A healthy run has two Ready workers,
+two action slots, and observable current worker actions.
 
 ### 1. Shared Buildbarn frontend
 - **Endpoint**: `grpc://frontend.buildbarn.svc.cluster.local:8980`
@@ -520,16 +515,16 @@ remote-execution lane. Only `build-mode=re` is accepted:
 - **Deployment**: Frontend, scheduler, storage shards, and workers are defined under `manifests/buildbarn-*.yaml` and run in the `buildbarn` namespace
 
 ### 2. BuildStream client config
-  The build pods should generate a deterministic `buildstream.conf` that keeps upstream project caches as read-only fallbacks and pushes artifacts to the shared Buildbarn frontend first. For memory-constrained homelab lanes, keep scheduler concurrency intentionally low (`fetchers: 1`, `builders: 1`, `pushers: 1`) and set `build.max-jobs: 1` so one pod does not blow through the node memory budget while uploading or compiling large bootstrap trees:
+  The build pods should generate a deterministic `buildstream.conf` that keeps upstream project caches as read-only fallbacks and pushes artifacts to the shared Buildbarn frontend first. Dakota's concurrency matches its two one-slot BuildBarn workers, while fetches remain bounded by coordinator capacity:
  
 ```yaml
 scheduler:
   network-retries: 8
-  fetchers: 1
-  builders: 1
-  pushers: 1
+  fetchers: 4
+  builders: 2
+  pushers: 2
 build:
-  max-jobs: 1
+  max-jobs: 8
 artifacts:  override-project-caches: false
   servers:
   - url: grpc://frontend.buildbarn.svc.cluster.local:8980

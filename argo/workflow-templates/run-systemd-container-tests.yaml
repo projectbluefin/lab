@@ -187,30 +187,31 @@ spec:
         kubectl exec -i -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
           tee /workspace/resolv.conf < /etc/resolv.conf
 
-        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- bash -lc "
-          set -euo pipefail
-          rm -f /etc/resolv.conf
-          install -m 0644 /workspace/resolv.conf /etc/resolv.conf
-          mkdir -p /workspace
-          git clone --depth 1 --branch \"${TSBRANCH}\" \"${TSREPO}\" /workspace/testsuite
-          if ! python3 -m pip --version >/dev/null 2>&1; then
-            python3 -m ensurepip --default-pip
-          fi
-          python3 -m pip install --quiet qecore dogtail behave
-          if ! grep -q "^bluefin-test:" /etc/passwd; then
-            echo "bluefin-test:x:1000:1000:Bluefin QA:/home/bluefin-test:/bin/bash" >>/etc/passwd
-          fi
-          if ! grep -q "^bluefin-test:" /etc/group; then
-            echo "bluefin-test:x:1000:" >>/etc/group
-          fi
-          if ! grep -q "^bluefin-test:" /etc/shadow; then
-            echo "bluefin-test:!:0:0:99999:7:::" >>/etc/shadow
-          fi
-          mkdir -p /etc/sudoers.d /home/bluefin-test/run
-          echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
-          chmod 0440 /etc/sudoers.d/bluefin-test
-          chown -R 1000:1000 /home/bluefin-test
-        "
+        kubectl exec -i -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          env TSREPO="${TSREPO}" TSBRANCH="${TSBRANCH}" bash -s <<'TARGET_SETUP'
+        set -euo pipefail
+        rm -f /etc/resolv.conf
+        install -m 0644 /workspace/resolv.conf /etc/resolv.conf
+        mkdir -p /workspace
+        git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}" /workspace/testsuite
+        if ! python3 -m pip --version >/dev/null 2>&1; then
+          python3 -m ensurepip --default-pip
+        fi
+        python3 -m pip install --quiet qecore dogtail behave
+        if ! grep -q "^bluefin-test:" /etc/passwd; then
+          echo "bluefin-test:x:1000:1000:Bluefin QA:/home/bluefin-test:/bin/bash" >>/etc/passwd
+        fi
+        if ! grep -q "^bluefin-test:" /etc/group; then
+          echo "bluefin-test:x:1000:" >>/etc/group
+        fi
+        if ! grep -q "^bluefin-test:" /etc/shadow; then
+          echo "bluefin-test:!:0:0:99999:7:::" >>/etc/shadow
+        fi
+        mkdir -p /etc/sudoers.d /home/bluefin-test/run
+        echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
+        chmod 0440 /etc/sudoers.d/bluefin-test
+        chown -R 1000:1000 /home/bluefin-test
+        TARGET_SETUP
 
         kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
           test -x /usr/libexec/gnome-ponytail-daemon

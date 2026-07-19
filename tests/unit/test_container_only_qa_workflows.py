@@ -106,6 +106,7 @@ def test_native_systemd_runner_uses_a_scheduler_managed_target_pod():
     assert "runuser -u bluefin-test -- env" in content
     assert "qecore-headless" in content
     assert "run-behave.sh" in content
+    assert "qa-suite.env" in content
     assert "results.json" in content
     assert "behave-rc.txt" in content
     assert "cat /workspace/results.json > /tmp/results/results.json" in content

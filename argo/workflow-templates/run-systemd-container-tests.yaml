@@ -221,9 +221,12 @@ spec:
         set -euo pipefail
         mkdir -p /workspace/results
         chown 1000:1000 /workspace/results
+        printf 'SUITE=%q\nBEHAVE_TAGS=%q\n' "${SUITE}" "${BEHAVE_TAGS}" \
+          >/workspace/qa-suite.env
         cat >/workspace/run-behave.sh <<'RUN_BEHAVE'
         #!/bin/bash
         set -euo pipefail
+        source /workspace/qa-suite.env
         export PYTHONPATH="/workspace/testsuite"
 
         case "${SUITE}" in

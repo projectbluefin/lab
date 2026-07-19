@@ -3,31 +3,31 @@ import SiteLayout from '../layouts/SiteLayout.astro';
 import buildsChartsScript from '../scripts/builds-charts.js?url';
 import buildsMatrix from '../../docs/data/builds-matrix.json';
 import { serializeJsonScript } from '../lib/json-script';
+import { readFileSync } from 'fs';
+import nodePath from 'node:path';
 
-interface HistoryPoint {
-  id: string | null;
-  overall: string | null;
-  started_at: string | null;
+interface BuildRun {
+  recorded_at: string;
+  plane: 'publish' | 'lab';
+  repo: string;
+  lane: string;
+  run_id: string;
+  status: 'passed' | 'failed' | 'running';
+  started_at: string;
   finished_at: string | null;
-  duration_min: number | null;
-  run_url: string | null;
+  duration_min: number;
+  run_url: string;
+  failure_stage: null;
 }
 
 interface BuildRow {
   id: string;
   display_name: string;
   description: string;
-  last_run: HistoryPoint | null;
-  history_points: HistoryPoint[];
-  success_rate: number | null;
-  avg_duration_min: number | null;
-  runs_tracked: number;
+  source_url: string;
   ci_url: string | null;
   state: string;
   state_reason: string | null;
-  source_url: string;
-  collected_at: string;
-  derivation: string;
 }
 
 interface BuildsContract {
@@ -38,15 +38,92 @@ interface BuildsContract {
     generated_at: string;
     status: string;
   };
-  summary_metrics: Array<{ id: string; label: string; value: number; unit: string }>;
   rows: BuildRow[];
 }
 
 const contract = buildsMatrix as unknown as BuildsContract;
 const baseUrl = import.meta.env.BASE_URL;
-const rows = contract.rows;
-const availableRows = rows.filter((row) => row.state === 'available');
-const unavailableRows = rows.filter((row) => row.state !== 'available');
+
+function loadBuildRuns(relativePath: string): BuildRun[] {
+  try {
+    const text = readFileSync(nodePath.join(process.cwd(), relativePath), 'utf-8');
+    return text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter(
+        (rec): rec is BuildRun =>
+          rec &&
+          typeof rec.lane === 'string' &&
+          typeof rec.run_id === 'string' &&
+          typeof rec.started_at === 'string' &&
+          typeof rec.duration_min === 'number' &&
+          (rec.plane === 'publish' || rec.plane === 'lab') &&
+          (rec.status === 'passed' || rec.status === 'failed' || rec.status === 'running'),
+      );
+  } catch {
+    return [];
+  }
+}
+
+const buildRuns = loadBuildRuns('docs/data/history/build-runs.ndjson');
+
+const rowMeta = new Map<string, BuildRow>();
+for (const row of contract.rows) {
+  rowMeta.set(row.id, row);
+}
+
+const runsByLane = new Map<string, BuildRun[]>();
+for (const run of buildRuns) {
+  const list = runsByLane.get(run.lane) ?? [];
+  list.push(run);
+  runsByLane.set(run.lane, list);
+}
+for (const list of runsByLane.values()) {
+  list.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+}
+
+const lanesByPlane = {
+  publish: Array.from(
+    new Set(buildRuns.filter((r) => r.plane === 'publish').map((r) => r.lane)),
+  ).sort(),
+  lab: Array.from(new Set(buildRuns.filter((r) => r.plane === 'lab').map((r) => r.lane))).sort(),
+};
+
+const lastRunByLane = new Map<string, BuildRun>();
+for (const [lane, list] of runsByLane) {
+  lastRunByLane.set(lane, list[0]);
+}
+
+const laneMeta = Object.fromEntries(
+  [...lanesByPlane.publish, ...lanesByPlane.lab].map((lane) => {
+    const meta = rowMeta.get(lane);
+    return [
+      lane,
+      {
+        display_name: meta?.display_name ?? lane,
+        description: meta?.description ?? '',
+        source_url: meta?.source_url ?? '',
+        ci_url: meta?.ci_url ?? null,
+      },
+    ];
+  }),
+);
+
+const recentRuns = [...buildRuns]
+  .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+  .slice(0, 40);
+
+const chartPayload = {
+  generatedAt: contract._meta.generated_at,
+  historySourceUrl: `${baseUrl}data/history/build-runs.ndjson`,
+  collectedAt: new Date().toISOString(),
+  runs: buildRuns,
+  lanes: lanesByPlane,
+  laneMeta,
+};
+const payloadJson = serializeJsonScript(chartPayload);
 
 const formatUtc = (value: string | null) =>
   value
@@ -57,31 +134,22 @@ const formatUtc = (value: string | null) =>
       }) + ' UTC'
     : 'Never';
 
-const statusPill = (overall: string | null | undefined) => {
-  if (overall === 'passed') return { label: 'passed', tone: 'passed' };
-  if (overall === 'fail') return { label: 'failed', tone: 'failed' };
-  if (overall === 'running' || overall === 'pending') return { label: overall, tone: 'pending' };
+const statusPill = (status: string | null | undefined) => {
+  if (status === 'passed') return { label: 'passed', tone: 'passed' };
+  if (status === 'failed' || status === 'fail') return { label: 'failed', tone: 'failed' };
+  if (status === 'running' || status === 'pending') return { label: status, tone: 'pending' };
   return { label: 'unavailable', tone: 'unavailable' };
 };
 
-const chartPayload = {
-  generatedAt: contract._meta.generated_at,
-  rows: rows.map((row) => ({
-    id: row.id,
-    display_name: row.display_name,
-    source: (row as any).source ?? 'github-actions',
-    success_rate: row.success_rate,
-    avg_duration_min: row.avg_duration_min,
-    runs_tracked: row.runs_tracked,
-    history_points: row.history_points,
-  })),
-};
-const payloadJson = serializeJsonScript(chartPayload);
+const historyAvailable = buildRuns.length > 0;
+const historyUnavailableReason = historyAvailable
+  ? null
+  : 'docs/data/history/build-runs.ndjson is missing or contains no parseable terminal run records.';
 ---
 
 <SiteLayout
   title="Builds"
-  description="Real OS image build pipelines for Bluefin, Bluefin LTS, and Dakota: last run, duration trend, and evidence links straight from GitHub Actions."
+  description="Real OS image build pipelines for Bluefin, Bluefin LTS, and Dakota: publish builds from GitHub Actions and lab runs from the homelab Argo Workflows cluster."
   current="builds"
 >
   <style>
@@ -105,6 +173,7 @@ const payloadJson = serializeJsonScript(chartPayload);
       display: flex;
       gap: 1.5rem;
       flex-wrap: wrap;
+      align-items: center;
     }
     .meta-bar a { color: #38bdf8; text-decoration: none; }
     .meta-bar a:hover { text-decoration: underline; }
@@ -120,48 +189,130 @@ const payloadJson = serializeJsonScript(chartPayload);
       padding-left: 10px;
     }
 
-    .kpi-grid {
+    .status-strip {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
       gap: 1rem;
       margin-bottom: 2.5rem;
     }
-    .kpi-card {
-      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+    .status-card {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 16px;
-      padding: 1.25rem;
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
     }
-    .kpi-card__title {
-      font-size: 0.78rem;
+    .status-card__lane {
+      font-size: 0.9rem;
       font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .kpi-card__value {
-      font-size: 2rem;
-      font-weight: 800;
       color: #f8fafc;
-      letter-spacing: -0.04em;
-      margin: 0.5rem 0 0.2rem 0;
     }
-    .kpi-card__sub { font-size: 0.72rem; color: #64748b; }
+    .status-card__repo {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+    .status-card__row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .status-card__time {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    .status-card__links {
+      display: flex;
+      gap: 0.75rem;
+      font-size: 0.75rem;
+    }
+    .status-card__links a { color: #38bdf8; text-decoration: none; }
+    .status-card__links a:hover { text-decoration: underline; }
 
-    .builds-table-card {
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    @media (min-width: 1200px) {
+      .chart-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .chart-panel {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.25rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      min-width: 0;
+    }
+    .chart-panel:hover {
+      border-color: rgba(56, 189, 248, 0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+    }
+    .chart-panel__header {
+      margin-bottom: 0.75rem;
+    }
+    .chart-panel__header h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 0.2rem 0 0 0;
+    }
+    .chart-panel__header p {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin: 0.15rem 0 0 0;
+      line-height: 1.4;
+    }
+    .chart-panel__plot {
+      width: 100%;
+      height: 260px;
+      min-height: 260px;
+      flex: 1;
+    }
+    .chart-panel__note {
+      font-size: 0.72rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+    }
+    .chart-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 260px;
+      min-height: 260px;
+      border: 1px dashed rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      color: #64748b;
+      font-size: 0.875rem;
+      text-align: center;
+      background: rgba(30, 41, 59, 0.15);
+      padding: 1.5rem;
+    }
+
+    .full-width-card {
       background: rgba(15, 23, 42, 0.45);
       border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 20px;
       padding: 1.5rem;
-      grid-column: 1 / -1;
+      margin-bottom: 2.5rem;
     }
     .table-scroll { overflow-x: auto; }
-    .builds-table {
+    .runs-table {
       width: 100%;
       border-collapse: collapse;
       min-width: 920px;
     }
-    .builds-table th {
+    .runs-table th {
       text-align: left;
       font-size: 0.72rem;
       text-transform: uppercase;
@@ -170,40 +321,25 @@ const payloadJson = serializeJsonScript(chartPayload);
       padding: 0.6rem 0.75rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .builds-table td {
+    .runs-table td {
       padding: 0.75rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.04);
       vertical-align: middle;
       font-size: 0.85rem;
       color: #cbd5e1;
     }
-    .builds-table__name { font-weight: 700; color: #f8fafc; }
-    .builds-table__desc { font-size: 0.75rem; color: #64748b; max-width: 260px; }
-    .sparkline-cell { width: 160px; height: 46px; }
-    .sparkline-empty {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 46px;
-      font-size: 0.7rem;
-      color: #64748b;
-      border: 1px dashed rgba(255, 255, 255, 0.08);
-      border-radius: 8px;
-      text-align: center;
-      padding: 0 0.4rem;
-    }
+    .runs-table__lane { font-weight: 700; color: #f8fafc; }
+    .runs-table__repo { font-size: 0.75rem; color: #64748b; }
     .evidence-link { color: #38bdf8; text-decoration: none; font-size: 0.8rem; }
     .evidence-link:hover { text-decoration: underline; }
-    .unavailable-row td { color: #64748b; }
 
-    .integrity-panel {
+    .context-panel {
       background: rgba(15, 23, 42, 0.35);
       border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 16px;
       padding: 1.25rem 1.5rem;
-      margin-top: 2rem;
     }
-    .integrity-panel h4 {
+    .context-panel h4 {
       font-size: 0.85rem;
       font-weight: 700;
       color: #94a3b8;
@@ -211,122 +347,172 @@ const payloadJson = serializeJsonScript(chartPayload);
       letter-spacing: 0.06em;
       margin: 0 0 0.75rem 0;
     }
-    .integrity-list {
-      margin: 0;
-      padding-left: 1.25rem;
-      color: #64748b;
+    .context-panel p {
+      color: #94a3b8;
       font-size: 0.85rem;
       line-height: 1.7;
+      margin: 0 0 1rem 0;
     }
-    .integrity-list strong { color: #cbd5e1; }
+    .context-panel p:last-child { margin-bottom: 0; }
+    .context-panel strong { color: #cbd5e1; }
+
+    .unavailable-banner {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px dashed rgba(251, 113, 133, 0.3);
+      border-radius: 16px;
+      padding: 1.5rem;
+      color: #94a3b8;
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
   </style>
 
   <div class="dashboard-header">
     <h1>Builds</h1>
     <div class="meta-bar">
-      <span>Updated {formatUtc(contract._meta.generated_at)}</span>
-      <span>Source: GitHub Actions (GA) + Argo Workflows (cluster)</span>
+      <span>History updated {formatUtc(contract._meta.generated_at)}</span>
+      <span>Source: <a href={`${baseUrl}data/history/build-runs.ndjson`}>build-runs.ndjson</a></span>
       <span>Status: <span style="color: #fbbf24;">{contract._meta.status}</span></span>
-      <a href={`${baseUrl}data/builds-matrix.json`}>Raw dataset ↗</a>
     </div>
   </div>
 
-  <h2 class="section-title">Builds at a Glance</h2>
-  <div class="kpi-grid">
-    {contract.summary_metrics.map((metric) => (
-      <div class="kpi-card">
-        <div class="kpi-card__title">{metric.label}</div>
-        <div class="kpi-card__value">{metric.value}</div>
-        <div class="kpi-card__sub">{metric.unit}</div>
+  {historyUnavailableReason && (
+    <div class="unavailable-banner">
+      <strong>History unavailable</strong>
+      <p style="margin: 0.5rem 0 0 0;">{historyUnavailableReason}</p>
+    </div>
+  )}
+
+  <h2 class="section-title">Current Status</h2>
+  <div class="status-strip">
+    {historyAvailable && [...lanesByPlane.publish, ...lanesByPlane.lab].map((lane) => {
+      const run = lastRunByLane.get(lane);
+      const meta = laneMeta[lane];
+      const pill = statusPill(run?.status);
+      return (
+        <div class="status-card">
+          <div>
+            <div class="status-card__lane">{meta.display_name}</div>
+            <div class="status-card__repo">{run?.repo ?? meta.description}</div>
+          </div>
+          <div class="status-card__row">
+            <span class={`pill pill--${pill.tone}`}>{pill.label}</span>
+            <span class="status-card__time">{formatUtc(run?.started_at)}</span>
+          </div>
+          <div class="status-card__links">
+            {run?.run_url && <a href={run.run_url} target="_blank" rel="noreferrer">Run ↗</a>}
+            {meta.source_url && <a href={meta.source_url} target="_blank" rel="noreferrer">Source ↗</a>}
+          </div>
+        </div>
+      );
+    })}
+    {!historyAvailable && (
+      <div class="status-card">
+        <div class="status-card__lane">No lanes available</div>
+        <div class="status-card__repo">{historyUnavailableReason}</div>
       </div>
-    ))}
+    )}
   </div>
 
-  <!-- Reliability overview chart (success rate + avg duration per pipeline) -->
-  <h2 class="section-title">Reliability Overview</h2>
-  <div class="builds-table-card" style="margin-bottom: 2rem;">
-    <div id="builds-chart-overview" style="width: 100%; height: 320px;" role="img" aria-label="Pipeline reliability overview chart"></div>
+  <h2 class="section-title">Publish Plane Duration Trends</h2>
+  {historyAvailable ? (
+    <div class="chart-grid">
+      {lanesByPlane.publish.map((lane) => (
+        <article class="chart-panel">
+          <div class="chart-panel__header">
+            <p class="status-card__eyebrow">{laneMeta[lane].display_name}</p>
+            <h3>Duration over time</h3>
+            <p>Rolling p50/p95 band once 5+ runs exist.</p>
+          </div>
+          <div id={`builds-chart-publish-lane-${lane}`} class="chart-panel__plot" role="img" aria-label={`Duration trend for ${laneMeta[lane].display_name}`}></div>
+        </article>
+      ))}
+    </div>
+  ) : (
+    <div class="chart-empty">Publish-plane trends unavailable — no terminal run history.</div>
+  )}
+
+  <h2 class="section-title">Daily Build Outcomes</h2>
+  <div class="full-width-card">
+    <div id="builds-chart-daily-outcomes" style="width: 100%; height: 340px;" role="img" aria-label="Daily build outcomes stacked chart"></div>
   </div>
 
-  <h2 class="section-title">Pipelines</h2>
-  <div class="builds-table-card">
+  <h2 class="section-title">Lab Plane Pipeline Health</h2>
+  {historyAvailable ? (
+    <div class="chart-grid">
+      {lanesByPlane.lab.map((lane) => (
+        <article class="chart-panel">
+          <div class="chart-panel__header">
+            <p class="status-card__eyebrow">{laneMeta[lane].display_name}</p>
+            <h3>Duration over time</h3>
+            <p>Rolling p50/p95 band once 5+ runs exist.</p>
+          </div>
+          <div id={`builds-chart-lab-lane-${lane}`} class="chart-panel__plot" role="img" aria-label={`Duration trend for ${laneMeta[lane].display_name}`}></div>
+        </article>
+      ))}
+    </div>
+  ) : (
+    <div class="chart-empty">Lab-plane trends unavailable — no terminal run history.</div>
+  )}
+
+  <h2 class="section-title">Recent Terminal Runs</h2>
+  <div class="full-width-card">
     <div class="table-scroll">
-      <table class="builds-table">
+      <table class="runs-table">
         <thead>
           <tr>
-            <th scope="col">Pipeline</th>
-            <th scope="col">Source</th>
-            <th scope="col">Last run</th>
+            <th scope="col">Lane</th>
+            <th scope="col">Plane</th>
+            <th scope="col">Started</th>
             <th scope="col">Duration</th>
-            <th scope="col">Success rate</th>
-            <th scope="col">Trend ({`last ${20} runs`})</th>
+            <th scope="col">Status</th>
             <th scope="col">Evidence</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
-            const pill = statusPill(row.last_run?.overall);
-            const sourceLabel = (row as any).source === 'argo' ? 'Argo' : 'GitHub Actions';
-            const sourceBadgeStyle = (row as any).source === 'argo'
-              ? 'background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3);'
-              : 'background: rgba(125,211,252,0.1); color: #7dd3fc; border: 1px solid rgba(125,211,252,0.2);';
+          {recentRuns.map((run) => {
+            const pill = statusPill(run.status);
             return (
-              <tr class:list={[row.state !== 'available' && 'unavailable-row']}>
+              <tr>
                 <td>
-                  <div class="builds-table__name">{row.display_name}</div>
-                  <div class="builds-table__desc">{row.description}</div>
+                  <div class="runs-table__lane">{laneMeta[run.lane]?.display_name ?? run.lane}</div>
+                  <div class="runs-table__repo">{run.repo}</div>
                 </td>
+                <td>{run.plane}</td>
+                <td>{formatUtc(run.started_at)}</td>
+                <td>{run.duration_min} min</td>
+                <td><span class={`pill pill--${pill.tone}`}>{pill.label}</span></td>
                 <td>
-                  <span style={`${sourceBadgeStyle} border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.7rem; font-weight: 700;`}>
-                    {sourceLabel}
-                  </span>
-                </td>
-                <td>
-                  {row.last_run ? (
-                    <>
-                      <span class={`pill pill--${pill.tone}`}>{pill.label}</span>
-                      <div style="margin-top: 0.35rem; font-size: 0.75rem; color: #64748b;">
-                        {formatUtc(row.last_run.started_at)}
-                      </div>
-                    </>
-                  ) : (
-                    <span class="pill pill--unavailable">unavailable</span>
-                  )}
-                </td>
-                <td>{row.avg_duration_min !== null ? `${row.avg_duration_min} min avg` : '—'}</td>
-                <td>{row.success_rate !== null ? `${row.success_rate}%` : '—'}</td>
-                <td class="sparkline-cell">
-                  <div id={`sparkline-${row.id}`} style="width: 100%; height: 100%;" role="img" aria-label={`Duration trend for ${row.display_name}`}></div>
-                </td>
-                <td>
-                  <a class="evidence-link" href={row.source_url} target="_blank" rel="noreferrer">Workflow source ↗</a>
-                  {row.ci_url && (
-                    <>
-                      <br />
-                      <a class="evidence-link" href={row.ci_url} target="_blank" rel="noreferrer">
-                        {(row as any).source === 'argo' ? 'Last run on Argo UI ↗' : 'Last run on GitHub ↗'}
-                      </a>
-                    </>
-                  )}
-                  {row.state !== 'available' && (
-                    <p style="font-size: 0.72rem; color: #64748b; margin: 0.35rem 0 0 0;">{row.state_reason}</p>
-                  )}
+                  <a class="evidence-link" href={run.run_url} target="_blank" rel="noreferrer">Open run ↗</a>
                 </td>
               </tr>
             );
           })}
+          {recentRuns.length === 0 && (
+            <tr>
+              <td colspan="6" style="text-align: center; color: #64748b;">No terminal runs recorded yet.</td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
   </div>
 
-  <div class="integrity-panel">
-    <h4>Data Integrity Posture</h4>
-    <ul class="integrity-list">
-      <li><strong>{availableRows.length}</strong> of <strong>{rows.length}</strong> tracked pipelines have at least one published run.</li>
-      <li><strong>{unavailableRows.length}</strong> pipelines have no published GitHub Actions run yet for their tracked branch.</li>
-    </ul>
-    <a href={`${baseUrl}data/builds-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+  <div class="context-panel">
+    <h4>What these planes mean</h4>
+    <p>
+      <strong>Publish</strong> builds are the upstream GitHub Actions workflows that produce the bootable OS images
+      for Bluefin, Bluefin LTS, and Dakota. A failed publish build means no installable image was produced for that lane.
+    </p>
+    <p>
+      <strong>Lab</strong> builds are the Argo Workflows pipelines that run on the homelab cluster: containerdisk builds,
+      QA pipelines, Knuckle installer tests, and supporting build pipelines. They validate that the published images boot
+      and pass real tests on real hardware.
+    </p>
+    <p>
+      All history is kept as git-tracked rolling NDJSON at <a class="evidence-link" href={`${baseUrl}data/history/build-runs.ndjson`}>build-runs.ndjson</a>.
+      Records older than 180 days are pruned on each collector pass.
+    </p>
   </div>
 
   <script type="application/json" id="builds-chart-data" set:html={payloadJson}></script>

@@ -10,7 +10,7 @@ function html(file) {
   return readFileSync(path.join(repo, file), 'utf8');
 }
 
-test('builds page renders pipeline rows, sparkline mounts, nav link, and explicit unavailable states', () => {
+test('builds page renders triage strip, dense charts, and explicit unavailable states', () => {
   execFileSync('npm', ['run', 'build'], {
     cwd: repo,
     stdio: 'pipe',
@@ -22,8 +22,28 @@ test('builds page renders pipeline rows, sparkline mounts, nav link, and explici
 
   assert.match(
     buildsPage,
-    /Builds at a Glance/i,
-    'builds page renders the summary section title',
+    /Current Status/i,
+    'builds page renders the current status triage section',
+  );
+  assert.match(
+    buildsPage,
+    /Publish Plane Duration Trends/i,
+    'builds page renders the publish plane chart section',
+  );
+  assert.match(
+    buildsPage,
+    /Daily Build Outcomes/i,
+    'builds page renders the daily outcomes chart section',
+  );
+  assert.match(
+    buildsPage,
+    /Lab Plane Pipeline Health/i,
+    'builds page renders the lab plane chart section',
+  );
+  assert.match(
+    buildsPage,
+    /Recent Terminal Runs/i,
+    'builds page renders the recent runs table section',
   );
   assert.match(
     buildsPage,
@@ -43,22 +63,27 @@ test('builds page renders pipeline rows, sparkline mounts, nav link, and explici
   assert.match(
     buildsPage,
     /Duration trend for/i,
-    'builds page renders accessible labels for each sparkline mount point',
+    'builds page renders accessible labels for each chart mount point',
   );
   assert.match(
     buildsPage,
     /pill--(passed|failed|pending)/,
-    'builds page renders real status pills sourced from GitHub Actions run history',
+    'builds page renders real status pills sourced from run history',
   );
   assert.match(
     buildsPage,
     /GitHub Actions/i,
-    'builds page discloses that data comes from the public GitHub Actions API',
+    'builds page discloses the publish plane GitHub Actions source',
   );
   assert.match(
     buildsPage,
-    /sparkline-/,
-    'builds page renders per-row sparkline chart containers',
+    /builds-chart-publish-lane-/,
+    'builds page renders per-lane publish chart containers',
+  );
+  assert.match(
+    buildsPage,
+    /builds-chart-lab-lane-/,
+    'builds page renders per-lane lab chart containers',
   );
   assert.match(
     buildsPage,
@@ -67,18 +92,8 @@ test('builds page renders pipeline rows, sparkline mounts, nav link, and explici
   );
   assert.match(
     buildsPage,
-    /Workflow source ↗/,
-    'builds page links each pipeline to its workflow source file',
-  );
-  assert.match(
-    buildsPage,
-    /Data Integrity Posture/i,
-    'builds page renders the data integrity disclosure panel',
-  );
-  assert.match(
-    buildsPage,
-    /data\/builds-matrix\.json/,
-    'builds page links the raw dataset',
+    /data\/history\/build-runs\.ndjson/,
+    'builds page links the rolling history dataset',
   );
   assert.match(
     overviewPage,

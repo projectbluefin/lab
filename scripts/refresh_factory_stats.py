@@ -1,5 +1,132 @@
-import json, glob, datetime, sys, subprocess, re, os, hashlib
+import json, glob, datetime, sys, subprocess, re, os, hashlib, math
 from pathlib import Path
+
+
+def parse_iso(ts):
+    if not ts:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+    except Exception:
+        return None
+
+
+def append_build_runs_ndjson(stats, image_build_catalog, now):
+    """Append terminal build-run records to the rolling NDJSON history file.
+
+    Keeps one row per (plane, run_id) and prunes entries older than 180 days.
+    Running/pending runs are skipped and appended once they reach a terminal
+    state on a later collector pass.
+    """
+    history_dir = Path('docs/data/history')
+    history_dir.mkdir(parents=True, exist_ok=True)
+    ndjson_path = history_dir / 'build-runs.ndjson'
+    retention_days = 180
+    cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=retention_days)
+
+    def normalize_status(status):
+        if status == 'passed':
+            return 'passed'
+        if status in ('fail', 'failed'):
+            return 'failed'
+        return None
+
+    repo_by_lane = {entry['id']: entry['repo'] for entry in image_build_catalog}
+
+    existing_keys = set()
+    kept_lines = []
+    if ndjson_path.exists():
+        with open(ndjson_path) as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:
+                    continue
+                recorded = parse_iso(rec.get('recorded_at'))
+                if recorded and recorded < cutoff:
+                    continue
+                key = (rec.get('plane'), rec.get('run_id'))
+                existing_keys.add(key)
+                kept_lines.append(line)
+
+    new_records = []
+
+    # Publish plane: upstream GitHub Actions image builds.
+    for lane, runs in (stats.get('image_builds') or {}).items():
+        repo = repo_by_lane.get(lane)
+        if not repo:
+            continue
+        for run in runs:
+            run_id = str(run.get('id') or '')
+            if not run_id:
+                continue
+            status = normalize_status(run.get('overall'))
+            if not status:
+                continue
+            duration_min = run.get('duration_min')
+            if not isinstance(duration_min, (int, float)) or not math.isfinite(duration_min):
+                continue
+            key = ('publish', run_id)
+            if key in existing_keys:
+                continue
+            new_records.append({
+                'recorded_at': now,
+                'plane': 'publish',
+                'repo': repo,
+                'lane': lane,
+                'run_id': run_id,
+                'status': status,
+                'started_at': run.get('started_at'),
+                'finished_at': run.get('finished_at'),
+                'duration_min': duration_min,
+                'run_url': run.get('run_url'),
+                'failure_stage': None,
+            })
+
+    # Lab plane: Argo Workflows build pipelines on the homelab.
+    for lane, runs in (stats.get('build_history') or {}).items():
+        for run in runs:
+            run_id = str(run.get('id') or '')
+            if not run_id:
+                continue
+            status = normalize_status(run.get('overall'))
+            if not status:
+                continue
+            duration_min = run.get('duration_min')
+            if not isinstance(duration_min, (int, float)) or not math.isfinite(duration_min):
+                continue
+            key = ('lab', run_id)
+            if key in existing_keys:
+                continue
+            new_records.append({
+                'recorded_at': now,
+                'plane': 'lab',
+                'repo': 'projectbluefin/lab',
+                'lane': lane,
+                'run_id': run_id,
+                'status': status,
+                'started_at': run.get('started_at'),
+                'finished_at': run.get('finished_at'),
+                'duration_min': duration_min,
+                'run_url': run.get('run_url'),
+                'failure_stage': None,
+            })
+
+    if new_records:
+        with open(ndjson_path, 'w') as handle:
+            for line in kept_lines:
+                handle.write(line + '\n')
+            for rec in new_records:
+                handle.write(json.dumps(rec, separators=(',', ':')) + '\n')
+    elif kept_lines:
+        # Retention-only pass: rewrite the pruned file even if nothing new arrived.
+        with open(ndjson_path, 'w') as handle:
+            for line in kept_lines:
+                handle.write(line + '\n')
+
 
 def main():
     issue_count = int(sys.argv[1]) if sys.argv[1:] and sys.argv[1].isdigit() else 0
@@ -104,14 +231,6 @@ def main():
             return int(val)
         except Exception:
             return default
-
-    def parse_iso(ts):
-        if not ts:
-            return None
-        try:
-            return datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))
-        except Exception:
-            return None
 
     def parse_mem_gib(mem):
         if not mem:
@@ -512,6 +631,9 @@ def main():
             if existing:
                 image_builds[entry['id']] = existing
     stats['image_builds'] = image_builds
+
+    # --- Append terminal build runs to rolling NDJSON history ---
+    append_build_runs_ndjson(stats, IMAGE_BUILD_CATALOG, now)
 
     # --- Optional live cluster node snapshot ---
     node_doc = run_json("kubectl get nodes -o json --request-timeout=8s")

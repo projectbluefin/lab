@@ -156,13 +156,34 @@ spec:
           if ! grep -q "^bluefin-test:" /etc/group; then
             echo "bluefin-test:x:1000:" >>/etc/group
           fi
+          if ! grep -q "^bluefin-test:" /etc/shadow; then
+            echo "bluefin-test:!:0:0:99999:7:::" >>/etc/shadow
+          fi
           mkdir -p /etc/sudoers.d
           echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
           chmod 0440 /etc/sudoers.d/bluefin-test
+          mkdir -p /etc/gdm
+          printf "%s\n" \
+            "[daemon]" \
+            "AutomaticLoginEnable=True" \
+            "AutomaticLogin=bluefin-test" \
+            "InitialSetupEnable=False" >/etc/gdm/custom.conf
           mkdir -p /home/bluefin-test/run /tmp/results
           chown -R 1000:1000 /home/bluefin-test /tmp/results
           chmod 700 /home/bluefin-test/run
+          systemctl restart gdm
         '
+        for _ in $(seq 1 60); do
+          if podman exec "${TARGET_NAME}" pgrep -u 1000 -f gnome-session >/dev/null; then
+            break
+          fi
+          sleep 2
+        done
+        podman exec "${TARGET_NAME}" pgrep -u 1000 -f gnome-session >/dev/null || {
+          echo "GDM did not start a GNOME session for bluefin-test" >&2
+          podman exec "${TARGET_NAME}" journalctl --no-pager -u gdm || true
+          exit 1
+        }
 
         cat >/workspace/run-behave.sh <<'EOF'
         #!/bin/bash

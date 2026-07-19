@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -50,6 +52,35 @@ def test_dakota_requires_distributed_capacity_matched_execution():
     assert "nodeSelector:\n        kubernetes.io/hostname: ghost" not in pipeline
     assert "build-bluefin.Succeeded" in pipeline
     assert "Verified BuildStream remote execution configuration" in pipeline
+
+
+def test_dakota_persists_sources_in_buildbarn():
+    config_map = yaml.safe_load(
+        (ROOT / "manifests/buildstream-remote-cache-config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    config = yaml.safe_load(config_map["data"]["dakota-buildstream.conf"])
+    source_servers = config["source-caches"]["servers"]
+    pipeline = (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    assert source_servers[:2] == [
+        {
+            "url": "grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984",
+            "type": "index",
+            "push": True,
+        },
+        {
+            "url": "grpc://frontend.buildbarn.svc.cluster.local:8980",
+            "type": "storage",
+            "push": True,
+        },
+    ]
+    assert "url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984" in pipeline
+    assert "type: index" in pipeline
+    assert "type: storage" in pipeline
 
 
 def test_dakota_patch_sync_fetches_junction_commit_ids():

@@ -143,8 +143,8 @@ and is the canonical build cache/remote-exec mechanism for BuildStream (`bst`) j
 
 - `frontend` — Deployment, 2 replicas, **preferred** podAntiAffinity (degrades gracefully
   to co-location if a node is unavailable). Single entrypoint at
-  `frontend.buildbarn.svc.cluster.local:8980` for artifact cache, source-cache, and
-  remote-execution traffic from `bst` clients.
+  `frontend.buildbarn.svc.cluster.local:8980` for artifact cache, source blob
+  storage, and remote-execution traffic from `bst` clients.
 - `scheduler` — Deployment, 1 replica (single point of failure by design; see
   `production-hardening-*` follow-ups).
 - `storage` — StatefulSet, 2 replicas, **required** podAntiAffinity + per-pod
@@ -152,11 +152,13 @@ and is the canonical build cache/remote-exec mechanism for BuildStream (`bst`) j
   placement; no node selector or root-disk fallback is permitted.
 - `worker` — DaemonSet, one pod per schedulable node, each with a `runner` sidecar
   (`CAP_SYS_CHROOT`) that executes BuildStream REAPI actions dispatched by the scheduler.
-- `bb-remote-asset` — Deployment, source/asset resolution.
+- `bb-remote-asset` — Deployment, source-cache Remote Asset index at
+  `bb-remote-asset.buildbarn.svc.cluster.local:8984`.
 
 BuildStream jobs (`dakota-build-pipeline`, `cosmic-build-pipeline`,
 `bluefin-server-build-pipeline`, `bst-qa-pipeline`, `dakota-buildstream-warm-cache`) point
-their `artifacts`, `source-caches`, and `remote-execution` config at the shared frontend,
+their artifact and remote-execution config at the shared frontend. Source caches use
+the paired Remote Asset index and frontend CAS,
 so build actions are genuinely distributed across the `worker` DaemonSet pods on both
 `ghost` and `exo-0` rather than executing locally on a single node. The `bst-build` client
 pod itself also carries a required podAntiAffinity so concurrent builds spread across

@@ -394,6 +394,12 @@ spec:
               source-caches:
                 override-project-caches: false
                 servers:
+                - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+                  type: index
+                  push: true
+                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  type: storage
+                  push: true
                 - url: https://gbm.gnome.org:11003
                   push: false
                 - url: https://cache.freedesktop-sdk.io:11001

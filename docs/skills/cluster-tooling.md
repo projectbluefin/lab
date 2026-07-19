@@ -32,7 +32,7 @@ metadata:
 3. For BST lanes, configure local and upstream cache fallback in workflow configs:
    - never configure external cache credentials/keys in cluster workflows
    - set `override-project-caches: false` to allow the project's own upstream caches (for example Freedesktop SDK and GNOME OS) to be used as read-only fallbacks, preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
-   - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`) while also listing the upstream artifact/source cache URLs as read-only fallback servers so BuildStream can pull prebuilt objects instead of recompiling bootstrap toolchains.
+   - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`). Persist fetched sources through the paired BuildBarn Remote Asset index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) and frontend CAS (`type: storage`), both `push: true`; the external artifact/source cache URLs are read-only fallbacks.
    - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
    - when the checkout uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream remote caches instead of diverging on local patch-set differences.
    - match BuildStream concurrency to live BuildBarn capacity. Dakota uses four
@@ -538,6 +538,12 @@ artifacts:  override-project-caches: false
 source-caches:
   override-project-caches: false
   servers:
+  - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+    type: index
+    push: true
+  - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+    type: storage
+    push: true
   - url: https://cache.projectbluefin.io:11001
     push: false
   - url: https://cache.freedesktop-sdk.io:11001

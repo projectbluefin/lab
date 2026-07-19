@@ -1,0 +1,192 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-systemd-container-tests
+  namespace: argo
+  annotations:
+    description: |
+      Runs desktop BDD suites against a scheduler-managed, privileged bootc OCI
+      Pod with systemd as PID 1. The target Pod is owned by the Workflow and is
+      deleted by the runner on every exit; no virtual machine or disk artifact
+      is created.
+  labels:
+    app.kubernetes.io/component: test-runner
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  entrypoint: run-systemd-container-tests
+  templates:
+  - name: run-systemd-container-tests
+    inputs:
+      parameters:
+      - name: image
+        value: "ghcr.io/projectbluefin/bluefin"
+      - name: image-tag
+        value: "testing"
+      - name: suite
+        value: "smoke"
+      - name: variant
+        value: "bluefin"
+      - name: testsuite-repo
+        value: "https://github.com/projectbluefin/testsuite"
+      - name: testsuite-branch
+        value: "main"
+      - name: behave-tags
+        value: ""
+    dag:
+      tasks:
+      - name: create-target
+        template: create-target
+        arguments:
+          parameters:
+          - name: image
+            value: "{{inputs.parameters.image}}"
+          - name: image-tag
+            value: "{{inputs.parameters.image-tag}}"
+          - name: suite
+            value: "{{inputs.parameters.suite}}"
+      - name: run-tests
+        depends: "create-target.Succeeded"
+        template: run-tests
+        arguments:
+          parameters:
+          - name: target-pod
+            value: "{{workflow.name}}-{{inputs.parameters.suite}}-systemd"
+          - name: suite
+            value: "{{inputs.parameters.suite}}"
+          - name: testsuite-repo
+            value: "{{inputs.parameters.testsuite-repo}}"
+          - name: testsuite-branch
+            value: "{{inputs.parameters.testsuite-branch}}"
+          - name: behave-tags
+            value: "{{inputs.parameters.behave-tags}}"
+
+  - name: create-target
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+      - name: suite
+    resource:
+      action: create
+      setOwnerReference: true
+      manifest: |
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: "{{workflow.name}}-{{inputs.parameters.suite}}-systemd"
+          namespace: "{{workflow.namespace}}"
+          labels:
+            app.kubernetes.io/component: systemd-qa-target
+            app.kubernetes.io/part-of: bluefin-test-suite
+            workflows.argoproj.io/workflow: "{{workflow.name}}"
+        spec:
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 30
+          automountServiceAccountToken: false
+          containers:
+          - name: target
+            image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+            imagePullPolicy: Always
+            command: ["/usr/lib/systemd/systemd"]
+            env:
+            - name: container
+              value: oci
+            securityContext:
+              privileged: true
+              runAsUser: 0
+              allowPrivilegeEscalation: true
+            resources:
+              requests:
+                cpu: "2"
+                memory: 4Gi
+                ephemeral-storage: 20Gi
+              limits:
+                cpu: "4"
+                memory: 8Gi
+                ephemeral-storage: 40Gi
+            volumeMounts:
+            - name: run
+              mountPath: /run
+            - name: workspace
+              mountPath: /workspace
+          volumes:
+          - name: run
+            emptyDir:
+              medium: Memory
+          - name: workspace
+            emptyDir: {}
+
+  - name: run-tests
+    activeDeadlineSeconds: 3600
+    inputs:
+      parameters:
+      - name: target-pod
+      - name: suite
+      - name: testsuite-repo
+      - name: testsuite-branch
+      - name: behave-tags
+    script:
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      command: [bash]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+          ephemeral-storage: 1Gi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+          ephemeral-storage: 2Gi
+      env:
+      - name: TARGET_POD
+        value: "{{inputs.parameters.target-pod}}"
+      - name: SUITE
+        value: "{{inputs.parameters.suite}}"
+      - name: TSREPO
+        value: "{{inputs.parameters.testsuite-repo}}"
+      - name: TSBRANCH
+        value: "{{inputs.parameters.testsuite-branch}}"
+      - name: BEHAVE_TAGS
+        value: "{{inputs.parameters.behave-tags}}"
+      source: |
+        set -euo pipefail
+        case "${SUITE}" in
+          smoke|common|developer|software|system) ;;
+          *)
+            echo "Unsupported container suite: ${SUITE}" >&2
+            exit 2
+            ;;
+        esac
+
+        trap 'kubectl delete pod "${TARGET_POD}" -n "{{workflow.namespace}}" --ignore-not-found --wait=false' EXIT
+        kubectl wait --for=condition=Ready "pod/${TARGET_POD}" \
+          -n "{{workflow.namespace}}" --timeout=180s
+
+        ready=false
+        for _ in $(seq 1 60); do
+          state=$(kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+            systemctl is-system-running 2>/dev/null || true)
+          if [[ "${state}" == "running" || "${state}" == "degraded" ]] \
+            && kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+              systemctl is-active dbus systemd-logind >/dev/null; then
+            ready=true
+            break
+          fi
+          sleep 2
+        done
+        if [[ "${ready}" != true ]]; then
+          echo "Native systemd target did not reach a usable session state" >&2
+          kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+            journalctl --no-pager || true
+          exit 1
+        fi
+
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- bash -lc "
+          set -euo pipefail
+          mkdir -p /workspace
+          git clone --depth 1 --branch \"${TSBRANCH}\" \"${TSREPO}\" /workspace/testsuite
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            python3 -m ensurepip --default-pip
+          fi
+          python3 -m pip install --quiet qecore dogtail behave
+        "

@@ -84,6 +84,23 @@ def test_container_runner_uses_a_nested_systemd_target_with_bounded_resources():
     assert "bootc install to-disk" not in content
 
 
+def test_native_systemd_runner_uses_a_scheduler_managed_target_pod():
+    content = (
+        ROOT / "argo/workflow-templates/run-systemd-container-tests.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert "action: create" in content
+    assert "kind: Pod" in content
+    assert "setOwnerReference: true" in content
+    assert 'command: ["/usr/lib/systemd/systemd"]' in content
+    assert "privileged: true" in content
+    assert "kubectl exec" in content
+    assert "kubectl delete pod" in content
+    assert "nodeSelector:" not in content
+    assert "containerDisk" not in content
+    assert "bootc install to-disk" not in content
+
+
 def test_pr_poller_uses_the_exact_testsuite_pr_source():
     content = (ROOT / "argo/workflow-templates/pr-poller.yaml").read_text(
         encoding="utf-8"

@@ -40,6 +40,19 @@ Canonical issue tracker: **projectbluefin/lab** (this repo). Do NOT file issues 
 This repo's north star is to verify **Bluefin as an image-based, atomic operating system**.
 Agents should treat that as the primary culture of the project, not as a side concern.
 
+## Core Tenet: Maximize Safe Distributed BuildStream Capacity
+
+**BuildStream work must use the cluster's available distributed capacity.**
+BuildBarn remote execution, scheduler-driven placement, and non-root
+`WaitForFirstConsumer` PVCs are the default. Do not serialize independent BST
+variants or reserve a node without live evidence that resource, worker, or
+storage limits require it.
+
+Before changing BST concurrency, inspect the live BuildBarn workers, node
+requests, semaphore holders, and PVC bindings. Set semaphore capacity to the
+safe verified parallelism, then remove terminal workflows that retain stale
+locks before treating queued work as a capacity limit.
+
 When deciding what to test or prioritize:
 
 1. **Prefer platform-contract coverage over package-era habits.**

@@ -35,7 +35,7 @@ metadata:
    - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`) while also listing the upstream artifact/source cache URLs as read-only fallback servers so BuildStream can pull prebuilt objects instead of recompiling bootstrap toolchains.
    - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
    - when the checkout uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream remote caches instead of diverging on local patch-set differences.
-   - keep BuildStream concurrency intentionally conservative for homelab lanes (`fetchers/builders/pushers: 1`, `build.max-jobs: 1`) so cache-backed builds finish without oversubscribing the cluster.
+   - keep each BuildStream driver's local concurrency bounded (`fetchers/builders/pushers: 1`, `build.max-jobs: 1`), while using BuildBarn and the workflow semaphore to run independent variants across the verified cluster capacity.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
 6. Never use a root filesystem for persistent workload data or a `hostPath` build
@@ -65,10 +65,11 @@ rides 2.5GbE. The cluster stays good at ingesting BST builds via:
   remote-execution lane; only `build-mode=re` is accepted. The
   `detect-build-mode` step validates the requested mode and rejects
   `cache-only`, `auto`, and any unknown value, so ordinary Dakota runs cannot
-  fall back to a local cache-only path. The lane uses one serialized
-  `bst-build` semaphore and per-variant workflow-owned 200Gi `local-path` cache
-  PVCs. The dakota commit poller also pins the checkout to the exact GitHub SHA
-  it observed, so the lab build follows the same revision that GitHub is
+  fall back to a local cache-only path. The lane uses the two-slot `bst-build`
+  semaphore and per-variant workflow-owned 200Gi `local-path` cache PVCs, so
+  its base and NVIDIA variants can run concurrently on scheduler-selected
+  nodes. The dakota commit poller also pins the checkout to the exact GitHub
+  SHA it observed, so the lab build follows the same revision that GitHub is
   building.
 - **Buildbarn RE sandbox device nodes**: `bb_runner` with
   `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
@@ -116,14 +117,16 @@ Mitigations:
 owns the value. Raising it lets builds preempt polling VMs instead of the
 reverse.
 
-2. **Serialize high-memory BST variants.** Do not run two 14 GiB BST build pods
-in parallel; the second pod may be forced onto a node without enough headroom.
-The Dakota pipeline schedules the base and NVIDIA variants in parallel, but
-the single `bst-build` semaphore ensures only one RE build pod runs at a time.
+2. **Use verified parallel BST capacity.** Keep independent variants concurrent
+when BuildBarn workers and node requests have safe headroom. The Dakota pipeline
+uses two `bst-build` slots so base and NVIDIA builds can run on separate
+scheduler-selected nodes; reassess live worker and node capacity before raising
+or lowering that limit.
 
-3. **Limit the `bst-build` semaphore to 1.** The semaphore in
-`manifests/workflow-semaphores.yaml` gates all BST build lanes. Set
-`bst-build: "1"` so expensive cache-heavy builds queue instead of colliding.
+3. **Clear stale semaphore holders before reducing capacity.** The semaphore in
+`manifests/workflow-semaphores.yaml` gates all BST build lanes. Confirm terminal
+workflows do not retain locks, then set `bst-build` to the safe live worker
+capacity instead of serializing independent work by default.
 
 4. **Verify the fix live.** After submission, confirm the pod is Running and on a
 node with enough free requested memory:

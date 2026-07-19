@@ -72,6 +72,7 @@ def test_container_runner_uses_a_nested_systemd_target_with_bounded_resources():
     assert "--volume /etc/resolv.conf:/etc/resolv.conf:ro" in content
     assert "systemctl is-active dbus systemd-logind" in content
     assert "bluefin-test:x:1000:1000" in content
+    assert "bluefin-test ALL=(ALL) NOPASSWD: ALL" in content
     assert "--user 1000:1000" in content
     assert "podman exec" in content
     assert "podman rm --force" in content

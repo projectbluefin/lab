@@ -156,6 +156,9 @@ spec:
           if ! grep -q "^bluefin-test:" /etc/group; then
             echo "bluefin-test:x:1000:" >>/etc/group
           fi
+          mkdir -p /etc/sudoers.d
+          echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
+          chmod 0440 /etc/sudoers.d/bluefin-test
           mkdir -p /home/bluefin-test/run /tmp/results
           chown -R 1000:1000 /home/bluefin-test /tmp/results
           chmod 700 /home/bluefin-test/run

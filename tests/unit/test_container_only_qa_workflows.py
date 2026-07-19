@@ -99,6 +99,11 @@ def test_native_systemd_runner_uses_a_scheduler_managed_target_pod():
     assert "kubectl exec" in content
     assert 'tee /workspace/resolv.conf < /etc/resolv.conf' in content
     assert 'rm -f /etc/resolv.conf' in content
+    assert "bluefin-test:x:1000:1000" in content
+    assert "bluefin-test ALL=(ALL) NOPASSWD: ALL" in content
+    assert "runuser -u bluefin-test -- env" in content
+    assert "qecore-headless" in content
+    assert "/bin/true" in content
     assert "kubectl delete pod" in content
     assert "nodeSelector:" not in content
     assert "containerDisk" not in content

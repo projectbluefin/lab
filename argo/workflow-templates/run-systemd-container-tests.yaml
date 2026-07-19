@@ -197,4 +197,34 @@ spec:
             python3 -m ensurepip --default-pip
           fi
           python3 -m pip install --quiet qecore dogtail behave
+          if ! grep -q "^bluefin-test:" /etc/passwd; then
+            echo "bluefin-test:x:1000:1000:Bluefin QA:/home/bluefin-test:/bin/bash" >>/etc/passwd
+          fi
+          if ! grep -q "^bluefin-test:" /etc/group; then
+            echo "bluefin-test:x:1000:" >>/etc/group
+          fi
+          if ! grep -q "^bluefin-test:" /etc/shadow; then
+            echo "bluefin-test:!:0:0:99999:7:::" >>/etc/shadow
+          fi
+          mkdir -p /etc/sudoers.d /home/bluefin-test/run
+          echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
+          chmod 0440 /etc/sudoers.d/bluefin-test
+          chown -R 1000:1000 /home/bluefin-test
         "
+
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          test -x /usr/libexec/gnome-ponytail-daemon
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          runuser -u bluefin-test -- env \
+            HOME=/home/bluefin-test \
+            XDG_RUNTIME_DIR=/home/bluefin-test/run \
+            DBUS_SESSION_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+            AT_SPI_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+            XDG_SESSION_TYPE=wayland \
+            XDG_SESSION_DESKTOP=gnome \
+            LIBGL_ALWAYS_SOFTWARE=1 \
+            GALLIUM_DRIVER=llvmpipe \
+            qecore-headless \
+            --session-type wayland \
+            --session-desktop gnome \
+            /bin/true

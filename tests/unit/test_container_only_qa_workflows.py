@@ -105,7 +105,10 @@ def test_native_systemd_runner_uses_a_scheduler_managed_target_pod():
     assert "bluefin-test ALL=(ALL) NOPASSWD: ALL" in content
     assert "runuser -u bluefin-test -- env" in content
     assert "qecore-headless" in content
-    assert "/bin/true" in content
+    assert "run-behave.sh" in content
+    assert "results.json" in content
+    assert "behave-rc.txt" in content
+    assert "cat /workspace/results.json > /tmp/results/results.json" in content
     assert "kubectl delete pod" in content
     assert "nodeSelector:" not in content
     assert "containerDisk" not in content

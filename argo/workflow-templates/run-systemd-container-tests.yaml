@@ -216,8 +216,50 @@ spec:
 
         kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
           test -x /usr/libexec/gnome-ponytail-daemon
+        kubectl exec -i -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          env SUITE="${SUITE}" BEHAVE_TAGS="${BEHAVE_TAGS}" bash -s <<'TARGET_SUITE'
+        set -euo pipefail
+        mkdir -p /workspace/results
+        chown 1000:1000 /workspace/results
+        cat >/workspace/run-behave.sh <<'RUN_BEHAVE'
+        #!/bin/bash
+        set -euo pipefail
+        export PYTHONPATH="/workspace/testsuite"
+
+        case "${SUITE}" in
+          smoke|common|developer|software|system) ;;
+          *)
+            echo "Unsupported container suite: ${SUITE}" >&2
+            exit 2
+            ;;
+        esac
+
+        python3 /workspace/testsuite/tests/shared/wait_for_shell.py
+        /usr/libexec/gnome-ponytail-daemon &
+        sleep 2
+
+        TAGS_ARG="--tags ~@wip"
+        if [[ -n "${BEHAVE_TAGS}" ]]; then
+          TAGS_ARG="${BEHAVE_TAGS}"
+        fi
+
+        BEHAVE_RC=0
+        python3 -m behave "/workspace/testsuite/tests/${SUITE}/features/" \
+          --format json.pretty \
+          --outfile /workspace/results.json \
+          --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
+        echo "${BEHAVE_RC}" >/workspace/behave-rc.txt
+        exit "${BEHAVE_RC}"
+        RUN_BEHAVE
+        chmod 0755 /workspace/run-behave.sh
+        TARGET_SUITE
+
+        mkdir -p /tmp/results
+        QECORE_RC=0
         kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
           runuser -u bluefin-test -- env \
+            SUITE="${SUITE}" \
+            BEHAVE_TAGS="${BEHAVE_TAGS}" \
             HOME=/home/bluefin-test \
             XDG_RUNTIME_DIR=/home/bluefin-test/run \
             DBUS_SESSION_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
@@ -229,4 +271,28 @@ spec:
             qecore-headless \
             --session-type wayland \
             --session-desktop gnome \
-            /bin/true
+            /workspace/run-behave.sh || QECORE_RC=$?
+
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          cat /workspace/behave-rc.txt > /tmp/results/behave-rc.txt
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          cat /workspace/results.json > /tmp/results/results.json
+
+        BEHAVE_RC=$(cat /tmp/results/behave-rc.txt)
+        python3 - <<'PY'
+        import json
+
+        with open("/tmp/results/results.json", encoding="utf-8") as result_file:
+            data = json.load(result_file)
+        failed = sum(
+            1 for feature in data for scenario in feature.get("elements", [])
+            if scenario.get("status") == "failed"
+        )
+        total = sum(len(feature.get("elements", [])) for feature in data)
+        print(f"{total - failed}/{total} scenarios passed")
+        PY
+
+        if [[ "${QECORE_RC}" -ne 0 ]]; then
+          exit "${QECORE_RC}"
+        fi
+        exit "${BEHAVE_RC}"

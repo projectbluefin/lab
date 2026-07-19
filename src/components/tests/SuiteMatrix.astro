@@ -3,6 +3,7 @@ interface MatrixCell {
   id: string;
   variant: string;
   suite: string;
+  role: string;
   result_status: string;
   last_run: string | null;
   scenarios_total: number;
@@ -10,6 +11,8 @@ interface MatrixCell {
   pass_rate: number | null;
   state: string;
   state_reason: string | null;
+  enrollment_issue_url: string | null;
+  enrollment_issue_number: number | null;
 }
 
 interface MatrixRow {
@@ -20,9 +23,18 @@ interface MatrixRow {
 interface Props {
   matrix: MatrixRow[];
   suiteOrder: string[];
+  suiteRoles: Record<string, string>;
 }
 
-const { matrix, suiteOrder } = Astro.props;
+const { matrix, suiteOrder, suiteRoles } = Astro.props;
+
+const issueNumber = (url: string | null): number | null => {
+  if (!url) return null;
+  const match = url.match(/\/issues\/(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+};
+
+const suiteRole = (suite: string) => suiteRoles[suite] ?? 'info';
 ---
 
 <style>
@@ -91,6 +103,26 @@ const { matrix, suiteOrder } = Astro.props;
     border-color: rgba(56, 189, 248, 0.3);
     color: #38bdf8;
   }
+  .suite-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .role-dot {
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+  }
+  .role-dot--gate { background: rgba(244, 63, 94, 0.12); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.2); }
+  .role-dot--info { background: rgba(125, 211, 252, 0.12); color: #7dd3fc; border: 1px solid rgba(125, 211, 252, 0.2); }
+  .enrollment-link {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-decoration: underline;
+    text-decoration-color: rgba(148, 163, 184, 0.3);
+  }
 </style>
 
 <div class="matrix-toolbar">
@@ -112,7 +144,14 @@ const { matrix, suiteOrder } = Astro.props;
       <tr>
         <th scope="col">Variant</th>
         {suiteOrder.map((suite) => (
-          <th scope="col">{suite}</th>
+          <th scope="col">
+            <span class="suite-header">
+              {suite}
+              <span class={`role-dot role-dot--${suiteRole(suite) === 'gate' ? 'gate' : 'info'}`}>
+                {suiteRole(suite) === 'gate' ? 'GATE' : 'INFO'}
+              </span>
+            </span>
+          </th>
         ))}
       </tr>
     </thead>
@@ -135,22 +174,32 @@ const { matrix, suiteOrder } = Astro.props;
                     <span class={`pill pill--${cell.state === 'available' ? cell.result_status : 'unavailable'}`}>
                       {cell.state === 'available' ? cell.result_status : 'unavailable'}
                     </span>
-                    <strong>{cell.state === 'available' && cell.pass_rate !== null ? `${cell.pass_rate}%` : '—'}</strong>
-                    <span>{cell.scenarios_failed}/{cell.scenarios_total} failed</span>
-                    
-                    {cell.state === 'available' && cell.pass_rate !== null && (
-                      <div class="progress-bar-container">
-                        <div
-                          class="progress-bar"
-                          style={`width: ${cell.pass_rate}%; background: ${
-                            cell.pass_rate >= 90
-                              ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                              : cell.pass_rate >= 60
-                                ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                                : 'linear-gradient(90deg, #ef4444, #f87171)'
-                          };`}
-                        />
-                      </div>
+                    <span class={`role-dot role-dot--${cell.role === 'gate' ? 'gate' : 'info'}`}>
+                      {cell.role === 'gate' ? 'GATE' : 'INFO'}
+                    </span>
+                    {cell.state === 'available' ? (
+                      <>
+                        <strong>{cell.pass_rate !== null ? `${cell.pass_rate}%` : '—'}</strong>
+                        <span>{cell.scenarios_failed}/{cell.scenarios_total} failed</span>
+                        {cell.pass_rate !== null && (
+                          <div class="progress-bar-container">
+                            <div
+                              class="progress-bar"
+                              style={`width: ${cell.pass_rate}%; background: ${
+                                cell.pass_rate >= 90
+                                  ? 'linear-gradient(90deg, #10b981, #4ade80)'
+                                  : cell.pass_rate >= 60
+                                    ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                                    : 'linear-gradient(90deg, #ef4444, #f87171)'
+                              };`}
+                            />
+                          </div>
+                        )}
+                      </>
+                    ) : cell.enrollment_issue_url ? (
+                      <span class="enrollment-link">Not enrolled — issue #{issueNumber(cell.enrollment_issue_url)}</span>
+                    ) : (
+                      <span class="matrix-table__empty">{cell.state_reason ?? 'Awaiting evidence'}</span>
                     )}
                   </a>
                 ) : (

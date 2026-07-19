@@ -38,6 +38,7 @@ interface MatrixRow {
   variant: string;
   branch: string;
   suite: string;
+  role: string;
   result_status: string;
   last_run: string | null;
   workflow_name: string | null;
@@ -50,11 +51,18 @@ interface MatrixRow {
   screenshot_url: string | null;
   state: string;
   state_reason: string | null;
+  enrollment_issue_url: string | null;
   source_url: string;
   collected_at: string;
   derivation: string;
   details: MatrixRowDetails | null;
 }
+
+const issueNumber = (url: string | null): number | null => {
+  if (!url) return null;
+  const match = url.match(/\/issues\/(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+};
 
 interface Props {
   row: MatrixRow;
@@ -546,6 +554,20 @@ const streakCount = (() => {
     color: #38bdf8;
     border: 1px solid rgba(56, 189, 248, 0.2);
   }
+  .header-badge--role {
+    font-weight: 800;
+    letter-spacing: 0.06em;
+  }
+  .header-badge--role-gate {
+    background: rgba(244, 63, 94, 0.12);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.2);
+  }
+  .header-badge--role-info {
+    background: rgba(125, 211, 252, 0.12);
+    color: #7dd3fc;
+    border: 1px solid rgba(125, 211, 252, 0.2);
+  }
   .header-badge--mode {
     background: rgba(168, 85, 247, 0.12);
     color: #c084fc;
@@ -618,6 +640,9 @@ const streakCount = (() => {
       <h3>{row.id}</h3>
       <div class="detail-card__header-meta">
         <span class="header-badge header-badge--branch">{row.branch}</span>
+        <span class={`header-badge header-badge--role header-badge--role-${row.role === 'gate' ? 'gate' : 'info'}`}>
+          {row.role === 'gate' ? 'GATE' : 'INFO'}
+        </span>
         <span class="header-badge header-badge--mode">{row.suite === 'system' ? 'KubeVirt VM' : 'Container'}</span>
         {row.state === 'available' && (
           <>
@@ -655,8 +680,15 @@ const streakCount = (() => {
   <div class="detail-card__body">
     {row.state !== 'available' ? (
       <div class="detail-note detail-note--unavailable" style="margin-top: 0;">
-        <h4>Awaiting Test Run Evidence</h4>
+        <h4>{row.enrollment_issue_url ? 'Not Enrolled' : 'Awaiting Test Run Evidence'}</h4>
         <p>{row.state_reason ?? 'No completed run has been published for this matrix cell yet.'}</p>
+        {row.enrollment_issue_url && (
+          <p>
+            <a href={row.enrollment_issue_url} target="_blank" rel="noreferrer" style="color: #38bdf8; text-decoration: underline;">
+              Enrollment issue #{issueNumber(row.enrollment_issue_url)}
+            </a>
+          </p>
+        )}
         <div style="margin-top: 1rem; font-size: 0.8rem; color: #64748b;">
           <strong>Target:</strong> {row.variant} · {row.suite} ({row.branch})<br/>
           <strong>To trigger locally:</strong> <code style="color: #38bdf8; background: rgba(0,0,0,0.25); padding: 0.1rem 0.35rem; border-radius: 4px; font-family: monospace;">just run-tests-tag {row.branch === 'testing' ? 'testing' : 'stable'}</code>
@@ -876,7 +908,7 @@ const streakCount = (() => {
                       return (
                         <div class="failure-row" data-search-text={detailed.scenario_name.toLowerCase()}>
                           <div class="failure-row__header">
-                            <span class="failure-row__name">✕ {detailed.scenario_name}</span>
+                            <span class="failure-row__name">Failed: {detailed.scenario_name}</span>
                             <button 
                               class="failure-action-btn btn-copy-command" 
                               data-command={copyCmd}
@@ -904,7 +936,7 @@ const streakCount = (() => {
                       return (
                         <div class="failure-row" data-search-text={scenarioName.toLowerCase()}>
                           <div class="failure-row__header">
-                            <span class="failure-row__name">✕ {scenarioName}</span>
+                            <span class="failure-row__name">Failed: {scenarioName}</span>
                             <button 
                               class="failure-action-btn btn-copy-command" 
                               data-command={copyCmd}
@@ -925,7 +957,7 @@ const streakCount = (() => {
               </div>
             ) : (
               <div class="suite-pass-success-widget">
-                <div class="success-icon-badge">✓</div>
+                <div class="success-icon-badge">OK</div>
                 <h5>Suite Verification Complete</h5>
                 <p>
                   All <strong>{row.scenarios_total}</strong> scenarios executed and validated successfully on this variant without any failures. The core operating system contract is fully verified.

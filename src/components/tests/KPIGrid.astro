@@ -1,97 +1,59 @@
 ---
-interface SummaryMetric {
-  id: string;
-  label: string;
-  value: number;
-  unit: string;
-  state: string;
-  state_reason: string | null;
-}
-
 interface Props {
-  totalCells: number;
-  availableCount: number;
-  unavailableCount: number;
-  globalPassRate: number | null;
-  totalScenarios: number;
-  summaryMetrics: SummaryMetric[];
-  status: string;
+  lanesGood: number;
+  lanesTotal: number;
+  gatingPassRate: number | null;
+  infoPassRate: number | null;
+  flakyRows: number;
+  releaseVerdictSource: string;
+  matrixSource: string;
+  historySource: string;
 }
 
 const {
-  totalCells,
-  availableCount,
-  unavailableCount,
-  globalPassRate,
-  totalScenarios,
-  summaryMetrics,
-  status,
+  lanesGood,
+  lanesTotal,
+  gatingPassRate,
+  infoPassRate,
+  flakyRows,
+  releaseVerdictSource,
+  matrixSource,
+  historySource,
 } = Astro.props;
 ---
 
-<!-- Legacy hidden section keeps existing tests passing -->
-<section class="metric-grid legacy-hidden" style="display: none !important;">
-  {summaryMetrics.map((metric) => (
-    <article class="metric-card">
-      <p class="metric-card__label">{metric.label}</p>
-      <p class="metric-card__value">{metric.value}</p>
-      <p class="metric-card__meta">
-        {metric.unit} · {metric.state}
-      </p>
-    </article>
-  ))}
-  <article class="metric-card">
-    <p class="metric-card__label">Rows with history detail</p>
-    <p class="metric-card__value">{availableCount}</p>
-    <p class="metric-card__meta">count · {status}</p>
-  </article>
-</section>
-
 <div class="kpi-grid">
-  <!-- Total matrix cells -->
-  <div class="kpi-card">
-    <div class="kpi-card__title">Total matrix cells</div>
+  <a href={releaseVerdictSource} target="_blank" rel="noreferrer" class="kpi-card">
+    <div class="kpi-card__title">Lanes good</div>
     <div>
-      <div class="kpi-card__value">{totalCells}</div>
-      <div class="kpi-card__sub">suite/variant combinations</div>
+      <div class="kpi-card__value">{lanesGood}/{lanesTotal}</div>
+      <div class="kpi-card__sub">release verdicts good (ADR 0002)</div>
     </div>
-  </div>
+  </a>
 
-  <!-- Completed runs -->
-  <div class="kpi-card kpi-card--success">
-    <div class="kpi-card__title">Lanes with results <span class="pill-ok">✓</span></div>
+  <a href={matrixSource} target="_blank" rel="noreferrer" class="kpi-card kpi-card--success">
+    <div class="kpi-card__title">Gating pass rate</div>
     <div>
-      <div class="kpi-card__value">{availableCount}</div>
-      <div class="kpi-card__sub">completed QA runs published</div>
+      <div class="kpi-card__value">{gatingPassRate !== null ? `${gatingPassRate}%` : '—'}</div>
+      <div class="kpi-card__sub">smoke / system / flatcar suites</div>
     </div>
-  </div>
+  </a>
 
-  <!-- Awaiting results -->
-  <div class="kpi-card kpi-card--warning">
-    <div class="kpi-card__title">Awaiting execution <span class="pill-gap">—</span></div>
+  <a href={matrixSource} target="_blank" rel="noreferrer" class="kpi-card kpi-card--info">
+    <div class="kpi-card__title">Info pass rate</div>
     <div>
-      <div class="kpi-card__value">{unavailableCount}</div>
-      <div class="kpi-card__sub">runs pending/unexecuted</div>
+      <div class="kpi-card__value">{infoPassRate !== null ? `${infoPassRate}%` : '—'}</div>
+      <div class="kpi-card__sub">developer / software / common suites</div>
     </div>
-  </div>
+  </a>
 
-  <!-- Global pass rate -->
-  <div class="kpi-card kpi-card--success">
-    <div class="kpi-card__title">Global pass rate</div>
+  <a href={historySource} target="_blank" rel="noreferrer" class="kpi-card kpi-card--warning">
+    <div class="kpi-card__title">Flaky rows</div>
     <div>
-      <div class="kpi-card__value">{globalPassRate !== null ? `${globalPassRate}%` : '—'}</div>
-      <div class="kpi-card__sub">across all verified scenarios</div>
+      <div class="kpi-card__value">{flakyRows}</div>
+      <div class="kpi-card__sub">rows with status flips</div>
     </div>
-  </div>
-
-  <!-- Total scenarios verified -->
-  <div class="kpi-card">
-    <div class="kpi-card__title">Verified scenarios</div>
-    <div>
-      <div class="kpi-card__value">{totalScenarios.toLocaleString()}</div>
-      <div class="kpi-card__sub">behave assertions run</div>
-    </div>
-  </div>
+  </a>
 </div>
 
 <style>
@@ -123,6 +85,11 @@ const {
     border-color: rgba(16, 185, 129, 0.25);
   }
   .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
+  .kpi-card--info {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
+    border-color: rgba(56, 189, 248, 0.2);
+  }
+  .kpi-card--info:hover { border-color: rgba(56, 189, 248, 0.4); }
   .kpi-card--warning {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
     border-color: rgba(245, 158, 11, 0.2);

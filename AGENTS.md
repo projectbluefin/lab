@@ -42,9 +42,21 @@ Agents should treat that as the primary culture of the project, not as a side co
 
 ## Core Tenet: Maximize Safe Distributed BuildStream Capacity
 
-**BuildStream work must use the cluster's available distributed capacity.**
+**Distributed BuildBarn remote execution is mandatory for every BuildStream
+build.** A driver Pod using remote artifact caches while compiling locally is a
+failure, not a distributed build and not an acceptable fallback. Cache-only,
+runner-local, and single-node BST execution are prohibited unless a diagnosed
+remote-execution failure is being isolated in a deliberately bounded
+investigation.
+
+Before a build is admitted, prove that its generated configuration contains
+`projects.<name>.remote-execution`, BuildStream reports `Remote Execution
+Configuration` at startup, and live actions reach BuildBarn workers on
+scheduler-selected nodes. Stop any run that fails those checks; do not spend
+cluster time on a local substitute.
+
 BuildBarn remote execution, scheduler-driven placement, and non-root
-`WaitForFirstConsumer` PVCs are the default. Do not serialize independent BST
+`WaitForFirstConsumer` PVCs are required. Do not serialize independent BST
 variants or reserve a node without live evidence that resource, worker, or
 storage limits require it.
 

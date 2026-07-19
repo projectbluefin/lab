@@ -74,6 +74,8 @@ placed on any healthy node without depending on a node-local root-disk cache.
 
 For distributed BuildStream runs, fix the shared config or template first and then stop/re-submit the workflow once; do not let Argo keep retrying a pod that is failing for a known configuration reason. Repeated retries burn node CPU and memory, overfill the namespace queue, and make the cluster look resource-constrained even when the underlying config issue is trivial.
 
+A BuildStream run is only "distributed" when BuildBarn remote execution is actually engaged. Remote artifact caches alone are not distributed builds. Before calling any BuildStream build distributed, require three independent pieces of evidence: (1) `projects.<name>.remote-execution` appears in the generated BuildStream config for the project, (2) BuildStream startup logs report a Remote Execution Configuration pointing at the BuildBarn frontend, and (3) current action activity is visible on BuildBarn workers (`kubectl logs -n buildbarn` or BuildBarn dashboards). Cache-only or local-driver BuildStream behavior is a failed operational state, not a supported fallback, and must fail fast unless you are intentionally running a contained diagnosis after a known remote-execution failure.
+
 ### 2. Parameter passing — always explicit
 
 Sub-templates never inherit parameters from the caller scope. Pass every parameter explicitly:
@@ -301,9 +303,21 @@ Argo DAG semantics: a task with `depends: "X.Succeeded"` is **Omitted** (not an 
 
 This fires `run-system` whether `run-software` succeeded or was skipped by its own `when` condition.
 
-#### BuildStream workflows: use the shared remote-cache ConfigMap
+#### BuildStream workflows: remote execution is mandatory; cache is not distribution
 
-For Dakota/BST BuildStream lanes that target the distributed Buildbarn grid, mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block that points artifact writes at `grpc://frontend.buildbarn.svc.cluster.local:8980` while listing upstream read-only cache servers (`https://gbm.gnome.org:11003`, `https://cache.freedesktop-sdk.io:11001`, `https://cache.projectbluefin.io:11001`) for fallback reads. The current BuildStream image used by these workflows does not accept the legacy `remoteasset:` block, so the override omits it. When the project uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream caches instead of diverging on local patch-set differences. Junction refs can be Git-describe strings rather than remote names; fetch the trailing full commit ID after `-g` and check out `FETCH_HEAD`, rather than fetching the full descriptive ref. This is the pattern used by `dakota-build-pipeline`, `dakota-buildstream-warm-cache`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, and `bst-qa-pipeline`.
+BuildStream workflows in this lab must run against the BuildBarn remote-execution grid. A workflow that only mounts the shared cache ConfigMap or points at remote artifact servers is not distributed and is not a valid operational fallback.
+
+Evidence required before calling a BuildStream run distributed:
+
+1. Generated BuildStream config contains `projects.<name>.remote-execution` for the project being built.
+2. BuildStream startup logs show a Remote Execution Configuration loaded (frontend address, instance name, and platform properties).
+3. BuildBarn workers show current action activity for the run (scheduled/executing actions matching the BuildStream platform properties).
+
+Practical config generation: mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block. The override must include the `remote-execution` project block pointing at the BuildBarn frontend; artifact/cache server blocks alone are insufficient. Point artifact writes at `grpc://frontend.buildbarn.svc.cluster.local:8980` and list upstream read-only cache servers (`https://gbm.gnome.org:11003`, `https://cache.freedesktop-sdk.io:11001`, `https://cache.projectbluefin.io:11001`) for fallback reads. The current BuildStream image used by these workflows does not accept the legacy `remoteasset:` block, so the override omits it.
+
+When the project uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream caches instead of diverging on local patch-set differences. Junction refs can be Git-describe strings rather than remote names; fetch the trailing full commit ID after `-g` and check out `FETCH_HEAD`, rather than fetching the full descriptive ref. This is the pattern used by `dakota-build-pipeline`, `dakota-buildstream-warm-cache`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, and `bst-qa-pipeline`.
+
+If any of the three evidence items above are missing, stop and fix the config before running. Do not proceed with cache-only or local-driver execution as a normal mode.
 
 ### 7b. Queueing and deduplication: gate the template, not just the workflow
 
@@ -409,9 +423,9 @@ check Buildbarn worker platform registration before changing workflow behavior:
 1. Confirm workers are actually running (`kubectl get pods -n buildbarn`).
 2. Check `manifests/buildbarn-config.yaml` `worker.jsonnet` runner `platform.properties`.
 3. Ensure worker properties match BuildStream action properties (`ISA=x86-64`, `OSFamily=linux`).
-4. Keep `remote-execution` setting independent from this fix; solve queue-key mismatch first.
+4. Do not disable `remote-execution` or switch to a local driver as a workaround; solve the queue-key mismatch while keeping the mandatory RE path intact.
 
-#### BuildStream CAS upload failures: keep Dakota lane local-only
+#### BuildStream CAS upload failures: fail fast, do not fall back to local-only
 
 **Symptom:** Dakota logs show `Unable to upload N blobs to remote CAS` during bootstrap fetch/checkouts,
 usually at 15-30+ minute mark when very large trees (gcc-stage1, freedesktop-sdk) trigger multi-thousand-blob
@@ -421,9 +435,9 @@ batches that exceed gRPC message size limits (default 4 MiB in bazel-remote).
 Very large staged trees (freedesktop-sdk bootstrap) generate 37K+ digests in a single call, exceeding
 the server's `MaxRecvMsgSize` ceiling. Neither bazel-remote nor Buildbarn frontend expose CLI flags to override this.
 
-**Fix: Run Dakota with pod-local cache only** (no remote `cache.storage-service` / `artifacts.servers` overrides).
+**Policy:** This is a remote-execution infrastructure failure. Do **not** switch the Dakota lane to pod-local cache-only execution as a routine fix. Cache-only or local-driver BuildStream behavior is a failed operational state and must fail fast. The correct remediation is to fix the RE/CAS infrastructure (frontend `MaxRecvMsgSize`, batching limits, or worker configuration), not to mask it by moving execution local.
 
-Operational rule:
+**Contained diagnosis only:** If you are intentionally reproducing or isolating a known remote-execution failure, you may run a bounded, labelled pod-local build with these settings. It must not be presented as a normal distributed build and must not be left in templates as a fallback:
 1. Remove remote cache server blocks from Dakota config generation (`cache.storage-service`, `artifacts`, project cache overrides).
 2. Keep execution local in workflow pods (no `remote-execution` block).
 3. **Pod-local builds are slower, require extended deadlines, and require scaled CPU requests/limits to saturate physical worker cores:**

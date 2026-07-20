@@ -15,6 +15,10 @@ metadata:
 spec:
   templates:
   - name: run-container-tests
+    # GNOME/DRM tests need the physical desktop host. exo-0 is headless and
+    # cannot provide a graphical seat even when /sys and /run/udev are mounted.
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: "true"
     activeDeadlineSeconds: 3600
     inputs:
       parameters:
@@ -356,4 +360,6 @@ spec:
     - name: containers-runroot
       emptyDir: {}
     - name: udev
-      emptyDir: {}
+      hostPath:
+        path: /run/udev
+        type: Directory

@@ -1,6 +1,4 @@
-import sys
 from unittest.mock import MagicMock, patch
-import pytest
 
 from tests.shared.wait_for_shell import wait_for_shell
 

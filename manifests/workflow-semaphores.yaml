@@ -4,12 +4,10 @@
 # callers, including workflow-of-workflows invocations via templateRef.
 #
 # Keys:
-#   bst-build          — Dakota/Cosmic BuildStream build lanes.
-#                        Keep two lanes admitted so bluefin + bluefin-nvidia
-#                        can run concurrently and both buildbarn workers remain
-#                        busy on the two-node fleet.
-#   bst-build-manual   — Dedicated recovery lane for manual Dakota submissions
-#                        so poller-triggered jobs cannot starve operator runs.
+#   bst-build          — Global Dakota/Cosmic BuildStream pipeline lane.
+#                        One pipeline owns the slot; its variants still run in
+#                        parallel, keeping both BuildBarn workers busy without
+#                        stampeding the cache or starving lab validation.
 #   migration-containerdisk-build — Serializes the migration workflow while it
 #                        refreshes and consumes its temporary VM source disk.
 apiVersion: v1
@@ -20,6 +18,5 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 data:
-  bst-build: "2"
-  bst-build-manual: "2"
+  bst-build: "1"
   migration-containerdisk-build: "1"

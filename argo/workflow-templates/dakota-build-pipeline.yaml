@@ -8,7 +8,7 @@ metadata:
       Additive dakota BST build pipeline. Builds the bluefin and bluefin-nvidia OCI
       variants in parallel using the shared Buildbarn frontend as the single
       source of truth for artifacts and source caches. BuildStream driver pods use
-      emptyDir scratch so they can float freely across ghost/exo-0; required
+      node-local persistent cache directories on ghost/exo-0; required
       podAntiAffinity keeps the two variant drivers on different nodes. Triggered
       by push to dakota:testing via dakota-commit-poller CronWorkflow. On success,
       exports to local Zot (:30500) as dakota:testing and dakota-nvidia:testing.
@@ -18,7 +18,8 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  # BST build concurrency is handled by the scheduler via pod resource requests.
+  # One pipeline is admitted at a time by the cluster-wide bst-build
+  # semaphore; the two variant drivers inside that pipeline remain parallel.
   # Cold bootstrap + source fetch + package compilation can exceed the prior 6h
   # per-pod deadline, so allow a full 12h per build pod and a 24h workflow
   # ceiling to cover one complete build/export path without killing it mid-run.
@@ -44,6 +45,11 @@ spec:
   templates:
 
     - name: build
+      synchronization:
+        semaphores:
+          - configMapKeyRef:
+              name: workflow-semaphores
+              key: bst-build
       inputs:
         parameters:
           - name: ref
@@ -202,11 +208,6 @@ spec:
                   value: "{{inputs.parameters.lock-key}}"
 
     - name: bst-build-re
-      synchronization:
-        semaphores:
-        - configMapKeyRef:
-            name: workflow-semaphores
-            key: "{{inputs.parameters.lock-key}}"
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -236,9 +237,13 @@ spec:
         - name: fuse
           hostPath:
             path: /dev/fuse
+        # Preserve BuildStream's local artifact cache between pipeline pods.
+        # Remote CAS remains authoritative; this avoids refetching the same
+        # large input roots after a driver pod is replaced.
         - name: bst-cache
-          emptyDir:
-            sizeLimit: 200Gi
+          hostPath:
+            path: /var/lib/dakota/buildstream-cache
+            type: DirectoryOrCreate
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache

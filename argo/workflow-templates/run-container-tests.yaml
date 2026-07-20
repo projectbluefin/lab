@@ -194,9 +194,17 @@ spec:
           mkdir -p /run/gdm /var/log/gdm
 
           # Make sure groups exist so the test user can access DRI/input devices.
-          groupadd -f video
-          groupadd -f render
-          groupadd -f input
+          # Some target images return success from `groupadd -f` without
+          # creating a missing system group; verify and create explicitly.
+          for group in video render input; do
+            if ! getent group "${group}" >/dev/null 2>&1; then
+              groupadd --system "${group}"
+            fi
+            getent group "${group}" >/dev/null 2>&1 || {
+              echo "Failed to create required group ${group}" >&2
+              exit 1
+            }
+          done
 
           # Create / update the test user with device groups.
           if ! id bluefin-test >/dev/null 2>&1; then

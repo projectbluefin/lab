@@ -1,4 +1,6 @@
 # Buildbarn worker + runner — one pair per eligible node (DaemonSet).
+# The worker cache is node-local and intentionally persistent across pod
+# restarts; losing it turns every remote-execution build into a cold bootstrap.
 #
 # Runner is BuildStream-specific: chrootIntoInputRoot (see buildbarn-config
 # runner.jsonnet) requires CAP_SYS_CHROOT, so it runs as root with only that
@@ -121,12 +123,10 @@ spec:
                 path: runner.jsonnet
               - key: worker.jsonnet
                 path: worker.jsonnet
+        # A DaemonSet cannot use one local-path PVC per node without a
+        # separate StatefulSet. This node-local hostPath gives each worker a
+        # stable cache while keeping the cache close to its BuildBarn runner.
         - name: worker
-          ephemeral:
-            volumeClaimTemplate:
-              spec:
-                accessModes: [ReadWriteOnce]
-                storageClassName: local-path
-                resources:
-                  requests:
-                    storage: 200Gi
+          hostPath:
+            path: /var/lib/buildbarn/worker
+            type: DirectoryOrCreate

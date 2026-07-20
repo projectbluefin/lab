@@ -1,6 +1,619 @@
 [
 {
   "description": [
+    "Validates GNOME Files (Nautilus) is functional on a fresh Bluefin boot.",
+    "All shared steps come from qecore common_steps; Nautilus-specific checks live in",
+    "gnome_files_steps.py."
+  ],
+  "elements": [
+    {
+      "keyword": "Background",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:7",
+      "name": "",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "name": "Launch Files via command",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "name": "Files window is accessible",
+          "step_type": "given"
+        }
+      ],
+      "type": "background"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:12",
+      "name": "Files launches and window is accessible",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.286090612411499,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.73897624015808,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:13",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.633009433746338,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "retry",
+        "files",
+        "launch",
+        "sla_15s"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:16",
+      "name": "Home folder is in the sidebar",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.27661705017089844,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.656625747680664,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:17",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:125"
+          },
+          "name": "Home folder is in the sidebar",
+          "result": {
+            "duration": 21.002322673797607,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "files",
+        "sidebar"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:20",
+      "name": "Navigating to home folder shows contents",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.27815818786621094,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.603525400161743,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:21",
+          "match": {
+            "arguments": [
+              {
+                "name": "name",
+                "value": "Home"
+              }
+            ],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:150"
+          },
+          "name": "Navigate to \"Home\" in Files sidebar",
+          "result": {
+            "duration": 22.575030088424683,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:22",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:205"
+          },
+          "name": "Navigating to home folder shows file listing",
+          "result": {
+            "duration": 20.84560799598694,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "files",
+        "navigation"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:25",
+      "name": "Back button returns to previous location after navigating to Downloads",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.26657629013061523,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.609612703323364,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:26",
+          "match": {
+            "arguments": [
+              {
+                "name": "name",
+                "value": "Downloads"
+              }
+            ],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:150"
+          },
+          "name": "Navigate to \"Downloads\" in Files sidebar",
+          "result": {
+            "duration": 21.303330898284912,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:27",
+          "match": {
+            "arguments": [
+              {
+                "name": "location",
+                "value": "Downloads"
+              }
+            ],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:187"
+          },
+          "name": "Nautilus location shows \"Downloads\"",
+          "result": {
+            "duration": 21.060935020446777,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:28",
+          "match": {
+            "arguments": [
+              {
+                "name": "combo_name",
+                "value": "<Alt>Left"
+              }
+            ],
+            "location": "../usr/local/lib/python3.14/site-packages/qecore/common_steps.py:683"
+          },
+          "name": "Key combo: \"<Alt>Left\" with uinput",
+          "result": {
+            "duration": 0.22544050216674805,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:29",
+          "match": {
+            "arguments": [
+              {
+                "name": "location",
+                "value": "Home"
+              }
+            ],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:187"
+          },
+          "name": "Nautilus location shows \"Home\"",
+          "result": {
+            "duration": 21.037330389022827,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "files",
+        "navigation"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:32",
+      "name": "New folder dialog opens via keyboard shortcut Ctrl+Shift+N",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.27768635749816895,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.86891508102417,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:33",
+          "match": {
+            "arguments": [
+              {
+                "name": "combo_name",
+                "value": "<Control><Shift>n"
+              }
+            ],
+            "location": "../usr/local/lib/python3.14/site-packages/qecore/common_steps.py:683"
+          },
+          "name": "Key combo: \"<Control><Shift>n\" with uinput",
+          "result": {
+            "duration": 0.20960187911987305,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:34",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:218"
+          },
+          "name": "New folder dialog is open",
+          "result": {
+            "duration": 20.866009950637817,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "retry",
+        "files",
+        "new_folder"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:37",
+      "name": "Search bar opens via Ctrl+F",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.28559446334838867,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.876058101654053,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:38",
+          "match": {
+            "arguments": [
+              {
+                "name": "combo_name",
+                "value": "<Control>f"
+              }
+            ],
+            "location": "../usr/local/lib/python3.14/site-packages/qecore/common_steps.py:683"
+          },
+          "name": "Key combo: \"<Control>f\" with uinput",
+          "result": {
+            "duration": 0.2140944004058838,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:39",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:243"
+          },
+          "name": "File search bar is open in Files",
+          "result": {
+            "duration": 21.06488847732544,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "retry",
+        "files",
+        "search"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:42",
+      "name": "Files closes cleanly via Ctrl+W",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.3205759525299072,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 20.873945236206055,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:43",
+          "match": {
+            "arguments": [
+              {
+                "name": "combo_name",
+                "value": "<Ctrl><W>"
+              }
+            ],
+            "location": "../usr/local/lib/python3.14/site-packages/qecore/common_steps.py:683"
+          },
+          "name": "Key combo: \"<Ctrl><W>\" with uinput",
+          "result": {
+            "duration": 0.20838475227355957,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:44",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:97"
+          },
+          "name": "Files is no longer running",
+          "result": {
+            "duration": 478.5068669319153,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "files",
+        "close"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:47",
+      "name": "No Nautilus coredump after session start",
+      "status": "failed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:8",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:61"
+          },
+          "name": "Launch Files via command",
+          "result": {
+            "duration": 0.28465700149536133,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:9",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_files_steps.py:87"
+          },
+          "name": "Files window is accessible",
+          "result": {
+            "duration": 51.71023178100586,
+            "error_message": "ASSERT FAILED: GNOME Files application was not found via AT-SPI after 15s: Application 'Files' was not found in desktop.",
+            "status": "failed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:48",
+          "name": "No coredump entries exist for \"nautilus\"",
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "regression",
+        "bluefin"
+      ],
+      "type": "scenario"
+    }
+  ],
+  "keyword": "Feature",
+  "location": "bluefin-tests/tests/smoke/features/gnome_files.feature:2",
+  "name": "GNOME Files smoke tests",
+  "status": "failed",
+  "tags": [
+    "native_app",
+    "smoke_suite"
+  ]
+},
+
+{
+  "description": [
     "Validates desktop notifications can be delivered without GNOME Shell regressions."
   ],
   "elements": [
@@ -19,7 +632,7 @@
           },
           "name": "A test desktop notification is sent via gdbus",
           "result": {
-            "duration": 0.3488657474517822,
+            "duration": 0.3546912670135498,
             "status": "passed"
           },
           "step_type": "given"
@@ -33,7 +646,7 @@
           },
           "name": "Notification request returns a positive notification ID",
           "result": {
-            "duration": 0.00032591819763183594,
+            "duration": 0.00032448768615722656,
             "status": "passed"
           },
           "step_type": "given"
@@ -61,7 +674,7 @@
           },
           "name": "A test desktop notification is sent via gdbus",
           "result": {
-            "duration": 0.3405416011810303,
+            "duration": 0.32599592208862305,
             "status": "passed"
           },
           "step_type": "given"
@@ -75,7 +688,7 @@
           },
           "name": "Open date menu via Shell.Eval",
           "result": {
-            "duration": 0.7342836856842041,
+            "duration": 0.6528604030609131,
             "status": "passed"
           },
           "step_type": "given"
@@ -85,11 +698,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_notifications.feature:14",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:469"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:345"
           },
           "name": "Date menu panel is open via Shell.Eval",
           "result": {
-            "duration": 0.1584014892578125,
+            "duration": 0.15123462677001953,
             "status": "passed"
           },
           "step_type": "given"
@@ -103,7 +716,7 @@
           },
           "name": "Close date menu via Shell.Eval",
           "result": {
-            "duration": 0.3662705421447754,
+            "duration": 0.35251283645629883,
             "status": "passed"
           },
           "step_type": "given"
@@ -131,7 +744,7 @@
           },
           "name": "A test desktop notification is sent via gdbus",
           "result": {
-            "duration": 0.3347597122192383,
+            "duration": 0.3300149440765381,
             "status": "passed"
           },
           "step_type": "given"
@@ -145,7 +758,7 @@
           },
           "name": "Notification request returns a positive notification ID",
           "result": {
-            "duration": 0.0002143383026123047,
+            "duration": 0.00014090538024902344,
             "status": "passed"
           },
           "step_type": "given"
@@ -159,7 +772,7 @@
           },
           "name": "Dismiss the notification via gdbus CloseNotification",
           "result": {
-            "duration": 0.022469282150268555,
+            "duration": 0.027866601943969727,
             "status": "passed"
           },
           "step_type": "given"
@@ -173,7 +786,7 @@
           },
           "name": "Notification banner is no longer showing via Shell.Eval",
           "result": {
-            "duration": 21.359808444976807,
+            "duration": 21.321664810180664,
             "status": "passed"
           },
           "step_type": "given"
@@ -201,7 +814,7 @@
           },
           "name": "A test desktop notification is sent via gdbus",
           "result": {
-            "duration": 0.342822790145874,
+            "duration": 0.3343024253845215,
             "status": "passed"
           },
           "step_type": "given"
@@ -215,7 +828,7 @@
           },
           "name": "No gnome-shell notification journal errors are present",
           "result": {
-            "duration": 0.1558220386505127,
+            "duration": 0.15259480476379395,
             "status": "passed"
           },
           "step_type": "given"
@@ -235,227 +848,6 @@
   "status": "passed",
   "tags": [
     "notifications",
-    "smoke_suite"
-  ]
-},
-
-{
-  "description": [
-    "Validates the GNOME Online Accounts settings panel opens, exposes a",
-    "non-empty provider list, and that the GOA daemon is available."
-  ],
-  "elements": [
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:7",
-      "name": "Online Accounts panel is accessible",
-      "status": "passed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:8",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/gnome_settings_steps.py:84"
-          },
-          "name": "Launch Settings via command",
-          "result": {
-            "duration": 0.9726612567901611,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:9",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/gnome_settings_steps.py:109"
-          },
-          "name": "Settings window is accessible",
-          "result": {
-            "duration": 2.4951887130737305,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:10",
-          "match": {
-            "arguments": [
-              {
-                "name": "name",
-                "value": "Online Accounts"
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/gnome_settings_steps.py:178"
-          },
-          "name": "Navigate to Settings panel \"Online Accounts\"",
-          "result": {
-            "duration": 0.9252605438232422,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:11",
-          "match": {
-            "arguments": [
-              {
-                "name": "name",
-                "value": "Online Accounts"
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/gnome_settings_steps.py:210"
-          },
-          "name": "Settings panel \"Online Accounts\" is visible",
-          "result": {
-            "duration": 0.46689391136169434,
-            "status": "passed"
-          },
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "settings",
-        "online_accounts",
-        "launch",
-        "sla_15s",
-        "retry"
-      ],
-      "type": "scenario"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:18",
-      "name": "Online Accounts provider list is non-empty",
-      "status": "skipped",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:19",
-          "name": "Launch Settings via command",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:20",
-          "name": "Settings window is accessible",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:21",
-          "name": "Navigate to Settings panel \"Online Accounts\"",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:22",
-          "name": "Settings panel \"Online Accounts\" is visible",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:23",
-          "name": "Online Accounts provider list is non-empty",
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "settings",
-        "online_accounts",
-        "providers",
-        "sla_15s",
-        "quarantine"
-      ],
-      "type": "scenario"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:26",
-      "name": "goa-daemon is running",
-      "status": "passed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:27",
-          "match": {
-            "arguments": [
-              {
-                "name": "name",
-                "value": "Online Accounts"
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/gnome_settings_steps.py:178"
-          },
-          "name": "Navigate to Settings panel \"Online Accounts\"",
-          "result": {
-            "duration": 0.9165349006652832,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:28",
-          "match": {
-            "arguments": [
-              {
-                "name": "command",
-                "value": "sleep 3; pgrep -x goa-daemon && echo running"
-              }
-            ],
-            "location": "../usr/local/lib/python3.14/site-packages/qecore/common_steps.py:475"
-          },
-          "name": "Run and save command output: \"sleep 3; pgrep -x goa-daemon && echo running\"",
-          "result": {
-            "duration": 3.0276877880096436,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:29",
-          "match": {
-            "arguments": [
-              {
-                "name": "operand",
-                "value": "contains"
-              },
-              {
-                "name": "expected_output",
-                "value": "running"
-              }
-            ],
-            "location": "../usr/local/lib/python3.14/site-packages/qecore/common_steps.py:506"
-          },
-          "name": "Last command output \"contains\" \"running\"",
-          "result": {
-            "duration": 7.939338684082031e-05,
-            "status": "passed"
-          },
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "settings",
-        "online_accounts",
-        "daemon",
-        "sla_10s"
-      ],
-      "type": "scenario"
-    }
-  ],
-  "keyword": "Feature",
-  "location": "bluefin-tests/tests/smoke/features/gnome_online_accounts.feature:2",
-  "name": "GNOME Online Accounts smoke tests",
-  "status": "passed",
-  "tags": [
-    "native_app",
     "smoke_suite"
   ]
 },
@@ -482,11 +874,11 @@
                 "value": "gnome-control-center"
               }
             ],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:329"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:213"
           },
           "name": "No coredump entries exist for \"gnome-control-center\"",
           "result": {
-            "duration": 0.14501523971557617,
+            "duration": 0.14674639701843262,
             "status": "passed"
           },
           "step_type": "given"
@@ -551,7 +943,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9555749893188477,
+            "duration": 0.9525980949401855,
             "status": "passed"
           },
           "step_type": "given"
@@ -565,7 +957,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.3301217555999756,
+            "duration": 1.3562424182891846,
             "status": "passed"
           },
           "step_type": "given"
@@ -579,7 +971,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.31261277198791504,
+            "duration": 0.27925539016723633,
             "status": "passed"
           },
           "step_type": "given"
@@ -608,7 +1000,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9660916328430176,
+            "duration": 0.9394569396972656,
             "status": "passed"
           },
           "step_type": "given"
@@ -622,7 +1014,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.3161938190460205,
+            "duration": 0.294954776763916,
             "status": "passed"
           },
           "step_type": "given"
@@ -636,7 +1028,7 @@
           },
           "name": "Settings sidebar is present",
           "result": {
-            "duration": 0.4201347827911377,
+            "duration": 0.42469143867492676,
             "status": "passed"
           },
           "step_type": "given"
@@ -663,7 +1055,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9762668609619141,
+            "duration": 0.9223742485046387,
             "status": "passed"
           },
           "step_type": "given"
@@ -677,7 +1069,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.36067724227905273,
+            "duration": 0.2875685691833496,
             "status": "passed"
           },
           "step_type": "given"
@@ -696,7 +1088,7 @@
           },
           "name": "Navigate to Settings panel \"About\"",
           "result": {
-            "duration": 0.9320938587188721,
+            "duration": 0.8938372135162354,
             "status": "passed"
           },
           "step_type": "given"
@@ -715,7 +1107,7 @@
           },
           "name": "Settings panel \"About\" is visible",
           "result": {
-            "duration": 0.4537951946258545,
+            "duration": 0.3728041648864746,
             "status": "passed"
           },
           "step_type": "given"
@@ -742,7 +1134,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9641118049621582,
+            "duration": 0.9597783088684082,
             "status": "passed"
           },
           "step_type": "given"
@@ -756,7 +1148,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.36420726776123047,
+            "duration": 0.30929040908813477,
             "status": "passed"
           },
           "step_type": "given"
@@ -775,7 +1167,7 @@
           },
           "name": "Navigate to Settings panel \"About\"",
           "result": {
-            "duration": 0.9173245429992676,
+            "duration": 0.9010705947875977,
             "status": "passed"
           },
           "step_type": "given"
@@ -794,7 +1186,7 @@
           },
           "name": "Settings panel \"About\" is visible",
           "result": {
-            "duration": 0.42371368408203125,
+            "duration": 0.3906841278076172,
             "status": "passed"
           },
           "step_type": "given"
@@ -808,7 +1200,7 @@
           },
           "name": "About page shows system information",
           "result": {
-            "duration": 0.869279146194458,
+            "duration": 0.8667707443237305,
             "status": "passed"
           },
           "step_type": "given"
@@ -835,7 +1227,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9699742794036865,
+            "duration": 0.9551584720611572,
             "status": "passed"
           },
           "step_type": "given"
@@ -849,7 +1241,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.35379600524902344,
+            "duration": 0.30221009254455566,
             "status": "passed"
           },
           "step_type": "given"
@@ -868,7 +1260,7 @@
           },
           "name": "Navigate to Settings panel \"Displays\"",
           "result": {
-            "duration": 0.9390549659729004,
+            "duration": 0.8900697231292725,
             "status": "passed"
           },
           "step_type": "given"
@@ -887,7 +1279,7 @@
           },
           "name": "Settings panel \"Displays\" is visible",
           "result": {
-            "duration": 0.491502046585083,
+            "duration": 0.4030609130859375,
             "status": "passed"
           },
           "step_type": "given"
@@ -951,7 +1343,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9568979740142822,
+            "duration": 0.9514954090118408,
             "status": "passed"
           },
           "step_type": "given"
@@ -965,7 +1357,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.3401334285736084,
+            "duration": 0.31855225563049316,
             "status": "passed"
           },
           "step_type": "given"
@@ -984,7 +1376,7 @@
           },
           "name": "Navigate to Settings panel \"Privacy & Security\"",
           "result": {
-            "duration": 0.9133362770080566,
+            "duration": 0.887183666229248,
             "status": "passed"
           },
           "step_type": "given"
@@ -1003,7 +1395,7 @@
           },
           "name": "Settings panel \"Privacy & Security\" is visible",
           "result": {
-            "duration": 0.40010619163513184,
+            "duration": 0.4086005687713623,
             "status": "passed"
           },
           "step_type": "given"
@@ -1030,7 +1422,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9587969779968262,
+            "duration": 0.9390788078308105,
             "status": "passed"
           },
           "step_type": "given"
@@ -1044,7 +1436,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.31765151023864746,
+            "duration": 0.3125174045562744,
             "status": "passed"
           },
           "step_type": "given"
@@ -1063,7 +1455,7 @@
           },
           "name": "Navigate to Settings panel \"Notifications\"",
           "result": {
-            "duration": 0.9184939861297607,
+            "duration": 0.9021780490875244,
             "status": "passed"
           },
           "step_type": "given"
@@ -1082,7 +1474,7 @@
           },
           "name": "Settings panel \"Notifications\" is visible",
           "result": {
-            "duration": 0.5110914707183838,
+            "duration": 0.41003966331481934,
             "status": "passed"
           },
           "step_type": "given"
@@ -1109,7 +1501,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9779911041259766,
+            "duration": 0.949115514755249,
             "status": "passed"
           },
           "step_type": "given"
@@ -1123,7 +1515,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.35367751121520996,
+            "duration": 0.29845738410949707,
             "status": "passed"
           },
           "step_type": "given"
@@ -1142,7 +1534,7 @@
           },
           "name": "Navigate to Settings panel \"Keyboard\"",
           "result": {
-            "duration": 0.9184162616729736,
+            "duration": 0.9028651714324951,
             "status": "passed"
           },
           "step_type": "given"
@@ -1161,7 +1553,7 @@
           },
           "name": "Settings panel \"Keyboard\" is visible",
           "result": {
-            "duration": 0.4741549491882324,
+            "duration": 0.4110569953918457,
             "status": "passed"
           },
           "step_type": "given"
@@ -1188,7 +1580,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9748055934906006,
+            "duration": 0.936532735824585,
             "status": "passed"
           },
           "step_type": "given"
@@ -1202,7 +1594,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.29100775718688965,
+            "duration": 0.2827603816986084,
             "status": "passed"
           },
           "step_type": "given"
@@ -1221,7 +1613,7 @@
           },
           "name": "Navigate to Settings panel \"Power\"",
           "result": {
-            "duration": 0.9288098812103271,
+            "duration": 0.9055428504943848,
             "status": "passed"
           },
           "step_type": "given"
@@ -1240,7 +1632,7 @@
           },
           "name": "Settings panel \"Power\" is visible",
           "result": {
-            "duration": 0.45326757431030273,
+            "duration": 0.3615584373474121,
             "status": "passed"
           },
           "step_type": "given"
@@ -1267,7 +1659,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9895079135894775,
+            "duration": 0.9373123645782471,
             "status": "passed"
           },
           "step_type": "given"
@@ -1281,7 +1673,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.3764042854309082,
+            "duration": 0.31389713287353516,
             "status": "passed"
           },
           "step_type": "given"
@@ -1300,7 +1692,7 @@
           },
           "name": "Navigate to Settings panel \"Accessibility\"",
           "result": {
-            "duration": 0.9299530982971191,
+            "duration": 0.8906285762786865,
             "status": "passed"
           },
           "step_type": "given"
@@ -1319,7 +1711,7 @@
           },
           "name": "Settings panel \"Accessibility\" is visible",
           "result": {
-            "duration": 0.5174500942230225,
+            "duration": 0.39643192291259766,
             "status": "passed"
           },
           "step_type": "given"
@@ -1346,7 +1738,7 @@
           },
           "name": "Launch Settings via command",
           "result": {
-            "duration": 0.9660811424255371,
+            "duration": 0.954279899597168,
             "status": "passed"
           },
           "step_type": "given"
@@ -1360,7 +1752,7 @@
           },
           "name": "Settings window is accessible",
           "result": {
-            "duration": 0.30895042419433594,
+            "duration": 0.29933738708496094,
             "status": "passed"
           },
           "step_type": "given"
@@ -1379,7 +1771,7 @@
           },
           "name": "Key combo: \"<Ctrl><Q>\" with uinput",
           "result": {
-            "duration": 0.21875476837158203,
+            "duration": 0.20939326286315918,
             "status": "passed"
           },
           "step_type": "given"
@@ -1393,7 +1785,7 @@
           },
           "name": "Settings is no longer running",
           "result": {
-            "duration": 37.52215051651001,
+            "duration": 36.54881310462952,
             "status": "passed"
           },
           "step_type": "given"
@@ -1438,7 +1830,7 @@
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.0001125335693359375,
+            "duration": 0.00011539459228515625,
             "status": "passed"
           },
           "step_type": "given"
@@ -1452,7 +1844,7 @@
           },
           "name": "Dump panel children to log",
           "result": {
-            "duration": 0.05896735191345215,
+            "duration": 0.05733346939086914,
             "status": "passed"
           },
           "step_type": "given"
@@ -1466,7 +1858,7 @@
           },
           "name": "Dump gnome-shell AT-SPI tree to results",
           "result": {
-            "duration": 0.09976577758789062,
+            "duration": 0.10037732124328613,
             "status": "passed"
           },
           "step_type": "given"
@@ -1493,7 +1885,7 @@
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.00012087821960449219,
+            "duration": 0.00022935867309570312,
             "status": "passed"
           },
           "step_type": "given"
@@ -1507,7 +1899,7 @@
           },
           "name": "Panel is present in AT-SPI tree",
           "result": {
-            "duration": 0.9814062118530273,
+            "duration": 1.1320602893829346,
             "status": "passed"
           },
           "step_type": "given"
@@ -1534,7 +1926,7 @@
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.00011730194091796875,
+            "duration": 0.00021767616271972656,
             "status": "passed"
           },
           "step_type": "given"
@@ -1548,7 +1940,7 @@
           },
           "name": "Activities toggle button is present in gnome-shell panel",
           "result": {
-            "duration": 1.914541482925415,
+            "duration": 2.185417890548706,
             "status": "passed"
           },
           "step_type": "given"
@@ -1575,7 +1967,7 @@
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.0001747608184814453,
+            "duration": 0.00011754035949707031,
             "status": "passed"
           },
           "step_type": "given"
@@ -1589,7 +1981,7 @@
           },
           "name": "Clock toggle is visible in top bar",
           "result": {
-            "duration": 1.993220329284668,
+            "duration": 2.1923913955688477,
             "status": "passed"
           },
           "step_type": "given"
@@ -1616,7 +2008,7 @@
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.00010943412780761719,
+            "duration": 0.0001163482666015625,
             "status": "passed"
           },
           "step_type": "given"
@@ -1630,7 +2022,7 @@
           },
           "name": "System menu toggle is visible in top bar",
           "result": {
-            "duration": 1.9840519428253174,
+            "duration": 2.2056217193603516,
             "status": "passed"
           },
           "step_type": "given"
@@ -1644,58 +2036,37 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:41",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:40",
       "name": "Super key opens Activities overview",
-      "status": "failed",
+      "status": "skipped",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:42",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
-          },
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:41",
           "name": "GNOME Shell is accessible via AT-SPI",
-          "result": {
-            "duration": 0.00020122528076171875,
-            "status": "passed"
-          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:42",
+          "name": "Open Activities overview via Shell.Eval",
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:43",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:356"
-          },
-          "name": "Open Activities overview",
-          "result": {
-            "duration": 0.13483262062072754,
-            "error_message": [
-              "ASSERT FAILED: gdbus org.gnome.Shell.org.freedesktop.DBus.Properties.Set failed: Warning: Permanently added '127.0.0.1' (ED25519) to the list of known hosts.",
-              "bash: -c: line 1: syntax error near unexpected token `newline'",
-              "bash: -c: line 1: `source /tmp/session.env 2>/dev/null; gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.org.freedesktop.DBus.Properties.Set org.gnome.Shell OverviewActive <b true>'"
-            ],
-            "status": "failed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:44",
           "name": "Overview is open",
           "step_type": "given"
         },
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:45",
-          "name": "Close Activities overview via D-Bus",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:44",
+          "name": "Close Activities overview via Shell.Eval",
           "step_type": "given"
         },
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:46",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:45",
           "name": "Overview is closed",
           "step_type": "given"
         }
@@ -1703,19 +2074,168 @@
       "tags": [
         "retry",
         "activities",
+        "sla_5s",
+        "quarantine"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:48",
+      "name": "Typing in overview populates search bar",
+      "status": "skipped",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:49",
+          "name": "GNOME Shell is accessible via AT-SPI",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:50",
+          "name": "Open Activities overview via Shell.Eval",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:51",
+          "name": "Overview is open",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:52",
+          "name": "Set overview search text to \"Files\" via Shell.Eval",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:53",
+          "name": "Overview search bar contains \"Files\"",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:54",
+          "name": "Close Activities overview via Shell.Eval",
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "activities",
+        "quarantine"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:57",
+      "name": "Escape closes Activities overview",
+      "status": "skipped",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:58",
+          "name": "GNOME Shell is accessible via AT-SPI",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:59",
+          "name": "Open Activities overview via Shell.Eval",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:60",
+          "name": "Overview is open",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:61",
+          "name": "Close Activities overview via Shell.Eval",
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:62",
+          "name": "Overview is closed",
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "activities",
+        "quarantine"
+      ],
+      "type": "scenario"
+    },
+    {
+      "keyword": "Scenario",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:69",
+      "name": "Clicking System menu opens Quick Settings",
+      "status": "passed",
+      "steps": [
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:70",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
+          },
+          "name": "GNOME Shell is accessible via AT-SPI",
+          "result": {
+            "duration": 0.0001857280731201172,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:71",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:301"
+          },
+          "name": "Open Quick Settings via Shell.Eval",
+          "result": {
+            "duration": 0.7190148830413818,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:72",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:246"
+          },
+          "name": "Quick Settings panel is open via Shell.Eval",
+          "result": {
+            "duration": 0.15599513053894043,
+            "status": "passed"
+          },
+          "step_type": "given"
+        }
+      ],
+      "tags": [
+        "retry",
+        "quick_settings",
         "sla_5s"
       ],
       "type": "scenario"
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:49",
-      "name": "Typing in overview populates search bar",
-      "status": "failed",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:75",
+      "name": "Escape closes Quick Settings",
+      "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:50",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:76",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
@@ -1729,188 +2249,14 @@
         },
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:51",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:356"
-          },
-          "name": "Open Activities overview",
-          "result": {
-            "duration": 0.13804173469543457,
-            "error_message": [
-              "ASSERT FAILED: gdbus org.gnome.Shell.org.freedesktop.DBus.Properties.Set failed: Warning: Permanently added '127.0.0.1' (ED25519) to the list of known hosts.",
-              "bash: -c: line 1: syntax error near unexpected token `newline'",
-              "bash: -c: line 1: `source /tmp/session.env 2>/dev/null; gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.org.freedesktop.DBus.Properties.Set org.gnome.Shell OverviewActive <b true>'"
-            ],
-            "status": "failed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:52",
-          "name": "Overview is open",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:53",
-          "name": "Type \"Files\" in overview search entry",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:54",
-          "name": "Overview search bar contains \"Files\"",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:55",
-          "name": "Close Activities overview via D-Bus",
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "activities"
-      ],
-      "type": "scenario"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:58",
-      "name": "Escape closes Activities overview",
-      "status": "failed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:59",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
-          },
-          "name": "GNOME Shell is accessible via AT-SPI",
-          "result": {
-            "duration": 0.0002105236053466797,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:60",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:356"
-          },
-          "name": "Open Activities overview",
-          "result": {
-            "duration": 0.137892484664917,
-            "error_message": [
-              "ASSERT FAILED: gdbus org.gnome.Shell.org.freedesktop.DBus.Properties.Set failed: Warning: Permanently added '127.0.0.1' (ED25519) to the list of known hosts.",
-              "bash: -c: line 1: syntax error near unexpected token `newline'",
-              "bash: -c: line 1: `source /tmp/session.env 2>/dev/null; gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.org.freedesktop.DBus.Properties.Set org.gnome.Shell OverviewActive <b true>'"
-            ],
-            "status": "failed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:61",
-          "name": "Overview is open",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:62",
-          "name": "Press key: \"Escape\"",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:63",
-          "name": "Overview is closed",
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "activities"
-      ],
-      "type": "scenario"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:70",
-      "name": "Clicking System menu opens Quick Settings",
-      "status": "passed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:71",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
-          },
-          "name": "GNOME Shell is accessible via AT-SPI",
-          "result": {
-            "duration": 0.00011205673217773438,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:72",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:77",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:301"
           },
           "name": "Open Quick Settings via Shell.Eval",
           "result": {
-            "duration": 0.7385199069976807,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:73",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:370"
-          },
-          "name": "Quick Settings panel is open via Shell.Eval",
-          "result": {
-            "duration": 0.14006257057189941,
-            "status": "passed"
-          },
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "retry",
-        "quick_settings",
-        "sla_5s"
-      ],
-      "type": "scenario"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:76",
-      "name": "Escape closes Quick Settings",
-      "status": "passed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:77",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
-          },
-          "name": "GNOME Shell is accessible via AT-SPI",
-          "result": {
-            "duration": 0.00011086463928222656,
+            "duration": 0.6440727710723877,
             "status": "passed"
           },
           "step_type": "given"
@@ -1920,11 +2266,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:78",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:301"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:246"
           },
-          "name": "Open Quick Settings via Shell.Eval",
+          "name": "Quick Settings panel is open via Shell.Eval",
           "result": {
-            "duration": 0.6503477096557617,
+            "duration": 0.15880823135375977,
             "status": "passed"
           },
           "step_type": "given"
@@ -1934,11 +2280,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:79",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:370"
+            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:359"
           },
-          "name": "Quick Settings panel is open via Shell.Eval",
+          "name": "Close Quick Settings via Shell.Eval",
           "result": {
-            "duration": 0.15260553359985352,
+            "duration": 0.35654234886169434,
             "status": "passed"
           },
           "step_type": "given"
@@ -1948,25 +2294,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:80",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:359"
-          },
-          "name": "Close Quick Settings via Shell.Eval",
-          "result": {
-            "duration": 0.35732150077819824,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:81",
-          "match": {
-            "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:325"
           },
           "name": "Quick Settings panel is closed via Shell.Eval",
           "result": {
-            "duration": 0.1410841941833496,
+            "duration": 0.1475841999053955,
             "status": "passed"
           },
           "step_type": "given"
@@ -1979,20 +2311,34 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:84",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:83",
       "name": "Night Light can be enabled and disabled",
       "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:85",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:84",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.0001087188720703125,
+            "duration": 0.00019407272338867188,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:85",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:256"
+          },
+          "name": "Ensure Night Light starts disabled via gsettings",
+          "result": {
+            "duration": 0.30448198318481445,
             "status": "passed"
           },
           "step_type": "given"
@@ -2002,11 +2348,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:86",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:380"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:269"
           },
-          "name": "Ensure Night Light starts disabled via gsettings",
+          "name": "Enable Night Light via gsettings",
           "result": {
-            "duration": 0.2887241840362549,
+            "duration": 0.14611005783081055,
             "status": "passed"
           },
           "step_type": "given"
@@ -2016,11 +2362,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:87",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:393"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:278"
           },
-          "name": "Enable Night Light via gsettings",
+          "name": "Night Light is enabled via gsettings",
           "result": {
-            "duration": 0.15241336822509766,
+            "duration": 0.1513357162475586,
             "status": "passed"
           },
           "step_type": "given"
@@ -2030,11 +2376,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:88",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:402"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:286"
           },
-          "name": "Night Light is enabled via gsettings",
+          "name": "Disable Night Light via gsettings",
           "result": {
-            "duration": 0.16180181503295898,
+            "duration": 0.1463789939880371,
             "status": "passed"
           },
           "step_type": "given"
@@ -2044,25 +2390,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:89",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:410"
-          },
-          "name": "Disable Night Light via gsettings",
-          "result": {
-            "duration": 0.1499636173248291,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:90",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:419"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:295"
           },
           "name": "Night Light is disabled via gsettings",
           "result": {
-            "duration": 0.15681004524230957,
+            "duration": 0.15344691276550293,
             "status": "passed"
           },
           "step_type": "given"
@@ -2076,20 +2408,34 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:93",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:92",
       "name": "Do-Not-Disturb can be toggled via Quick Settings",
       "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:94",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:93",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.0001888275146484375,
+            "duration": 0.00011491775512695312,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:94",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:301"
+          },
+          "name": "Open Quick Settings via Shell.Eval",
+          "result": {
+            "duration": 0.6516227722167969,
             "status": "passed"
           },
           "step_type": "given"
@@ -2099,11 +2445,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:95",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:301"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:246"
           },
-          "name": "Open Quick Settings via Shell.Eval",
+          "name": "Quick Settings panel is open via Shell.Eval",
           "result": {
-            "duration": 0.6492350101470947,
+            "duration": 0.14651799201965332,
             "status": "passed"
           },
           "step_type": "given"
@@ -2113,11 +2459,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:96",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:370"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:303"
           },
-          "name": "Quick Settings panel is open via Shell.Eval",
+          "name": "Enable Do-Not-Disturb via Shell.Eval toggle",
           "result": {
-            "duration": 0.15130877494812012,
+            "duration": 0.45340919494628906,
             "status": "passed"
           },
           "step_type": "given"
@@ -2127,11 +2473,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:97",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:427"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:308"
           },
-          "name": "Enable Do-Not-Disturb via Shell.Eval toggle",
+          "name": "Do-Not-Disturb is enabled via Shell.Eval",
           "result": {
-            "duration": 0.477827787399292,
+            "duration": 5.296041965484619,
             "status": "passed"
           },
           "step_type": "given"
@@ -2141,11 +2487,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:98",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:432"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:324"
           },
-          "name": "Do-Not-Disturb is enabled via Shell.Eval",
+          "name": "Disable Do-Not-Disturb via Shell.Eval toggle",
           "result": {
-            "duration": 5.2855384349823,
+            "duration": 0.4712562561035156,
             "status": "passed"
           },
           "step_type": "given"
@@ -2155,11 +2501,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:99",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:448"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:329"
           },
-          "name": "Disable Do-Not-Disturb via Shell.Eval toggle",
+          "name": "Do-Not-Disturb is disabled via Shell.Eval",
           "result": {
-            "duration": 0.45134878158569336,
+            "duration": 5.273446321487427,
             "status": "passed"
           },
           "step_type": "given"
@@ -2169,25 +2515,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:100",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:453"
-          },
-          "name": "Do-Not-Disturb is disabled via Shell.Eval",
-          "result": {
-            "duration": 5.285981893539429,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:101",
-          "match": {
-            "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:359"
           },
           "name": "Close Quick Settings via Shell.Eval",
           "result": {
-            "duration": 0.35788917541503906,
+            "duration": 0.358687162399292,
             "status": "passed"
           },
           "step_type": "given"
@@ -2201,20 +2533,34 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:106",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:105",
       "name": "Clicking clock opens calendar popup",
       "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:107",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:106",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.00010991096496582031,
+            "duration": 0.00011420249938964844,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:107",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:335"
+          },
+          "name": "Open date menu via Shell.Eval",
+          "result": {
+            "duration": 0.6816384792327881,
             "status": "passed"
           },
           "step_type": "given"
@@ -2224,25 +2570,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:108",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:335"
-          },
-          "name": "Open date menu via Shell.Eval",
-          "result": {
-            "duration": 0.6567912101745605,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:109",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:469"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:345"
           },
           "name": "Date menu panel is open via Shell.Eval",
           "result": {
-            "duration": 0.14276742935180664,
+            "duration": 0.15239381790161133,
             "status": "passed"
           },
           "step_type": "given"
@@ -2257,20 +2589,34 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:112",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:111",
       "name": "Escape closes calendar popup",
       "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:113",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:112",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.00011587142944335938,
+            "duration": 0.00011277198791503906,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:113",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:335"
+          },
+          "name": "Open date menu via Shell.Eval",
+          "result": {
+            "duration": 0.6488091945648193,
             "status": "passed"
           },
           "step_type": "given"
@@ -2280,11 +2626,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:114",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:335"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:345"
           },
-          "name": "Open date menu via Shell.Eval",
+          "name": "Date menu panel is open via Shell.Eval",
           "result": {
-            "duration": 0.6697440147399902,
+            "duration": 0.14522528648376465,
             "status": "passed"
           },
           "step_type": "given"
@@ -2294,11 +2640,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:115",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:469"
+            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:365"
           },
-          "name": "Date menu panel is open via Shell.Eval",
+          "name": "Close date menu via Shell.Eval",
           "result": {
-            "duration": 0.1494438648223877,
+            "duration": 0.36896514892578125,
             "status": "passed"
           },
           "step_type": "given"
@@ -2308,25 +2654,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:116",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:365"
-          },
-          "name": "Close date menu via Shell.Eval",
-          "result": {
-            "duration": 0.36099767684936523,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:117",
-          "match": {
-            "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:371"
           },
           "name": "Date menu panel is closed via Shell.Eval",
           "result": {
-            "duration": 0.14886927604675293,
+            "duration": 0.1395115852355957,
             "status": "passed"
           },
           "step_type": "given"
@@ -2339,88 +2671,71 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:123",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:122",
       "name": "Screen lock engages without crashing GNOME Shell",
-      "status": "passed",
+      "status": "skipped",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:124",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
-          },
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:123",
           "name": "GNOME Shell is accessible via AT-SPI",
-          "result": {
-            "duration": 0.0001761913299560547,
-            "status": "passed"
-          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:124",
+          "name": "Lock screen via Shell.Eval",
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:125",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:492"
-          },
-          "name": "Lock screen via loginctl",
-          "result": {
-            "duration": 0.7903125286102295,
-            "status": "passed"
-          },
+          "name": "Session is locked",
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:126",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:501"
-          },
-          "name": "Session is locked",
-          "result": {
-            "duration": 0.2786586284637451,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:127",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:511"
-          },
-          "name": "Unlock screen via loginctl",
-          "result": {
-            "duration": 0.6267776489257812,
-            "status": "passed"
-          },
+          "name": "Unlock screen via Shell.Eval",
           "step_type": "given"
         }
       ],
       "tags": [
-        "lock_screen"
+        "lock_screen",
+        "quarantine"
       ],
       "type": "scenario"
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:132",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:131",
       "name": "Switching workspace changes the active workspace index",
       "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:133",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:132",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.00011658668518066406,
+            "duration": 0.00011420249938964844,
+            "status": "passed"
+          },
+          "step_type": "given"
+        },
+        {
+          "keyword": "*",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:133",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:423"
+          },
+          "name": "Active workspace index is noted",
+          "result": {
+            "duration": 0.14211702346801758,
             "status": "passed"
           },
           "step_type": "given"
@@ -2430,11 +2745,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:134",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:526"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:438"
           },
-          "name": "Active workspace index is noted",
+          "name": "Switch to next workspace via Shell.Eval",
           "result": {
-            "duration": 0.13883733749389648,
+            "duration": 0.6746439933776855,
             "status": "passed"
           },
           "step_type": "given"
@@ -2444,25 +2759,11 @@
           "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:135",
           "match": {
             "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:541"
-          },
-          "name": "Switch to next workspace via Shell.Eval",
-          "result": {
-            "duration": 0.6618063449859619,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:136",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:551"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:448"
           },
           "name": "Active workspace has changed",
           "result": {
-            "duration": 0.14751386642456055,
+            "duration": 0.14951825141906738,
             "status": "passed"
           },
           "step_type": "given"
@@ -2475,27 +2776,27 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:141",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:140",
       "name": "GNOME Shell extensions do not crash shell on load (bluefin#4612)",
       "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:142",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:141",
           "match": {
             "arguments": [],
             "location": "bluefin-tests/tests/shared/gnome_shell_steps.py:149"
           },
           "name": "GNOME Shell is accessible via AT-SPI",
           "result": {
-            "duration": 0.00011539459228515625,
+            "duration": 0.00015497207641601562,
             "status": "passed"
           },
           "step_type": "given"
         },
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:143",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:142",
           "match": {
             "arguments": [
               {
@@ -2507,11 +2808,11 @@
                 "value": "gnome-shell"
               }
             ],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:342"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:226"
           },
           "name": "No journal entries at priority \"err..emerg\" contain \"gnome-shell\"",
           "result": {
-            "duration": 0.1480262279510498,
+            "duration": 0.15212702751159668,
             "status": "passed"
           },
           "step_type": "given"
@@ -2525,13 +2826,13 @@
     },
     {
       "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:146",
+      "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:145",
       "name": "No gnome-shell coredump after session start (bluefin#4642)",
       "status": "passed",
       "steps": [
         {
           "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:147",
+          "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:146",
           "match": {
             "arguments": [
               {
@@ -2539,11 +2840,11 @@
                 "value": "gnome-shell"
               }
             ],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:329"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:213"
           },
           "name": "No coredump entries exist for \"gnome-shell\"",
           "result": {
-            "duration": 0.14031291007995605,
+            "duration": 0.1479053497314453,
             "status": "passed"
           },
           "step_type": "given"
@@ -2559,7 +2860,7 @@
   "keyword": "Feature",
   "location": "bluefin-tests/tests/smoke/features/gnome_shell.feature:2",
   "name": "GNOME Shell smoke tests",
-  "status": "failed",
+  "status": "passed",
   "tags": [
     "smoke_suite"
   ]
@@ -2589,18 +2890,35 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:10",
       "name": "Text Editor launches and window is accessible",
-      "status": "skipped",
+      "status": "failed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:7",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:49"
+          },
           "name": "Launch Text Editor via command",
+          "result": {
+            "duration": 0.5667531490325928,
+            "status": "passed"
+          },
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:11",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:113"
+          },
           "name": "Text Editor window has an editable text area",
+          "result": {
+            "duration": 415.38377046585083,
+            "error_message": "ASSERT FAILED: Editable text area was not accessible in GNOME Text Editor",
+            "status": "failed"
+          },
           "step_type": "given"
         }
       ],
@@ -2616,18 +2934,35 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:14",
       "name": "Text Editor accepts keyboard input",
-      "status": "skipped",
+      "status": "failed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:7",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:49"
+          },
           "name": "Launch Text Editor via command",
+          "result": {
+            "duration": 0.5762383937835693,
+            "status": "passed"
+          },
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:15",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:113"
+          },
           "name": "Text Editor window has an editable text area",
+          "result": {
+            "duration": 415.3488073348999,
+            "error_message": "ASSERT FAILED: Editable text area was not accessible in GNOME Text Editor",
+            "status": "failed"
+          },
           "step_type": "given"
         },
         {
@@ -2653,18 +2988,35 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:20",
       "name": "New document via Ctrl+N",
-      "status": "skipped",
+      "status": "failed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:7",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:49"
+          },
           "name": "Launch Text Editor via command",
+          "result": {
+            "duration": 0.5672271251678467,
+            "status": "passed"
+          },
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:21",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:113"
+          },
           "name": "Text Editor window has an editable text area",
+          "result": {
+            "duration": 415.22016644477844,
+            "error_message": "ASSERT FAILED: Editable text area was not accessible in GNOME Text Editor",
+            "status": "failed"
+          },
           "step_type": "given"
         },
         {
@@ -2702,18 +3054,35 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:28",
       "name": "Save dialog via Ctrl+S",
-      "status": "skipped",
+      "status": "failed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:7",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:49"
+          },
           "name": "Launch Text Editor via command",
+          "result": {
+            "duration": 0.5610086917877197,
+            "status": "passed"
+          },
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:29",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:113"
+          },
           "name": "Text Editor window has an editable text area",
+          "result": {
+            "duration": 415.5927677154541,
+            "error_message": "ASSERT FAILED: Editable text area was not accessible in GNOME Text Editor",
+            "status": "failed"
+          },
           "step_type": "given"
         },
         {
@@ -2751,18 +3120,35 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:36",
       "name": "Closing with unsaved changes shows discard dialog",
-      "status": "skipped",
+      "status": "failed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:7",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:49"
+          },
           "name": "Launch Text Editor via command",
+          "result": {
+            "duration": 0.5823841094970703,
+            "status": "passed"
+          },
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:37",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:113"
+          },
           "name": "Text Editor window has an editable text area",
+          "result": {
+            "duration": 415.3833067417145,
+            "error_message": "ASSERT FAILED: Editable text area was not accessible in GNOME Text Editor",
+            "status": "failed"
+          },
           "step_type": "given"
         },
         {
@@ -2800,18 +3186,35 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:44",
       "name": "Text Editor closes cleanly via Ctrl+Q",
-      "status": "skipped",
+      "status": "failed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:7",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:49"
+          },
           "name": "Launch Text Editor via command",
+          "result": {
+            "duration": 0.5587859153747559,
+            "status": "passed"
+          },
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:45",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:113"
+          },
           "name": "Text Editor window has an editable text area",
+          "result": {
+            "duration": 415.27704191207886,
+            "error_message": "ASSERT FAILED: Editable text area was not accessible in GNOME Text Editor",
+            "status": "failed"
+          },
           "step_type": "given"
         },
         {
@@ -2837,18 +3240,39 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:50",
       "name": "No gnome-text-editor coredump after session start",
-      "status": "skipped",
+      "status": "passed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:7",
+          "match": {
+            "arguments": [],
+            "location": "bluefin-tests/tests/smoke/features/steps/gnome_text_editor_steps.py:49"
+          },
           "name": "Launch Text Editor via command",
+          "result": {
+            "duration": 0.5572714805603027,
+            "status": "passed"
+          },
           "step_type": "given"
         },
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:51",
+          "match": {
+            "arguments": [
+              {
+                "name": "name",
+                "value": "gnome-text-editor"
+              }
+            ],
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:213"
+          },
           "name": "No coredump entries exist for \"gnome-text-editor\"",
+          "result": {
+            "duration": 0.15123796463012695,
+            "status": "passed"
+          },
           "step_type": "given"
         }
       ],
@@ -2864,7 +3288,7 @@
   "keyword": "Feature",
   "location": "bluefin-tests/tests/smoke/features/gnome_text_editor.feature:2",
   "name": "GNOME Text Editor smoke tests",
-  "status": "skipped",
+  "status": "failed",
   "tags": [
     "native_app",
     "smoke_suite"
@@ -2892,7 +3316,7 @@
           },
           "name": "No failed systemd units at boot",
           "result": {
-            "duration": 0.4138972759246826,
+            "duration": 0.44141674041748047,
             "status": "passed"
           },
           "step_type": "given"
@@ -2920,7 +3344,7 @@
           },
           "name": "No critical kernel errors in journal",
           "result": {
-            "duration": 0.14195013046264648,
+            "duration": 0.15541410446166992,
             "status": "passed"
           },
           "step_type": "given"
@@ -2948,7 +3372,7 @@
           },
           "name": "Bluefin image identity is present in os-release",
           "result": {
-            "duration": 0.1287996768951416,
+            "duration": 0.14305806159973145,
             "status": "passed"
           },
           "step_type": "given"
@@ -2975,7 +3399,7 @@
           },
           "name": "bootc status shows a valid image reference",
           "result": {
-            "duration": 0.23180747032165527,
+            "duration": 0.2529630661010742,
             "status": "passed"
           },
           "step_type": "given"
@@ -3007,8 +3431,8 @@
           },
           "name": "Writable system storage has at least \"15\" percent free space",
           "result": {
-            "duration": 0.13314080238342285,
-            "error_message": "ASSERT FAILED: Root filesystem free space 14% is below required 15%",
+            "duration": 0.13495278358459473,
+            "error_message": "ASSERT FAILED: Root filesystem free space 1% is below required 15%",
             "status": "failed"
           },
           "step_type": "given"
@@ -3035,7 +3459,7 @@
           },
           "name": "External DNS resolves external hosts",
           "result": {
-            "duration": 0.18088650703430176,
+            "duration": 0.14954543113708496,
             "status": "passed"
           },
           "step_type": "given"
@@ -3062,7 +3486,7 @@
           },
           "name": "ujust is on PATH and returns exit 0",
           "result": {
-            "duration": 0.2995884418487549,
+            "duration": 0.29706907272338867,
             "status": "passed"
           },
           "step_type": "given"
@@ -3076,7 +3500,7 @@
           },
           "name": "ujust --list prints at least one task",
           "result": {
-            "duration": 0.14368748664855957,
+            "duration": 0.1662733554840088,
             "status": "passed"
           },
           "step_type": "given"
@@ -3159,7 +3583,7 @@
           },
           "name": "gdm.service is active",
           "result": {
-            "duration": 0.13813114166259766,
+            "duration": 0.1472022533416748,
             "status": "passed"
           },
           "step_type": "given"
@@ -3173,7 +3597,7 @@
           },
           "name": "graphical.target is active",
           "result": {
-            "duration": 0.14089751243591309,
+            "duration": 0.14745235443115234,
             "status": "passed"
           },
           "step_type": "given"
@@ -3202,7 +3626,7 @@
           },
           "name": "tailscale is installed and daemon is running",
           "result": {
-            "duration": 0.30877113342285156,
+            "duration": 0.3164551258087158,
             "error_message": "ASSERT FAILED: tailscaled is not active (got 'inactive'; stderr=\"Warning: Permanently added '127.0.0.1' (ED25519) to the list of known hosts.\")",
             "status": "failed"
           },
@@ -3231,7 +3655,7 @@
           },
           "name": "uupd auto-updater is installed and configured",
           "result": {
-            "duration": 0.3031272888183594,
+            "duration": 0.2923774719238281,
             "status": "passed"
           },
           "step_type": "given"
@@ -3259,7 +3683,7 @@
           },
           "name": "fastfetch is present and operational",
           "result": {
-            "duration": 0.14345622062683105,
+            "duration": 0.13348174095153809,
             "status": "passed"
           },
           "step_type": "given"
@@ -3309,11 +3733,11 @@
                 "value": "org.mozilla.firefox.desktop"
               }
             ],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:705"
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:597"
           },
           "name": "xdg-mime query default for \"text/html\" returns \"org.mozilla.firefox.desktop\"",
           "result": {
-            "duration": 0.16549038887023926,
+            "duration": 0.16621613502502441,
             "status": "passed"
           },
           "step_type": "given"
@@ -3369,12 +3793,25 @@
       "keyword": "Scenario",
       "location": "bluefin-tests/tests/smoke/features/xdg_open.feature:20",
       "name": "Plain text opens in GNOME Text Editor",
-      "status": "skipped",
+      "status": "passed",
       "steps": [
         {
           "keyword": "*",
           "location": "bluefin-tests/tests/smoke/features/xdg_open.feature:21",
+          "match": {
+            "arguments": [
+              {
+                "name": "mime_type",
+                "value": "text/plain"
+              }
+            ],
+            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:623"
+          },
           "name": "xdg-mime query default for \"text/plain\" returns a text editor",
+          "result": {
+            "duration": 0.1634516716003418,
+            "status": "passed"
+          },
           "step_type": "given"
         }
       ],
@@ -3412,364 +3849,6 @@
   "tags": [
     "smoke_suite",
     "bluefin"
-  ]
-},
-
-{
-  "description": [
-    "Validates XWayland is present and usable when a native X11 client connects",
-    "and runs without crashing.  Uses glxgears from glx-utils because it is a",
-    "pure X11 GLX client (links libX11, calls XOpenDisplay) that ships on stock",
-    "Fedora/GNOME images."
-  ],
-  "elements": [
-    {
-      "keyword": "Background",
-      "location": "bluefin-tests/tests/smoke/features/xwayland.feature:8",
-      "name": "",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:9",
-          "name": "X11 client glxgears is available",
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:10",
-          "name": "Terminate any running glxgears",
-          "step_type": "given"
-        }
-      ],
-      "type": "background"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/xwayland.feature:13",
-      "name": "XWayland process appears when an X11 client connects",
-      "status": "passed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:9",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:43"
-          },
-          "name": "X11 client glxgears is available",
-          "result": {
-            "duration": 0.14237189292907715,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:10",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:108"
-          },
-          "name": "Terminate any running glxgears",
-          "result": {
-            "duration": 0.1511995792388916,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:14",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:73"
-          },
-          "name": "Launch glxgears via command",
-          "result": {
-            "duration": 0.29800891876220703,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:15",
-          "match": {
-            "arguments": [
-              {
-                "name": "timeout",
-                "original": "10",
-                "value": 10
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:78"
-          },
-          "name": "XWayland process appears within 10 seconds",
-          "result": {
-            "duration": 0.16138529777526855,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:16",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:101"
-          },
-          "name": "Terminate glxgears",
-          "result": {
-            "duration": 0.6558742523193359,
-            "status": "passed"
-          },
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "xwayland",
-        "on_demand"
-      ],
-      "type": "scenario"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/xwayland.feature:19",
-      "name": "X11 client can use the XWayland display",
-      "status": "passed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:9",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:43"
-          },
-          "name": "X11 client glxgears is available",
-          "result": {
-            "duration": 0.14049625396728516,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:10",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:108"
-          },
-          "name": "Terminate any running glxgears",
-          "result": {
-            "duration": 0.15551519393920898,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:20",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:73"
-          },
-          "name": "Launch glxgears via command",
-          "result": {
-            "duration": 0.27768945693969727,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:21",
-          "match": {
-            "arguments": [
-              {
-                "name": "timeout",
-                "original": "10",
-                "value": 10
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:78"
-          },
-          "name": "XWayland process appears within 10 seconds",
-          "result": {
-            "duration": 0.16285014152526855,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:22",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:89"
-          },
-          "name": "xprop can query the X root window",
-          "result": {
-            "duration": 0.3029918670654297,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:23",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:101"
-          },
-          "name": "Terminate glxgears",
-          "result": {
-            "duration": 0.6615638732910156,
-            "status": "passed"
-          },
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "xwayland",
-        "client"
-      ],
-      "type": "scenario"
-    },
-    {
-      "keyword": "Scenario",
-      "location": "bluefin-tests/tests/smoke/features/xwayland.feature:26",
-      "name": "XWayland incurs no coredump after the X11 client closes",
-      "status": "passed",
-      "steps": [
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:9",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:43"
-          },
-          "name": "X11 client glxgears is available",
-          "result": {
-            "duration": 0.13495516777038574,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:10",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:108"
-          },
-          "name": "Terminate any running glxgears",
-          "result": {
-            "duration": 0.16642522811889648,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:27",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:73"
-          },
-          "name": "Launch glxgears via command",
-          "result": {
-            "duration": 0.2797074317932129,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:28",
-          "match": {
-            "arguments": [
-              {
-                "name": "timeout",
-                "original": "10",
-                "value": 10
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:78"
-          },
-          "name": "XWayland process appears within 10 seconds",
-          "result": {
-            "duration": 0.15958786010742188,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:29",
-          "match": {
-            "arguments": [],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:101"
-          },
-          "name": "Terminate glxgears",
-          "result": {
-            "duration": 0.6539084911346436,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:30",
-          "match": {
-            "arguments": [
-              {
-                "name": "seconds",
-                "original": "2",
-                "value": 2
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/xwayland_steps.py:113"
-          },
-          "name": "Wait 2 seconds",
-          "result": {
-            "duration": 2.0004403591156006,
-            "status": "passed"
-          },
-          "step_type": "given"
-        },
-        {
-          "keyword": "*",
-          "location": "bluefin-tests/tests/smoke/features/xwayland.feature:31",
-          "match": {
-            "arguments": [
-              {
-                "name": "name",
-                "value": "Xwayland"
-              }
-            ],
-            "location": "bluefin-tests/tests/smoke/features/steps/steps.py:329"
-          },
-          "name": "No coredump entries exist for \"Xwayland\"",
-          "result": {
-            "duration": 0.13292312622070312,
-            "status": "passed"
-          },
-          "step_type": "given"
-        }
-      ],
-      "tags": [
-        "xwayland",
-        "clean_exit"
-      ],
-      "type": "scenario"
-    }
-  ],
-  "keyword": "Feature",
-  "location": "bluefin-tests/tests/smoke/features/xwayland.feature:2",
-  "name": "XWayland smoke tests",
-  "status": "passed",
-  "tags": [
-    "smoke_suite"
   ]
 }
 ]

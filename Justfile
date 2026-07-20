@@ -59,29 +59,6 @@ argocd-status:
     argocd app get testing-lab
     argocd app get testing-lab-infra
 
-# ── Disk image management ────────────────────────────────────────────────────
-
-# Pre-build golden disk for a given tag (idempotent — skips if disk already exists)
-# Pubkey is injected from the bluefin-test-ssh-key secret automatically.
-# Usage: just ensure-disk
-# Usage: just ensure-disk lts
-ensure-disk tag=image_tag:
-    argo submit --from workflowtemplate/build-containerdisk \
-        -p image="ghcr.io/projectbluefin/bluefin:{{ tag }}" \
-        -p image-tag="{{ tag }}" \
-        -n {{ argo_ns }} \
-        --watch
-
-# Patch an existing golden disk's SSH config (no SSH to node required)
-# Use after secret rotation or when SSH auth fails on an existing disk.
-# Usage: just patch-disk
-# Usage: just patch-disk lts
-patch-disk tag=image_tag:
-    argo submit --from workflowtemplate/patch-golden-disk \
-        -p image-tag="{{ tag }}" \
-        -n {{ argo_ns }} \
-        --watch
-
 # ── Test execution ───────────────────────────────────────────────────────────
 
 # Run smoke tests against latest (or BLUEFIN_IMAGE_TAG)
@@ -93,30 +70,33 @@ run-tests:
         --watch
 
 # Run smoke tests against a specific tag
-# Usage: just run-tests-tag lts
+# Usage: just run-tests-tag lts-testing
 run-tests-tag tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image="ghcr.io/projectbluefin/bluefin"
+    image_tag="{{ tag }}"
+    variant="bluefin"
+    if [[ "{{ tag }}" == lts-* ]]; then
+        image="ghcr.io/projectbluefin/bluefin-lts"
+        image_tag="${image_tag#lts-}"
+        variant="bluefin-lts"
+    fi
     argo submit argo/bluefin-smoke-test.yaml \
-        -p image="ghcr.io/ublue-os/bluefin:{{ tag }}" \
-        -p image-tag="{{ tag }}" \
+        -p image="${image}" \
+        -p image-tag="${image_tag}" \
+        -p variant="${variant}" \
         -n {{ argo_ns }} \
         --watch
 
-# Run matrix tests (latest + lts in parallel)
-# Optional: PR_TITLE and PR_NUMBER env vars for annotations
+# Run smoke tests for testing and lts-testing images in parallel.
 run-tests-matrix:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    PR_TITLE="${PR_TITLE:-}"
-    PR_NUMBER="${PR_NUMBER:-}"
     argo submit argo/bluefin-test-matrix.yaml \
-        -p pr-title="${PR_TITLE}" \
-        -p pr-number="${PR_NUMBER}" \
         -n {{ argo_ns }} \
         --watch
 
 # Run migration validation (bootc switch: ublue-os/bluefin → projectbluefin/bluefin)
 # Usage: just run-migration-test
-# Usage: just run-migration-test lts
 run-migration-test tag=image_tag:
     argo submit --from workflowtemplate/bluefin-migration-test \
         -p image-tag="{{ tag }}" \
@@ -133,15 +113,7 @@ setup-ghost-ssh-banner:
 # —— [REMOVED] titan VM recipes ——
 # run-titan-smoke, run-titan-system, run-titan-developer, run-titan-software,
 # setup-titan-fixtures, run-titan-disk-cleanup
-# Titan persistent VMs are no longer GitOps-managed. See argo/deprecated/ for history.
-
-# PLACEHOLDER for removed recipes (kept to avoid recipe renaming surprises)
-_titan-removed:
-    @echo "Titan VM recipes removed. See argo/deprecated/README.md"
-
-# DEPRECATED placeholder — slot reserved
-setup-titan-fixtures:
-    @echo "Titan fixtures removed — titan VMs are no longer used"
+# Titan persistent VMs are no longer GitOps-managed.
 
 # Run Flatcar smoke tests
 run-flatcar-smoke:
@@ -264,6 +236,7 @@ run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
     argo submit --from workflowtemplate/dakota-build-pipeline \
       -p ref={{ ref }} \
       -p repo={{ repo }} \
+      -p build-mode=re \
       -n {{ argo_ns }} --watch
 
 # Compatibility alias for older docs/callers.
@@ -274,11 +247,28 @@ run-dakota-validate ref="testing" repo="https://github.com/projectbluefin/dakota
 run-dakota-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
     just run-bst-build {{ ref }} {{ repo }}
 
-# Full Dakota QA pipeline: VM-based suite run against dakota containerdisk.
+# Full Dakota QA pipeline: container-only suite fan-out against the published Dakota image.
 run-dakota-qa branch="main" variant="dakota":
     argo submit --from workflowtemplate/dakota-qa-pipeline \
       -p variant={{ variant }} \
       -p branch={{ branch }} \
+      -n {{ argo_ns }} --watch
+
+# Legacy Dakota containerized smoke lane: run behave suites directly inside the OCI
+# image with explicit image/variant overrides.
+run-dakota-container-qa image-tag="testing" variant="dakota":
+    argo submit --from workflowtemplate/dakota-container-qa-pipeline \
+      -p image=192.168.1.102:30500/{{ variant }} \
+      -p image-tag={{ image-tag }} \
+      -p variant={{ variant }} \
+      -n {{ argo_ns }} --watch
+
+# Run the in-cluster BuildStream build pipeline for bluefin-server
+# Usage: just run-bluefin-server-build
+run-bluefin-server-build ref="main" repo="https://github.com/projectbluefin/server.git":
+    argo submit --from workflowtemplate/bluefin-server-build-pipeline \
+      -p ref={{ ref }} \
+      -p repo={{ repo }} \
       -n {{ argo_ns }} --watch
 
 # ── Validation ───────────────────────────────────────────────────────────────

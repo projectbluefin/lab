@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  activeDeadlineSeconds: 1800
+  activeDeadlineSeconds: 14400
   entrypoint: check-and-trigger
   arguments:
     parameters:
@@ -21,15 +21,10 @@ spec:
         value: "smoke,common,developer,software,system"
       - name: variant
         value: "bluefin"
-      # Zot containerdisk tag; defaults to image-tag when not set (works for bluefin:testing → "testing")
-      - name: containerdisk-tag
-        value: "{{workflow.parameters.image-tag}}"
       - name: branch
         value: "main"
-      - name: vm-memory
-        value: "{{workflow.parameters.vm-memory}}"
-      - name: ssh-key-secret
-        value: "bluefin-test-ssh-key"
+      - name: testsuite-branch
+        value: "main"
 
   templates:
     - name: check-and-trigger
@@ -57,20 +52,14 @@ spec:
                   value: "{{workflow.parameters.image}}"
                 - name: image-tag
                   value: "{{workflow.parameters.image-tag}}"
-                - name: containerdisk-tag
-                  value: "{{workflow.parameters.containerdisk-tag}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
                 - name: suites
                   value: "{{workflow.parameters.suites}}"
                 - name: variant
                   value: "{{workflow.parameters.variant}}"
-                - name: vm-memory
-                  value: "{{workflow.parameters.vm-memory}}"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
+                - name: testsuite-branch
+                  value: "{{workflow.parameters.testsuite-branch}}"
           - name: update-digest
             depends: "check-digest.Succeeded && run-pipeline.Succeeded"
             when: "{{tasks.check-digest.outputs.parameters.changed}} == true"
@@ -136,7 +125,7 @@ spec:
           app.kubernetes.io/part-of: bluefin-test-suite
           bluefin.io/step: fetch-digest
       script:
-        image: quay.io/skopeo/stable:latest
+        image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
         command: [sh]
         resources:
           requests:

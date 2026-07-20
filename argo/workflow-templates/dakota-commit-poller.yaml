@@ -19,8 +19,10 @@ spec:
   ttlStrategy:
     secondsAfterSuccess: 3600
     secondsAfterFailure: 86400
-  # Allow the referenced dakota-build-pipeline to complete.
-  activeDeadlineSeconds: 10800
+  # Allow the referenced dakota-build-pipeline to complete. Distributed
+  # Dakota builds can run for many hours; keep the poller
+  # workflow alive as long as the build pipeline itself (24h).
+  activeDeadlineSeconds: 86400
   entrypoint: poll
 
   arguments:
@@ -31,6 +33,8 @@ spec:
         value: "testing"
       - name: state-key
         value: "sha-dakota-testing"
+      - name: registry
+        value: "192.168.1.102:30500"
 
   templates:
 
@@ -49,8 +53,14 @@ spec:
               parameters:
                 - name: ref
                   value: "{{workflow.parameters.branch}}"
+                - name: commit-sha
+                  value: "{{tasks.check-sha.outputs.parameters.sha}}"
                 - name: repo
                   value: "https://github.com/{{workflow.parameters.repo}}.git"
+                - name: registry
+                  value: "{{workflow.parameters.registry}}"
+                - name: build-mode
+                  value: "re"
 
     - name: check-sha
       outputs:
@@ -58,9 +68,12 @@ spec:
           - name: changed
             valueFrom:
               path: /tmp/changed
+          - name: sha
+            valueFrom:
+              path: /tmp/sha
       script:
-        image: cgr.dev/chainguard/wolfi-base:latest
-        command: [sh]
+        image: ghcr.io/projectbluefin/lab-runner:latest
+        command: [bash]
         resources:
           requests:
             cpu: 100m
@@ -75,9 +88,17 @@ spec:
                 name: github-token
                 key: token
         source: |
-          apk add --no-cache bash curl jq kubectl git python3 >/dev/null 2>&1
-          exec bash <<'SCRIPT_EOF'
           set -euo pipefail
+
+          # Bootstrap kubectl if not in PATH
+          if ! command -v kubectl >/dev/null 2>&1; then
+            KUBECTL=/tmp/kubectl
+            if [ ! -f "${KUBECTL}" ]; then
+              curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+              chmod +x "${KUBECTL}"
+            fi
+            kubectl() { "${KUBECTL}" "$@"; }
+          fi
           REPO="{{workflow.parameters.repo}}"
           BRANCH="{{workflow.parameters.branch}}"
           KEY="{{workflow.parameters.state-key}}"
@@ -87,9 +108,10 @@ spec:
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${REPO}/commits?sha=${BRANCH}&per_page=1" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['sha'])")
+            | jq -r '.[0].sha')
 
           echo "Remote SHA:  ${REMOTE}" >&2
+          printf '%s\n' "${REMOTE}" > /tmp/sha
 
           # Read stored SHA from ConfigMap
           STORED=$(kubectl get configmap image-polling-digests \
@@ -111,5 +133,3 @@ spec:
               -p "{\"data\":{\"${KEY}\":\"${REMOTE}\"}}"
             echo "true" > /tmp/changed
           fi
-
-          SCRIPT_EOF

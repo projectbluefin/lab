@@ -1,13 +1,16 @@
 # CronWorkflow: runs the Dakota QA pipeline nightly at 03:00 UTC.
 # References dakota-qa-pipeline WorkflowTemplate — no DAG duplication.
+# SUSPENDED: keep the nightly Dakota trigger disabled for now; the reactivated
+# image-poll-dakota CronWorkflow provides the container-only regression lane.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
   name: nightly-dakota
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
+  suspend: true
   schedules:
     - "0 3 * * *"
   timezone: "UTC"
@@ -20,6 +23,7 @@ spec:
       bluefin.io/suite: smoke
   workflowSpec:
     serviceAccountName: argo
+    activeDeadlineSeconds: 14400  # 4h max — prevent stuck Dakota runs from holding ghost-heavy-compute
     podGC:
       strategy: OnWorkflowCompletion
     ttlStrategy:
@@ -33,11 +37,7 @@ spec:
           value: "ghcr.io/projectbluefin/dakota"
         - name: image-tag
           value: "latest"
-        - name: containerdisk-tag
-          value: "dakota-latest"
-        - name: namespace
-          value: "bluefin-test"
         - name: suites
           value: "smoke,developer,system"
-        - name: ssh-key-secret
-          value: "bluefin-test-ssh-key"
+        - name: variant
+          value: "dakota"

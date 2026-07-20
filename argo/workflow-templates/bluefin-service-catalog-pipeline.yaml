@@ -37,8 +37,8 @@ spec:
           - name: run-tests
             dependencies: [deploy-fixture]
             templateRef:
-              name: run-service-tests
-              template: run-service-tests
+              name: run-incluster-tests
+              template: run-pytest
             arguments:
               parameters:
                 - name: namespace
@@ -47,6 +47,10 @@ spec:
                   value: "service_catalog/{{workflow.parameters.lane}}"
                 - name: lane
                   value: "{{workflow.parameters.lane}}"
+                - name: app-label
+                  value: "app=service-catalog-workload"
+                - name: service-name
+                  value: "service-catalog"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
 

@@ -8,7 +8,7 @@ metadata:
   name: orphan-pod-gc
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   schedules:
     - "*/30 * * * *"
@@ -27,17 +27,27 @@ spec:
         nodeSelector:
           kubernetes.io/hostname: ghost
         script:
-          image: cgr.dev/chainguard/kubectl:latest-dev
+          image: ghcr.io/projectbluefin/lab-runner:latest
           command: [bash]
           resources:
             requests:
               cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
               memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
           source: |
             set -uo pipefail
+
+            # Bootstrap kubectl if not in PATH
+            if ! command -v kubectl >/dev/null 2>&1; then
+              KUBECTL=/tmp/kubectl
+              if [ ! -f "${KUBECTL}" ]; then
+                curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+                chmod +x "${KUBECTL}"
+              fi
+              kubectl() { "${KUBECTL}" "$@"; }
+            fi
 
             echo "=== orphan-pod-gc $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
 
@@ -72,5 +82,30 @@ spec:
               -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,CREATED:.metadata.creationTimestamp' \
               2>/dev/null || true)
             echo "Deleted ${DELETED_FAILED} stale Failed pods (>1h)"
+
+            # 3. Running/Pending pods belonging to completed or missing workflows
+            echo "Checking for running/pending pods from completed/missing workflows..."
+            DELETED_ORPHAN_RUNNING=0
+            while IFS=' ' read -r NS POD WF; do
+              [[ -z "${POD}" || -z "${WF}" ]] && continue
+              PHASE=$(kubectl get workflow "${WF}" -n "${NS}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "None")
+              if [[ "${PHASE}" == "Succeeded" || "${PHASE}" == "Failed" || "${PHASE}" == "Error" || "${PHASE}" == "None" ]]; then
+                echo "Deleting orphaned pod ${POD} from completed/missing workflow ${WF} (${PHASE})"
+                kubectl delete pod "${POD}" -n "${NS}" --grace-period=0 --force --ignore-not-found 2>/dev/null || true
+                DELETED_ORPHAN_RUNNING=$((DELETED_ORPHAN_RUNNING + 1))
+              fi
+            done < <(kubectl get pods -A \
+              -l 'workflows.argoproj.io/workflow' \
+              --no-headers \
+              --field-selector=status.phase=Running \
+              -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,WF:.metadata.labels.workflows\.argoproj\.io/workflow' \
+              2>/dev/null || true
+              kubectl get pods -A \
+                -l 'workflows.argoproj.io/workflow' \
+                --no-headers \
+                --field-selector=status.phase=Pending \
+                -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,WF:.metadata.labels.workflows\.argoproj\.io/workflow' \
+                2>/dev/null || true)
+            echo "Deleted ${DELETED_ORPHAN_RUNNING} running/pending orphan pods"
 
             echo "=== gc complete ==="

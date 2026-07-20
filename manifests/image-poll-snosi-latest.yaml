@@ -1,0 +1,39 @@
+# CronWorkflow: polls ghcr.io/frostyard/snow:latest.
+# Triggers bluefin-qa-pipeline (smoke/developer/system suites) only when the OCI
+# digest changes vs the stored ConfigMap state.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-snosi-latest
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+    bluefin.io/trigger: digest-poll
+spec:
+  suspend: false
+  schedules:
+    - "30 */3 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    workflowTemplateRef:
+      name: image-poller
+    arguments:
+      parameters:
+        - name: image
+          value: "ghcr.io/frostyard/snow"
+        - name: image-tag
+          value: "latest"
+        - name: state-key
+          value: "digest-snosi-latest"
+        - name: suites
+          value: "smoke,developer,system"
+        - name: variant
+          value: "snosi"

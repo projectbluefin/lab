@@ -1,0 +1,40 @@
+# PodDisruptionBudgets for multi-replica Buildbarn components.
+# frontend can lose one of two stateless replicas during a voluntary disruption.
+# storage can also lose only one pod at a time, which prevents a single drain or
+# upgrade from evicting both durable shards simultaneously. This protects
+# availability during voluntary disruption only; it does not make the shards
+# interchangeable or replace separate backup/recovery work.
+#
+# scheduler and bb-remote-asset stay intentionally uncovered here because each
+# runs a single replica today; a PDB with minAvailable: 1 would block every
+# voluntary eviction of that lone pod, and that SPOF tradeoff should stay
+# explicit until those services are made highly available.
+#
+# worker is a DaemonSet, and kubectl drain normally uses --ignore-daemonsets;
+# this budget is therefore scoped to the replicated Deployment/StatefulSet
+# workloads that actually participate in disruption-budget-controlled evictions.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: storage
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: storage

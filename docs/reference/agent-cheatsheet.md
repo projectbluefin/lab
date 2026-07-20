@@ -478,7 +478,6 @@ On the new node, the `jorge-nopasswd` sudoers file must sort AFTER `wheel` and i
 sudo bash -c 'echo -e "Defaults:jorge !requiretty\njorge ALL=(ALL) NOPASSWD: ALL" \
   > /etc/sudoers.d/zzz-jorge && chmod 440 /etc/sudoers.d/zzz-jorge'
 ```
-
 ### Node offboarding — removing a worker
 
 ```bash
@@ -492,7 +491,6 @@ KUBECONFIG=~/.kube/bluespeed.yaml kubectl delete node <hostname>
 # 3. On the node itself (optional cleanup)
 sudo /var/usrlocal/bin/k3s-agent-uninstall.sh
 ```
-
 ### Key facts for image-based, atomic OS nodes
 
 - **Binary path:** `/var/usrlocal/bin/k3s` — always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`

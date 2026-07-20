@@ -1,38 +1,48 @@
 ---
 name: example-skill
 description: >
-  One-sentence trigger: what area this skill covers and when an agent should
-  load it. Keep under 50 words.
-metadata:
-  context7-sources:
-    - /example-org/tool
+  Describe the task this skill handles and the concrete situations that should
+  cause an agent to load it. Keep the description concise.
 ---
 
 # Example skill
 
+State the result this skill helps an agent achieve.
+
 ## When to Use
 
-- List the concrete triggers that should make an agent load this skill.
+- Name concrete file, command, or failure triggers.
 
 ## When NOT to Use
 
-- Point to sibling skills for related areas.
+- Point to the adjacent skill for related work.
 
 ## Core Process
 
-1. First rule or step.
-2. Second rule or step.
-3. Verification step.
+1. Inspect the source of truth before making a change.
+2. Make the smallest safe change.
+3. Run the verification commands below.
 
-## Common rationalizations / red flags
+## Common Rationalizations
 
-- Do not X just because Y.
-- Stop if you find yourself doing Z.
+- "The rule is obvious." If it was discovered through investigation, write it down.
+- "I will update the skill later." Update it in the same change.
+
+## Red Flags
+
+- Stop before destructive or irreversible actions.
+- Stop when the source and documentation disagree; resolve the source first.
 
 ## Verification
 
-Before claiming the task is done:
+```bash
+# Replace with exact repository checks.
+```
 
-- [ ] Relevant section of this skill was followed
-- [ ] Any code/config example was checked against a canonical source
-- [ ] New pattern learned was written back to this skill file
+- [ ] The relevant source was inspected.
+- [ ] The change was validated.
+- [ ] Durable new knowledge was written back when needed.
+
+## Related references
+
+- Link only to supporting documents that this procedure may require.

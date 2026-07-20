@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_MAX_LINES = 300
+SKILL_HARD_MAX_LINES = 500
 REFERENCE_MAX_LINES = 500
 FORBIDDEN = [
     re.compile(r"jorge@"),
@@ -18,6 +19,28 @@ FORBIDDEN = [
 
 def skills() -> list[Path]:
     return list((ROOT / "docs" / "skills").glob("*/SKILL.md"))
+
+
+def validate_entry_points() -> list[str]:
+    errors: list[str] = []
+    for name in ("AGENTS.md", "agents.md"):
+        if not (ROOT / name).exists():
+            errors.append(f"missing root agent entry point: {name}")
+    if not (ROOT / "docs" / "skills" / "README.md").exists():
+        errors.append("missing docs/skills/README.md skill manifest")
+    return errors
+
+
+def validate_skill_manifest(files: set[Path]) -> list[str]:
+    manifest = ROOT / "docs" / "skills" / "README.md"
+    if not manifest.exists():
+        return []
+    errors: list[str] = []
+    pattern = r"\]\(([^)]+/SKILL\.md)\)"
+    for target in re.findall(pattern, manifest.read_text(encoding="utf-8")):
+        if not (manifest.parent / target).exists():
+            errors.append(f"{manifest.relative_to(ROOT)}: missing skill target {target}")
+    return errors
 
 
 def validate_frontmatter(path: Path) -> list[str]:
@@ -97,12 +120,18 @@ def main() -> int:
     errors: list[str] = []
     warnings: list[str] = []
 
+    errors.extend(validate_entry_points())
+
     for skill in skills():
         errors.extend(validate_frontmatter(skill))
-        warnings.extend(f"{skill}: {len(skill.read_text(encoding='utf-8').splitlines())} lines exceeds {SKILL_MAX_LINES}"
-                        for _ in [0] if len(skill.read_text(encoding="utf-8").splitlines()) > SKILL_MAX_LINES)
+        line_count = len(skill.read_text(encoding="utf-8").splitlines())
+        if line_count > SKILL_HARD_MAX_LINES:
+            errors.append(f"{skill}: {line_count} lines exceeds hard limit {SKILL_HARD_MAX_LINES}")
+        elif line_count > SKILL_MAX_LINES:
+            warnings.append(f"{skill}: {line_count} lines exceeds advisory limit {SKILL_MAX_LINES}")
 
     files = collect_md_files()
+    errors.extend(validate_skill_manifest(files))
     for ref_dir in (ROOT / "docs" / "reference", ROOT / "docs" / "ops"):
         if ref_dir.exists():
             for p in ref_dir.glob("*.md"):

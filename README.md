@@ -116,7 +116,7 @@ ArgoCD polls (or webhook)
 ```
 lab/
 ├── README.md                         # This file
-├── agents.md                         # Agent entry point
+├── AGENTS.md                         # Agent entry point
 ├── docs/ops/RUNBOOK.md               # Timeless architecture + failure modes
 ├── docs/reference/WORKFLOWS.md       # WorkflowTemplate agent contract
 ├── Justfile                          # Operator convenience wrappers
@@ -253,7 +253,7 @@ with two ArgoCD Applications that own distinct resource classes:
 
 ## Getting Started
 
-See **[/docs/ops/bootstrap.md](/docs/ops/bootstrap.md)** for the complete lab setup guide.
+See **[/docs/ops/bootstrap.md](/docs/ops/bootstrap.md)** for the complete lab setup guide. Start with [`AGENTS.md`](AGENTS.md) when working as an agent.
 
 **TL;DR for an existing k3s + KubeVirt cluster:**
 
@@ -339,7 +339,7 @@ See [/docs/skills/test-authoring/dogtail-patterns.md](/docs/skills/test-authorin
 | Doc | Purpose |
 |---|---|
 | [README.md](README.md) | Architecture overview (this file) |
-| [agents.md](agents.md) | Agent entry point |
+| [AGENTS.md](AGENTS.md) | Agent entry point |
 | [docs/reference/WORKFLOWS.md](/docs/reference/WORKFLOWS.md) | WorkflowTemplate submit interface / agent contract |
 | [docs/reference/workflow-reference.md](/docs/reference/workflow-reference.md) | Full WorkflowTemplate reference |
 | [docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) | Image-poll → container test → result publication pipeline |

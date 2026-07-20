@@ -6,13 +6,13 @@ metadata:
   annotations:
     description: |
       Additive dakota BST build pipeline. Builds the bluefin and bluefin-nvidia OCI
-      variants in parallel using the same shared Buildbarn frontend and
-      per-lane workflow-scoped PVC caches, routing artifact cache push/pulls to the shared Buildbarn
-      frontend (:8980 gRPC) for hot builds. Triggered by push to dakota:testing
-      via dakota-commit-poller CronWorkflow. On success, exports to local Zot
-      (:30500) as dakota:testing and dakota-nvidia:testing. Uses bst-build
-      PriorityClass — higher priority than lab-test-vm so BST cache-seeding work
-      wins scheduling disputes.
+      variants in parallel using the shared Buildbarn frontend as the single
+      source of truth for artifacts and source caches. BuildStream driver pods use
+      emptyDir scratch so they can float freely across ghost/exo-0; required
+      podAntiAffinity keeps the two variant drivers on different nodes. Triggered
+      by push to dakota:testing via dakota-commit-poller CronWorkflow. On success,
+      exports to local Zot (:30500) as dakota:testing and dakota-nvidia:testing.
+      Uses bst-build PriorityClass.
   labels:
     app.kubernetes.io/component: dakota-build
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -60,28 +60,15 @@ spec:
             value: "{{workflow.parameters.lock-key}}"
       dag:
         tasks:
-          - name: create-bst-cache-bluefin
-            template: create-bst-cache-pvc
-            arguments:
-              parameters:
-                - name: pvc-name
-                  value: "{{workflow.name}}-bst-cache-dakota"
-          - name: create-bst-cache-bluefin-nvidia
-            template: create-bst-cache-pvc
-            arguments:
-              parameters:
-                - name: pvc-name
-                  value: "{{workflow.name}}-bst-cache-dakota-nvidia"
           - name: detect-build-mode
             template: detect-build-mode
-            depends: create-bst-cache-bluefin && create-bst-cache-bluefin-nvidia
             arguments:
               parameters:
                 - name: build-mode
                   value: "{{inputs.parameters.build-mode}}"
           - name: build-bluefin
             template: run-bst-step
-            depends: create-bst-cache-bluefin && detect-build-mode
+            depends: detect-build-mode
             arguments:
               parameters:
                 - name: element
@@ -100,11 +87,9 @@ spec:
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
                 - name: lock-key
                   value: "{{inputs.parameters.lock-key}}"
-                - name: cache-pvc
-                  value: "{{workflow.name}}-bst-cache-dakota"
           - name: build-bluefin-nvidia
             template: run-bst-step
-            depends: create-bst-cache-bluefin-nvidia && detect-build-mode
+            depends: detect-build-mode
             arguments:
               parameters:
                 - name: element
@@ -123,30 +108,9 @@ spec:
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
                 - name: lock-key
                   value: "{{inputs.parameters.lock-key}}"
-                - name: cache-pvc
-                  value: "{{workflow.name}}-bst-cache-dakota-nvidia"
 
     # Dakota builds are distributed-only. Non-RE modes are rejected to prevent
     # local/serial bypasses that write large build state to node root disks.
-    - name: create-bst-cache-pvc
-      inputs:
-        parameters:
-          - name: pvc-name
-      resource:
-        action: apply
-        manifest: |
-          apiVersion: v1
-          kind: PersistentVolumeClaim
-          metadata:
-            name: "{{inputs.parameters.pvc-name}}"
-            namespace: "{{workflow.namespace}}"
-          spec:
-            accessModes: [ReadWriteOnce]
-            storageClassName: local-path
-            resources:
-              requests:
-                storage: 200Gi
-
     - name: detect-build-mode
       inputs:
         parameters:
@@ -213,7 +177,6 @@ spec:
           - name: registry
           - name: mode
           - name: lock-key
-          - name: cache-pvc
       dag:
         tasks:
           - name: bst-re
@@ -237,8 +200,6 @@ spec:
                   value: "{{inputs.parameters.mode}}"
                 - name: lock-key
                   value: "{{inputs.parameters.lock-key}}"
-                - name: cache-pvc
-                  value: "{{inputs.parameters.cache-pvc}}"
 
     - name: bst-build-re
       synchronization:
@@ -248,16 +209,14 @@ spec:
             key: "{{inputs.parameters.lock-key}}"
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: workflows.argoproj.io/workflow
-                      operator: In
-                      values:
-                        - "{{workflow.name}}"
-                topologyKey: kubernetes.io/hostname
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: workflows.argoproj.io/workflow
+                    operator: In
+                    values:
+                      - "{{workflow.name}}"
+              topologyKey: kubernetes.io/hostname
       priorityClassName: bst-build
       activeDeadlineSeconds: 43200
       retryStrategy:
@@ -273,14 +232,13 @@ spec:
           - name: registry
           - name: mode
           - name: lock-key
-          - name: cache-pvc
       volumes:
         - name: fuse
           hostPath:
             path: /dev/fuse
         - name: bst-cache
-          persistentVolumeClaim:
-            claimName: "{{inputs.parameters.cache-pvc}}"
+          emptyDir:
+            sizeLimit: 200Gi
         - name: buildstream-config
           configMap:
             name: buildstream-remote-cache
@@ -305,11 +263,13 @@ spec:
             value: "/root/.cache/{{inputs.parameters.tag}}"
         resources:
           requests:
-            cpu: "1"
-            memory: 2Gi
+            cpu: "8"
+            memory: 16Gi
+            ephemeral-storage: 100Gi
           limits:
-            cpu: "2"
-            memory: 4Gi
+            cpu: "16"
+            memory: 32Gi
+            ephemeral-storage: 200Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse

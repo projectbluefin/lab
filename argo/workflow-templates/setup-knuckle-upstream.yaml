@@ -6,7 +6,7 @@ metadata:
   annotations:
     description: |
       One-shot: adds the missing `upstream` remote to ghost's ~/src/knuckle
-      repo and verifies gh CLI auth via GH_TOKEN. Fixes #104.
+      repo. Fixes #104.
       Usage: argo submit --from workflowtemplate/setup-knuckle-upstream -n argo --wait --log
 spec:
   serviceAccountName: argo
@@ -46,6 +46,8 @@ spec:
         command: [bash]
         source: |
           set -euo pipefail
+
+          dnf install -y --quiet git >/dev/null
 
           KNUCKLE_DIR="/host/home/jorge/src/knuckle"
 

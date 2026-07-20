@@ -23,6 +23,7 @@ spec:
       bluefin.io/suite: smoke
   workflowSpec:
     serviceAccountName: argo
+    activeDeadlineSeconds: 14400  # 4h max — prevent stuck Dakota runs from holding ghost-heavy-compute
     podGC:
       strategy: OnWorkflowCompletion
     ttlStrategy:

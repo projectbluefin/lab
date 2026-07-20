@@ -1,0 +1,183 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+---
+
+<SiteLayout
+  title="Methodology"
+  description="Statistical methods and Failure Mode and Effects Analysis (FMEA) for Bluefin QA metrics."
+  current="about"
+>
+  <style>
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .about-section {
+      margin-bottom: 2.5rem;
+    }
+    .about-section h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 2rem 0 1rem;
+      color: var(--site-text);
+      border-bottom: 1px solid var(--site-border);
+      padding-bottom: 0.5rem;
+    }
+    .about-section p {
+      color: var(--site-muted);
+      line-height: 1.6;
+      margin-bottom: 1rem;
+      max-width: 80ch;
+    }
+    .enum {
+      display: inline-block;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--site-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85em;
+      margin: 2px 4px 2px 0;
+      color: var(--site-text);
+    }
+    .planned {
+      color: var(--site-muted);
+      font-style: italic;
+    }
+    .about-footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--site-border);
+      display: flex;
+      gap: 1.5rem;
+      font-size: 0.9rem;
+    }
+    .about-footer a {
+      color: var(--site-accent);
+      text-decoration: none;
+    }
+    .about-footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+
+  <header class="dashboard-header">
+    <h1>Bluefin QA — Methodology</h1>
+  </header>
+
+  <div class="about-section">
+    <p>
+      This page documents the statistical methods used to compute every derived metric on
+      factory.projectbluefin.io. Every panel on the site that displays a number with a confidence
+      interval references a row in the table below. Click the notebook link to audit the
+      methodology and re-execute it against the raw inputs.
+    </p>
+
+    <h2>Derived metrics</h2>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Metric ID prefix</th>
+            <th>What it measures</th>
+            <th>Estimator</th>
+            <th>Window</th>
+            <th>Notebook</th>
+            <th>Citation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>trust_window_pass_rate</code></td>
+            <td>Per (variant, branch, suite) pass rate over an audience window.</td>
+            <td>Wilson score interval, 95%</td>
+            <td>24h / 7d / 30d</td>
+            <td><a href="/methods/01_pass_rate_wilson.html">01_pass_rate_wilson.html</a></td>
+            <td>Wilson, E. B. (1927). JASA 22(158):209&ndash;212.</td>
+          </tr>
+          <tr>
+            <td><code>reproducibility_rate</code></td>
+            <td>P(image_digest(rebuild) == image_digest(prior) given identical inputs).</td>
+            <td>Wilson score interval, 95%</td>
+            <td>rolling 30 nights</td>
+            <td class="planned">planned: 03_reproducibility</td>
+            <td>Reproducible Builds Project methodology</td>
+          </tr>
+          <tr>
+            <td><code>provenance_completeness</code></td>
+            <td>Fraction of SLSA edges that verify under <code>cosign verify-attestation</code>.</td>
+            <td>Wilson score interval, 95% on edge counts</td>
+            <td>per-image</td>
+            <td class="planned">planned: 04_provenance_walk</td>
+            <td>SLSA v1.0; in-toto Attestation Framework</td>
+          </tr>
+          <tr>
+            <td><code>regression_localization_latency</code></td>
+            <td>Median wall-time from regression onset (BOCPD change-point) to identified commit.</td>
+            <td>BOCPD posterior + git-blame attribution</td>
+            <td>per-detection</td>
+            <td class="planned">planned: 02_changepoint</td>
+            <td>Adams &amp; MacKay (2007). Bayesian Online Changepoint Detection. arXiv:0710.3742</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Failure Mode and Effects Analysis (FMEA)</h2>
+    <p>
+      Every derived metric record on this site carries a <code>failure_modes</code> array — a
+      structured list of declared ways the metric's value could be wrong. Each failure mode has
+      an <code>id</code>, a <code>description</code>, an <code>active</code> boolean (computed
+      by the notebook from data heuristics), and where applicable a <code>threshold</code> and
+      <code>evidence_url</code>.
+    </p>
+    <p>
+      Panels in the dashboard surface a warning chip whose count equals the number of currently
+      active failure modes. Click the chip to expand the list. FMEA is reliability
+      engineering's standard tool (IEC 60812); applying it to dashboard metrics makes the
+      dashboard's own failure modes a first-class signal.
+    </p>
+
+    <h2>State vocabulary</h2>
+    <p>The two state enums used on the site are locked:</p>
+    <p>
+      <strong>Station status:</strong>
+      <span class="enum">partial</span>
+      <span class="enum">degraded</span>
+      <span class="enum">unknown</span>
+      <span class="enum">not_attested</span>
+      <span class="enum">not_published</span>
+      <span class="enum">blocked</span>
+      <span class="enum">published</span>
+    </p>
+    <p>
+      <strong>Snapshot / metric state:</strong>
+      <span class="enum">fresh</span>
+      <span class="enum">stale</span>
+      <span class="enum">unknown</span>
+      <span class="enum">partial</span>
+      <span class="enum">degraded</span>
+    </p>
+    <p>
+      New state values cannot be introduced without amending both
+      <code>tests/unit/test_factory_dashboard_contract.py</code> and
+      <code>schemas/v2/derived-metric.schema.json</code> in the same change.
+    </p>
+
+    <footer class="about-footer">
+      <a href="https://github.com/projectbluefin/lab">Repository</a>
+      <a href="https://github.com/projectbluefin/lab/tree/main/schemas/v2">Schemas</a>
+    </footer>
+  </div>
+</SiteLayout>

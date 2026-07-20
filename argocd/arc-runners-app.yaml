@@ -4,7 +4,7 @@ metadata:
   name: arc-runners
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   project: default
   source:
@@ -21,34 +21,32 @@ spec:
         controllerServiceAccount:
           namespace: arc-systems
           name: arc-systems-gha-rs-controller
+        containerMode:
+          type: kubernetes
+          kubernetesModeWorkVolumeClaim:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: local-path
+            resources:
+              requests:
+                storage: 50Gi
         template:
           spec:
-            nodeSelector:
-              node-location: lan
+            serviceAccountName: arc-runner-workflow-submitter
             tolerations:
               - key: node-role.kubernetes.io/gaming
                 operator: Exists
                 effect: NoSchedule
-            volumes:
-              - name: buildah-cache
-                hostPath:
-                  # ponytail: per-node cache; persists across jobs; Zot deduplicates cross-node
-                  path: /var/tmp/arc-buildah-cache
-                  type: DirectoryOrCreate
             containers:
               - name: runner
-                image: ghcr.io/actions/actions-runner:latest
+                image: ghcr.io/projectbluefin/arc-runner:latest
                 command: ["/home/runner/run.sh"]
                 resources:
                   requests:
-                    cpu: "6"
-                    memory: 12Gi
+                    cpu: "250m"
+                    memory: "512Mi"
                   limits:
-                    cpu: "12"
-                    memory: 24Gi
-                volumeMounts:
-                  - name: buildah-cache
-                    mountPath: /home/runner/.local/share/containers/storage
+                    cpu: "1"
+                    memory: "1Gi"
   destination:
     server: https://kubernetes.default.svc
     namespace: arc-runners

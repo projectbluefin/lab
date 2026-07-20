@@ -1,0 +1,168 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: dakota-container-qa-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      Containerized Dakota QA pipeline. Runs image-level smoke checks directly
+      inside the target OCI image without provisioning a KubeVirt VM. This
+      bypasses the bootc-install/containerDisk path that Dakota's
+      composefs-oci backend currently cannot satisfy (no UKI/bootupd).
+    notes: |
+      Use this pipeline to verify dakota:testing and dakota-nvidia:testing
+      while the VM-based dakota-qa-pipeline remains blocked on UKI/bootupd
+      support (projectbluefin/lab#272). GUI behave suites cannot run inside
+      a pod because qecore-headless requires a full systemd/GDM session.
+  labels:
+    app.kubernetes.io/component: qa-pipeline
+    app.kubernetes.io/part-of: dakota-test-suite
+spec:
+  serviceAccountName: argo
+  activeDeadlineSeconds: 3600
+  entrypoint: pipeline
+
+  arguments:
+    parameters:
+    - name: image
+      value: "192.168.1.102:30500/dakota"
+    - name: image-tag
+      value: "testing"
+    - name: variant
+      value: "dakota"
+
+  templates:
+
+  - name: pipeline
+    dag:
+      tasks:
+      - name: assert-image
+        template: assert-image
+        arguments:
+          parameters:
+          - name: image
+            value: "{{workflow.parameters.image}}"
+          - name: image-tag
+            value: "{{workflow.parameters.image-tag}}"
+
+      - name: dakota-image-smoke
+        depends: "assert-image.Succeeded"
+        template: dakota-image-smoke
+        arguments:
+          parameters:
+          - name: image
+            value: "{{workflow.parameters.image}}"
+          - name: image-tag
+            value: "{{workflow.parameters.image-tag}}"
+          - name: variant
+            value: "{{workflow.parameters.variant}}"
+
+  - name: assert-image
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+    script:
+      image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
+      command: [sh]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      source: |
+        set -eu
+        IMAGE="{{inputs.parameters.image}}"
+        TAG="{{inputs.parameters.image-tag}}"
+        DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
+          "docker://${IMAGE}:${TAG}" 2>/dev/null || echo "")
+        if [ -n "${DIGEST}" ]; then
+          echo "image ${IMAGE}:${TAG} ready: ${DIGEST}" >&2
+        else
+          echo "ERROR: image ${IMAGE}:${TAG} not found in registry" >&2
+          exit 1
+        fi
+
+  - name: dakota-image-smoke
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+      - name: variant
+    script:
+      image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      imagePullPolicy: IfNotPresent
+      command: [bash]
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "256Mi"
+        limits:
+          cpu: "500m"
+          memory: "512Mi"
+      securityContext:
+        runAsUser: 0
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+          - ALL
+      source: |
+        set -euo pipefail
+        VARIANT="{{inputs.parameters.variant}}"
+        FAILURES=0
+
+        check() {
+          local desc="$1"; shift
+          if "$@" >/dev/null 2>&1; then
+            echo "PASS: ${desc}"
+          else
+            echo "FAIL: ${desc}" >&2
+            FAILURES=$((FAILURES + 1))
+          fi
+        }
+
+        echo "=== Dakota image smoke test for ${VARIANT} ==="
+
+        # Identity checks
+        check "os-release declares Bluefin Dakota" \
+          grep -q 'ID="bluefin-dakota"' /etc/os-release
+        check "os-release IMAGE_NAME is dakota" \
+          grep -q 'IMAGE_NAME="dakota"' /etc/os-release
+
+        # Tooling checks
+        check "podman is installed" command -v podman
+        check "flatpak is installed" command -v flatpak
+        check "gnome-shell is installed" command -v gnome-shell
+        check "bootc is installed" command -v bootc
+
+        # bootc install configuration
+        check "bootc install config exists" test -f /usr/lib/bootc/install/00-defaults.toml
+        check "bootc install config declares systemd bootloader" \
+          grep -q 'bootloader = "systemd"' /usr/lib/bootc/install/00-defaults.toml
+
+        # bootc status returns valid JSON (booted will be null inside a container)
+        if bootc status --format=json 2>/dev/null | python3 -m json.tool >/dev/null 2>&1; then
+          echo "PASS: bootc status returns valid JSON"
+        else
+          echo "FAIL: bootc status does not return valid JSON" >&2
+          FAILURES=$((FAILURES + 1))
+        fi
+
+        # When /usr is mounted separately it must be read-only in a booted system.
+        # In a container it may not be a separate mount; only enforce when present.
+        if findmnt /usr >/dev/null 2>&1; then
+          check "/usr mount is read-only" \
+            findmnt /usr --output OPTIONS -n | grep -q 'ro'
+        else
+          echo "SKIP: /usr is not a separate mount in this container"
+        fi
+
+        if [ "${FAILURES}" -eq 0 ]; then
+          echo "=== All smoke checks passed ==="
+          exit 0
+        else
+          echo "=== ${FAILURES} smoke check(s) failed ===" >&2
+          exit 1
+        fi

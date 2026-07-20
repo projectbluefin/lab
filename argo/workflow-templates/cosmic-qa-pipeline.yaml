@@ -1,0 +1,102 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: cosmic-qa-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      Container-only COSMIC QA pipeline: run the selected suite directly through
+      run-container-tests without provisioning a KubeVirt VM or containerDisk.
+  labels:
+    app.kubernetes.io/component: qa-pipeline
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  activeDeadlineSeconds: 3600
+  entrypoint: pipeline
+  arguments:
+    parameters:
+    - name: image
+      value: "ghcr.io/razorfinos-org/cosmic-build-meta"
+    - name: image-tag
+      value: "cosmic-pr-33"
+    - name: suites
+      value: "smoke"
+    - name: variant
+      value: "cosmic"
+    - name: branch
+      value: "main"
+    - name: pr-number
+      value: ""
+    - name: sha
+      value: ""
+    - name: repo
+      value: ""
+    - name: testsuite-branch
+      value: "main"
+    - name: testsuite-repo
+      value: "https://github.com/projectbluefin/testsuite"
+  templates:
+  - name: pipeline
+    dag:
+      tasks:
+      - name: validate-suites
+        template: validate-suites
+        arguments:
+          parameters:
+          - name: suites
+            value: "{{workflow.parameters.suites}}"
+      - name: test-lane
+        depends: "validate-suites.Succeeded"
+        withItems: [smoke]
+        when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
+        templateRef:
+          name: run-container-tests
+          template: run-container-tests
+        arguments:
+          parameters:
+          - name: image
+            value: "{{workflow.parameters.image}}"
+          - name: image-tag
+            value: "{{workflow.parameters.image-tag}}"
+          - name: suite
+            value: "{{item}}"
+          - name: variant
+            value: "{{workflow.parameters.variant}}"
+          - name: branch
+            value: "{{workflow.parameters.branch}}"
+          - name: testsuite-branch
+            value: "{{workflow.parameters.testsuite-branch}}"
+          - name: testsuite-repo
+            value: "{{workflow.parameters.testsuite-repo}}"
+          - name: behave-tags
+            value: ""
+  - name: validate-suites
+    inputs:
+      parameters:
+      - name: suites
+    script:
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      command: [bash]
+      env:
+      - name: SUITES
+        value: "{{inputs.parameters.suites}}"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |
+        set -euo pipefail
+        IFS=',' read -r -a raw_suites <<< "$SUITES"
+        for suite in "${raw_suites[@]}"; do
+          case "${suite}" in
+            smoke) ;;
+            *)
+              echo "Unsupported suites value: ${suite}" >&2
+              exit 1
+              ;;
+          esac
+        done

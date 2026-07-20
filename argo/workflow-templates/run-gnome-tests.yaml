@@ -59,14 +59,20 @@ spec:
       # Results are captured via outputs.result (stdout) + kubectl logs.
     initContainers:
     - name: git-sync
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
       env:
       - name: BRANCH
         value: "{{inputs.parameters.branch}}"
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         for attempt in 1 2 3; do
           # Clear any partial clone from a previous attempt — git clone
@@ -98,7 +104,7 @@ spec:
         mountPath: /workspace
     container:
         # Fedora: has dnf, python3, pip3 — matches Bluefin (Fedora-based) package names
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       imagePullPolicy: Always
       resources:
         requests:
@@ -138,7 +144,6 @@ spec:
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         {
         set -euo pipefail
@@ -155,29 +160,41 @@ spec:
         # Root pubkey auth is set up by bootc --root-ssh-authorized-keys.
         ROOT_SSH="ssh ${SSH_OPTS} root@${VM_IP}"
 
-        # ── Wait for VM SSH to become ready (up to 10 minutes) ──────────
-        echo "Waiting for SSH on ${VM_IP} (root, up to 10 min)..." >&2
-        # Verbose first attempt to capture the exact auth failure for root.
-        ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-          -o ConnectTimeout=15 -o LogLevel=DEBUG3 \
-          root@${VM_IP} 'echo root-ssh-diag-ready' 2>&1 < /dev/null || true
-        echo "--- root SSH diagnostic complete; starting retry loop ---" >&2
-        # Wait for root SSH — bootc-native mechanism means this is reliable.
-        timeout 600 bash -c "
-          until ssh -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                  -o ConnectTimeout=10 -o LogLevel=ERROR root@'${VM_IP}' 'echo ready' 2>/dev/null; do
-            sleep 10
+        # ── Wait for VM SSH to become ready (prefer bluefin-test; fallback root) ──
+        BLUEFIN_READY=0
+        echo "Checking SSH on ${VM_IP} (${VM_USER}, up to 2 min)..." >&2
+        if timeout 120 bash -c "
+          until ${SSH} 'echo ready' 2>/dev/null; do
+            sleep 5
           done
-        "
-        echo "Root SSH ready." >&2
+        "; then
+          BLUEFIN_READY=1
+          echo "${VM_USER} SSH ready; skipping root bootstrap." >&2
+        fi
 
-        # ── Bootstrap bluefin-test user + SSH keys via root ──────────────
-        # Create the test user at runtime so this works even if btrfs
-        # post-install changes did not survive the qcow2/OCI pipeline.
-        # SSH keys are set up here rather than relying on disk injection.
-        echo "Bootstrapping bluefin-test user and SSH access via root..." >&2
-        SSH_PUBKEY="$(cat ${SSH_KEY}.pub)"
-        ${ROOT_SSH} "
+        if [[ "${BLUEFIN_READY}" -eq 0 ]]; then
+          echo "Waiting for SSH on ${VM_IP} (root fallback, up to 10 min)..." >&2
+          # Verbose first attempt to capture the exact auth failure for root.
+          ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=15 -o LogLevel=DEBUG3 \
+            root@${VM_IP} 'echo root-ssh-diag-ready' 2>&1 < /dev/null || true
+          echo "--- root SSH diagnostic complete; starting retry loop ---" >&2
+          # Wait for root SSH — bootc-native mechanism means this is reliable.
+          timeout 600 bash -c "
+            until ssh -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+                    -o ConnectTimeout=10 -o LogLevel=ERROR root@'${VM_IP}' 'echo ready' 2>/dev/null; do
+              sleep 10
+            done
+          "
+          echo "Root SSH ready." >&2
+
+          # ── Bootstrap bluefin-test user + SSH keys via root ──────────────
+          # Create the test user at runtime so this works even if btrfs
+          # post-install changes did not survive the qcow2/OCI pipeline.
+          # SSH keys are set up here rather than relying on disk injection.
+          echo "Bootstrapping bluefin-test user and SSH access via root..." >&2
+          SSH_PUBKEY="$(cat ${SSH_KEY}.pub)"
+          ${ROOT_SSH} "
           set -euo pipefail
           # Create bluefin-test user if not already present (uid 1001, wheel)
           if ! id bluefin-test &>/dev/null; then
@@ -221,28 +238,29 @@ spec:
           # Required by the developer suite 'User lingering is enabled' assertion.
           loginctl enable-linger bluefin-test 2>/dev/null || true
           echo '[ROOT] bluefin-test bootstrap complete'
-        "
-        # Wait for bluefin-test SSH (KubeVirt injects key; give it a moment).
-        echo "Verifying bluefin-test SSH..." >&2
-        # One verbose probe to capture exact server refusal before silent retry loop.
-        ssh -v -i "${SSH_KEY}" \
-          -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-          -o ConnectTimeout=10 -o PasswordAuthentication=no \
-          ${VM_USER}@${VM_IP} 'echo ok' 2>&1 | \
-          grep -iE 'debug1|debug2.*key|denied|accept|authentications|offer|refused|pubkey' | head -20 || true
-        # Show authorized_keys and sshd -T for bluefin-test (diagnosis only).
-        ${ROOT_SSH} "
-          echo '=== authorized_keys:'; cat /var/home/bluefin-test/.ssh/authorized_keys 2>/dev/null | wc -c || echo missing
-          echo '=== sshd -T authorizedkeysfile:'; sshd -T -C user=${VM_USER},addr=127.0.0.1,host=localhost,laddr=127.0.0.1,lport=22 2>/dev/null | grep -i 'authorizedkeys\|strictmodes\|pubkey\|pam' | head -10 || true
-          echo '=== sshd journal:'; journalctl -u sshd -n 20 --no-pager 2>/dev/null || true
-        " 2>/dev/null || true
-        timeout 120 bash -c "
-          until ${SSH} 'echo ready' 2>/dev/null; do
-            echo '[bluefin-test SSH] not ready, retrying...' >&2
-            sleep 5
-          done
-        "
-        echo "SSH ready (bluefin-test)." >&2
+          "
+          # Wait for bluefin-test SSH (KubeVirt injects key; give it a moment).
+          echo "Verifying bluefin-test SSH..." >&2
+          # One verbose probe to capture exact server refusal before silent retry loop.
+          ssh -v -i "${SSH_KEY}" \
+            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            -o ConnectTimeout=10 -o PasswordAuthentication=no \
+            ${VM_USER}@${VM_IP} 'echo ok' 2>&1 | \
+            grep -iE 'debug1|debug2.*key|denied|accept|authentications|offer|refused|pubkey' | head -20 || true
+          # Show authorized_keys and sshd -T for bluefin-test (diagnosis only).
+          ${ROOT_SSH} "
+            echo '=== authorized_keys:'; cat /var/home/bluefin-test/.ssh/authorized_keys 2>/dev/null | wc -c || echo missing
+            echo '=== sshd -T authorizedkeysfile:'; sshd -T -C user=${VM_USER},addr=127.0.0.1,host=localhost,laddr=127.0.0.1,lport=22 2>/dev/null | grep -i 'authorizedkeys\|strictmodes\|pubkey\|pam' | head -10 || true
+            echo '=== sshd journal:'; journalctl -u sshd -n 20 --no-pager 2>/dev/null || true
+          " 2>/dev/null || true
+          timeout 120 bash -c "
+            until ${SSH} 'echo ready' 2>/dev/null; do
+              echo '[bluefin-test SSH] not ready, retrying...' >&2
+              sleep 5
+            done
+          "
+          echo "SSH ready (bluefin-test)." >&2
+        fi
 
         # ── Install test dependencies inside the VM ──────────────────────
         # Bluefin VMs are ephemeral bootc images with read-only /usr.
@@ -270,7 +288,7 @@ spec:
               echo 'Installing test dependencies...' >&2
               sudo ostree admin unlock 2>/dev/null || true
               sudo dnf clean packages -q 2>/dev/null || true
-              pip3 --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2
+              python3 -m pip --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2 || true
               python3 -m pip install --quiet --user qecore dogtail python-uinput behave 2>&1 | tail -3
               for f in \$HOME/.local/bin/qecore_*; do sudo ln -sf \"\$f\" /usr/local/bin/\$(basename \"\$f\") 2>/dev/null; done
             fi
@@ -282,17 +300,26 @@ spec:
         echo "Dependencies ready." >&2
 
         # ── Copy test suite to VM ────────────────────────────────────────
-        echo "Copying tests/${SUITE}/ to VM..." >&2
+        REMOTE_SUITE="${SUITE}"
+        # testsuite repo renamed system contract checks to tests/lifecycle.
+        if [[ "${SUITE}" == "system" ]]; then
+          REMOTE_SUITE="lifecycle"
+        fi
+        echo "Copying tests/${REMOTE_SUITE}/ to VM..." >&2
         ${SSH} "mkdir -p /tmp/bluefin-tests /tmp/results"
-        ${SCP} /workspace/bluefin-test-suite/tests/${SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
+        ${SCP} /workspace/bluefin-test-suite/tests/${REMOTE_SUITE} ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/
         # Copy tests/shared/ so environment.py can resolve 'tests.shared.*' imports.
         ${SSH} "mkdir -p /tmp/bluefin-tests/tests"
         ${SCP} /workspace/bluefin-test-suite/tests/shared ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/tests/
+        # Some suites import helpers from tests.smoke; copy it when available.
+        if [[ "${REMOTE_SUITE}" != "smoke" && -d /workspace/bluefin-test-suite/tests/smoke ]]; then
+          ${SCP} /workspace/bluefin-test-suite/tests/smoke ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/tests/
+        fi
         ${SSH} "touch /tmp/bluefin-tests/__init__.py /tmp/bluefin-tests/tests/__init__.py" || true
 
         if [[ "${SUITE}" != "system" ]]; then
           WAIT_FOR_SHELL=/workspace/bluefin-test-suite/tests/shared/wait_for_shell.py
-          ${SCP} "${WAIT_FOR_SHELL}" ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/${SUITE}/wait_for_shell.py
+          ${SCP} "${WAIT_FOR_SHELL}" ${VM_USER}@${VM_IP}:/tmp/bluefin-tests/${REMOTE_SUITE}/wait_for_shell.py
         fi
 
         # ── Run tests ────────────────────────────────────────────────────
@@ -310,25 +337,23 @@ spec:
         ${SSH} "date --iso-8601=seconds > /tmp/results/test-start-time.txt" || true
 
         BEHAVE_RC=0
-        if [[ "${SUITE}" == "system" ]]; then
-          ${SSH} "
-            export PATH=\$HOME/.local/bin:\$PATH
-            export PYTHONPATH=/tmp/bluefin-tests
-            python3 -m behave /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}
-          " || BEHAVE_RC=$?
-        elif [[ "${SUITE}" == "common" ]]; then
-          # common suite is SSH-driven from the runner container (no AT-SPI/display).
+        if [[ "${SUITE}" == "common" || "${SUITE}" == "system" ]]; then
+          # common/system suites are SSH-driven from the runner container (no AT-SPI/display).
           # It reads VM_IP, VM_USER, and SSH_KEY from the environment, which are
-          # available here but NOT inside the VM. Run behave from this container
-          # so it can reach the test SSH key at ${SSH_KEY}.
+          # available here but NOT inside the VM.
           if ! python3 -c 'import behave' 2>/dev/null; then
-            pip3 install --quiet behave 2>&1 | tail -3
+            python3 -m pip --version &>/dev/null || python3 -m ensurepip --user 2>&1 | tail -2 || true
+            python3 -m pip install --quiet behave 2>&1 | tail -3
+          fi
+          SUITE_FEATURE_DIR="common"
+          if [[ "${SUITE}" == "system" ]]; then
+            SUITE_FEATURE_DIR="lifecycle"
           fi
           export VM_IP="${VM_IP}"
           export VM_USER="${VM_USER}"
           export SSH_KEY="${SSH_KEY}"
           PYTHONPATH=/workspace/bluefin-test-suite \
-          python3 -m behave /workspace/bluefin-test-suite/tests/common/features/ \
+          python3 -m behave /workspace/bluefin-test-suite/tests/${SUITE_FEATURE_DIR}/features/ \
             --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
         else
           # Write a runner script to the VM to avoid shell-quoting issues
@@ -336,17 +361,31 @@ spec:
           ${SSH} "printf '%s\n' '#!/bin/bash' 'set -euo pipefail' \
             'export PATH=\$HOME/.local/bin:\$PATH' \
             'export PYTHONPATH=/tmp/bluefin-tests' \
-            'python3 /tmp/bluefin-tests/${SUITE}/wait_for_shell.py' \
+            'python3 /tmp/bluefin-tests/${REMOTE_SUITE}/wait_for_shell.py' \
             '# Start gnome-ponytail-daemon after GNOME Shell is ready.' \
             '# D-Bus cannot auto-activate it (ServiceUnknown) in the qecore-headless' \
             '# session because the service file is installed after first boot.' \
             '# Starting it explicitly here ensures it registers before behave runs.' \
             '/usr/libexec/gnome-ponytail-daemon &' \
             'sleep 2' \
-            'exec \$(which behave) /tmp/bluefin-tests/${SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}' \
+            'exec \$(which behave) /tmp/bluefin-tests/${REMOTE_SUITE}/features/ --format json.pretty --outfile /tmp/results/results.json --no-capture ${TAGS_ARG}' \
             > /tmp/run-suite.sh && chmod +x /tmp/run-suite.sh"
           ${SSH} "
             export PATH=\$HOME/.local/bin:\$PATH
+            export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+            SESSION_BUS=\$(systemctl --user show-environment 2>/dev/null | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p' | head -1)
+            [ -z \"\$SESSION_BUS\" ] && [ -S \"\$XDG_RUNTIME_DIR/bus\" ] && SESSION_BUS=\"unix:path=\$XDG_RUNTIME_DIR/bus\"
+            WAYLAND_DISPLAY=\$(ls \"\$XDG_RUNTIME_DIR\"/wayland-* 2>/dev/null | head -1 | xargs -r basename 2>/dev/null || true)
+            AT_SPI_BUS_ADDRESS=\"\$SESSION_BUS\"
+            cat >/tmp/session.env <<EOF
+            export DBUS_SESSION_BUS_ADDRESS=\$SESSION_BUS
+            export WAYLAND_DISPLAY=\$WAYLAND_DISPLAY
+            export XDG_RUNTIME_DIR=\$XDG_RUNTIME_DIR
+            export AT_SPI_BUS_ADDRESS=\$AT_SPI_BUS_ADDRESS
+            export PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin
+            export XDG_SESSION_TYPE=wayland
+            export XDG_SESSION_DESKTOP=gnome
+            EOF
             # Stop any lingering qecore-headless process from a prior run.
             # IMPORTANT: pgrep -f matches CMDLINE strings, and because this
             # entire heredoc is passed as a bash -c argument, any pgrep pattern
@@ -369,6 +408,7 @@ spec:
             unset _pid
             sleep 2
             rm -f /tmp/headless* /tmp/qecore* /tmp/.headless* 2>/dev/null || true
+            source /tmp/session.env
             \$HOME/.local/bin/qecore-headless \
               --session-type wayland \
               --session-desktop gnome \
@@ -396,13 +436,14 @@ spec:
         # Derive image slug for screenshot tag and results JSON push.
         # Convention: testing -> bluefin-testing, lts-testing -> bluefin-lts-testing,
         # bazzite-testing -> bazzite-testing, aurora-testing -> aurora-testing,
-        # dakota-testing -> dakota-testing.
+        # dakota-testing -> dakota-testing, snosi-latest -> snosi-latest.
         VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
         case "${VARIANT_TAG}" in
           lts-*)     IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
           dakota-*)  IMG_SLUG="${VARIANT_TAG}" ;;
           bazzite-*) IMG_SLUG="${VARIANT_TAG}" ;;
           aurora-*)  IMG_SLUG="${VARIANT_TAG}" ;;
+          snosi-*)   IMG_SLUG="${VARIANT_TAG}" ;;
           *)         IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
         esac
 
@@ -424,13 +465,23 @@ spec:
               cp "$SHOT" /tmp/desktop-screenshot.png
               oras push "${SCREENSHOT_IMAGE}:${PUSH_TAG}" \
                 --annotation "org.opencontainers.image.description=Bluefin desktop screenshot from lab e2e suite: ${SUITE}" \
-                --annotation "io.github.projectbluefin.caller_repo=projectbluefin/testing-lab" \
+                --annotation "io.github.projectbluefin.caller_repo=projectbluefin/lab" \
                 /tmp/desktop-screenshot.png:image/png 2>&1 || true
               echo "Screenshot pushed to ${SCREENSHOT_IMAGE}:${PUSH_TAG}" >&2
             else
               echo "No GITHUB_TOKEN - skipping GHCR screenshot push" >&2
             fi
           fi
+        fi
+
+
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+          echo "Publishing test results back to lab repository..." >&2
+          rm -rf /tmp/lab-code
+          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+          python3 /tmp/lab-code/scripts/publish_test_results.py /tmp/results/results.json "${IMG_SLUG}" "${SUITE}" "{{workflow.name}}" "${GITHUB_TOKEN}" || echo "Warning: failed to publish test results" >&2
+        else
+          echo "No GITHUB_TOKEN - skipping test results publication" >&2
         fi
 
 

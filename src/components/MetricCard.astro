@@ -1,0 +1,19 @@
+---
+interface Props {
+  label: string;
+  value: string | number;
+  unit?: string;
+  state?: string;
+  meta?: string;
+  class?: string;
+}
+
+const { label, value, unit, state, meta, class: className = "" } = Astro.props;
+---
+<article class:list={["metric-card", className]}>
+  <p class="metric-card__label">{label}</p>
+  <p class="metric-card__value">{value}</p>
+  <p class="metric-card__meta">
+    {meta ? meta : `${unit || ""} · ${state || ""}`.trim().replace(/^·\s*|\s*·$/, "")}
+  </p>
+</article>

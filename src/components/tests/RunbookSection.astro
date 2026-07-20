@@ -1,0 +1,132 @@
+---
+---
+
+<style>
+  .runbook-container {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(56, 189, 248, 0.15);
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .runbook-container h4 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0 0 0.75rem 0;
+  }
+  .runbook-container p {
+    font-size: 0.85rem;
+    color: #cbd5e1;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+  }
+</style>
+
+<div class="runbook-container">
+  <h4>Common Test Failures & Diagnostic Commands</h4>
+  <div class="table-scroll" style="margin-bottom: 1.5rem;">
+    <table class="history-table" style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+          <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Observed Log/Symptom</th>
+          <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Root Cause</th>
+          <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Remediation CLI Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">No GITHUB_TOKEN or missing results.json</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">The container-only lane could not publish structured results, or the suite failed before writing its result payload.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">kubectl get secret -n argo github-token</code></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f87171;">results.json not found / Execution failed</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">A container-only test lane failed before the summary step completed.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">just logs</code><br/><span style="font-size: 0.7rem; color: #64748b;">Identify the failing suite in the run-container-tests output.</span></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #f59e0b;">Expected image-poll rerun never starts</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">The digest may already be recorded in <code>image-polling-digests</code>, so the poller treats the image as already seen.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">kubectl get configmap -n argo image-polling-digests -o yaml</code><br/><span style="font-size: 0.7rem; color: #64748b;">Compare the stored digest with the latest workflow log before clearing state.</span></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #ef4444;">FailedCreate: metadata.labels must be ≤63 chars</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Argo workflow generated a VM name that exceeds the Kubernetes label length limits.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">use workflow.name-item pattern</code><br/><span style="font-size: 0.7rem; color: #64748b;">Shorten test naming definitions in the YAML templates.</span></td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.82rem; font-family: monospace; color: #94a3b8;">VM stuck in Terminating status</td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #cbd5e1;">Virt-launcher pod is locked by system processes and needs manual termination.</td>
+          <td style="padding: 0.75rem;"><code style="color: #38bdf8; font-size: 0.78rem;">kubectl delete pod -n bluefin-test ...</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 style="margin-top: 1.5rem;">How to Reproduce & Run Tests Locally</h4>
+  <p>
+    Bluefin operates as an atomic, image-based OS. You can replicate the exact dashboard BDD verification checks locally using the following steps:
+  </p>
+  <ol style="margin: 0; padding-left: 1.25rem; color: #64748b; font-size: 0.85rem; line-height: 1.7; margin-bottom: 1.5rem;">
+    <li><strong>Verify Cluster Access:</strong> Run <code>just list-workflows</code> to confirm Argo connectivity and namespace visibility.</li>
+    <li><strong>Sync Workflow Definitions:</strong> Execute <code>just argocd-sync</code> if you need the latest GitOps state before testing.</li>
+    <li><strong>Container-Only Validation:</strong> Run <code>just run-tests-tag testing</code> or <code>just run-tests-tag lts-testing</code> to test the published bootc OCI image directly as a container.</li>
+    <li><strong>Matrix Smoke Check:</strong> Run <code>just run-tests-matrix</code> when you want the default testing and lts-testing smoke pair.</li>
+  </ol>
+
+  <h4 style="margin-top: 2rem;">Core BDD Test Suites & Assertions</h4>
+  <p>
+    Each test lane executes targeted BDD scenarios written in Gherkin and backed by python-behave, dogtail, and GNOME AT-SPI tree traversal:
+  </p>
+  <div class="table-scroll">
+    <table class="history-table" style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+          <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; width: 120px;">Suite</th>
+          <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; width: 120px;">Runtime</th>
+          <th scope="col" style="padding: 0.75rem; text-align: left; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase;">Key System Assertions & Scenarios Verified</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">smoke</td>
+          <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
+            <strong>GNOME Shell Desktop Environment:</strong> Verifies AT-SPI registry daemon readiness, Quick Settings menus, Clock and Calendar top-bar responsiveness via Shell.Eval, Caffeine extension state, and Dash to Dock layout integrity.
+          </td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">common</td>
+          <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
+            <strong>OS Integrations:</strong> Asserts flatpak sandbox portal boundaries, polkit local user authorization overrides, basic immutable host security policies, and standard desktop session persistence.
+          </td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">developer</td>
+          <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
+            <strong>Developer Toolchains:</strong> Confirms Homebrew prefix pathing, Podman rootless socket readiness, Ptyxis terminal tab multiplexing, and development build tools accessibility.
+          </td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">software</td>
+          <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
+            <strong>User Space Application Layer:</strong> Validates user-facing software hubs, Flatpak remote sync performance, and software center API contracts.
+          </td>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+          <td style="padding: 0.75rem; font-size: 0.85rem; font-weight: 700; color: #cbd5e1;">system</td>
+          <td style="padding: 0.75rem;"><span class="pill" style="font-size: 0.7rem; border-radius: 4px; padding: 0.05rem 0.3rem; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25);">Container</span></td>
+          <td style="padding: 0.75rem; font-size: 0.82rem; color: #94a3b8; line-height: 1.5;">
+            <strong>Atomic OS Guarantees:</strong> Proves the core platform contract. Asserts that <code>/usr</code> is read-only, <code>/var</code> is writable, <code>bootc status</code> maps to a correct registry container image reference, <code>bootc upgrade</code> stages updates cleanly without host disruption, and composefs signatures match policies.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -4,16 +4,18 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: testing-lab-infra
+  name: lab-infra
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   project: default
   source:
-    repoURL: https://github.com/projectbluefin/testing-lab
+    repoURL: https://github.com/projectbluefin/lab
     targetRevision: main
     path: manifests
+    directory:
+      exclude: "flatcar-update-*.yaml"
   destination:
     server: https://kubernetes.default.svc
     namespace: argo
@@ -33,6 +35,15 @@ spec:
       namespace: argo
       jsonPointers:
         - /data
+    # StatefulSet volumeClaimTemplates: API server injects apiVersion/kind/
+    # status into each template; with server-side diff this reads as permanent
+    # drift and traps self-heal in a partial-sync loop that starves full syncs.
+    - group: apps
+      kind: StatefulSet
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[]?.apiVersion
+        - .spec.volumeClaimTemplates[]?.kind
+        - .spec.volumeClaimTemplates[]?.status
   syncPolicy:
     automated:
       prune: true

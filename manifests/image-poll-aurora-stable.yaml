@@ -7,9 +7,10 @@ metadata:
   name: image-poll-aurora-stable
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
+  suspend: false
   schedules:
     - "27 */3 * * *"
   timezone: "UTC"
@@ -30,15 +31,9 @@ spec:
           value: "ghcr.io/ublue-os/aurora"
         - name: image-tag
           value: "stable"
-        - name: containerdisk-tag
-          value: "aurora-stable"
         - name: state-key
           value: "digest-aurora-stable"
-        - name: namespace
-          value: "aurora-test"
         - name: suites
-          value: "smoke,common,developer,software,system"
-        - name: vm-memory
-          value: "8Gi"
+          value: "system"
         - name: variant
           value: "aurora"

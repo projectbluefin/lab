@@ -14,7 +14,7 @@ metadata:
       stable state; on fail gate-status is set to fail and the workflow exits
       non-zero with an explicit reason.
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   entrypoint: gate-candidate
   serviceAccountName: argo
@@ -26,7 +26,7 @@ spec:
   templates:
     - name: gate-candidate
       script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
+        image: ghcr.io/projectbluefin/lab-runner:latest
         securityContext:
           runAsUser: 0
         command: [bash]
@@ -39,7 +39,6 @@ spec:
             memory: 512Mi
         source: |
           set -euo pipefail
-          apk add --no-cache coreutils >/dev/null 2>&1
 
           STATE_CM="flatcar-kernel-lifecycle-state"
           GATE_WINDOW_SECONDS=86400
@@ -84,7 +83,10 @@ spec:
             fail "candidate-created-at is in the future: ${candidate_created_at}"
           fi
           if [ "${elapsed_seconds}" -lt "${GATE_WINDOW_SECONDS}" ]; then
-            fail "candidate age ${elapsed_seconds}s is below 24h gate"
+            kubectl patch configmap "${STATE_CM}" -n argo --type=merge \
+              -p '{"data":{"gate-status":"pending"}}' >/dev/null
+            echo "gate_status=pending reason=candidate age ${elapsed_seconds}s is below 24h gate"
+            exit 0
           fi
 
           node_ready="$(kubectl get node exo-0 -o jsonpath='{range .status.conditions[?(@.type=="Ready")]}{@.status}{end}')"

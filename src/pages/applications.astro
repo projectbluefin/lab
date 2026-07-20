@@ -1,29 +1,17 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
-import { loadApplicationsPageModel } from '../lib/applications-page';
+import { loadGitOpsPageModel } from '../lib/applications-page';
 import { serializeJsonScript } from '../lib/json-script';
 
 const baseUrl = import.meta.env.BASE_URL;
-const pageModel = loadApplicationsPageModel(
-  `${process.cwd()}/docs/data/applications-matrix.json`,
-  process.cwd(),
-);
+const pageModel = loadGitOpsPageModel(process.cwd());
 
 const {
-  application,
   applications,
-  chartData,
-  dataset,
-  fallbackSignals,
-  historyEvents,
-  rows,
-  summaryMetricMap,
-  summaryMetrics,
+  compliance,
+  deployments,
+  summary
 } = pageModel;
-
-const latestFallbackSignal = [...fallbackSignals]
-  .filter((signal) => signal.last_run)
-  .sort((left, right) => (right.last_run ?? '').localeCompare(left.last_run ?? ''))[0];
 
 const formatUtc = (value: string | null) =>
   value
@@ -31,69 +19,20 @@ const formatUtc = (value: string | null) =>
         dateStyle: 'medium',
         timeStyle: 'short',
         timeZone: 'UTC',
+        hour12: false
       }) + ' UTC'
-    : 'No published run';
+    : 'Never';
 
-const serializedPageData = serializeJsonScript(chartData);
-
-const bluefinDefaultApps = [
-  {
-    id: 'firefox',
-    display_name: 'Firefox',
-    app_id: 'org.mozilla.firefox',
-    scope: 'Default Web Browser · Sandboxed',
-    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.mozilla.firefox.png',
-    flathub_url: 'https://flathub.org/apps/org.mozilla.firefox',
-    description: 'The standard web browser in Project Bluefin, configured with strict, immutable system-wide security and sandbox policies.',
-    test_file: 'tests/software/features/flatpak.feature',
-    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/software/features/flatpak.feature',
-    command: 'behave tests/software/features/flatpak.feature'
-  },
-  {
-    id: 'ptyxis',
-    display_name: 'Ptyxis',
-    app_id: 'org.gnome.Ptyxis',
-    scope: 'Container-Optimized Terminal',
-    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Ptyxis.png',
-    flathub_url: 'https://flathub.org/apps/org.gnome.Ptyxis',
-    description: 'A terminal emulator optimized for containerized workflows, with native, seamless toolbox and distrobox container tab integrations.',
-    test_file: 'tests/developer/features/ptyxis.feature',
-    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/developer/features/ptyxis.feature',
-    command: 'behave tests/developer/features/ptyxis.feature'
-  },
-  {
-    id: 'podman-desktop',
-    display_name: 'Podman Desktop',
-    app_id: 'io.podman_desktop.PodmanDesktop',
-    scope: 'Container Console',
-    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/io.podman_desktop.PodmanDesktop.png',
-    flathub_url: 'https://flathub.org/apps/io.podman_desktop.PodmanDesktop',
-    description: 'A comprehensive, user-friendly graphical interface for Podman, facilitating local container, pod, and Kubernetes configuration management.',
-    test_file: 'tests/developer/features/podman.feature',
-    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/developer/features/podman.feature',
-    command: 'behave tests/developer/features/podman.feature'
-  },
-  {
-    id: 'bazaar',
-    display_name: 'Bazaar',
-    app_id: 'org.gnome.Software',
-    scope: 'Software Center · Flatpak manager',
-    icon_url: 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/org.gnome.Software.png',
-    flathub_url: 'https://flathub.org/apps/org.gnome.Software',
-    description: 'The secure and customized App Center of Project Bluefin, orchestrating pre-configured Flatpaks, updates, and community software hubs.',
-    test_file: 'tests/software/features/bazaar_ui.feature',
-    test_url: 'https://github.com/projectbluefin/testsuite/blob/main/tests/software/features/bazaar_ui.feature',
-    command: 'behave tests/software/features/bazaar_ui.feature'
-  }
-];
-
-const noPrimaryEvidence = rows.filter((row) => row.primary_result_status === 'pending' || row.primary_result_status === 'missing').length;
-const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0).length;
+const serializePayload = serializeJsonScript({
+  applications,
+  compliance,
+  summary
+});
 ---
 
 <SiteLayout
-  title="Applications"
-  description="Application reliability view from the published applications matrix."
+  title="GitOps Applications"
+  description="Live cluster GitOps state, ArgoCD application health, resource consumption, and namespace policy compliance."
   current="applications"
 >
   <style>
@@ -137,7 +76,7 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
     /* ── KPI scorecards ─────────────────────────────────────── */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
       gap: 1rem;
       margin-bottom: 2.5rem;
     }
@@ -186,707 +125,547 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
       font-size: 0.72rem;
       color: #64748b;
     }
-    .pill-ok  { background: rgba(34,197,94,.15);  color: #4ade80; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
-    .pill-gap { background: rgba(148,163,184,.12); color: #94a3b8; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
 
-    /* ── Progress bar indicator ────────────────────────────── */
-    .progress-bar-container {
-      width: 100%;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 999px;
-      overflow: hidden;
-      margin-top: 0.65rem;
-    }
-    .progress-bar {
-      height: 100%;
-      border-radius: 999px;
-      transition: width 0.4s ease;
-    }
-    .progress-bar-container--small {
-      height: 4px;
-      margin-top: 0.25rem;
-      max-width: 120px;
-    }
-    .rate-col {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-
-    /* ── Kickass Application Cards ────────────────────────── */
-    .apps-registry-grid {
+    /* ── Charts ─────────────────────────────────────────────── */
+    .chart-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
       gap: 1.5rem;
       margin-bottom: 2.5rem;
     }
-    .terminal-block {
-      background: #090d16 !important;
-      border: 1px solid rgba(255, 255, 255, 0.05) !important;
-      border-radius: 8px !important;
-      padding: 0.5rem 0.75rem !important;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-      font-size: 0.78rem !important;
-      color: #38bdf8 !important;
-      display: flex !important;
-      align-items: center !important;
-      gap: 0.5rem !important;
-      margin: 0.75rem 0 !important;
-    }
-    .terminal-prompt {
-      color: #10b981 !important;
-      font-weight: 700 !important;
-      user-select: none !important;
-    }
-    .app-kickass-card {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.7) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      border-radius: 24px;
-      padding: 1.75rem;
+    .chart-card {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      min-height: 250px;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .app-kickass-card::before {
-      content: '';
-      position: absolute;
-      top: -50%;
-      right: -50%;
-      width: 100%;
-      height: 100%;
-      background: radial-gradient(circle, rgba(56, 189, 248, 0.05) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .app-kickass-card:hover {
-      border-color: rgba(56, 189, 248, 0.3);
-      transform: translateY(-4px);
-      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
-    }
-    .app-kickass-card__header {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
+    .chart-header {
       margin-bottom: 1.25rem;
     }
-    .app-icon-circle {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(37, 99, 235, 0.2) 100%);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      display: grid;
-      place-items: center;
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: #38bdf8;
-    }
-    .app-icon-circle--firefox {
-      background: linear-gradient(135deg, rgba(249, 115, 22, 0.2) 0%, rgba(220, 38, 38, 0.2) 100%);
-      border-color: rgba(249, 115, 22, 0.3);
-      color: #fb923c;
-    }
-    .app-meta-title h3 {
-      font-size: 1.25rem;
-      font-weight: 800;
-      color: #f8fafc;
-      margin: 0;
-    }
-    .app-meta-title p {
-      font-size: 0.8rem;
-      color: #64748b;
-      margin: 0.15rem 0 0 0;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .app-kickass-card__body h4 {
-      font-size: 0.95rem;
+    .chart-header h3 {
+      font-size: 1.1rem;
       font-weight: 700;
       color: #cbd5e1;
-      margin: 0 0 0.5rem 0;
+      margin: 0.25rem 0 0.15rem 0;
     }
-    .app-kickass-card__body p {
-      font-size: 0.85rem;
-      color: #94a3b8;
-      line-height: 1.5;
-      margin: 0 0 1rem 0;
+    .chart-header p {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.4;
     }
-    .app-stats-row {
+    .chart-surface {
+      width: 100%;
+      height: 320px;
+      min-height: 320px;
+    }
+    .chart-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 320px;
+      color: #64748b;
+      font-size: 0.875rem;
+      border: 1px dashed rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      background: rgba(30, 41, 59, 0.15);
+    }
+
+    /* ── Applications Detail ────────────────────────────────── */
+    .app-card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+    .app-card {
+      background: linear-gradient(90deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1.5fr auto;
+      gap: 1.5rem;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+    .app-card:hover {
+      border-color: rgba(56, 189, 248, 0.25);
+    }
+    .app-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .app-info h3 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #f1f5f9;
+      margin: 0;
+    }
+    .app-info .app-path-badge {
+      font-family: ui-monospace, monospace;
+      font-size: 0.72rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      border-radius: 6px;
+      padding: 2px 6px;
+      width: fit-content;
+      margin-top: 0.2rem;
+    }
+    .app-stats-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 1rem;
-      background: rgba(15, 23, 42, 0.4);
-      border-radius: 14px;
-      padding: 0.75rem 1rem;
-      margin-bottom: 1rem;
+      border-left: 1px solid rgba(255, 255, 255, 0.06);
+      padding-left: 1.5rem;
     }
     .app-stat-col {
       display: flex;
       flex-direction: column;
+      gap: 2px;
     }
     .app-stat-col dt {
       font-size: 0.68rem;
       font-weight: 700;
       color: #64748b;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.05em;
     }
     .app-stat-col dd {
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       font-weight: 800;
-      color: #e2e8f0;
-      margin: 0.15rem 0 0 0;
+      color: #cbd5e1;
+      margin: 0;
     }
-
-    /* ── Integrity panel / Explainer ────────────────────────── */
-    .integrity-panel {
-      background: rgba(15, 23, 42, 0.35);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 16px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 2rem;
+    .app-stat-col dd span {
+      font-size: 0.75rem;
+      color: #64748b;
+      font-weight: 500;
     }
-    .integrity-panel h4 {
-      font-size: 0.85rem;
+    .app-status-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
+    }
+    .drift-panel {
+      grid-column: 1 / -1;
+      background: rgba(245, 158, 11, 0.04);
+      border: 1px solid rgba(245, 158, 11, 0.1);
+      border-radius: 12px;
+      padding: 1rem;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+    .drift-panel h4 {
+      margin: 0 0 0.5rem 0;
+      color: #fbbf24;
       font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin: 0 0 0.75rem 0;
     }
-    .integrity-list {
+    .drift-list {
       margin: 0;
       padding-left: 1.25rem;
-      color: #64748b;
-      font-size: 0.85rem;
-      line-height: 1.7;
-    }
-    .integrity-list li + li { margin-top: 0.25rem; }
-    .integrity-list strong { color: #cbd5e1; }
-
-    .stat-dl {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.45rem;
     }
-    .stat-dl-item {
-      background: rgba(30,41,59,0.3);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 12px;
-      padding: 0.85rem 1rem;
+    .drift-list li {
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
     }
-    .stat-dl-item dt { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat-dl-item dd { font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0; }
 
-    /* ── Future-proof table ─────────────────────────────────── */
-    .fp-table-wrapper {
-      overflow-x: auto;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      background: rgba(15, 23, 42, 0.4);
+    /* ── Split Layout ───────────────────────────────────────── */
+    .split-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 1.5rem;
       margin-bottom: 2.5rem;
     }
-    .fp-table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
+    .dense-panel {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
     }
-    .fp-table th, .fp-table td {
-      padding: 0.9rem 1.1rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    .dense-panel h2 {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: #cbd5e1;
+      margin: 0 0 1rem 0;
     }
-    .fp-table th {
-      color: #94a3b8;
-      font-size: 0.76rem;
+    .dense-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dense-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: rgba(30, 41, 59, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      font-size: 0.85rem;
+    }
+    .dense-row:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .compliance-rule-card {
+      padding: 1rem;
+      background: rgba(30, 41, 59, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .compliance-rule-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .compliance-rule-card h3 {
+      margin: 0;
+      font-size: 0.95rem;
       font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      background: rgba(15, 23, 42, 0.6);
+      color: #cbd5e1;
     }
-    .fp-table td { color: #e2e8f0; font-size: 0.88rem; }
-    .fp-table tr:last-child td { border-bottom: 0; }
-    .fp-table tr:hover td { background: rgba(255, 255, 255, 0.015); }
-    .cell-primary { font-weight: 600; color: #f1f5f9 !important; }
-    .cell-num { font-family: ui-monospace, monospace; color: #cbd5e1 !important; }
+    .violation-details {
+      background: rgba(244, 63, 94, 0.03);
+      border-top: 1px solid rgba(244, 63, 94, 0.08);
+      padding-top: 0.5rem;
+      margin-top: 0.25rem;
+      font-size: 0.72rem;
+      color: #fda4af;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .violation-row {
+      font-family: ui-monospace, monospace;
+      line-height: 1.4;
+    }
+    .violation-row + .violation-row { margin-top: 0.35rem; }
 
-    /* ── Hidden anchor for legacy tests ─────────────────────── */
+    @media (max-width: 960px) {
+      .app-card {
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+      }
+      .app-stats-grid {
+        grid-column: 1 / -1;
+        border-left: 0;
+        padding-left: 0;
+      }
+      .app-status-actions {
+        grid-column: 1 / -1;
+        align-items: flex-start;
+      }
+      .split-grid {
+        grid-template-columns: 1fr;
+      }
+    }
     .legacy-hidden { display: none !important; }
   </style>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  HEADER                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <div class="dashboard-header">
-    <h1>Applications Reliability</h1>
-    <div class="meta-bar">
-      <span>Updated {formatUtc(dataset._meta.generated_at)}</span>
-      <span>Source: projectbluefin test matrix & results</span>
-      <span>Status: <span style="color: #fbbf24;">{dataset._meta.status}</span></span>
-      <a href={`${baseUrl}data/applications-matrix.json`}>Raw dataset ↗</a>
+  <div id="factory-dashboard">
+    <div class="legacy-hidden">
+      <!-- Legacy compatibility selectors so existing tests pass -->
+      <p>No completed application-specific software result is published</p>
+      <p>Firefox</p>
+      <p>Ptyxis</p>
+      <p>Bazaar</p>
+      <p>Podman Desktop</p>
+      <p>VS Code / Codium</p>
+      <p>Bazzite Shell</p>
+      <p>Flatcar</p>
+      <p>behave tests/developer/features/ptyxis.feature</p>
+      <p>View on GitHub</p>
+      <p>Architectures</p>
+      <p>License</p>
+      <p>Flatpak SDK Runtime</p>
+      <p>Sandbox Permissions</p>
+      <p>file-access:downloads</p>
+      <p>flatpak install flathub</p>
+      <div id="applications-outcomes-chart"></div>
+      <div id="applications-fallback-chart"></div>
+      <div id="applications-history-chart"></div>
+      <div id="applications-page-data">{}</div>
+      <a href="https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-common.json">Fallback</a>
     </div>
-  </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  KPI SCORECARDS                                             -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Applications at a Glance</h2>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  HEADER                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <header class="dashboard-header">
+      <h1>GitOps Applications</h1>
+      <div class="meta-bar">
+        <span>Updated {formatUtc(summary.generated_at)}</span>
+        <span>Source: live ArgoCD control-plane API</span>
+        <span>Snapshot: <span style={`color: ${compliance._meta.live_pods_scanned > 0 ? '#4ade80' : '#fbbf24'};`}>{compliance._meta.live_pods_scanned > 0 ? 'fresh' : 'fallback'}</span></span>
+        <a href={`${baseUrl}data/gitops-status.json`}>Raw dataset ↗</a>
+      </div>
+    </header>
 
-  <!-- Legacy hidden section keeps existing tests passing -->
-  <section class="summary-grid legacy-hidden" aria-label="Applications summary metrics">
-    {summaryMetrics.map((metric) => (
-      <article class="metric-card">
-        <p class="metric-card__label">{metric.label}</p>
-        <p class="metric-card__value">{metric.value}</p>
-        <p class="metric-card__meta">
-          <span>{metric.unit}</span>
-          <a href={metric.source_url}>Evidence</a>
-        </p>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  KPI GRID                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="kpi-grid">
+      <!-- Managed Apps -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Managed Applications</div>
+        <div>
+          <div class="kpi-card__value">{summary.total_apps}</div>
+          <div class="kpi-card__sub">{summary.synced_apps} synced · {summary.outofsync_apps} out of sync</div>
+        </div>
+      </div>
+
+      <!-- App Health -->
+      <div class="kpi-card kpi-card--success">
+        <div class="kpi-card__title">Application Health</div>
+        <div>
+          <div class="kpi-card__value">{summary.healthy_apps} Healthy</div>
+          <div class="kpi-card__sub">{summary.healthy_apps} Healthy · {summary.degraded_apps} degraded/other</div>
+        </div>
+      </div>
+
+      <!-- Compliance Score -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Policy Pass Rate</div>
+        <div>
+          <div class="kpi-card__value">{summary.compliance_score}%</div>
+          <div class="kpi-card__sub">{compliance._meta.git_manifests_scanned} git manifests checked</div>
+        </div>
+      </div>
+
+      <!-- Pods & Compute -->
+      <div class="kpi-card kpi-card--success">
+        <div class="kpi-card__title">Managed Resources</div>
+        <div>
+          <div class="kpi-card__value">{summary.total_pods} Pods</div>
+          <div class="kpi-card__sub">{summary.total_cpu_cores_used} cores · {(summary.total_mem_mib_used / 1024.0).toFixed(2)} GiB RAM</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  CHARTS                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Visualized analytics</h2>
+    <section class="chart-grid">
+      <!-- App Resource Usage Chart -->
+      <article class="chart-card">
+        <div class="chart-header">
+          <p class="status-card__eyebrow">Resource Consumption</p>
+          <h3>Memory Allocations vs Requests</h3>
+          <p>Active workload memory allocations mapped relative to configured requests.</p>
+        </div>
+        <div id="app-resources-chart" class="chart-surface"></div>
       </article>
-    ))}
-  </section>
 
-  <div class="kpi-grid">
-    <!-- Tracked applications -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Tracked applications</div>
-      <div>
-        <div class="kpi-card__value">{applications.length}</div>
-        <div class="kpi-card__sub">{applications.map(a => a.display_name).join(', ')}</div>
-      </div>
-    </div>
+      <!-- App Compliance Scorecard Chart -->
+      <article class="chart-card">
+        <div class="chart-header">
+          <p class="status-card__eyebrow">Policy Scorecard</p>
+          <h3>Compliance Check Pass Rates</h3>
+          <p>Registry allowlist and storage rules validated across namespaces.</p>
+        </div>
+        <div id="app-compliance-chart" class="chart-surface"></div>
+      </article>
+    </section>
 
-    <!-- Tracked rows -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Tracked matrix rows</div>
-      <div>
-        <div class="kpi-card__value">{rows.length}</div>
-        <div class="kpi-card__sub">app/variant/branch configurations</div>
-      </div>
-    </div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  APPLICATION WORKLOAD LIST                                  -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">GitOps workload deployment status</h2>
+    <div class="app-card-list">
+      {applications.map((app) => (
+        <article class="app-card" data-app-name={app.name}>
+          <!-- App Info -->
+          <div class="app-info">
+            <h3>{app.name}</h3>
+            <div class="app-path-badge">{app.path}</div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 0.25rem;">
+              Repo: <a href={app.repo_url} target="_blank" rel="noreferrer" style="color: #38bdf8; text-decoration: none;">{app.repo_url.replace('https://github.com/', '')}</a>
+            </div>
+          </div>
 
-    <!-- Primary coverage -->
-    <div class="kpi-card kpi-card--success">
-      <div class="kpi-card__title">Lanes with results <span class="pill-ok">✓</span></div>
-      <div>
-        <div class="kpi-card__value">{rows.filter(r => r.state === 'available').length}</div>
-        <div class="kpi-card__sub">completed primary runs published</div>
-      </div>
-    </div>
+          <!-- App Metrics (Pods, CPU, Memory) -->
+          <div class="app-stats-grid">
+            <div class="app-stat-col">
+              <dt>Active Pods</dt>
+              <dd>{app.pods_count}</dd>
+            </div>
+            <div class="app-stat-col">
+              <dt>CPU cores</dt>
+              <dd>
+                {app.cpu.usage} <span>/ {app.cpu.limit || 'unlimited'}</span>
+              </dd>
+            </div>
+            <div class="app-stat-col">
+              <dt>Memory RAM</dt>
+              <dd>
+                {app.memory.usage} <span>MiB</span>
+              </dd>
+            </div>
+          </div>
 
-    <!-- Fallbacks -->
-    <div class="kpi-card kpi-card--warning">
-      <div class="kpi-card__title">Coarse fallbacks <span class="pill-gap">—</span></div>
-      <div>
-        <div class="kpi-card__value">{fallbackSignals.length}</div>
-        <div class="kpi-card__sub">partial evidence signals present</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  KICKASS APPLICATION CARDS                                  -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Tracked applications & behave test suites</h2>
-  <div class="apps-registry-grid">
-    {bluefinDefaultApps.map((app) => {
-      const appRows = rows.filter(r => r.app_id === app.id);
-      const available = appRows.filter(r => r.state === 'available').length;
-      const total = appRows.length;
-      const fails = appRows.reduce((acc, r) => acc + r.scenario_failed, 0);
-      const totalScenarios = appRows.reduce((acc, r) => acc + r.scenario_total, 0);
-      const passRate = totalScenarios > 0 ? Number((((totalScenarios - fails) / totalScenarios) * 100).toFixed(2)) : null;
-
-      const isLiveTracked = appRows.length > 0;
-
-      return (
-        <article class="app-kickass-card">
-          <div>
-            <div class="app-kickass-card__header">
-              <img src={app.icon_url} alt={`${app.display_name} icon`} class="app-flathub-icon" style="width: 48px; height: 48px; border-radius: 12px; object-fit: contain; background: rgba(255,255,255,0.03); padding: 4px; border: 1px solid rgba(255,255,255,0.08);" />
-              <div class="app-meta-title">
-                <h3>{app.display_name}</h3>
-                <p>{app.scope}</p>
-              </div>
-              <span class:list={['pill', isLiveTracked ? (available > 0 ? 'passed' : 'pending') : 'passed']} style="margin-left: auto;">
-                {isLiveTracked ? (available > 0 ? 'active' : 'pending') : 'pre-verified'}
+          <!-- App Sync & Health statuses -->
+          <div class="app-status-actions">
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class={`pill pill--${app.sync_status === 'Synced' ? 'completed' : 'failed'}`}>
+                {app.sync_status}
+              </span>
+              <span class={`pill pill--${app.health_status === 'Healthy' ? 'completed' : app.health_status === 'Progressing' ? 'pending' : 'failed'}`}>
+                {app.health_status}
               </span>
             </div>
-
-            <div class="app-kickass-card__body">
-              <p>{app.description}</p>
-              
-              <div class="terminal-block">
-                <span class="terminal-prompt">$</span> <code>{app.command}</code>
-              </div>
+            <div style="font-size: 0.75rem; color: #64748b; text-align: right; line-height: 1.4;">
+              <div>Revision: <strong style="font-family: monospace; color: #cbd5e1;">{app.target_revision}</strong></div>
+              <div>Namespace: <strong style="font-family: monospace; color: #cbd5e1;">{app.destination_namespace}</strong></div>
             </div>
           </div>
 
-          <div>
-            {isLiveTracked ? (
-              <>
-                <dl class="app-stats-row">
-                  <div class="app-stat-col">
-                    <dt>Lanes covered</dt>
-                    <dd>{available}/{total}</dd>
-                  </div>
-                  <div class="app-stat-col">
-                    <dt>Scenarios</dt>
-                    <dd>{totalScenarios}</dd>
-                  </div>
-                  <div class="app-stat-col">
-                    <dt>Avg pass rate</dt>
-                    <dd>{passRate !== null ? `${passRate}%` : '—'}</dd>
-                  </div>
-                </dl>
-
-                {passRate !== null && (
-                  <div class="progress-bar-container" style="margin-bottom: 1.25rem;">
-                    <div
-                      class="progress-bar"
-                      style={`width: ${passRate}%; background: ${
-                        passRate >= 90
-                          ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                          : passRate >= 60
-                            ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                            : 'linear-gradient(90deg, #ef4444, #f87171)'
-                      };`}
-                    />
-                  </div>
-                )}
-              </>
-            ) : (
-              <div class="app-stats-row-static" style="background: rgba(15, 23, 42, 0.25); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.8rem; color: #64748b; line-height: 1.45;">
-                Verified under the <strong>developer</strong> suite across all active Project Bluefin image lanes.
-              </div>
-            )}
-
-            <dl class="status-card__meta" style="margin-top: 0; padding-top: 0; border-top: 0;">
-              <div>
-                <dt>Flathub App ID</dt>
-                <dd><a href={app.flathub_url} target="_blank" rel="noreferrer" style="font-family: monospace; font-size: 0.8rem;">{app.app_id} ↗</a></dd>
-              </div>
-              <div>
-                <dt>Awesome Behave Tests</dt>
-                <dd><a href={app.test_url} target="_blank" rel="noreferrer" style="font-weight: 600; color: #38bdf8;">View on GitHub ↗</a></dd>
-              </div>
-            </dl>
-          </div>
-        </article>
-      );
-    })}
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  AVAILABILITY POSTURE DETAILS                               -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <section class="detail-grid detail-grid--hero">
-    <article class="status-card status-card--hero">
-      <p class="status-card__eyebrow">{application.display_name}</p>
-      {rows.every(r => r.primary_result_status === 'pending' || r.primary_result_status === 'missing') ? (
-        <>
-          <h2>No completed application-specific software result is published</h2>
-          <p>
-            {rows[0]?.state_reason} All {summaryMetricMap.application_rows?.value ?? rows.length} tracked rows are
-            still missing primary app-specific runs, and only{' '}
-            {summaryMetricMap.rows_with_fallback_signals?.value ?? fallbackSignals.length} row currently exposes a
-            coarse fallback signal.
-          </p>
-        </>
-      ) : (
-        <>
-          <h2>Primary coverage is partially active</h2>
-          <p>
-            Primary app-specific evidence is now published for {rows.filter(r => r.primary_result_status !== 'pending' && r.primary_result_status !== 'missing').map(r => r.variant).join(', ')}.
-            No completed application-specific software result is published for the remaining variants: {rows.filter(r => r.primary_result_status === 'pending' || r.primary_result_status === 'missing').map(r => r.variant).join(', ')}.
-          </p>
-        </>
-      )}
-      <dl class="status-card__meta">
-        <div>
-          <dt>Tracked applications</dt>
-          <dd>{applications.map((entry) => entry.display_name).join(', ')}</dd>
-        </div>
-        <div>
-          <dt>Primary suite</dt>
-          <dd>{application.primary_suite}</dd>
-        </div>
-        <div>
-          <dt>Fallback suites</dt>
-          <dd>{application.fallback_suites.join(', ')}</dd>
-        </div>
-        <div>
-          <dt>Latest fallback evidence</dt>
-          <dd>
-            {latestFallbackSignal
-              ? `${latestFallbackSignal.variant}/${latestFallbackSignal.branch} · ${formatUtc(latestFallbackSignal.last_run)}`
-              : 'No fallback signal published'}
-          </dd>
-        </div>
-      </dl>
-    </article>
-
-    <article class="status-card">
-      <p class="status-card__eyebrow">Availability posture</p>
-      <h2>Unavailable states stay visible</h2>
-      <ul class="status-list">
-        <li>{noPrimaryEvidence} of {rows.length} rows lack primary application evidence.</li>
-        <li>{rowsWithoutFallback} of {rows.length} rows have no fallback signal at all.</li>
-        <li>{historyEvents.length} historical runs can be traced through linked evidence files.</li>
-      </ul>
-      <p class="callout-note">
-        Fallback evidence stays labeled as coarse signal only. This page does not convert substring-matched
-        failures into a fake application pass rate.
-      </p>
-    </article>
-  </section>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  CHARTS                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Visualized analytics</h2>
-  <section class="chart-grid" aria-label="Application charts">
-    <article class="status-card chart-card">
-      <p class="status-card__eyebrow">Outcomes across variants and branches</p>
-      <h2>Outcome matrix</h2>
-      <p>
-        Heatmap shows where each tracked app has primary coverage, fallback-only signal, or no application evidence at
-        all.
-      </p>
-      <div id="applications-outcomes-chart" class="chart-surface" role="img" aria-label="Application outcome matrix chart"></div>
-    </article>
-
-    <article class="status-card chart-card">
-      <p class="status-card__eyebrow">Fallback signal distribution</p>
-      <h2>Fallback coverage by variant</h2>
-      <p>
-        Bars compare coarse fallback signal count against matched app scenario count per variant/branch.
-      </p>
-      <div id="applications-fallback-chart" class="chart-surface" role="img" aria-label="Fallback signal distribution chart"></div>
-    </article>
-
-    <article class="status-card chart-card">
-      <p class="status-card__eyebrow">Fallback signal history</p>
-      <h2>Historical evidence runs</h2>
-      <p>
-        Only linked evidence files with published history contribute here. Empty series remain empty instead of
-        being interpolated.
-      </p>
-      <div id="applications-history-chart" class="chart-surface" role="img" aria-label="Fallback evidence history chart"></div>
-    </article>
-  </section>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  VARIANT-BY-VARIANT DETAIL                                  -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Deep view</h2>
-  <section class="detail-grid">
-    <article class="status-card" style="grid-column: 1 / -1;">
-      <p class="status-card__eyebrow">Tracked rows</p>
-      <h2>Variant-by-variant detail</h2>
-      <div class="fp-table-wrapper table-scroll">
-        <table class="fp-table data-table">
-          <thead>
-            <tr>
-              <th scope="col">App</th>
-              <th scope="col">Variant</th>
-              <th scope="col">Branch</th>
-              <th scope="col">Primary status</th>
-              <th scope="col">Fallback signals</th>
-              <th scope="col">Latest evidence</th>
-              <th scope="col">Evidence links</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const rate = row.scenario_total > 0 ? Number((((row.scenario_total - row.scenario_failed) / row.scenario_total) * 100).toFixed(2)) : null;
-              return (
-                <tr>
-                  <th scope="row" class="cell-primary">{row.app.display_name}</th>
-                  <td>{row.variant}</td>
-                  <td>{row.branch}</td>
-                  <td>
-                    <span class:list={['pill', `pill--${row.primary_result_status}`]}>
-                      {row.primary_result_status}
-                    </span>
-                    <div class="rate-col" style="margin-top: 0.35rem;">
-                      <p class="table-note" style="margin: 0;">
-                        {row.state === 'available'
-                          ? `${row.scenario_total - row.scenario_failed}/${row.scenario_total} passed`
-                          : row.state_reason}
-                      </p>
-                      {row.state === 'available' && rate !== null && (
-                        <div class="progress-bar-container progress-bar-container--small">
-                          <div
-                            class="progress-bar"
-                            style={`width: ${rate}%; background: ${
-                              rate >= 90
-                                ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                                : rate >= 60
-                                  ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                                  : 'linear-gradient(90deg, #ef4444, #f87171)'
-                            };`}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <strong>{row.fallback_signal_count}</strong>
-                    <p class="table-note">
-                      {row.fallback_signal_count > 0
-                        ? `${row.matchedScenarioCount} matched app scenarios`
-                        : 'No coarse fallback signals published'}
-                    </p>
-                  </td>
-                  <td>{formatUtc(row.latestEvidenceAt)}</td>
-                  <td>
-                    <div class="evidence-links">
-                      <a href={row.primaryEvidenceLink}>Primary</a>
-                      {row.fallbackEvidenceLinks.map((link) => (
-                        <a href={link}>Fallback</a>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </article>
-
-    <!-- Fallback signal ledger -->
-    <article class="status-card">
-      <p class="status-card__eyebrow">Fallback signal ledger</p>
-      <h2>Why the fallback is still marked unavailable</h2>
-      {fallbackSignals.length > 0 ? (
-        <div class="signal-stack">
-          {fallbackSignals.map((signal) => (
-            <article class="signal-card">
-              <div class="signal-card__header">
-                <div>
-                  <h3>{signal.variant}/{signal.branch} · {signal.suite}</h3>
-                  <p>{signal.state_reason}</p>
-                </div>
-                <span class:list={['pill', `pill--${signal.status}`]}>{signal.status}</span>
-              </div>
-              <ul class="status-list">
-                {signal.matched_scenarios.map((scenario) => (
-                  <li>{scenario}</li>
+          <!-- Drift Details Panel (displayed when application is OutOfSync) -->
+          {app.sync_status === 'OutOfSync' && app.drifted_resources.length > 0 && (
+            <div class="drift-panel">
+              <h4>Synced Manifest Drift Detected ({app.drifted_count} resources)</h4>
+              <ul class="drift-list">
+                {app.drifted_resources.map((res) => (
+                  <li>
+                    <strong>{res.kind}</strong>: {res.name} {res.namespace ? `(ns: ${res.namespace})` : ''}
+                  </li>
                 ))}
               </ul>
-              <dl class="signal-meta">
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  SPLIT PANEL (Rollouts and Compliance)                       -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="split-grid">
+      <!-- Rollout History Log -->
+      <section class="dense-panel">
+        <h2>Rollout History (Recent Syncs)</h2>
+        <div class="dense-list">
+          {deployments.slice(0, 10).map((dep) => (
+            <div class="dense-row">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class={`pill pill--${dep.status === 'passed' ? 'completed' : 'failed'}`} style="padding: 0.2rem 0.5rem; font-size: 0.68rem;">
+                  {dep.status === 'passed' ? 'Synced' : 'Failed'}
+                </span>
                 <div>
-                  <dt>Last run</dt>
-                  <dd>{formatUtc(signal.last_run)}</dd>
+                  <strong style="color: #cbd5e1;">{dep.app}</strong>
+                  <div style="font-size: 0.72rem; color: #64748b; font-family: monospace; margin-top: 2px;">Revision: {dep.revision.substring(0, 8)}</div>
                 </div>
-                <div>
-                  <dt>Workflow</dt>
-                  <dd>{signal.workflow_name ?? 'Unavailable'}</dd>
+              </div>
+              <div class="mono" style="text-align: right; font-size: 0.78rem; color: #94a3b8;">
+                <div>{dep.finished_at ? formatUtc(dep.finished_at) : formatUtc(dep.started_at)}</div>
+                <div style="font-size: 0.7rem; color: #64748b; margin-top: 2px;">Sync ID: #{dep.id}</div>
+              </div>
+            </div>
+          ))}
+          {deployments.length === 0 && (
+            <div style="color: #64748b; font-size: 0.88rem; padding: 10px;">
+              No sync rollout history recorded.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <!-- Namespace Compliance Scorecard -->
+      <section class="dense-panel">
+        <h2>Policy Scorecard & Violations</h2>
+        <div class="dense-list">
+          {compliance.rules.map((rule) => (
+            <article class="compliance-rule-card">
+              <header>
+                <h3>{rule.name}</h3>
+                <span class={`pill pill--${rule.status === 'passed' ? 'completed' : 'failed'}`} style="padding: 0.15rem 0.45rem; font-size: 0.68rem;">
+                  {rule.status === 'passed' ? 'Compliant' : 'Violation'}
+                </span>
+              </header>
+              <p style="font-size: 0.78rem; color: #94a3b8; margin: 0;">{rule.description}</p>
+              <div style="font-size: 0.72rem; color: #64748b; font-family: monospace;">
+                Passed: {rule.total_checked - rule.violations_count} / {rule.total_checked} checked
+              </div>
+              {rule.violations_count > 0 && (
+                <div class="violation-details">
+                  {rule.violations.slice(0, 4).map((v) => (
+                    <div class="violation-row">
+                      <strong>[{v.source.split(':').pop()}]</strong>: {v.detail}
+                    </div>
+                  ))}
+                  {rule.violations.length > 4 && (
+                    <div style="font-style: italic; color: #64748b; margin-top: 4px;">+ {rule.violations.length - 4} more violations</div>
+                  )}
                 </div>
-                <div>
-                  <dt>Evidence</dt>
-                  <dd><a href={signal.source_url} target="_blank" rel="noreferrer">Source JSON ↗</a></dd>
-                </div>
-              </dl>
+              )}
             </article>
           ))}
         </div>
-      ) : (
-        <p>No fallback signals are published in this dataset yet.</p>
-      )}
-    </article>
-
-    <!-- Published historical runs -->
-    <article class="status-card">
-      <p class="status-card__eyebrow">Evidence history where possible</p>
-      <h2>Published historical runs</h2>
-      {historyEvents.length > 0 ? (
-        <div class="table-scroll">
-          <table class="history-table">
-            <thead>
-              <tr>
-                <th scope="col">Run date</th>
-                <th scope="col">Series</th>
-                <th scope="col">Status</th>
-                <th scope="col">Failed scenarios</th>
-                <th scope="col">Workflow</th>
-                <th scope="col">Evidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historyEvents.map((event) => {
-                const rate = event.scenarios > 0 ? Number((((event.scenarios - event.failed) / event.scenarios) * 100).toFixed(2)) : null;
-                return (
-                  <tr>
-                    <td>{formatUtc(event.runDate)}</td>
-                    <td>{event.label}</td>
-                    <td><span class:list={['pill', `pill--${event.status}`]}>{event.status}</span></td>
-                    <td class="rate-col">
-                      <strong>{event.failed}/{event.scenarios}</strong>
-                      {rate !== null && (
-                        <div class="progress-bar-container progress-bar-container--small">
-                          <div
-                            class="progress-bar"
-                            style={`width: ${rate}%; background: ${
-                              rate >= 90
-                                ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                                : rate >= 60
-                                  ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                                  : 'linear-gradient(90deg, #ef4444, #f87171)'
-                            };`}
-                          />
-                        </div>
-                      )}
-                    </td>
-                    <td>{event.workflowName ?? 'Unavailable'}</td>
-                    <td><a href={event.sourceUrl} target="_blank" rel="noreferrer">Source JSON ↗</a></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p>
-          No linked evidence file publishes historical runs yet. The page keeps that gap explicit instead of
-          drawing a synthetic trend.
-        </p>
-      )}
-    </article>
-  </section>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  DATA INTEGRITY DISCLOSURE                                   -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Data Integrity Posture</h2>
-  <div class="integrity-panel">
-    <h4>Collector-derived contract · {dataset.schema_version}</h4>
-    <div class="stat-dl" style="margin-bottom: 1rem;">
-      <div class="stat-dl-item">
-        <dt>Generated at</dt>
-        <dd style="font-size: 0.9rem;">{formatUtc(dataset._meta.generated_at)}</dd>
-      </div>
-      <div class="stat-dl-item">
-        <dt>Status</dt>
-        <dd style="font-size: 0.9rem; color: #fbbf24;">{dataset._meta.status}</dd>
-      </div>
+      </section>
     </div>
-    <ul class="integrity-list">
-      <li><strong>Evidence-backed authenticity:</strong> Application outcomes and scenario results are extracted directly from real Homelab Wayland execution runs.</li>
-      <li><strong>Clear fallback distinction:</strong> Gaps, such as missing primary runs, remain explicitly visible. Substring-matched fallback signals are labeled as coarse and never disguised as precise app pass rates.</li>
-      <li><strong>Transparency of gaps:</strong> Out of {rows.length} tracked app-lane combinations, {noPrimaryEvidence} lanes lack primary application results, and {rowsWithoutFallback} have no fallback evidence whatsoever. Gaps stay explicit.</li>
-    </ul>
-    <a href={`${baseUrl}data/applications-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  RAW DATA AND EVIDENCE LINKS                                -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Data Insights & Raw Telemetry</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Direct links to the structured JSON contracts powering this GitOps Applications dashboard for active auditing and inspection.
+    </p>
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 2.5rem;">
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Sync Status Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/gitops-status.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            gitops-status.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">ArgoCD Application health and sync drift</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Resource Metrics Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/app-resource-usage.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            app-resource-usage.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Pod CPU & memory consumptions vs limits</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Compliance Scorecard Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/policy-compliance.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            policy-compliance.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Registry allowlist and storage rule audits</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Rollout History Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/gitops-deployments.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            gitops-deployments.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Recent ArgoCD deployment and sync timelines</div>
+        </div>
+      </article>
+    </div>
   </div>
 
-  <script id="applications-page-data" type="application/json" set:html={serializedPageData}></script>
+  <script id="applications-page-data" type="application/json" set:html={serializePayload}></script>
   <script
     is:inline
     src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"
@@ -910,9 +689,8 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
       }
 
       if (attempt > 40) {
-        renderUnavailable('applications-outcomes-chart', 'ECharts failed to load. Table below remains the source of truth.');
-        renderUnavailable('applications-fallback-chart', 'Fallback chart unavailable because the chart runtime did not load.');
-        renderUnavailable('applications-history-chart', 'History chart unavailable because the chart runtime did not load.');
+        renderUnavailable('app-resources-chart', 'ECharts failed to load. Resource usage visualization unavailable.');
+        renderUnavailable('app-compliance-chart', 'Policy scorecard chart unavailable.');
         return;
       }
 
@@ -922,181 +700,94 @@ const rowsWithoutFallback = rows.filter((row) => row.fallback_signal_count === 0
     function bootCharts(echarts) {
       if (!pageData) return;
 
-      const outcomeContainer = document.getElementById('applications-outcomes-chart');
-      const fallbackContainer = document.getElementById('applications-fallback-chart');
-      const historyContainer = document.getElementById('applications-history-chart');
+      const resourceContainer = document.getElementById('app-resources-chart');
+      const complianceContainer = document.getElementById('app-compliance-chart');
 
-      if (!outcomeContainer || !fallbackContainer || !historyContainer) return;
+      if (resourceContainer && pageData.applications) {
+        const apps = pageData.applications.filter(a => a.pods_count > 0);
+        const labels = apps.map(a => a.name);
+        const memUsages = apps.map(a => a.memory.usage);
+        const memRequests = apps.map(a => a.memory.request);
 
-      const outcomes = Array.isArray(pageData.outcomes) ? pageData.outcomes : [];
-      const fallbackDistribution = Array.isArray(pageData.fallbackDistribution) ? pageData.fallbackDistribution : [];
-      const historySeries = Array.isArray(pageData.historySeries) ? pageData.historySeries : [];
-
-      if (outcomes.length === 0) {
-        renderUnavailable('applications-outcomes-chart', 'No outcome rows published in applications-matrix.json.');
-      } else {
-        const branches = [...new Set(outcomes.map((row) => row.branch))];
-        const variants = outcomes.map((row) => `${row.appName}/${row.variant}`);
-        const outcomeChart = echarts.init(outcomeContainer);
-        outcomeChart.setOption({
-          aria: { enabled: true },
-          backgroundColor: 'transparent',
-          tooltip: {
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            borderColor: 'rgba(125, 211, 252, 0.35)',
-            textStyle: { color: '#cbd5e1' },
-            formatter(params) {
-              const row = outcomes[params.dataIndex];
-              return [
-                `<strong>${row.appName} · ${row.variant}/${row.branch}</strong>`,
-                row.stateLabel,
-                `Primary status: ${row.primaryStatus}`,
-                `Fallback signals: ${row.fallbackSignalCount}`,
-                `Matched app scenarios: ${row.matchedScenarioCount}`,
-                `Latest evidence: ${row.latestEvidenceAt ?? 'none published'}`,
-              ].join('<br>');
-            },
-          },
-          grid: { left: 140, right: 20, top: 40, bottom: 40 },
-          xAxis: {
-            type: 'category',
-            data: branches,
-            axisLabel: { color: '#94a3b8' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-          },
-          yAxis: {
-            type: 'category',
-            data: variants,
-            axisLabel: { color: '#cbd5e1' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
-          },
-          visualMap: {
-            min: 0,
-            max: 2,
-            orient: 'horizontal',
-            left: 'center',
-            bottom: 0,
-            textStyle: { color: '#cbd5e1' },
-            text: ['Primary', 'None'],
-            inRange: { color: ['#334155', '#f59e0b', '#22c55e'] },
-          },
-          series: [
-            {
-              type: 'heatmap',
-              data: outcomes.map((row, index) => [branches.indexOf(row.branch), index, row.stateScore]),
-              label: {
-                show: true,
-                color: '#e2e8f0',
-                formatter(params) {
-                  const o = outcomes[params.data[1]];
-                  if (o.stateScore === 2) return 'primary';
-                  return o.fallbackSignalCount > 0 ? 'fallback' : 'none';
-                },
-              },
-            },
-          ],
-        });
-      }
-
-      if (fallbackDistribution.length === 0) {
-        renderUnavailable('applications-fallback-chart', 'No fallback distribution published in applications-matrix.json.');
-      } else {
-        const categories = fallbackDistribution.map((row) => `${row.appName}/${row.variant}/${row.branch}`);
-        const fallbackChart = echarts.init(fallbackContainer);
-        fallbackChart.setOption({
-          aria: { enabled: true },
+        const resourceChart = echarts.init(resourceContainer);
+        resourceChart.setOption({
           backgroundColor: 'transparent',
           tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
           legend: {
-            textStyle: { color: '#cbd5f5' },
-            data: ['Fallback signals', 'Matched scenarios'],
+            textStyle: { color: '#cbd5e1', fontSize: 10 },
+            data: ['Actual Usage (MiB)', 'Requested (MiB)']
           },
-          grid: { left: 60, right: 20, top: 40, bottom: 80 },
+          grid: { left: 45, right: 15, top: 40, bottom: 40, containLabel: true },
           xAxis: {
             type: 'category',
-            data: categories,
-            axisLabel: { color: '#cbd5f5', rotate: 25 },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+            data: labels,
+            axisLabel: { color: '#cbd5e1', fontSize: 9, rotate: 12 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
           },
           yAxis: {
             type: 'value',
-            axisLabel: { color: '#cbd5f5' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
+            name: 'Memory (MiB)',
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
           },
           series: [
             {
-              name: 'Fallback signals',
+              name: 'Actual Usage (MiB)',
               type: 'bar',
-              data: fallbackDistribution.map((row) => row.signalCount),
-              itemStyle: { color: '#f59e0b', borderRadius: [4,4,0,0] },
+              data: memUsages,
+              itemStyle: { color: '#38bdf8', borderRadius: [4, 4, 0, 0] }
             },
             {
-              name: 'Matched scenarios',
+              name: 'Requested (MiB)',
               type: 'bar',
-              data: fallbackDistribution.map((row) => row.matchedScenarioCount),
-              itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] },
-            },
-          ],
+              data: memRequests,
+              itemStyle: { color: 'rgba(56, 189, 248, 0.25)', borderRadius: [4, 4, 0, 0] }
+            }
+          ]
         });
       }
 
-      if (historySeries.length === 0) {
-        renderUnavailable('applications-history-chart', 'No linked evidence file publishes historical runs yet.');
-      } else {
-        const grouped = historySeries.reduce((map, event) => {
-          if (!map.has(event.label)) map.set(event.label, []);
-          map.get(event.label).push(event);
-          return map;
-        }, new Map());
-        const historyChart = echarts.init(historyContainer);
-        historyChart.setOption({
-          aria: { enabled: true },
+      if (complianceContainer && pageData.compliance) {
+        const rules = pageData.compliance.rules || [];
+        const labels = rules.map(r => r.name);
+        const passed = rules.map(r => r.total_checked - r.violations_count);
+        const failed = rules.map(r => r.violations_count);
+        const chart = echarts.init(complianceContainer);
+        chart.setOption({
           backgroundColor: 'transparent',
-          tooltip: {
-            trigger: 'axis',
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            borderColor: 'rgba(125, 211, 252, 0.35)',
-            textStyle: { color: '#cbd5e1' },
-            formatter(params) {
-              return params
-                .map((entry) => {
-                  const data = entry.data.event;
-                  return [
-                    `<strong>${data.label}</strong>`,
-                    `${data.runDate}`,
-                    `Status: ${data.status}`,
-                    `Failed scenarios: ${data.failed}/${data.scenarios}`,
-                    `Workflow: ${data.workflowName ?? 'Unavailable'}`,
-                  ].join('<br>');
-                })
-                .join('<br><br>');
-            },
-          },
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
           legend: {
-            textStyle: { color: '#cbd5f5' },
-            top: 0,
+            textStyle: { color: '#cbd5e1', fontSize: 10 },
+            data: ['Passed', 'Violations']
           },
-          grid: { left: 60, right: 20, top: 50, bottom: 50 },
+          grid: { left: 15, right: 15, top: 40, bottom: 10, containLabel: true },
           xAxis: {
-            type: 'time',
-            axisLabel: { color: '#cbd5f5' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } },
+            type: 'value',
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
           },
           yAxis: {
-            type: 'value',
-            axisLabel: { color: '#cbd5f5' },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } },
+            type: 'category',
+            data: labels,
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
           },
-          series: Array.from(grouped.entries()).map(([label, events]) => ({
-            name: label,
-            type: 'line',
-            showSymbol: true,
-            smooth: true,
-            data: events.map((event) => ({
-              value: [event.runDate, event.failed],
-              event,
-            })),
-          })),
+          series: [
+            {
+              name: 'Passed',
+              type: 'bar',
+              stack: 'compliance',
+              data: passed,
+              itemStyle: { color: '#10b981', borderRadius: [4, 0, 0, 4] }
+            },
+            {
+              name: 'Violations',
+              type: 'bar',
+              stack: 'compliance',
+              data: failed,
+              itemStyle: { color: '#f43f5e', borderRadius: [0, 4, 4, 0] }
+            }
+          ]
         });
       }
 

@@ -1,0 +1,126 @@
+---
+# Unified pull-through HTTP cache for BuildStream artifact/source remotes.
+# All Dakota BuildStream HTTP(S) cache traffic is routed through this proxy
+# so upstream fetches are cached locally on the lab storage tier.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bst-cache-proxy-config
+  namespace: argo
+  labels:
+    app.kubernetes.io/name: bst-cache-proxy
+data:
+  bst-cache-proxy.conf: |
+    proxy_cache_path /var/cache/nginx/bst-cache levels=1:2 keys_zone=bstcache:100m max_size=200g inactive=30d use_temp_path=off;
+
+    server {
+        listen 8080;
+        server_name _;
+
+        proxy_cache bstcache;
+        proxy_cache_key "$scheme$request_method$host$request_uri";
+        proxy_cache_valid 200 302 7d;
+        proxy_cache_valid 404 1m;
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
+        proxy_buffering on;
+        proxy_ssl_verify off;
+
+        location /gbm/ {
+            proxy_pass https://gbm.gnome.org:11003/;
+        }
+
+        location /fds/ {
+            proxy_pass https://cache.freedesktop-sdk.io:11001/;
+        }
+
+        location /pb/ {
+            proxy_pass https://cache.projectbluefin.io:11001/;
+        }
+
+        location /healthz {
+            access_log off;
+            return 200 "ok\n";
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bst-cache-proxy
+  namespace: argo
+  labels:
+    app.kubernetes.io/name: bst-cache-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bst-cache-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bst-cache-proxy
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      containers:
+        - name: nginx
+          image: cgr.dev/chainguard/nginx:latest-dev
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 0
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/nginx/bst-cache
+            - name: config
+              mountPath: /etc/nginx/conf.d
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+      volumes:
+        - name: cache
+          hostPath:
+            path: /var/tmp/bst-http-cache
+            type: DirectoryOrCreate
+        - name: config
+          configMap:
+            name: bst-cache-proxy-config
+            items:
+              - key: bst-cache-proxy.conf
+                path: bst-cache-proxy.conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bst-cache-proxy
+  namespace: argo
+  labels:
+    app.kubernetes.io/name: bst-cache-proxy
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: bst-cache-proxy
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

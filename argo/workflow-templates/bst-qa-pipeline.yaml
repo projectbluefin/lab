@@ -1,0 +1,147 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: bst-qa-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      BuildStream QA pipeline for the bst-prototype project.
+      Installs buildstream via pip in a chainguard/python container, stages
+      bst-prototype/ from this repo, configures local in-cluster writeback cache
+      plus read-only upstream mirrors, points
+      remote-execution at the in-cluster Buildbarn frontend
+      (buildbarn/frontend:8980, distributed across ghost+exo-0 workers),
+      and builds hello.bst.
+  labels:
+    app.kubernetes.io/component: bst-qa
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  activeDeadlineSeconds: 1800   # 30 minutes
+
+  arguments:
+    parameters:
+      - name: repo
+        value: "https://github.com/projectbluefin/lab.git"
+      - name: ref
+        value: "main"
+      - name: project-subdir
+        value: "bst-prototype"
+      - name: element
+        value: "hello.bst"
+      - name: remote-execution-service
+        value: "grpc://frontend.buildbarn.svc.cluster.local:8980"
+
+  entrypoint: build
+
+  templates:
+
+    - name: build
+      inputs:
+        parameters:
+          - name: repo
+            value: "{{workflow.parameters.repo}}"
+          - name: ref
+            value: "{{workflow.parameters.ref}}"
+          - name: project-subdir
+            value: "{{workflow.parameters.project-subdir}}"
+          - name: element
+            value: "{{workflow.parameters.element}}"
+          - name: remote-execution-service
+            value: "{{workflow.parameters.remote-execution-service}}"
+      volumes:
+        - name: workdir
+          emptyDir: {}
+        - name: bst-cache
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 100Gi
+        - name: buildstream-config
+          configMap:
+            name: buildstream-remote-cache
+            items:
+              - key: dakota-buildstream.conf
+                path: buildstream.conf
+      script:
+        image: 192.168.1.102:30500/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d
+        command: [bash]
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: workdir
+            mountPath: /work
+          - name: bst-cache
+            mountPath: /root/.cache/buildstream
+          - name: buildstream-config
+            mountPath: /etc/buildstream
+            readOnly: true
+        env:
+          - name: REPO
+            value: "{{inputs.parameters.repo}}"
+          - name: REF
+            value: "{{inputs.parameters.ref}}"
+          - name: PROJECT_SUBDIR
+            value: "{{inputs.parameters.project-subdir}}"
+          - name: ELEMENT
+            value: "{{inputs.parameters.element}}"
+          - name: REMOTE_EXECUTION_SERVICE
+            value: "{{inputs.parameters.remote-execution-service}}"
+        source: |
+          set -euo pipefail
+
+          echo "=== Staging ${PROJECT_SUBDIR} from ${REPO}@${REF} ==="
+          cd /work
+          git clone --depth=1 --branch "${REF}" --filter=blob:none --sparse "${REPO}" src
+          cd src
+          git sparse-checkout set "${PROJECT_SUBDIR}"
+          cd "${PROJECT_SUBDIR}"
+
+          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
+          BST_CONF=/tmp/buildstream-cluster.conf
+          REMOTE_EXECUTION_SERVICE="{{inputs.parameters.remote-execution-service}}"
+          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
+          cat >> /tmp/buildstream-cluster.conf <<EOF
+          projects:
+            ${PROJECT_NAME}:
+              artifacts:
+                override-project-caches: false
+                servers:
+                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  push: true
+                - url: https://gbm.gnome.org:11003
+                  push: false
+                - url: https://cache.projectbluefin.io:11001
+                  push: false
+              source-caches:
+                override-project-caches: false
+                servers:
+                - url: https://gbm.gnome.org:11003
+                  push: false
+                - url: https://cache.projectbluefin.io:11001
+                  push: false
+              remote-execution:
+                execution-service:
+                  url: ${REMOTE_EXECUTION_SERVICE}
+                storage-service:
+                  url: ${REMOTE_EXECUTION_SERVICE}
+                action-cache-service:
+                  url: ${REMOTE_EXECUTION_SERVICE}
+          EOF
+
+          echo "=== Building ${ELEMENT} ==="
+          bst --config "${BST_CONF}" --no-interactive build "${ELEMENT}"
+
+          echo "=== Verifying build result ==="
+          bst --config "${BST_CONF}" --no-interactive show --format '%{state}' "${ELEMENT}" | grep -qx cached \
+            && echo "✔ ${ELEMENT} built and cached successfully" \
+            || (echo "✘ ${ELEMENT} did not reach cached state" >&2; exit 1)

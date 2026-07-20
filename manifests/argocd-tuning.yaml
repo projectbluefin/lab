@@ -1,5 +1,5 @@
 # Scale down ArgoCD components not used in this single-tenant homelab.
-# ServerSideApply (configured in testing-lab-infra Application) patches
+# ServerSideApply (configured in lab-infra Application) patches
 # only the fields declared here — other fields are left intact.
 #
 # dex-server: SSO broker — not configured (admin local account only).
@@ -59,7 +59,7 @@ data:
 # (dex-server is scaled to zero above).
 #
 # reposerver.parallelism.limit:1 — sequential manifest rendering on repo-server.
-# Prevents OOM when both testing-lab apps sync simultaneously on this single node.
+# Prevents OOM when both lab apps sync simultaneously on this single node.
 #
 # controller.status.processors / controller.operation.processors: reduced from
 # defaults (20/10) to match the actual load of two static ArgoCD Applications.
@@ -76,7 +76,7 @@ data:
 ---
 # Resource requests for ArgoCD components — currently all BestEffort (resources: {}).
 # Without requests, these are first OOM-killed under VM memory pressure.
-# Values are conservative: sized for 2 static apps (testing-lab, testing-lab-infra).
+# Values are conservative: sized for 2 static apps (lab, lab-infra).
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -85,8 +85,20 @@ metadata:
 spec:
   template:
     spec:
+      priorityClassName: system-cluster-critical
       containers:
         - name: argocd-application-controller
+          # REDIS_PASSWORD must be declared here: this SSA patch owns the
+          # container spec, and an earlier apply wiped the upstream env list,
+          # leaving the controller unauthenticated to redis (NOAUTH errors,
+          # partial syncs). Other env vars fall back to argocd-cmd-params-cm.
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: argocd-redis
+                  key: auth
+                  optional: true
           resources:
             requests:
               cpu: 100m
@@ -103,6 +115,7 @@ metadata:
 spec:
   template:
     spec:
+      priorityClassName: system-cluster-critical
       containers:
         - name: argocd-repo-server
           resources:
@@ -121,6 +134,7 @@ metadata:
 spec:
   template:
     spec:
+      priorityClassName: system-cluster-critical
       containers:
         - name: argocd-server
           resources:
@@ -139,6 +153,8 @@ metadata:
 spec:
   template:
     spec:
+      automountServiceAccountToken: true
+      priorityClassName: system-cluster-critical
       containers:
         - name: redis
           resources:

@@ -5,6 +5,14 @@ import path from 'node:path';
 import TestsCharts from '../components/TestsCharts.astro';
 import SiteLayout from '../layouts/SiteLayout.astro';
 import testsMatrix from '../../docs/data/tests-matrix.json';
+import releaseVerdict from '../../docs/data/release-verdict.json';
+
+import LaneVerdictStrip from '../components/tests/LaneVerdictStrip.astro';
+import KPIGrid from '../components/tests/KPIGrid.astro';
+import SuiteMatrix from '../components/tests/SuiteMatrix.astro';
+import TestEvidenceCard from '../components/tests/TestEvidenceCard.astro';
+import RunbookSection from '../components/tests/RunbookSection.astro';
+import QAExplainer from '../components/tests/QAExplainer.astro';
 
 interface SummaryMetric {
   id: string;
@@ -41,6 +49,7 @@ interface MatrixRow {
   variant: string;
   branch: string;
   suite: string;
+  role: string;
   result_status: string;
   last_run: string | null;
   workflow_name: string | null;
@@ -48,34 +57,128 @@ interface MatrixRow {
   scenarios_failed: number;
   pass_rate: number | null;
   history_points: number;
-  results_path: string;
+  results_path: string | null;
   screenshot_path: string | null;
   screenshot_url: string | null;
   state: string;
   state_reason: string | null;
+  enrollment_issue_url: string | null;
+  flake_flips: number;
+  runs_recorded: number;
   source_url: string;
   collected_at: string;
   derivation: string;
   details: MatrixRowDetails | null;
 }
 
-type MatrixSourceRow = Omit<MatrixRow, 'details'>;
-
 interface MatrixContract {
+  schema_version: string;
   _meta: {
     status: string;
     generated_at: string;
   };
   summary_metrics: SummaryMetric[];
+  suite_roles: Record<string, string>;
   dimensions: {
     variants: string[];
+    branches: string[];
     suites: string[];
   };
-  rows: MatrixSourceRow[];
+  rows: MatrixRow[];
+}
+
+interface TestRun {
+  recorded_at: string;
+  variant: string;
+  branch: string;
+  suite: string;
+  role: string;
+  workflow_name: string;
+  status: 'passed' | 'failed';
+  scenarios_total: number;
+  scenarios_failed: number;
+  failed_scenarios: string[];
+  digest: string | null;
+}
+
+interface ReleaseVerdictHistoryPoint {
+  recorded_at: string;
+  lane: string;
+  digest: string | null;
+  verdict: string;
+  build: string;
+  qa: string;
+  signature: string;
+}
+
+interface ReleaseVerdictRow {
+  id: string;
+  lane: string;
+  variant: string;
+  branch: string;
+  image_ref: string;
+  digest: string | null;
+  verdict: 'good' | 'bad' | 'pending';
+  build: {
+    status: string;
+    reason: string | null;
+    run_url?: string | null;
+    finished_at?: string | null;
+  };
+  qa: {
+    status: string;
+    reason: string | null;
+    last_run: string | null;
+    lab_sourced: boolean;
+    informational: {
+      status: string;
+      reason: string | null;
+      rows: Array<{
+        id: string;
+        variant: string;
+        branch: string;
+        suite: string;
+        role: string;
+        result_status: string;
+        workflow_name: string | null;
+      }>;
+    };
+  };
+  signature: {
+    status: string;
+    reason: string | null;
+    method?: string;
+  };
+  source_url: string;
 }
 
 const contract = testsMatrix as unknown as MatrixContract;
+const verdictContract = releaseVerdict as unknown as {
+  _meta: { generated_at: string; status: string };
+  summary_metrics: SummaryMetric[];
+  rows: ReleaseVerdictRow[];
+};
 const baseUrl = import.meta.env.BASE_URL;
+
+const readNdjson = <T,>(filePath: string): T[] => {
+  const fullPath = path.join(process.cwd(), filePath);
+  if (!existsSync(fullPath)) return [];
+  return readFileSync(fullPath, 'utf8')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as T;
+      } catch {
+        return null;
+      }
+    })
+    .filter((item): item is T => item !== null);
+};
+
+const testRuns = readNdjson<TestRun>('docs/data/history/test-runs.ndjson');
+const releaseVerdictHistory = readNdjson<ReleaseVerdictHistoryPoint>('docs/data/history/release-verdict.ndjson');
 
 const formatUtc = (value: string | null) =>
   value
@@ -86,38 +189,52 @@ const formatUtc = (value: string | null) =>
       }) + ' UTC'
     : 'Never';
 
-const loadRowDetails = (resultsPath: string) => {
+const loadRowDetails = (resultsPath: string | null) => {
+  if (!resultsPath) return null;
   const resultFile = path.join(process.cwd(), 'docs', resultsPath);
-  if (!existsSync(resultFile)) {
-    return null;
-  }
-
+  if (!existsSync(resultFile)) return null;
   return JSON.parse(readFileSync(resultFile, 'utf8')) as MatrixRowDetails;
 };
 
-const rows = contract.rows
-  .map((row) => ({
-    ...row,
-    details: loadRowDetails(row.results_path),
-  }) satisfies MatrixRow)
-  .sort((left, right) => left.variant.localeCompare(right.variant) || left.suite.localeCompare(right.suite));
+const rows = contract.rows.map((row) => ({
+  ...row,
+  details: loadRowDetails(row.results_path),
+})) satisfies MatrixRow[];
 
-const summaryMetrics = contract.summary_metrics;
-const availableRows = rows.filter((row) => row.state === 'available');
-const unavailableRows = rows.filter((row) => row.state !== 'available');
 const suiteOrder = contract.dimensions.suites;
 const variantOrder = contract.dimensions.variants;
 
-// Science-grade KPI computations
-const totalScenarios = availableRows.reduce((sum, row) => sum + row.scenarios_total, 0);
-const totalFailed = availableRows.reduce((sum, row) => sum + row.scenarios_failed, 0);
-const globalPassRate = totalScenarios > 0 ? Number((((totalScenarios - totalFailed) / totalScenarios) * 100).toFixed(2)) : null;
+const rowLookup = new Map<string, MatrixRow>();
+for (const row of rows) {
+  const key = `${row.variant}:${row.suite}`;
+  const existing = rowLookup.get(key);
+  if (!existing || row.branch === 'testing') {
+    rowLookup.set(key, row);
+  }
+}
 
-const rowLookup = new Map(rows.map((row) => [`${row.variant}:${row.suite}`, row]));
 const matrix = variantOrder.map((variant) => ({
   variant,
   cells: suiteOrder.map((suite) => rowLookup.get(`${variant}:${suite}`) ?? null),
 }));
+
+const availableRows = rows.filter((row) => row.state === 'available');
+const unavailableRows = rows.filter((row) => row.state !== 'available');
+
+const passRateForRows = (subset: MatrixRow[]) => {
+  const total = subset.reduce((sum, row) => sum + row.scenarios_total, 0);
+  const failed = subset.reduce((sum, row) => sum + row.scenarios_failed, 0);
+  return total > 0 ? Number((((total - failed) / total) * 100).toFixed(2)) : null;
+};
+
+const gatingRows = availableRows.filter((row) => row.role === 'gate');
+const infoRows = availableRows.filter((row) => row.role === 'info');
+const gatingPassRate = passRateForRows(gatingRows);
+const infoPassRate = passRateForRows(infoRows);
+const flakyRows = rows.filter((row) => Number(row.flake_flips) >= 1).length;
+
+const lanesGood = verdictContract.rows.filter((r) => r.verdict === 'good').length;
+const lanesTotal = verdictContract.rows.length;
 
 const workflowHref = (workflowName: string | null) =>
   workflowName ? `http://192.168.1.102:32746/workflows/argo/${encodeURIComponent(workflowName)}` : null;
@@ -133,12 +250,17 @@ const chartPayload = {
   rows: rows.map((row) => ({
     id: row.id,
     variant: row.variant,
+    branch: row.branch,
     suite: row.suite,
+    role: row.role,
     pass_rate: row.pass_rate,
     scenarios_total: row.scenarios_total,
     scenarios_failed: row.scenarios_failed,
     state: row.state,
     state_reason: row.state_reason,
+    enrollment_issue_url: row.enrollment_issue_url,
+    flake_flips: row.flake_flips,
+    runs_recorded: row.runs_recorded,
     details: row.details
       ? {
           history: row.details.history,
@@ -146,7 +268,13 @@ const chartPayload = {
         }
       : null,
   })),
+  testRuns,
+  releaseVerdictHistory,
 };
+
+const releaseVerdictSource = `${baseUrl}data/release-verdict.json`;
+const matrixSource = `${baseUrl}data/tests-matrix.json`;
+const historySource = `${baseUrl}data/history/test-runs.ndjson`;
 ---
 
 <SiteLayout
@@ -155,7 +283,6 @@ const chartPayload = {
   current="tests"
 >
   <style>
-    /* ── Dashboard header ─────────────────────────────────────── */
     .dashboard-header {
       margin-bottom: 2rem;
       border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -176,11 +303,11 @@ const chartPayload = {
       display: flex;
       gap: 1.5rem;
       flex-wrap: wrap;
+      align-items: center;
     }
     .meta-bar a { color: #38bdf8; text-decoration: none; }
     .meta-bar a:hover { text-decoration: underline; }
 
-    /* ── Section titles ──────────────────────────────────────── */
     .section-title {
       font-size: 1.1rem;
       font-weight: 700;
@@ -192,462 +319,180 @@ const chartPayload = {
       padding-left: 10px;
     }
 
-    /* ── KPI scorecards ─────────────────────────────────────── */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 1rem;
-      margin-bottom: 2.5rem;
-    }
-    .kpi-card {
-      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      padding: 1.25rem;
+    .detail-toggle-group {
       display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      min-height: 130px;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      gap: 0.5rem;
+      margin-right: 0.5rem;
     }
-    .kpi-card:hover {
-      border-color: rgba(56, 189, 248, 0.3);
-      transform: translateY(-3px);
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    .control-btn {
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease-in-out;
     }
-    .kpi-card--success {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
-      border-color: rgba(16, 185, 129, 0.25);
-    }
-    .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
-    .kpi-card--warning {
-      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
-      border-color: rgba(245, 158, 11, 0.2);
-    }
-    .kpi-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
-
-    .kpi-card__title {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .kpi-card__value {
-      font-size: 2rem;
-      font-weight: 800;
+    .control-btn:hover {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: rgba(56, 189, 248, 0.4);
       color: #f8fafc;
-      letter-spacing: -0.04em;
-      margin: 0.5rem 0 0.2rem 0;
     }
-    .kpi-card__sub {
-      font-size: 0.72rem;
-      color: #64748b;
-    }
-    .pill-ok  { background: rgba(34,197,94,.15);  color: #4ade80; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
-    .pill-gap { background: rgba(148,163,184,.12); color: #94a3b8; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
 
-    /* ── Progress bar indicator ────────────────────────────── */
-    .progress-bar-container {
-      width: 100%;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.08);
-      border-radius: 999px;
-      overflow: hidden;
-      margin-top: 0.65rem;
-    }
-    .progress-bar {
-      height: 100%;
-      border-radius: 999px;
-      transition: width 0.4s ease;
-    }
-    .progress-bar-container--small {
-      height: 4px;
-      margin-top: 0.25rem;
-      max-width: 120px;
-    }
-    .rate-col {
+    .provenance-footer {
       display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-
-    /* ── Integrity panel / Explainer ────────────────────────── */
-    .integrity-panel {
-      background: rgba(15, 23, 42, 0.35);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 16px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 2rem;
-    }
-    .integrity-panel h4 {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin: 0 0 0.75rem 0;
-    }
-    .integrity-list {
-      margin: 0;
-      padding-left: 1.25rem;
-      color: #64748b;
-      font-size: 0.85rem;
-      line-height: 1.7;
-    }
-    .integrity-list li + li { margin-top: 0.25rem; }
-    .integrity-list strong { color: #cbd5e1; }
-
-    .stat-dl {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      flex-wrap: wrap;
       gap: 1rem;
-      margin-bottom: 1.5rem;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.78rem;
+      color: #64748b;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 1rem;
+      margin-top: 2rem;
     }
-    .stat-dl-item {
-      background: rgba(30,41,59,0.3);
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: 12px;
-      padding: 0.85rem 1rem;
-    }
-    .stat-dl-item dt { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-    .stat-dl-item dd { font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0; }
-
-    /* ── Hidden anchor for legacy tests ─────────────────────── */
-    .legacy-hidden { display: none !important; }
   </style>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  HEADER                                                     -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <div class="dashboard-header">
     <h1>Tests Matrix & Evidence</h1>
     <div class="meta-bar">
       <span>Updated {formatUtc(contract._meta.generated_at)}</span>
-      <span>Source: projectbluefin test results</span>
+      <span>Contract: v{contract.schema_version}</span>
       <span>Status: <span style="color: #fbbf24;">{contract._meta.status}</span></span>
-      <a href={`${baseUrl}data/tests-matrix.json`}>Raw dataset ↗</a>
+      <a href={matrixSource}>Raw dataset</a>
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  KPI SCORECARDS                                             -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Tests at a Glance</h2>
+  <LaneVerdictStrip lanes={verdictContract.rows} />
 
-  <!-- Legacy hidden section keeps existing tests passing -->
-  <section class="metric-grid legacy-hidden">
-    {summaryMetrics.map((metric) => (
-      <article class="metric-card">
-        <p class="metric-card__label">{metric.label}</p>
-        <p class="metric-card__value">{metric.value}</p>
-        <p class="metric-card__meta">
-          {metric.unit} · {metric.state}
-        </p>
-      </article>
-    ))}
-    <article class="metric-card">
-      <p class="metric-card__label">Rows with history detail</p>
-      <p class="metric-card__value">{availableRows.filter((row) => (row.details?.history?.length ?? 0) > 0).length}</p>
-      <p class="metric-card__meta">count · {contract._meta.status}</p>
-    </article>
-  </section>
+  <h2 class="section-title">Tests at a glance</h2>
+  <KPIGrid
+    lanesGood={lanesGood}
+    lanesTotal={lanesTotal}
+    gatingPassRate={gatingPassRate}
+    infoPassRate={infoPassRate}
+    flakyRows={flakyRows}
+    releaseVerdictSource={releaseVerdictSource}
+    matrixSource={matrixSource}
+    historySource={historySource}
+  />
 
-  <div class="kpi-grid">
-    <!-- Total matrix cells -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Total matrix cells</div>
-      <div>
-        <div class="kpi-card__value">{rows.length}</div>
-        <div class="kpi-card__sub">suite/variant combinations</div>
-      </div>
-    </div>
-
-    <!-- Completed runs -->
-    <div class="kpi-card kpi-card--success">
-      <div class="kpi-card__title">Lanes with results <span class="pill-ok">✓</span></div>
-      <div>
-        <div class="kpi-card__value">{availableRows.length}</div>
-        <div class="kpi-card__sub">completed QA runs published</div>
-      </div>
-    </div>
-
-    <!-- Awaiting results -->
-    <div class="kpi-card kpi-card--warning">
-      <div class="kpi-card__title">Awaiting execution <span class="pill-gap">—</span></div>
-      <div>
-        <div class="kpi-card__value">{unavailableRows.length}</div>
-        <div class="kpi-card__sub">runs pending/unexecuted</div>
-      </div>
-    </div>
-
-    <!-- Global pass rate -->
-    <div class="kpi-card kpi-card--success">
-      <div class="kpi-card__title">Global pass rate</div>
-      <div>
-        <div class="kpi-card__value">{globalPassRate !== null ? `${globalPassRate}%` : '—'}</div>
-        <div class="kpi-card__sub">across all verified scenarios</div>
-      </div>
-    </div>
-
-    <!-- Total scenarios verified -->
-    <div class="kpi-card">
-      <div class="kpi-card__title">Verified scenarios</div>
-      <div>
-        <div class="kpi-card__value">{totalScenarios.toLocaleString()}</div>
-        <div class="kpi-card__sub">behave assertions run</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  CHARTS SECTION                                             -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <TestsCharts payload={chartPayload} />
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  SUITE BY VARIANT MATRIX                                    -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="status-card">
     <div class="section-heading">
       <div>
         <p class="status-card__eyebrow">Matrix</p>
         <h2>Suite by variant matrix</h2>
         <p>
-          Every published matrix cell stays visible. Available rows link to detail cards; unpublished or incomplete rows stay marked as unavailable with the collector reason.
+          Every published matrix cell stays visible. Grey cells are unavailable; cells with an enrollment issue link to the tracking issue. Click a cell to jump to its evidence card.
         </p>
       </div>
     </div>
-
-    <div class="table-scroll">
-      <table class="matrix-table">
-        <thead>
-          <tr>
-            <th scope="col">Variant</th>
-            {suiteOrder.map((suite) => (
-              <th scope="col">{suite}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {matrix.map(({ variant, cells }) => (
-            <tr>
-              <th scope="row">{variant}</th>
-              {cells.map((cell) => (
-                <td class:list={['matrix-table__cell', cell?.state === 'available' && 'is-available', cell && cell.state !== 'available' && 'is-unavailable', !cell && 'is-missing']}>
-                  {cell ? (
-                    <a href={`#${cell.id}`} class="matrix-table__link">
-                      <span class={`pill pill--${cell.state === 'available' ? cell.result_status : 'unavailable'}`}>
-                        {cell.state === 'available' ? cell.result_status : 'unavailable'}
-                      </span>
-                      <strong>{cell.state === 'available' && cell.pass_rate !== null ? `${cell.pass_rate}%` : '—'}</strong>
-                      <span>{cell.scenarios_failed}/{cell.scenarios_total} failed</span>
-                      
-                      {cell.state === 'available' && cell.pass_rate !== null && (
-                        <div class="progress-bar-container">
-                          <div
-                            class="progress-bar"
-                            style={`width: ${cell.pass_rate}%; background: ${
-                              cell.pass_rate >= 90
-                                ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                                : cell.pass_rate >= 60
-                                  ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                                  : 'linear-gradient(90deg, #ef4444, #f87171)'
-                            };`}
-                          />
-                        </div>
-                      )}
-                    </a>
-                  ) : (
-                    <span class="matrix-table__empty">No published row</span>
-                  )}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <SuiteMatrix matrix={matrix} suiteOrder={suiteOrder} suiteRoles={contract.suite_roles} />
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  PER-ROW EVIDENCE AND HISTORY                               -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
   <section class="status-card">
     <div class="section-heading">
       <div>
         <p class="status-card__eyebrow">Details</p>
         <h2>Per-row evidence and history</h2>
         <p>
-          Detail cards join the matrix with linked result JSON so the page can show failed scenarios, run history, screenshots, and workflow identifiers when they exist.
+          Evidence cards join the matrix with linked result JSON so the page can show failed scenarios, run history, screenshots, and workflow identifiers when they exist.
         </p>
       </div>
-      <div class="section-heading__meta">
+      <div class="section-heading__meta" style="align-items: center;">
+        <div class="detail-toggle-group">
+          <button id="btn-expand-all" class="control-btn">Expand All</button>
+          <button id="btn-collapse-all" class="control-btn">Collapse All</button>
+        </div>
         <span>{availableRows.length} available</span>
         <span>{unavailableRows.length} unavailable</span>
-        <span>{contract._meta.generated_at}</span>
       </div>
     </div>
 
     <div class="detail-stack">
       {rows.map((row) => (
-        <details id={row.id} class="detail-card" open={row.state === 'available'}>
-          <summary>
-            <div>
-              <p class="detail-card__eyebrow">{row.variant} · {row.suite}</p>
-              <h3>{row.id}</h3>
-            </div>
-            <div class="detail-card__summary">
-              <span class={`pill pill--${row.state === 'available' ? row.result_status : 'unavailable'}`}>
-                {row.state === 'available' ? row.result_status : 'unavailable'}
-              </span>
-              <strong>{row.pass_rate !== null ? `${row.pass_rate}%` : 'No pass rate'}</strong>
-            </div>
-          </summary>
-
-          <div class="detail-card__body">
-            <div class="detail-grid">
-              <article>
-                <h4>Latest run</h4>
-                <dl>
-                  <div>
-                    <dt>Branch</dt>
-                    <dd>{row.branch}</dd>
-                  </div>
-                  <div>
-                    <dt>Last run</dt>
-                    <dd>{row.last_run ? new Date(row.last_run).toLocaleString() : 'Unavailable'}</dd>
-                  </div>
-                  <div>
-                    <dt>Scenarios</dt>
-                    <dd>{row.scenarios_total}</dd>
-                  </div>
-                  <div>
-                    <dt>Failed scenarios</dt>
-                    <dd>{row.scenarios_failed}</dd>
-                  </div>
-                  <div>
-                    <dt>History points</dt>
-                    <dd>{row.history_points}</dd>
-                  </div>
-                </dl>
-              </article>
-
-              <article>
-                <h4>Evidence links</h4>
-                <ul class="evidence-list">
-                  <li><a href={`../${row.results_path}`}>{row.results_path}</a></li>
-                  <li><a href={row.source_url} rel="noreferrer">Source JSON on GitHub</a></li>
-                  {row.screenshot_url && <li><a href={row.screenshot_url} rel="noreferrer">Latest screenshot</a></li>}
-                  {row.workflow_name && workflowHref(row.workflow_name) && (
-                    <li><a href={workflowHref(row.workflow_name)!} rel="noreferrer">Workflow: {row.workflow_name}</a></li>
-                  )}
-                </ul>
-              </article>
-            </div>
-
-            {row.state !== 'available' ? (
-              <div class="detail-note detail-note--unavailable">
-                <h4>Unavailable state</h4>
-                <p>{row.state_reason ?? 'No completed run has been published for this matrix cell yet.'}</p>
-              </div>
-            ) : (
-              <>
-                <div class="detail-grid detail-grid--split">
-                  <article>
-                    <h4>Latest failure list</h4>
-                    {row.details?.failed_scenarios?.length ? (
-                      <ol class="failure-list">
-                        {row.details.failed_scenarios.map((scenario) => (
-                          <li>{scenario}</li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <p class="detail-note">No failed scenario names published for the latest run.</p>
-                    )}
-                  </article>
-
-                  <article>
-                    <h4>History</h4>
-                    {row.details?.history?.length ? (
-                      <div class="table-scroll">
-                        <table class="history-table">
-                          <thead>
-                            <tr>
-                              <th scope="col">Run date</th>
-                              <th scope="col">Workflow</th>
-                              <th scope="col">Status</th>
-                              <th scope="col">Failed</th>
-                              <th scope="col">Pass rate</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {row.details.history.map((entry) => {
-                              const rate = detailPassRate(entry.scenarios, entry.failed);
-                              return (
-                                <tr>
-                                  <td>{new Date(entry.run_date).toLocaleString()}</td>
-                                  <td>{entry.workflow_name ?? 'Unavailable'}</td>
-                                  <td>{entry.status}</td>
-                                  <td>{entry.failed}/{entry.scenarios}</td>
-                                  <td class="rate-col">
-                                    <strong>{rate === null ? '—' : `${rate}%`}</strong>
-                                    {rate !== null && (
-                                      <div class="progress-bar-container progress-bar-container--small">
-                                        <div
-                                          class="progress-bar"
-                                          style={`width: ${rate}%; background: ${
-                                            rate >= 90
-                                              ? 'linear-gradient(90deg, #10b981, #4ade80)'
-                                              : rate >= 60
-                                                ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
-                                                : 'linear-gradient(90deg, #ef4444, #f87171)'
-                                          };`}
-                                        />
-                                      </div>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p class="detail-note">No published history rows in the linked result JSON yet.</p>
-                    )}
-                  </article>
-                </div>
-              </>
-            )}
-          </div>
-        </details>
+        <TestEvidenceCard
+          row={row}
+          workflowHref={workflowHref}
+          detailPassRate={detailPassRate}
+        />
       ))}
     </div>
   </section>
 
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <!--  DATA INTEGRITY DISCLOSURE                                   -->
-  <!-- ═══════════════════════════════════════════════════════════ -->
-  <h2 class="section-title">Data Integrity Posture</h2>
-  <div class="integrity-panel">
-    <h4>Collector-derived contract · v1</h4>
-    <div class="stat-dl" style="margin-bottom: 1rem;">
-      <div class="stat-dl-item">
-        <dt>Generated at</dt>
-        <dd style="font-size: 0.9rem;">{formatUtc(contract._meta.generated_at)}</dd>
-      </div>
-      <div class="stat-dl-item">
-        <dt>Status</dt>
-        <dd style="font-size: 0.9rem; color: #fbbf24;">{contract._meta.status}</dd>
-      </div>
-    </div>
-    <ul class="integrity-list">
-      <li><strong>Evidence-backed authenticity:</strong> Every pass rate, scenario count, and failure name is collected from real BDD test execution logs in the homelab and written into <code>docs/results/</code>.</li>
-      <li><strong>No synthetic data:</strong> Gaps and pending/missing runs stay explicitly labeled as <code>unavailable</code> with their exact collector reason instead of being filled with mock or interpolated statistics.</li>
-      <li><strong>Lanes and Suites:</strong> Out of {rows.length} total matrix cells (covering {variantOrder.length} variants across {suiteOrder.length} test suites), {availableRows.length} are available with completed runs, and {unavailableRows.length} stay marked as awaiting results.</li>
-      <li><strong>History tracking:</strong> Historical trend lines show up to 10 previous runs per cell, allowing change-point and regression detection across active development branches.</li>
-    </ul>
-    <a href={`${baseUrl}data/tests-matrix.json`} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+  <h2 class="section-title">Triage & local execution runbook</h2>
+  <RunbookSection />
+
+  <h2 class="section-title">About the test split</h2>
+  <QAExplainer />
+
+  <div class="provenance-footer">
+    <span>Generated at {formatUtc(contract._meta.generated_at)} · {contract._meta.status}</span>
+    <a href={matrixSource}>tests-matrix.json</a>
   </div>
+
+  <script>
+    const btnExpandAll = document.getElementById('btn-expand-all');
+    const btnCollapseAll = document.getElementById('btn-collapse-all');
+    const detailElements = document.querySelectorAll('details.detail-card');
+
+    btnExpandAll?.addEventListener('click', () => {
+      detailElements.forEach((detail) => {
+        detail.setAttribute('open', '');
+      });
+    });
+
+    btnCollapseAll?.addEventListener('click', () => {
+      detailElements.forEach((detail) => {
+        detail.removeAttribute('open');
+      });
+    });
+
+    const failureSearchInputs = document.querySelectorAll('.failure-search-input');
+    failureSearchInputs.forEach((inputEl) => {
+      inputEl.addEventListener('input', (e) => {
+        const input = e.target as HTMLInputElement;
+        const query = input.value.toLowerCase().trim();
+        const cardId = input.getAttribute('data-card-id');
+        const listContainer = document.querySelector(`[data-failures-list="${cardId}"]`);
+        if (!listContainer) return;
+
+        const rows = listContainer.querySelectorAll('.failure-row');
+        rows.forEach((rowEl) => {
+          const row = rowEl as HTMLElement;
+          const text = row.getAttribute('data-search-text') || '';
+          row.style.display = text.includes(query) ? '' : 'none';
+        });
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.btn-copy-command');
+      if (!btn) return;
+
+      const command = btn.getAttribute('data-command');
+      if (!command) return;
+
+      navigator.clipboard.writeText(command).then(() => {
+        let toast = document.getElementById('toast-feedback');
+        if (!toast) {
+          toast = document.createElement('div');
+          toast.id = 'toast-feedback';
+          toast.className = 'toast-notification';
+          document.body.appendChild(toast);
+        }
+
+        toast.textContent = 'Behave command copied!';
+        toast.classList.add('show');
+
+        setTimeout(() => {
+          toast?.classList.remove('show');
+        }, 2000);
+      });
+    });
+  </script>
 </SiteLayout>

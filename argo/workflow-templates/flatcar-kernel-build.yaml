@@ -22,7 +22,7 @@ metadata:
   name: flatcar-kernel-build
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   entrypoint: pipeline
   onExit: teardown-build-vm
@@ -41,6 +41,10 @@ spec:
       value: "stable-4593.2.3"
     - name: sdk-version
       value: "4593.0.0"
+    - name: flatcar-version
+      value: "4593.2.3"
+    - name: flatcar-channel
+      value: "stable"
     - name: vm-name
       value: "flatcar-build-{{workflow.name}}"
     - name: namespace
@@ -60,6 +64,16 @@ spec:
     steps:
     - - name: create-build-pvc
         template: create-build-pvc
+    - - name: prepare-flatcar-disk
+        templateRef:
+          name: provision-flatcar-vm
+          template: prepare-flatcar-disk
+        arguments:
+          parameters:
+          - name: flatcar-version
+            value: "{{workflow.parameters.flatcar-version}}"
+          - name: flatcar-channel
+            value: "{{workflow.parameters.flatcar-channel}}"
     - - name: create-vm
         template: create-vm
     - - name: wait-for-ssh
@@ -134,6 +148,7 @@ spec:
               labels:
                 kubevirt.io/vm: "{{workflow.parameters.vm-name}}"
             spec:
+              priorityClassName: bst-build   # preemptable by lab-test-vm pods (6h kernel compile)
               nodeSelector:
                 kubernetes.io/hostname: ghost
               domain:
@@ -275,10 +290,10 @@ spec:
         valueFrom:
           path: /tmp/filename.txt
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       securityContext:
         runAsUser: 0
-      command: [bash]
+      command: [sh]
       resources:
         requests:
           cpu: 50m
@@ -293,7 +308,7 @@ spec:
             name: bluefin-test-ssh-key
             key: id_ed25519
       source: |
-        set -euo pipefail
+        set -eu
         if ! command -v kubectl >/dev/null 2>&1; then
           KVER="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
           mkdir -p /tmp/bin
@@ -350,14 +365,14 @@ spec:
         echo "=== Patching kernel-2.eclass to support EAPI 7 and 8 ==="
         sed -i 's/2|3|4|5|6/2|3|4|5|6|7|8/g' \${BUILD_DIR}/src/scripts/sdk_container/src/third_party/portage-stable/eclass/kernel-2.eclass
 
-        echo "=== Clone testing-lab for kernel overlay ==="
+        echo "=== Clone lab for kernel overlay ==="
         git clone --depth=1 \
-          https://github.com/projectbluefin/testing-lab \
-          \${BUILD_DIR}/testing-lab
+          https://github.com/projectbluefin/lab \
+          \${BUILD_DIR}/lab
 
         echo "=== Install kernel overlay ==="
         OVERLAY_DEST=src/third_party/flatcar-kernel-overlay
-        cp -r \${BUILD_DIR}/testing-lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
+        cp -r \${BUILD_DIR}/lab/flatcar/kernel-overlay \${BUILD_DIR}/\${OVERLAY_DEST}
         chmod -R a+w \${BUILD_DIR}/\${OVERLAY_DEST}
 
         echo "=== Move Docker data-root to PVC (SDK image is ~15GB) ==="
@@ -366,9 +381,15 @@ spec:
         echo '{"data-root": "/var/tmp/build/docker", "insecure-registries": ["192.168.1.102:30501", "192.168.1.102:30500"]}' | sudo tee /etc/docker/daemon.json
         sudo systemctl start docker
         sudo systemctl is-active docker
-        SDK_IMAGE=192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
-        echo "=== Preflight SDK cache pull ==="
-        docker pull --quiet \${SDK_IMAGE}
+        SDK_IMAGE_CACHE=192.168.1.102:30501/ghcr/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
+        SDK_IMAGE_UPSTREAM=ghcr.io/flatcar/flatcar-sdk-amd64:\${SDK_VERSION}
+        SDK_IMAGE="\${SDK_IMAGE_CACHE}"
+        echo "=== Preflight SDK pull (cache first, fallback upstream) ==="
+        if ! timeout 900 docker pull --quiet "\${SDK_IMAGE_CACHE}"; then
+          echo "Cache pull timed out/failed; falling back to upstream GHCR"
+          SDK_IMAGE="\${SDK_IMAGE_UPSTREAM}"
+          docker pull --quiet "\${SDK_IMAGE}"
+        fi
         SDK_IMAGE_ID=\$(docker image inspect --format '{{.Id}}' "\${SDK_IMAGE}")
 
         echo "=== Regenerate Manifest checksums via SDK ==="
@@ -445,7 +466,7 @@ spec:
           '  --board=amd64-usr prod' \
           '' \
           'mkdir -p /mnt/host/source/src/build/output' \
-          'cp /mnt/host/source/src/build/images/amd64-usr/latest/flatcar_production_update.gz \' \
+          'cp /mnt/host/source/src/build/images/amd64-usr/developer-latest/flatcar_production_update.gz \' \
           '   /mnt/host/source/src/build/output/flatcar_production_update.gz' \
           > \${BUILD_DIR}/src/scripts/build-inside-sdk.sh
         chmod +x \${BUILD_DIR}/src/scripts/build-inside-sdk.sh
@@ -511,8 +532,8 @@ spec:
       - name: size
       - name: filename
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
-      command: [bash]
+      image: cgr.dev/chainguard/python:latest-dev
+      command: [python3]
       resources:
         requests:
           cpu: 10m
@@ -521,53 +542,53 @@ spec:
           cpu: 50m
           memory: 512Mi
       source: |
-        set -euo pipefail
-        KERNEL_VERSION="{{inputs.parameters.kernel-version}}"
-        NEBRASKA_URL="http://192.168.1.102:30802"
-        FLATCAR_APP_ID="e96281a6-d1af-4bde-9a0a-97b76e56dc57"
+        import base64
+        import json
+        import urllib.request
 
-        SHA1="{{inputs.parameters.sha1}}"
-        SHA256="{{inputs.parameters.sha256}}"
-        SIZE="{{inputs.parameters.size}}"
-        FILENAME="{{inputs.parameters.filename}}"
+        kernel_version = "{{inputs.parameters.kernel-version}}"
+        nebraska_url = "http://192.168.1.102:30802"
+        flatcar_app_id = "e96281a6-d1af-4bde-9a0a-97b76e56dc57"
 
-        # Version: 9999.MAJOR.MINOR gives real semver precedence > any stock Flatcar
-        KERNEL_MAJOR=$(echo "${KERNEL_VERSION}" | cut -d. -f1)
-        KERNEL_MINOR=$(echo "${KERNEL_VERSION}" | cut -d. -f2)
-        VERSION="9999.${KERNEL_MAJOR}.${KERNEL_MINOR}"
+        sha1 = "{{inputs.parameters.sha1}}"
+        sha256 = "{{inputs.parameters.sha256}}"
+        size = "{{inputs.parameters.size}}"
+        filename = "{{inputs.parameters.filename}}"
 
-        echo "Registering kernel ${KERNEL_VERSION} as Flatcar version ${VERSION}"
+        major, minor, *_ = kernel_version.split(".")
+        version = f"9999.{major}.{minor}"
+        pkg_base_url = f"{nebraska_url}/flatcar/"
+        sha1_b64 = base64.b64encode(bytes.fromhex(sha1)).decode()
 
-        # Nebraska serves files at {nebraska-url}/flatcar/{filename}
-        # The `url` field in the API must be the BASE PATH only —
-        # Nebraska appends filename when building Omaha responses.
-        PKG_BASE_URL="${NEBRASKA_URL}/flatcar/"
+        payload = {
+            "filename": filename,
+            "url": pkg_base_url,
+            "version": version,
+            "hash": sha1_b64,
+            "hash256": sha256,
+            "size": size,
+            "type": 1,
+            "arch": 1,
+            "flatcar_action": {
+                "sha256": sha256,
+            },
+        }
 
-        # SHA1 as base64-encoded raw bytes (what Nebraska/Omaha expects)
-        SHA1_B64=$(printf '%s' "${SHA1}" | xxd -r -p | base64)
+        print(f"Registering kernel {kernel_version} as Flatcar version {version}")
+        request = urllib.request.Request(
+            f"{nebraska_url}/api/v1/apps/{flatcar_app_id}/packages",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            response.read()
 
-        curl -sf -X POST \
-          "${NEBRASKA_URL}/api/v1/apps/${FLATCAR_APP_ID}/packages" \
-          -H "Content-Type: application/json" \
-          -d "{
-            \"filename\": \"${FILENAME}\",
-            \"url\": \"${PKG_BASE_URL}\",
-            \"version\": \"${VERSION}\",
-            \"hash\": \"${SHA1_B64}\",
-            \"hash256\": \"${SHA256}\",
-            \"size\": \"${SIZE}\",
-            \"type\": 1,
-            \"arch\": 1,
-            \"flatcar_action\": {
-              \"sha256\": \"${SHA256}\"
-            }
-          }"
-
-        echo ""
-        echo "=== Package registered ==="
-        echo "Version: ${VERSION}  (kernel ${KERNEL_VERSION})"
-        echo "URL:     ${PKG_BASE_URL}${FILENAME}"
-        echo "update_engine on Flatcar nodes will pick this up on next check-in"
+        print()
+        print("=== Package registered ===")
+        print(f"Version: {version}  (kernel {kernel_version})")
+        print(f"URL:     {pkg_base_url}{filename}")
+        print("update_engine on Flatcar nodes will pick this up on next check-in")
 
   - name: record-candidate-state
     inputs:

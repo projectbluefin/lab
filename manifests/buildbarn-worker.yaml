@@ -1,0 +1,126 @@
+# Buildbarn worker + runner — one pair per eligible node (DaemonSet).
+#
+# Runner is BuildStream-specific: chrootIntoInputRoot (see buildbarn-config
+# runner.jsonnet) requires CAP_SYS_CHROOT, so it runs as root with only that
+# capability added — not privileged. The runner container's own image is
+# irrelevant to build output (chroot replaces its rootfs with the action's
+# input root at execution time); wolfi-base is used only so bb_runner itself
+# has a libc to run against before the chroot happens.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: worker
+  namespace: buildbarn
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+      annotations:
+        buildbarn-config-revision: "2026-07-12-2"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9980"
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: workflow-controller
+      initContainers:
+        - name: bb-runner-installer
+          image: ghcr.io/buildbarn/bb-runner-installer:20260527T162223Z-c48dcda
+          volumeMounts:
+            - mountPath: /bb/
+              name: bb-runner-bin
+        - name: volume-init
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+          command:
+            - sh
+            - -c
+            - mkdir -pm 0777 /worker/build && mkdir -pm 0700 /worker/cache && mkdir -p /worker/dev && chmod 0777 /worker && (mknod -m 666 /worker/dev/null c 1 3 || test -c /worker/dev/null) && (mknod -m 666 /worker/dev/zero c 1 5 || test -c /worker/dev/zero) && (mknod -m 666 /worker/dev/random c 1 8 || test -c /worker/dev/random) && (mknod -m 666 /worker/dev/urandom c 1 9 || test -c /worker/dev/urandom)
+          volumeMounts:
+            - mountPath: /worker
+              name: worker
+      containers:
+        - name: worker
+          image: ghcr.io/buildbarn/bb-worker:20260527T162223Z-c48dcda
+          command: [/app/bb_worker]
+          args:
+            - /config/worker.jsonnet
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: metrics
+              containerPort: 9980
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - mountPath: /config/
+              name: configs
+              readOnly: true
+            - mountPath: /worker
+              name: worker
+            - mountPath: /bb
+              name: bb-runner-bin
+        - name: runner
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+          command: [/bb/bb_runner, /config/runner.jsonnet]
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [SYS_CHROOT]
+          resources:
+            requests:
+              cpu: "8"
+              memory: 16Gi
+            limits:
+              cpu: "8"
+              memory: 16Gi
+          volumeMounts:
+            - mountPath: /config/
+              name: configs
+              readOnly: true
+            - mountPath: /worker
+              name: worker
+            - mountPath: /bb
+              name: bb-runner-bin
+      volumes:
+        - name: bb-runner-bin
+          emptyDir: {}
+        - name: configs
+          configMap:
+            name: buildbarn-config
+            items:
+              - key: common.libsonnet
+                path: common.libsonnet
+              - key: runner.jsonnet
+                path: runner.jsonnet
+              - key: worker.jsonnet
+                path: worker.jsonnet
+        - name: worker
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 200Gi

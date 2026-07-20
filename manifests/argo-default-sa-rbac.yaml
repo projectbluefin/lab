@@ -31,10 +31,8 @@ roleRef:
   kind: Role
   name: argo-default-executor
 ---
-# Grants the argo SA write access to ConfigMaps in the argo namespace.
-# Required for digest-watch to upsert the containerdisk-source-digests ConfigMap
-# (stores last-seen GHCR digests to avoid redundant builds) and for any workflow
-# template that needs to persist state across runs via ConfigMaps.
+# Grants the argo SA write access to ConfigMaps in the argo namespace for
+# workflow templates that persist state across runs via ConfigMaps.
 # The upstream argo-cluster-role only grants get/watch/list for ConfigMaps.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

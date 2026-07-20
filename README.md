@@ -340,7 +340,8 @@ See [/docs/skills/test-authoring/dogtail-patterns.md](/docs/skills/test-authorin
 |---|---|
 | [README.md](README.md) | Architecture overview (this file) |
 | [agents.md](agents.md) | Agent entry point |
-| [docs/reference/WORKFLOWS.md](/docs/reference/WORKFLOWS.md) | WorkflowTemplate submit interface + parameter reference |
+| [docs/reference/WORKFLOWS.md](/docs/reference/WORKFLOWS.md) | WorkflowTemplate submit interface / agent contract |
+| [docs/reference/workflow-reference.md](/docs/reference/workflow-reference.md) | Full WorkflowTemplate reference |
 | [docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) | Image-poll → container test → result publication pipeline |
 | [docs/ops/bootstrap.md](/docs/ops/bootstrap.md) | How to replicate this lab from scratch |
 | [docs/ops/RUNBOOK.md](/docs/ops/RUNBOOK.md) | Timeless architecture + failure-mode reference |

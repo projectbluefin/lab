@@ -72,7 +72,8 @@ spec:
         git -C "${ISO_DIR}" checkout --detach FETCH_HEAD
 
         export BUILD_DIR
-        export PODMAN=podman
+        # Nested Podman cannot use overlay on the lab pod's overlay filesystem.
+        export PODMAN='podman --storage-driver=vfs'
         export GITHUB_REPOSITORY_OWNER=ublue-os
         bash "${ISO_DIR}/hack/local-iso-build.sh" "${VARIANT}" "${FLAVOR}" ghcr
 

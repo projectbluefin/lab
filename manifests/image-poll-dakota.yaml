@@ -1,4 +1,4 @@
-# CronWorkflow: polls ghcr.io/projectbluefin/dakota:latest every 10 minutes.
+# CronWorkflow: polls ghcr.io/projectbluefin/dakota:testing every 10 minutes.
 # Triggers dakota-qa-pipeline only when OCI digest changes vs ConfigMap state.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -6,9 +6,12 @@ metadata:
   name: image-poll-dakota
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
+  # Active: Dakota now runs through the container-only dakota-qa-pipeline path,
+  # so the digest poller can dispatch suite runs without any containerDisk or
+  # VM provisioning arguments.
   suspend: false
   schedules:
     - "8/10 * * * *"
@@ -27,23 +30,15 @@ spec:
         - name: image
           value: "ghcr.io/projectbluefin/dakota"
         - name: image-tag
-          value: "latest"
+          value: "testing"
         - name: state-key
-          value: "digest-dakota-latest"
-        - name: namespace
-          value: "bluefin-test"
+          value: "digest-dakota-testing"
         - name: suites
           value: "smoke"
         - name: variant
           value: "dakota"
-        - name: containerdisk-tag
-          value: "dakota-latest"
-        - name: ssh-key-secret
-          value: "bluefin-test-ssh-key"
         - name: branch
           value: "main"
-        - name: vm-memory
-          value: "8Gi"
     entrypoint: check-and-trigger
     templates:
       - name: check-and-trigger
@@ -73,17 +68,9 @@ spec:
                     value: "{{workflow.parameters.image}}"
                   - name: image-tag
                     value: "{{workflow.parameters.image-tag}}"
-                  - name: containerdisk-tag
-                    value: "{{workflow.parameters.containerdisk-tag}}"
-                  - name: namespace
-                    value: "{{workflow.parameters.namespace}}"
                   - name: suites
                     value: "{{workflow.parameters.suites}}"
                   - name: variant
                     value: "{{workflow.parameters.variant}}"
-                  - name: ssh-key-secret
-                    value: "{{workflow.parameters.ssh-key-secret}}"
                   - name: branch
                     value: "{{workflow.parameters.branch}}"
-                  - name: vm-memory
-                    value: "{{workflow.parameters.vm-memory}}"

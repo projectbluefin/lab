@@ -1,0 +1,301 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-systemd-container-tests
+  namespace: argo
+  annotations:
+    description: |
+      Runs desktop BDD suites against a scheduler-managed, privileged bootc OCI
+      Pod with systemd as PID 1. The target Pod is owned by the Workflow and is
+      deleted by the runner on every exit; no virtual machine or disk artifact
+      is created.
+  labels:
+    app.kubernetes.io/component: test-runner
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  entrypoint: run-systemd-container-tests
+  templates:
+  - name: run-systemd-container-tests
+    inputs:
+      parameters:
+      - name: image
+        value: "ghcr.io/projectbluefin/bluefin"
+      - name: image-tag
+        value: "testing"
+      - name: suite
+        value: "smoke"
+      - name: variant
+        value: "bluefin"
+      - name: testsuite-repo
+        value: "https://github.com/projectbluefin/testsuite"
+      - name: testsuite-branch
+        value: "main"
+      - name: behave-tags
+        value: ""
+    dag:
+      tasks:
+      - name: create-target
+        template: create-target
+        arguments:
+          parameters:
+          - name: image
+            value: "{{inputs.parameters.image}}"
+          - name: image-tag
+            value: "{{inputs.parameters.image-tag}}"
+          - name: suite
+            value: "{{inputs.parameters.suite}}"
+      - name: run-tests
+        depends: "create-target.Succeeded"
+        template: run-tests
+        arguments:
+          parameters:
+          - name: target-pod
+            value: "{{workflow.name}}-{{inputs.parameters.suite}}-systemd"
+          - name: suite
+            value: "{{inputs.parameters.suite}}"
+          - name: testsuite-repo
+            value: "{{inputs.parameters.testsuite-repo}}"
+          - name: testsuite-branch
+            value: "{{inputs.parameters.testsuite-branch}}"
+          - name: behave-tags
+            value: "{{inputs.parameters.behave-tags}}"
+
+  - name: create-target
+    inputs:
+      parameters:
+      - name: image
+      - name: image-tag
+      - name: suite
+    resource:
+      action: create
+      setOwnerReference: true
+      manifest: |
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: "{{workflow.name}}-{{inputs.parameters.suite}}-systemd"
+          namespace: "{{workflow.namespace}}"
+          labels:
+            app.kubernetes.io/component: systemd-qa-target
+            app.kubernetes.io/part-of: bluefin-test-suite
+            workflows.argoproj.io/workflow: "{{workflow.name}}"
+        spec:
+          restartPolicy: Never
+          terminationGracePeriodSeconds: 30
+          automountServiceAccountToken: false
+          containers:
+          - name: target
+            image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+            imagePullPolicy: Always
+            command: ["/usr/lib/systemd/systemd"]
+            env:
+            - name: container
+              value: oci
+            securityContext:
+              privileged: true
+              runAsUser: 0
+              allowPrivilegeEscalation: true
+            resources:
+              requests:
+                cpu: "2"
+                memory: 4Gi
+                ephemeral-storage: 20Gi
+              limits:
+                cpu: "4"
+                memory: 8Gi
+                ephemeral-storage: 40Gi
+            volumeMounts:
+            - name: run
+              mountPath: /run
+            - name: workspace
+              mountPath: /workspace
+          volumes:
+          - name: run
+            emptyDir:
+              medium: Memory
+          - name: workspace
+            emptyDir: {}
+
+  - name: run-tests
+    activeDeadlineSeconds: 3600
+    inputs:
+      parameters:
+      - name: target-pod
+      - name: suite
+      - name: testsuite-repo
+      - name: testsuite-branch
+      - name: behave-tags
+    script:
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      command: [bash]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+          ephemeral-storage: 1Gi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+          ephemeral-storage: 2Gi
+      env:
+      - name: TARGET_POD
+        value: "{{inputs.parameters.target-pod}}"
+      - name: SUITE
+        value: "{{inputs.parameters.suite}}"
+      - name: TSREPO
+        value: "{{inputs.parameters.testsuite-repo}}"
+      - name: TSBRANCH
+        value: "{{inputs.parameters.testsuite-branch}}"
+      - name: BEHAVE_TAGS
+        value: "{{inputs.parameters.behave-tags}}"
+      source: |
+        set -euo pipefail
+        case "${SUITE}" in
+          smoke|common|developer|software|system) ;;
+          *)
+            echo "Unsupported container suite: ${SUITE}" >&2
+            exit 2
+            ;;
+        esac
+
+        trap 'kubectl delete pod "${TARGET_POD}" -n "{{workflow.namespace}}" --ignore-not-found --wait=false' EXIT
+        kubectl wait --for=condition=Ready "pod/${TARGET_POD}" \
+          -n "{{workflow.namespace}}" --timeout=600s
+
+        ready=false
+        for _ in $(seq 1 60); do
+          state=$(kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+            systemctl is-system-running 2>/dev/null || true)
+          if [[ "${state}" == "running" || "${state}" == "degraded" ]] \
+            && kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+              systemctl is-active dbus systemd-logind >/dev/null; then
+            ready=true
+            break
+          fi
+          sleep 2
+        done
+        if [[ "${ready}" != true ]]; then
+          echo "Native systemd target did not reach a usable session state" >&2
+          kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+            journalctl --no-pager || true
+          exit 1
+        fi
+
+        # Mounting the target's volatile /run leaves the image resolver symlink
+        # dangling. Use the runner's Kubernetes-provided resolver instead.
+        kubectl exec -i -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          tee /workspace/resolv.conf < /etc/resolv.conf
+
+        kubectl exec -i -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          env TSREPO="${TSREPO}" TSBRANCH="${TSBRANCH}" bash -s <<'TARGET_SETUP'
+        set -euo pipefail
+        rm -f /etc/resolv.conf
+        install -m 0644 /workspace/resolv.conf /etc/resolv.conf
+        mkdir -p /workspace
+        git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}" /workspace/testsuite
+        if ! python3 -m pip --version >/dev/null 2>&1; then
+          python3 -m ensurepip --default-pip
+        fi
+        python3 -m pip install --quiet qecore dogtail behave
+        if ! grep -q "^bluefin-test:" /etc/passwd; then
+          echo "bluefin-test:x:1000:1000:Bluefin QA:/home/bluefin-test:/bin/bash" >>/etc/passwd
+        fi
+        if ! grep -q "^bluefin-test:" /etc/group; then
+          echo "bluefin-test:x:1000:" >>/etc/group
+        fi
+        if ! grep -q "^bluefin-test:" /etc/shadow; then
+          today=$(( $(date +%s) / 86400 ))
+          echo "bluefin-test:!:${today}:0:99999:7:::" >>/etc/shadow
+        fi
+        mkdir -p /etc/sudoers.d /home/bluefin-test/run
+        echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
+        chmod 0440 /etc/sudoers.d/bluefin-test
+        chown -R 1000:1000 /home/bluefin-test
+        TARGET_SETUP
+
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          test -x /usr/libexec/gnome-ponytail-daemon
+        kubectl exec -i -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          env SUITE="${SUITE}" BEHAVE_TAGS="${BEHAVE_TAGS}" bash -s <<'TARGET_SUITE'
+        set -euo pipefail
+        mkdir -p /workspace/results
+        chown 1000:1000 /workspace/results
+        printf 'SUITE=%q\nBEHAVE_TAGS=%q\n' "${SUITE}" "${BEHAVE_TAGS}" \
+          >/workspace/qa-suite.env
+        cat >/workspace/run-behave.sh <<'RUN_BEHAVE'
+        #!/bin/bash
+        set -euo pipefail
+        source /workspace/qa-suite.env
+        export PYTHONPATH="/workspace/testsuite"
+
+        case "${SUITE}" in
+          smoke|common|developer|software|system) ;;
+          *)
+            echo "Unsupported container suite: ${SUITE}" >&2
+            exit 2
+            ;;
+        esac
+
+        python3 /workspace/testsuite/tests/shared/wait_for_shell.py
+        /usr/libexec/gnome-ponytail-daemon &
+        sleep 2
+
+        TAGS_ARG="--tags ~@wip"
+        if [[ -n "${BEHAVE_TAGS}" ]]; then
+          TAGS_ARG="${BEHAVE_TAGS}"
+        fi
+
+        BEHAVE_RC=0
+        python3 -m behave "/workspace/testsuite/tests/${SUITE}/features/" \
+          --format json.pretty \
+          --outfile /workspace/results.json \
+          --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
+        echo "${BEHAVE_RC}" >/workspace/behave-rc.txt
+        exit "${BEHAVE_RC}"
+        RUN_BEHAVE
+        chmod 0755 /workspace/run-behave.sh
+        TARGET_SUITE
+
+        mkdir -p /tmp/results
+        QECORE_RC=0
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          runuser -u bluefin-test -- env \
+            SUITE="${SUITE}" \
+            BEHAVE_TAGS="${BEHAVE_TAGS}" \
+            HOME=/home/bluefin-test \
+            XDG_RUNTIME_DIR=/home/bluefin-test/run \
+            DBUS_SESSION_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+            AT_SPI_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+            XDG_SESSION_TYPE=wayland \
+            XDG_SESSION_DESKTOP=gnome \
+            LIBGL_ALWAYS_SOFTWARE=1 \
+            GALLIUM_DRIVER=llvmpipe \
+            qecore-headless \
+            --session-type wayland \
+            --session-desktop gnome \
+            /workspace/run-behave.sh || QECORE_RC=$?
+
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          cat /workspace/behave-rc.txt > /tmp/results/behave-rc.txt
+        kubectl exec -n "{{workflow.namespace}}" "${TARGET_POD}" -- \
+          cat /workspace/results.json > /tmp/results/results.json
+
+        BEHAVE_RC=$(cat /tmp/results/behave-rc.txt)
+        python3 - <<'PY'
+        import json
+
+        with open("/tmp/results/results.json", encoding="utf-8") as result_file:
+            data = json.load(result_file)
+        failed = sum(
+            1 for feature in data for scenario in feature.get("elements", [])
+            if scenario.get("status") == "failed"
+        )
+        total = sum(len(feature.get("elements", [])) for feature in data)
+        print(f"{total - failed}/{total} scenarios passed")
+        PY
+
+        if [[ "${QECORE_RC}" -ne 0 ]]; then
+          exit "${QECORE_RC}"
+        fi
+        exit "${BEHAVE_RC}"

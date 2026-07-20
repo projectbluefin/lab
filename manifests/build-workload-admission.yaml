@@ -1,0 +1,43 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: build-workload-guardrails
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - expression: "!has(object.spec.hostPID) || object.spec.hostPID == false"
+      message: "hostPID is not allowed for build workloads."
+    - expression: "!has(object.spec.hostIPC) || object.spec.hostIPC == false"
+      message: "hostIPC is not allowed for build workloads."
+    - expression: "!has(object.spec.nodeSelector) || !('kubernetes.io/hostname' in object.spec.nodeSelector)"
+      message: "Hostname pinning is not allowed for build workloads."
+    - expression: "!has(object.spec.volumes) || object.spec.volumes.all(v, !has(v.hostPath) || (v.hostPath.path == '/dev/fuse' && (!has(v.hostPath.type) || v.hostPath.type == 'CharDevice')))"
+      message: "hostPath is forbidden for build workloads, except /dev/fuse as CharDevice."
+    - expression: "object.spec.containers.all(c, has(c.resources) && has(c.resources.requests) && ('ephemeral-storage' in c.resources.requests) && has(c.resources.limits) && ('ephemeral-storage' in c.resources.limits))"
+      message: "Containers must declare ephemeral-storage requests and limits."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: build-workload-guardrails-binding
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  policyName: build-workload-guardrails
+  validationActions: [Warn]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+            - argo
+            - buildbarn

@@ -89,7 +89,7 @@ def test_no_derived_files_okay():
     ids=lambda p: str(p) if p else "none",
 )
 def test_every_derived_file_validates_against_schema(path: Path):
-    jsonschema = pytest.importorskip("jsonschema")
+    pytest.importorskip("jsonschema")
     from jsonschema import Draft202012Validator
 
     schema = json.loads(SCHEMA_PATH.read_text())
@@ -128,7 +128,10 @@ def test_ci_bounds_consistent_with_value(path: Path):
             assert lo is not None and hi is not None, (
                 f"{path}:{mid} n>0 with non-null value requires CI bounds"
             )
-            assert lo <= v <= hi, (
+            # Allow a tiny floating-point tolerance for non-strict CI bounds,
+            # e.g. proportion Wilson intervals that land at 0.9999... instead of 1.0.
+            tol = 1e-12
+            assert (lo - tol) <= v <= (hi + tol), (
                 f"{path}:{mid} CI bracket violated: {lo} <= {v} <= {hi}"
             )
 

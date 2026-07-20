@@ -17,7 +17,7 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
     encoding: 'utf8',
   });
 
-  const homebrewPage = html('docs/homebrew/index.html');
+  const homebrewPage = html('docs/adoption/index.html');
 
   assert.match(
     homebrewPage,
@@ -57,13 +57,13 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
 
   assert.match(
     homebrewPage,
-    /homebrew-page-data/,
+    /adoption-page-data/,
     'homebrew page serializes client chart data',
   );
 
   assert.match(
     homebrewPage,
-    /https:\/\/github\.com\/projectbluefin\/testing-lab\/blob\/main\/docs\/data\/variant-publishers\.json/,
+    /https:\/\/github\.com\/projectbluefin\/lab\/blob\/main\/docs\/data\/variant-publishers\.json/,
     'homebrew page links source evidence from variant-publishers.json',
   );
 
@@ -117,7 +117,7 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
 });
 
 test('homebrew data tables span the full grid width and stay scrollable when squeezed', () => {
-  const homebrewPage = html('docs/homebrew/index.html');
+  const homebrewPage = html('docs/adoption/index.html');
 
   const cssHref = homebrewPage.match(/href="(\/_astro\/SiteLayout\.[A-Za-z0-9_]+\.css)"/);
   assert.ok(cssHref, 'homebrew page links a compiled SiteLayout stylesheet');
@@ -142,8 +142,8 @@ test('homebrew data tables span the full grid width and stay scrollable when squ
 });
 
 test('homebrew page renders migrated tap coverage instead of the starter empty state', () => {
-  const homebrewPage = html('docs/homebrew/index.html');
-  assert.match(homebrewPage, /Homebrew data is partially available/i);
+  const homebrewPage = html('docs/adoption/index.html');
+  assert.match(homebrewPage, /Homebrew data: \d+ of \d+ lanes available/i);
   assert.match(homebrewPage, /bluefin\/brewfile/i);
   assert.doesNotMatch(homebrewPage, /No Homebrew analytics data is published for any tracked lane/i);
 });
@@ -156,7 +156,7 @@ test('homebrew-ecosystem.json contract satisfies the page model contract', () =>
   assert.ok(Array.isArray(dataset.taps), 'taps is an array');
   assert.ok(Array.isArray(dataset.rows), 'rows is an array');
 
-  assert.equal(dataset.rows.length, 10, 'homebrew dataset has 10 lane rows (one per variant-branch)');
+  assert.equal(dataset.rows.length, 13, 'homebrew dataset has 13 lane rows (one per variant-branch)');
 
   const trackedMetric = dataset.summary_metrics.find((m) => m.id === 'tracked_image_lanes');
   const withDataMetric = dataset.summary_metrics.find((m) => m.id === 'lanes_with_brew_data');

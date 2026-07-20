@@ -1,0 +1,132 @@
+# Buildbarn CAS/AC storage shards — 2 replicas, one per physical node
+# (ghost, exo-0), giving real distributed storage instead of a single shared
+# cache. podAntiAffinity forces storage-0 and storage-1 onto different nodes;
+# local-path PVCs then follow wherever each pod actually lands
+# (WaitForFirstConsumer binding).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: storage
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 2
+  revisionHistoryLimit: 10
+  serviceName: storage
+  selector:
+    matchLabels:
+      app: storage
+  template:
+    metadata:
+      labels:
+        app: storage
+      annotations:
+        buildbarn-config-revision: "2026-07-12-2"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9980"
+    spec:
+      automountServiceAccountToken: false
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: storage
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: volume-init
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+            - mkdir -m 0700 -p /storage-cas/persistent_state /storage-ac/persistent_state
+          volumeMounts:
+            - mountPath: /storage-cas
+              name: cas
+            - mountPath: /storage-ac
+              name: ac
+      containers:
+        - name: storage
+          image: ghcr.io/buildbarn/bb-storage:20260609T094425Z-10acc76
+          imagePullPolicy: IfNotPresent
+          args:
+            - /config/storage.jsonnet
+          ports:
+            - name: grpc
+              containerPort: 8981
+              protocol: TCP
+            - name: metrics
+              containerPort: 9980
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - mountPath: /config/
+              name: configs
+              readOnly: true
+            - mountPath: /storage-cas
+              name: cas
+            - mountPath: /storage-ac
+              name: ac
+      volumes:
+        - name: configs
+          configMap:
+            name: buildbarn-config
+            items:
+              - key: common.libsonnet
+                path: common.libsonnet
+              - key: storage.jsonnet
+                path: storage.jsonnet
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  volumeClaimTemplates:
+    - metadata:
+        name: cas
+      spec:
+        storageClassName: local-path
+        volumeMode: Filesystem
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 100Gi
+    - metadata:
+        name: ac
+      spec:
+        storageClassName: local-path
+        volumeMode: Filesystem
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  clusterIP: None
+  selector:
+    app: storage
+  ports:
+    - name: grpc
+      port: 8981
+      protocol: TCP
+    - name: metrics
+      port: 9980
+      protocol: TCP

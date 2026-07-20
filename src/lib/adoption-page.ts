@@ -183,10 +183,14 @@ export function loadAdoptionPageModel(datasetPath: string): AdoptionPageModel {
     };
 
     if (Array.isArray(dataset.countme_trend.monthly)) {
-      dataset.countme_trend.monthly = sanitizeTrendList(dataset.countme_trend.monthly);
+      dataset.countme_trend.monthly = sanitizeTrendList(dataset.countme_trend.monthly).sort(
+        (a, b) => a.week_start.localeCompare(b.week_start)
+      );
     }
     if (Array.isArray(dataset.countme_trend.weekly)) {
-      dataset.countme_trend.weekly = sanitizeTrendList(dataset.countme_trend.weekly);
+      dataset.countme_trend.weekly = sanitizeTrendList(dataset.countme_trend.weekly).sort(
+        (a, b) => a.week_start.localeCompare(b.week_start)
+      );
     }
   }
 

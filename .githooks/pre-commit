@@ -19,7 +19,8 @@ else
     echo "pre-commit: argo CLI not found — skipping argo lint" 1>&2
 fi
 
-if grep -rE '^kind:[[:space:]]*Secret([[:space:]]|$)' manifests/ 2>/dev/null; then
+STAGED_MANIFESTS=$(printf '%s\n' "$CHANGED" | grep -E '^manifests/.+\.ya?ml$' || true)
+if [ -n "$STAGED_MANIFESTS" ] && printf '%s\n' "$STAGED_MANIFESTS" | xargs grep -nE '^kind:[[:space:]]*Secret([[:space:]]|$)' 2>/dev/null; then
     echo "pre-commit error: plain k8s Secret committed in manifests/." 1>&2
     echo "Use kubectl-managed secrets or a SealedSecret instead." 1>&2
     exit 1

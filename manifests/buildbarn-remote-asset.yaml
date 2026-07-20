@@ -1,0 +1,73 @@
+# Buildbarn remote asset service for BuildStream/remote-asset lookups.
+# It exposes the remote asset gRPC endpoint to the cluster and uses the shared
+# Buildbarn blobstore and action cache backends from buildbarn-config.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bb-remote-asset
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bb-remote-asset
+  template:
+    metadata:
+      labels:
+        app: bb-remote-asset
+      annotations:
+        buildbarn-config-revision: "2026-07-12-2"
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9980"
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: bb-remote-asset
+          image: ghcr.io/buildbarn/bb-remote-asset:20241031T230517Z-4926e8e
+          args:
+            - /config/remote-asset.jsonnet
+          ports:
+            - name: grpc
+              containerPort: 8984
+            - name: metrics
+              containerPort: 9980
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - mountPath: /config/
+              name: configs
+              readOnly: true
+      volumes:
+        - name: configs
+          configMap:
+            name: buildbarn-config
+            items:
+              - key: common.libsonnet
+                path: common.libsonnet
+              - key: remote-asset.jsonnet
+                path: remote-asset.jsonnet
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bb-remote-asset
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    app: bb-remote-asset
+  ports:
+    - name: grpc
+      port: 8984
+      targetPort: 8984
+    - name: metrics
+      port: 9980
+      targetPort: 9980

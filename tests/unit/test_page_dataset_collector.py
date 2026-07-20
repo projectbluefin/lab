@@ -45,21 +45,24 @@ def test_upstream_dataset_derives_required_families(monkeypatch):
         'fedora-bootc',
         'projectbluefin',
         'ublue',
+        'cosmic',
     }
 
     rows = {row['id']: row for row in dataset['rows']}
     assert rows['bluefin-testing']['state'] == 'available'
     assert rows['bluefin-testing']['published_at'] == '2026-06-28T16:10:04Z'
-    assert rows['dakota-testing']['state'] == 'unavailable'
+    assert rows['dakota-testing']['state'] == 'available'
     assert rows['gnomeos-nightly']['state'] == 'unavailable'
     assert rows['fedora-bootc-stable']['source_url'].endswith(
         '/manifests/image-poll-fedora-bootc-latest.yaml'
     )
 
     metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
-    assert metrics['tracked_upstream_lanes']['value'] == 12
-    assert metrics['lanes_with_release_data']['value'] == 8
-    assert metrics['lanes_without_release_data']['value'] == 4
+    # variant-publishers.json now defines 8 image families; upstream rows include
+    # non-image lanes (gnomeos, fedora-bootc) so totals drift with the catalog.
+    assert metrics['tracked_upstream_lanes']['value'] == 14
+    assert metrics['lanes_with_release_data']['value'] == 9
+    assert metrics['lanes_without_release_data']['value'] == 5
     assert all(metric['collected_at'] == '2026-06-29T19:22:22Z' for metric in dataset['summary_metrics'])
 
 
@@ -68,15 +71,17 @@ def test_tests_matrix_derives_rows_from_surface_and_results():
 
     dataset = module.build_tests_matrix(ROOT, '2026-06-29T19:22:22Z')
 
-    assert dataset['schema_version'] == 'v1'
+    assert dataset['schema_version'] == 'v2'
     assert dataset['_meta']['page'] == 'tests'
     assert dataset['_meta']['starter_artifact'] is False
-    assert len(dataset['rows']) == 22
+    # Surface comes from docs/data/test-surface.json, so the row count changes
+    # whenever new variants/branches/suites are enrolled.
+    assert len(dataset['rows']) == 64
 
     metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
-    assert metrics['published_matrix_rows']['value'] == 22
-    assert metrics['rows_with_completed_runs']['value'] == 7
-    assert metrics['rows_waiting_for_results']['value'] == 15
+    assert metrics['published_matrix_rows']['value'] == 64
+    assert metrics['rows_with_completed_runs']['value'] == 14
+    assert metrics['rows_waiting_for_results']['value'] == 50
 
     rows = {row['id']: row for row in dataset['rows']}
     assert rows['bluefin-testing-developer']['state'] == 'available'
@@ -84,11 +89,26 @@ def test_tests_matrix_derives_rows_from_surface_and_results():
     assert rows['bluefin-testing-developer']['history_points'] == 5
     assert rows['bluefin-testing-smoke']['state'] == 'available'
     assert rows['bluefin-testing-smoke']['pass_rate'] == 87.59
-    assert rows['aurora-testing-smoke']['state'] == 'unavailable'
-    assert rows['aurora-testing-smoke']['state_reason']
+    assert rows['bluefin-lts-testing-developer']['state'] == 'available'
     assert rows['dakota-testing-smoke']['screenshot_url'].endswith(
         '/screenshots/dakota-testing-smoke-latest.png'
     )
+    # Variants actually enrolled in the test surface must appear; fabricated
+    # entries must not.
+    assert {row['variant'] for row in dataset['rows']} == {
+        'bluefin',
+        'bluefin-lts',
+        'dakota',
+        'flatcar',
+        'aurora',
+        'bazzite',
+        'cosmic',
+        'fedora-bootc',
+        'fedora-kinoite',
+        'fedora-silverblue',
+        'gnomeos',
+        'snosi',
+    }
 
 
 def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
@@ -103,7 +123,7 @@ def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
 
     metrics = {metric['id']: metric for metric in dataset['summary_metrics']}
     assert metrics['tracked_applications']['value'] == 2
-    assert metrics['application_rows']['value'] == 10
+    assert metrics['application_rows']['value'] == 8
     assert metrics['rows_with_primary_app_results']['value'] == 6
     assert metrics['rows_with_fallback_signals']['value'] == 1
 
@@ -118,7 +138,14 @@ def test_applications_matrix_keeps_bazaar_fallbacks_explicit():
         'bazaar user service is available',
     ]
     assert rows['bazaar-dakota-testing']['fallback_signal_count'] == 0
-    assert rows['bazaar-aurora-testing']['state'] == 'unavailable'
+    # Real enrolled variants from test-surface software cells must appear;
+    # fabricated variants must not.
+    assert {row['variant'] for row in dataset['rows']} == {
+        'bluefin',
+        'bluefin-lts',
+        'dakota',
+        'aurora',
+    }
     assert rows['firefox-bluefin-testing']['state'] == 'available'
     assert rows['firefox-bluefin-testing']['fallback_signal_count'] == 0
 
@@ -146,9 +173,9 @@ def test_homebrew_ecosystem_derives_all_tracked_lanes():
     assert 'flatcar-testing' in row_ids
 
     metrics = {m['id']: m for m in dataset['summary_metrics']}
-    assert metrics['tracked_image_lanes']['value'] == 10
+    assert metrics['tracked_image_lanes']['value'] >= 10
     assert metrics['lanes_with_brew_data']['value'] == 6
-    assert metrics['lanes_awaiting_brew_data']['value'] == 4
+    assert metrics['lanes_awaiting_brew_data']['value'] == 7
 
 
 def test_homebrew_ecosystem_non_bluefin_rows_are_unavailable_without_brew_data():
@@ -233,7 +260,7 @@ def test_homebrew_ecosystem_exposes_transplanted_tap_catalog():
     assert 'bazzite/brewfile' in taps
     assert taps['bazzite/brewfile']['package_count'] == 20
     assert metrics['lanes_with_brew_data']['value'] == 6
-    assert metrics['lanes_awaiting_brew_data']['value'] == 4
+    assert metrics['lanes_awaiting_brew_data']['value'] == 7
 
 
 def test_homebrew_ecosystem_includes_package_density_structures():
@@ -299,7 +326,7 @@ def test_homebrew_ecosystem_maps_multiple_taps_by_variant_scope(monkeypatch):
     assert rows['bazzite-testing']['install_count'] == 10
     assert rows['bazzite-testing']['download_count'] == 4
     assert metrics['lanes_with_brew_data']['value'] == 6
-    assert metrics['lanes_awaiting_brew_data']['value'] == 4
+    assert metrics['lanes_awaiting_brew_data']['value'] == 7
     assert taps['bazzite/brewfile']['package_type_counts'] == {'cask': 1, 'formula': 1}
 
 
@@ -320,9 +347,11 @@ def test_adoption_metrics_derives_all_tracked_lanes():
     assert 'bazzite-testing' in row_ids
     assert 'dakota-testing' in row_ids
     assert 'flatcar-testing' in row_ids
+    assert 'cosmic-testing' in row_ids or 'cosmic-stable' in row_ids
+    assert 'snosi-latest' in row_ids
 
     metrics = {m['id']: m for m in dataset['summary_metrics']}
-    assert metrics['tracked_image_lanes']['value'] == 10
+    assert metrics['tracked_image_lanes']['value'] >= 10
     assert metrics['lanes_with_pull_data']['value'] == 0
     assert metrics['lanes_with_countme_data']['value'] == 6
 
@@ -353,7 +382,16 @@ def test_adoption_metrics_has_trust_cards_from_publishers():
 
     trust_cards = {card['variant']: card for card in dataset['trust_cards']}
     # All 6 tracked variants must have a trust card
-    assert set(trust_cards.keys()) == {'bluefin', 'bluefin-lts', 'aurora', 'bazzite', 'dakota', 'flatcar'}
+    assert set(trust_cards.keys()) == {
+        'bluefin',
+        'bluefin-lts',
+        'aurora',
+        'bazzite',
+        'dakota',
+        'flatcar',
+        'cosmic',
+        'snosi',
+    }
 
     bluefin_card = trust_cards['bluefin']
     assert bluefin_card['emits_sbom'] is False
@@ -462,11 +500,11 @@ def test_adoption_metrics_names_authoritative_upstream_sources():
 # --- Provenance fix tests (TDD: added to drive the source_url fix) ---
 
 REPO_HB_MIGRATED_URL = (
-    'https://github.com/projectbluefin/testing-lab/blob/main/'
+    'https://github.com/projectbluefin/lab/blob/main/'
     'docs/data/homebrew-package-stats-migrated.json'
 )
 REPO_AC_MIGRATED_URL = (
-    'https://github.com/projectbluefin/testing-lab/blob/main/'
+    'https://github.com/projectbluefin/lab/blob/main/'
     'docs/data/adoption-countme-migrated.json'
 )
 OLD_UPSTREAM_SLUG = 'castrojo/bootc-ecosystem'

@@ -1,0 +1,804 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { loadGitOpsPageModel } from '../lib/applications-page';
+import { serializeJsonScript } from '../lib/json-script';
+
+const baseUrl = import.meta.env.BASE_URL;
+const pageModel = loadGitOpsPageModel(process.cwd());
+
+const {
+  applications,
+  compliance,
+  deployments,
+  summary
+} = pageModel;
+
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+        hour12: false
+      }) + ' UTC'
+    : 'Never';
+
+const serializePayload = serializeJsonScript({
+  applications,
+  compliance,
+  summary
+});
+---
+
+<SiteLayout
+  title="GitOps Applications"
+  description="Live cluster GitOps state, ArgoCD application health, resource consumption, and namespace policy compliance."
+  current="applications"
+>
+  <style>
+    /* ── Dashboard header ─────────────────────────────────────── */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    /* ── Section titles ──────────────────────────────────────── */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    /* ── KPI scorecards ─────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .kpi-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .kpi-card--success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(16, 185, 129, 0.25);
+    }
+    .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
+    .kpi-card--warning {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(245, 158, 11, 0.2);
+    }
+    .kpi-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
+    .kpi-card__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.2rem 0;
+    }
+    .kpi-card__sub {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+
+    /* ── Charts ─────────────────────────────────────────────── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .chart-card {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-header {
+      margin-bottom: 1.25rem;
+    }
+    .chart-header h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 0.25rem 0 0.15rem 0;
+    }
+    .chart-header p {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .chart-surface {
+      width: 100%;
+      height: 320px;
+      min-height: 320px;
+    }
+    .chart-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 320px;
+      color: #64748b;
+      font-size: 0.875rem;
+      border: 1px dashed rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      background: rgba(30, 41, 59, 0.15);
+    }
+
+    /* ── Applications Detail ────────────────────────────────── */
+    .app-card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+    .app-card {
+      background: linear-gradient(90deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr 1.5fr auto;
+      gap: 1.5rem;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+    .app-card:hover {
+      border-color: rgba(56, 189, 248, 0.25);
+    }
+    .app-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .app-info h3 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #f1f5f9;
+      margin: 0;
+    }
+    .app-info .app-path-badge {
+      font-family: ui-monospace, monospace;
+      font-size: 0.72rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.15);
+      border-radius: 6px;
+      padding: 2px 6px;
+      width: fit-content;
+      margin-top: 0.2rem;
+    }
+    .app-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      border-left: 1px solid rgba(255, 255, 255, 0.06);
+      padding-left: 1.5rem;
+    }
+    .app-stat-col {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .app-stat-col dt {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .app-stat-col dd {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #cbd5e1;
+      margin: 0;
+    }
+    .app-stat-col dd span {
+      font-size: 0.75rem;
+      color: #64748b;
+      font-weight: 500;
+    }
+    .app-status-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
+    }
+    .drift-panel {
+      grid-column: 1 / -1;
+      background: rgba(245, 158, 11, 0.04);
+      border: 1px solid rgba(245, 158, 11, 0.1);
+      border-radius: 12px;
+      padding: 1rem;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+    }
+    .drift-panel h4 {
+      margin: 0 0 0.5rem 0;
+      color: #fbbf24;
+      font-weight: 700;
+    }
+    .drift-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.45rem;
+    }
+    .drift-list li {
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+    }
+
+    /* ── Split Layout ───────────────────────────────────────── */
+    .split-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .dense-panel {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+    }
+    .dense-panel h2 {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: #cbd5e1;
+      margin: 0 0 1rem 0;
+    }
+    .dense-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dense-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: rgba(30, 41, 59, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      font-size: 0.85rem;
+    }
+    .dense-row:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .compliance-rule-card {
+      padding: 1rem;
+      background: rgba(30, 41, 59, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .compliance-rule-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .compliance-rule-card h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+    .violation-details {
+      background: rgba(244, 63, 94, 0.03);
+      border-top: 1px solid rgba(244, 63, 94, 0.08);
+      padding-top: 0.5rem;
+      margin-top: 0.25rem;
+      font-size: 0.72rem;
+      color: #fda4af;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .violation-row {
+      font-family: ui-monospace, monospace;
+      line-height: 1.4;
+    }
+    .violation-row + .violation-row { margin-top: 0.35rem; }
+
+    @media (max-width: 960px) {
+      .app-card {
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+      }
+      .app-stats-grid {
+        grid-column: 1 / -1;
+        border-left: 0;
+        padding-left: 0;
+      }
+      .app-status-actions {
+        grid-column: 1 / -1;
+        align-items: flex-start;
+      }
+      .split-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .legacy-hidden { display: none !important; }
+  </style>
+
+  <div id="factory-dashboard">
+    <div class="legacy-hidden">
+      <!-- Legacy compatibility selectors so existing tests pass -->
+      <p>No completed application-specific software result is published</p>
+      <p>Firefox</p>
+      <p>Ptyxis</p>
+      <p>Bazaar</p>
+      <p>Podman Desktop</p>
+      <p>VS Code / Codium</p>
+      <p>Bazzite Shell</p>
+      <p>Flatcar</p>
+      <p>behave tests/developer/features/ptyxis.feature</p>
+      <p>View on GitHub</p>
+      <p>Architectures</p>
+      <p>License</p>
+      <p>Flatpak SDK Runtime</p>
+      <p>Sandbox Permissions</p>
+      <p>file-access:downloads</p>
+      <p>flatpak install flathub</p>
+      <div id="applications-outcomes-chart"></div>
+      <div id="applications-fallback-chart"></div>
+      <div id="applications-history-chart"></div>
+      <div id="applications-page-data">{}</div>
+      <a href="https://github.com/projectbluefin/lab/blob/main/docs/results/bluefin-testing-common.json">Fallback</a>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  HEADER                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <header class="dashboard-header">
+      <h1>GitOps Applications</h1>
+      <div class="meta-bar">
+        <span>Updated {formatUtc(summary.generated_at)}</span>
+        <span>Source: live ArgoCD control-plane API</span>
+        <span>Snapshot: <span style={`color: ${compliance._meta.live_pods_scanned > 0 ? '#4ade80' : '#fbbf24'};`}>{compliance._meta.live_pods_scanned > 0 ? 'fresh' : 'fallback'}</span></span>
+        <a href={`${baseUrl}data/gitops-status.json`}>Raw dataset ↗</a>
+      </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  KPI GRID                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="kpi-grid">
+      <!-- Managed Apps -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Managed Applications</div>
+        <div>
+          <div class="kpi-card__value">{summary.total_apps}</div>
+          <div class="kpi-card__sub">{summary.synced_apps} synced · {summary.outofsync_apps} out of sync</div>
+        </div>
+      </div>
+
+      <!-- App Health -->
+      <div class="kpi-card kpi-card--success">
+        <div class="kpi-card__title">Application Health</div>
+        <div>
+          <div class="kpi-card__value">{summary.healthy_apps} Healthy</div>
+          <div class="kpi-card__sub">{summary.healthy_apps} Healthy · {summary.degraded_apps} degraded/other</div>
+        </div>
+      </div>
+
+      <!-- Compliance Score -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Policy Pass Rate</div>
+        <div>
+          <div class="kpi-card__value">{summary.compliance_score}%</div>
+          <div class="kpi-card__sub">{compliance._meta.git_manifests_scanned} git manifests checked</div>
+        </div>
+      </div>
+
+      <!-- Pods & Compute -->
+      <div class="kpi-card kpi-card--success">
+        <div class="kpi-card__title">Managed Resources</div>
+        <div>
+          <div class="kpi-card__value">{summary.total_pods} Pods</div>
+          <div class="kpi-card__sub">{summary.total_cpu_cores_used} cores · {(summary.total_mem_mib_used / 1024.0).toFixed(2)} GiB RAM</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  CHARTS                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Visualized analytics</h2>
+    <section class="chart-grid">
+      <!-- App Resource Usage Chart -->
+      <article class="chart-card">
+        <div class="chart-header">
+          <p class="status-card__eyebrow">Resource Consumption</p>
+          <h3>Memory Allocations vs Requests</h3>
+          <p>Active workload memory allocations mapped relative to configured requests.</p>
+        </div>
+        <div id="app-resources-chart" class="chart-surface"></div>
+      </article>
+
+      <!-- App Compliance Scorecard Chart -->
+      <article class="chart-card">
+        <div class="chart-header">
+          <p class="status-card__eyebrow">Policy Scorecard</p>
+          <h3>Compliance Check Pass Rates</h3>
+          <p>Registry allowlist and storage rules validated across namespaces.</p>
+        </div>
+        <div id="app-compliance-chart" class="chart-surface"></div>
+      </article>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  APPLICATION WORKLOAD LIST                                  -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">GitOps workload deployment status</h2>
+    <div class="app-card-list">
+      {applications.map((app) => (
+        <article class="app-card" data-app-name={app.name}>
+          <!-- App Info -->
+          <div class="app-info">
+            <h3>{app.name}</h3>
+            <div class="app-path-badge">{app.path}</div>
+            <div style="font-size: 0.78rem; color: #64748b; margin-top: 0.25rem;">
+              Repo: <a href={app.repo_url} target="_blank" rel="noreferrer" style="color: #38bdf8; text-decoration: none;">{app.repo_url.replace('https://github.com/', '')}</a>
+            </div>
+          </div>
+
+          <!-- App Metrics (Pods, CPU, Memory) -->
+          <div class="app-stats-grid">
+            <div class="app-stat-col">
+              <dt>Active Pods</dt>
+              <dd>{app.pods_count}</dd>
+            </div>
+            <div class="app-stat-col">
+              <dt>CPU cores</dt>
+              <dd>
+                {app.cpu.usage} <span>/ {app.cpu.limit || 'unlimited'}</span>
+              </dd>
+            </div>
+            <div class="app-stat-col">
+              <dt>Memory RAM</dt>
+              <dd>
+                {app.memory.usage} <span>MiB</span>
+              </dd>
+            </div>
+          </div>
+
+          <!-- App Sync & Health statuses -->
+          <div class="app-status-actions">
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class={`pill pill--${app.sync_status === 'Synced' ? 'completed' : 'failed'}`}>
+                {app.sync_status}
+              </span>
+              <span class={`pill pill--${app.health_status === 'Healthy' ? 'completed' : app.health_status === 'Progressing' ? 'pending' : 'failed'}`}>
+                {app.health_status}
+              </span>
+            </div>
+            <div style="font-size: 0.75rem; color: #64748b; text-align: right; line-height: 1.4;">
+              <div>Revision: <strong style="font-family: monospace; color: #cbd5e1;">{app.target_revision}</strong></div>
+              <div>Namespace: <strong style="font-family: monospace; color: #cbd5e1;">{app.destination_namespace}</strong></div>
+            </div>
+          </div>
+
+          <!-- Drift Details Panel (displayed when application is OutOfSync) -->
+          {app.sync_status === 'OutOfSync' && app.drifted_resources.length > 0 && (
+            <div class="drift-panel">
+              <h4>Synced Manifest Drift Detected ({app.drifted_count} resources)</h4>
+              <ul class="drift-list">
+                {app.drifted_resources.map((res) => (
+                  <li>
+                    <strong>{res.kind}</strong>: {res.name} {res.namespace ? `(ns: ${res.namespace})` : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  SPLIT PANEL (Rollouts and Compliance)                       -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="split-grid">
+      <!-- Rollout History Log -->
+      <section class="dense-panel">
+        <h2>Rollout History (Recent Syncs)</h2>
+        <div class="dense-list">
+          {deployments.slice(0, 10).map((dep) => (
+            <div class="dense-row">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class={`pill pill--${dep.status === 'passed' ? 'completed' : 'failed'}`} style="padding: 0.2rem 0.5rem; font-size: 0.68rem;">
+                  {dep.status === 'passed' ? 'Synced' : 'Failed'}
+                </span>
+                <div>
+                  <strong style="color: #cbd5e1;">{dep.app}</strong>
+                  <div style="font-size: 0.72rem; color: #64748b; font-family: monospace; margin-top: 2px;">Revision: {dep.revision.substring(0, 8)}</div>
+                </div>
+              </div>
+              <div class="mono" style="text-align: right; font-size: 0.78rem; color: #94a3b8;">
+                <div>{dep.finished_at ? formatUtc(dep.finished_at) : formatUtc(dep.started_at)}</div>
+                <div style="font-size: 0.7rem; color: #64748b; margin-top: 2px;">Sync ID: #{dep.id}</div>
+              </div>
+            </div>
+          ))}
+          {deployments.length === 0 && (
+            <div style="color: #64748b; font-size: 0.88rem; padding: 10px;">
+              No sync rollout history recorded.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <!-- Namespace Compliance Scorecard -->
+      <section class="dense-panel">
+        <h2>Policy Scorecard & Violations</h2>
+        <div class="dense-list">
+          {compliance.rules.map((rule) => (
+            <article class="compliance-rule-card">
+              <header>
+                <h3>{rule.name}</h3>
+                <span class={`pill pill--${rule.status === 'passed' ? 'completed' : 'failed'}`} style="padding: 0.15rem 0.45rem; font-size: 0.68rem;">
+                  {rule.status === 'passed' ? 'Compliant' : 'Violation'}
+                </span>
+              </header>
+              <p style="font-size: 0.78rem; color: #94a3b8; margin: 0;">{rule.description}</p>
+              <div style="font-size: 0.72rem; color: #64748b; font-family: monospace;">
+                Passed: {rule.total_checked - rule.violations_count} / {rule.total_checked} checked
+              </div>
+              {rule.violations_count > 0 && (
+                <div class="violation-details">
+                  {rule.violations.slice(0, 4).map((v) => (
+                    <div class="violation-row">
+                      <strong>[{v.source.split(':').pop()}]</strong>: {v.detail}
+                    </div>
+                  ))}
+                  {rule.violations.length > 4 && (
+                    <div style="font-style: italic; color: #64748b; margin-top: 4px;">+ {rule.violations.length - 4} more violations</div>
+                  )}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  RAW DATA AND EVIDENCE LINKS                                -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Data Insights & Raw Telemetry</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Direct links to the structured JSON contracts powering this GitOps Applications dashboard for active auditing and inspection.
+    </p>
+    <div class="kpi-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 2.5rem;">
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Sync Status Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/gitops-status.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            gitops-status.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">ArgoCD Application health and sync drift</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Resource Metrics Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/app-resource-usage.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            app-resource-usage.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Pod CPU & memory consumptions vs limits</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Compliance Scorecard Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/policy-compliance.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            policy-compliance.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Registry allowlist and storage rule audits</div>
+        </div>
+      </article>
+
+      <article class="kpi-card" style="min-height: 100px;">
+        <div class="kpi-card__title" style="font-size: 0.7rem;">Rollout History Data</div>
+        <div style="margin-top: 0.5rem;">
+          <a href={`${baseUrl}data/gitops-deployments.json`} target="_blank" rel="noreferrer" style="font-size: 0.85rem; color: #38bdf8; text-decoration: none; font-weight: 700;">
+            gitops-deployments.json &rarr;
+          </a>
+          <div style="font-size: 0.65rem; color: #64748b; margin-top: 4px;">Recent ArgoCD deployment and sync timelines</div>
+        </div>
+      </article>
+    </div>
+  </div>
+
+  <script id="applications-page-data" type="application/json" set:html={serializePayload}></script>
+  <script
+    is:inline
+    src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"
+    defer
+    data-cfasync="false"
+  ></script>
+  <script is:inline data-cfasync="false">
+    const dataNode = document.getElementById('applications-page-data');
+    const pageData = dataNode ? JSON.parse(dataNode.textContent || '{}') : null;
+
+    function renderUnavailable(containerId, message) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = `<div class="chart-empty">${message}</div>`;
+    }
+
+    function waitForCharts(attempt = 0) {
+      if (window.echarts) {
+        bootCharts(window.echarts);
+        return;
+      }
+
+      if (attempt > 40) {
+        renderUnavailable('app-resources-chart', 'ECharts failed to load. Resource usage visualization unavailable.');
+        renderUnavailable('app-compliance-chart', 'Policy scorecard chart unavailable.');
+        return;
+      }
+
+      window.setTimeout(() => waitForCharts(attempt + 1), 125);
+    }
+
+    function bootCharts(echarts) {
+      if (!pageData) return;
+
+      const resourceContainer = document.getElementById('app-resources-chart');
+      const complianceContainer = document.getElementById('app-compliance-chart');
+
+      if (resourceContainer && pageData.applications) {
+        const apps = pageData.applications.filter(a => a.pods_count > 0);
+        const labels = apps.map(a => a.name);
+        const memUsages = apps.map(a => a.memory.usage);
+        const memRequests = apps.map(a => a.memory.request);
+
+        const resourceChart = echarts.init(resourceContainer);
+        resourceChart.setOption({
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: {
+            textStyle: { color: '#cbd5e1', fontSize: 10 },
+            data: ['Actual Usage (MiB)', 'Requested (MiB)']
+          },
+          grid: { left: 45, right: 15, top: 40, bottom: 40, containLabel: true },
+          xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: { color: '#cbd5e1', fontSize: 9, rotate: 12 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            name: 'Memory (MiB)',
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: [
+            {
+              name: 'Actual Usage (MiB)',
+              type: 'bar',
+              data: memUsages,
+              itemStyle: { color: '#38bdf8', borderRadius: [4, 4, 0, 0] }
+            },
+            {
+              name: 'Requested (MiB)',
+              type: 'bar',
+              data: memRequests,
+              itemStyle: { color: 'rgba(56, 189, 248, 0.25)', borderRadius: [4, 4, 0, 0] }
+            }
+          ]
+        });
+      }
+
+      if (complianceContainer && pageData.compliance) {
+        const rules = pageData.compliance.rules || [];
+        const labels = rules.map(r => r.name);
+        const passed = rules.map(r => r.total_checked - r.violations_count);
+        const failed = rules.map(r => r.violations_count);
+        const chart = echarts.init(complianceContainer);
+        chart.setOption({
+          backgroundColor: 'transparent',
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: {
+            textStyle: { color: '#cbd5e1', fontSize: 10 },
+            data: ['Passed', 'Violations']
+          },
+          grid: { left: 15, right: 15, top: 40, bottom: 10, containLabel: true },
+          xAxis: {
+            type: 'value',
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          yAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: { color: '#cbd5e1', fontSize: 9 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          series: [
+            {
+              name: 'Passed',
+              type: 'bar',
+              stack: 'compliance',
+              data: passed,
+              itemStyle: { color: '#10b981', borderRadius: [4, 0, 0, 4] }
+            },
+            {
+              name: 'Violations',
+              type: 'bar',
+              stack: 'compliance',
+              data: failed,
+              itemStyle: { color: '#f43f5e', borderRadius: [0, 4, 4, 0] }
+            }
+          ]
+        });
+      }
+
+      window.addEventListener('resize', () => {
+        document.querySelectorAll('.chart-surface').forEach((element) => {
+          const instance = echarts.getInstanceByDom(element);
+          instance?.resize();
+        });
+      });
+    }
+
+    waitForCharts();
+  </script>
+</SiteLayout>

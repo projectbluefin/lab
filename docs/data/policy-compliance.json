@@ -1,0 +1,158 @@
+{
+  "schema_version": "v1",
+  "_meta": {
+    "page": "compliance",
+    "description": "GitOps and running cluster compliance scorecard.",
+    "generated_at": "2026-07-20T15:17:24Z",
+    "live_snapshot_ok": false,
+    "git_manifests_scanned": 111,
+    "live_pods_scanned": 0
+  },
+  "score": 82.1,
+  "rules": [
+    {
+      "id": "registry_allowlist_git",
+      "name": "Git Manifest Registry Allowlist",
+      "description": "All container images in git-tracked manifests must reside on allowed registries.",
+      "status": "failed",
+      "total_checked": 106,
+      "violations_count": 4,
+      "violations": [
+        {
+          "source": "git:manifests/system-upgrade-controller.yaml",
+          "detail": "Banned registry for image 'rancher/system-upgrade-controller:v0.19.2'"
+        },
+        {
+          "source": "git:manifests/k3s-upgrade-plans.yaml",
+          "detail": "Banned registry for image 'rancher/k3s-upgrade'"
+        },
+        {
+          "source": "git:manifests/k3s-upgrade-plans.yaml",
+          "detail": "Banned registry for image 'rancher/k3s-upgrade'"
+        },
+        {
+          "source": "git:manifests/k3s-upgrade-plans.yaml",
+          "detail": "Banned registry for image 'rancher/k3s-upgrade'"
+        }
+      ]
+    },
+    {
+      "id": "registry_allowlist_cluster",
+      "name": "Live Cluster Registry Allowlist",
+      "description": "All running container images in the cluster must reside on allowed registries.",
+      "status": "passed",
+      "total_checked": 0,
+      "violations_count": 0,
+      "violations": []
+    },
+    {
+      "id": "no_root_storage_git",
+      "name": "No Root Disk Storage Allocations",
+      "description": "No hard hostPath volume mounts on root disks (must use PVCs or approved storage).",
+      "status": "failed",
+      "total_checked": 16,
+      "violations_count": 12,
+      "violations": [
+        {
+          "source": "git:manifests/registry-mirror-config.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/var/lib/rancher/k3s/agent/etc/containerd/certs.d'"
+        },
+        {
+          "source": "git:manifests/system-upgrade-controller.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/etc/ssl'"
+        },
+        {
+          "source": "git:manifests/system-upgrade-controller.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/etc/pki'"
+        },
+        {
+          "source": "git:manifests/system-upgrade-controller.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/etc/ca-certificates'"
+        },
+        {
+          "source": "git:manifests/bst-cache-proxy.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/var/tmp/bst-http-cache'"
+        },
+        {
+          "source": "git:argo/workflow-templates/build-bluefin-migration-containerdisk.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/dev'"
+        },
+        {
+          "source": "git:argo/workflow-templates/build-bluefin-migration-containerdisk.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/run/udev'"
+        },
+        {
+          "source": "git:argo/workflow-templates/ghost-cleanup.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/var/lib/containers/storage'"
+        },
+        {
+          "source": "git:argo/workflow-templates/dakota-pr-batch-pipeline.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/dev/fuse'"
+        },
+        {
+          "source": "git:argo/workflow-templates/dakota-build-pipeline.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/dev/fuse'"
+        },
+        {
+          "source": "git:argo/workflow-templates/bluefin-server-build-pipeline.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/dev/fuse'"
+        },
+        {
+          "source": "git:argo/workflow-templates/cosmic-build-pipeline.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/dev/fuse'"
+        }
+      ]
+    },
+    {
+      "id": "no_hard_node_pins_git",
+      "name": "No Hard Node Selectors in Git",
+      "description": "Workloads must not use hard nodeName or hostname nodeSelectors to bypass scheduler placement.",
+      "status": "failed",
+      "total_checked": 12,
+      "violations_count": 8,
+      "violations": [
+        {
+          "source": "git:manifests/orphan-pod-gc.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:manifests/golden-disk-gc.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:manifests/bst-cache-proxy.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:manifests/pr-image-gc.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:manifests/orphan-vm-cleanup.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:manifests/zot-writable.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:argo/workflow-templates/ghost-cleanup.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:argo/workflow-templates/flatcar-kernel-build.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        }
+      ]
+    },
+    {
+      "id": "no_hard_node_pins_cluster",
+      "name": "No Hard Node Selectors in Cluster",
+      "description": "No active pods with hard node selector pinning (excluding approved infrastructure controllers).",
+      "status": "passed",
+      "total_checked": 0,
+      "violations_count": 0,
+      "violations": []
+    }
+  ]
+}

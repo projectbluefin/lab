@@ -1,0 +1,291 @@
+# Buildbarn remote-execution grid config, adapted from the upstream reference
+# deployment (github.com/buildbarn/bb-deployments kubernetes/config/*.jsonnet)
+# for this cluster's real 2-node topology (ghost + exo-0). No browser, no
+# file-system access cache (FSAC) — both are optional and dropped to keep the
+# homelab footprint small; add them later if virtual build dirs are needed.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildbarn-config
+  namespace: buildbarn
+  labels:
+    app.kubernetes.io/part-of: lab
+data:
+  common.libsonnet: |
+    // Two CAS/AC shards remain configured, but the clients now target the
+    // two storage StatefulSet pods directly so a given object always lands on
+    // the same shard and stays reachable for later reads.
+    {
+      blobstore: {
+        contentAddressableStorage: {
+          sharding: {
+            shards: {
+              "0": {
+                backend: { grpc: { client: { address: 'storage-0.storage.buildbarn.svc.cluster.local:8981' } } },
+                weight: 1,
+              },
+              "1": {
+                backend: { grpc: { client: { address: 'storage-1.storage.buildbarn.svc.cluster.local:8981' } } },
+                weight: 1,
+              },
+            },
+          },
+        },
+        actionCache: {
+          completenessChecking: {
+            backend: {
+              sharding: {
+                shards: {
+                  "0": {
+                    backend: { grpc: { client: { address: 'storage-0.storage.buildbarn.svc.cluster.local:8981' } } },
+                    weight: 1,
+                  },
+                  "1": {
+                    backend: { grpc: { client: { address: 'storage-1.storage.buildbarn.svc.cluster.local:8981' } } },
+                    weight: 1,
+                  },
+                },
+              },
+            },
+            maximumTotalTreeSizeBytes: 64 * 1024 * 1024,
+          },
+        },
+      },
+      # Large BuildStream BatchUpdateBlobs uploads (e.g. bootstrap seed imports)
+      # exceed tiny gRPC caps and fail with CAS upload errors. Keep this high.
+      maximumMessageSizeBytes: 64 * 1024 * 1024,
+      global: {
+        diagnosticsHttpServer: {
+          httpServers: [{
+            listenAddresses: [':9980'],
+            authenticationPolicy: { allow: {} },
+          }],
+          enablePrometheus: true,
+          enablePprof: true,
+        },
+      },
+    }
+
+  storage.jsonnet: |
+    local common = import 'common.libsonnet';
+
+    {
+      grpcServers: [{
+        listenAddresses: [':8981'],
+        authenticationPolicy: { allow: {} },
+      }],
+      maximumMessageSizeBytes: common.maximumMessageSizeBytes,
+      global: common.global,
+      contentAddressableStorage: {
+        backend: {
+          'local': {
+            keyLocationMapOnBlockDevice: {
+              file: { path: '/storage-cas/key_location_map', sizeBytes: 64 * 1024 * 1024 },
+            },
+            keyLocationMapMaximumGetAttempts: 16,
+            keyLocationMapMaximumPutAttempts: 64,
+            oldBlocks: 8,
+            currentBlocks: 24,
+            newBlocks: 3,
+            blocksOnBlockDevice: {
+              source: { file: { path: '/storage-cas/blocks', sizeBytes: 90 * 1024 * 1024 * 1024 } },
+              spareBlocks: 3,
+            },
+            persistent: {
+              stateDirectoryPath: '/storage-cas/persistent_state',
+              minimumEpochInterval: '300s',
+            },
+          },
+        },
+        getAuthorizer: { allow: {} },
+        putAuthorizer: { allow: {} },
+        findMissingAuthorizer: { allow: {} },
+      },
+      actionCache: {
+        backend: {
+          'local': {
+            keyLocationMapOnBlockDevice: {
+              file: { path: '/storage-ac/key_location_map', sizeBytes: 1024 * 1024 },
+            },
+            keyLocationMapMaximumGetAttempts: 16,
+            keyLocationMapMaximumPutAttempts: 64,
+            oldBlocks: 8,
+            currentBlocks: 24,
+            newBlocks: 1,
+            blocksOnBlockDevice: {
+              source: { file: { path: '/storage-ac/blocks', sizeBytes: 3 * 1024 * 1024 * 1024 } },
+              spareBlocks: 3,
+            },
+            persistent: {
+              stateDirectoryPath: '/storage-ac/persistent_state',
+              minimumEpochInterval: '300s',
+            },
+          },
+        },
+        getAuthorizer: { allow: {} },
+        putAuthorizer: { allow: {} },
+      },
+    }
+
+  scheduler.jsonnet: |
+    local common = import 'common.libsonnet';
+
+    {
+      adminHttpServers: [{
+        listenAddresses: [':7982'],
+        authenticationPolicy: { allow: {} },
+      }],
+      clientGrpcServers: [{
+        listenAddresses: [':8982'],
+        authenticationPolicy: { allow: {} },
+      }],
+      workerGrpcServers: [{
+        listenAddresses: [':8983'],
+        authenticationPolicy: { allow: {} },
+      }],
+      contentAddressableStorage: common.blobstore.contentAddressableStorage,
+      maximumMessageSizeBytes: common.maximumMessageSizeBytes,
+      global: common.global,
+      executeAuthorizer: { allow: {} },
+      modifyDrainsAuthorizer: { allow: {} },
+      killOperationsAuthorizer: { allow: {} },
+      synchronizeAuthorizer: { allow: {} },
+      actionRouter: {
+        simple: {
+          platformKeyExtractor: { action: {} },
+          invocationKeyExtractors: [{ toolInvocationId: {} }],
+          initialSizeClassAnalyzer: {
+            // BST clients send no explicit action timeout, so the default is
+            // the effective cap. 30m killed every big compile (gcc-stage1,
+            // llvm, webkit are 1-4h actions) — the "RE build dies ~30min in"
+            // pattern during the dakota:testing outage. 6h default / 8h max
+            // matches the dakota CI job budget.
+            defaultExecutionTimeout: '21600s',
+            maximumExecutionTimeout: '28800s',
+          },
+        },
+      },
+      platformQueueWithNoWorkersTimeout: '900s',
+    }
+
+  frontend.jsonnet: |
+    local common = import 'common.libsonnet';
+
+    {
+      grpcServers: [{
+        listenAddresses: [':8980'],
+        authenticationPolicy: { allow: {} },
+      }],
+      schedulers: {
+        '': { endpoint: { address: 'scheduler:8982' } },
+      },
+      maximumMessageSizeBytes: common.maximumMessageSizeBytes,
+      global: common.global,
+      contentAddressableStorage: {
+        backend: common.blobstore.contentAddressableStorage,
+        getAuthorizer: { allow: {} },
+        putAuthorizer: { allow: {} },
+        findMissingAuthorizer: { allow: {} },
+      },
+      actionCache: {
+        backend: common.blobstore.actionCache,
+        getAuthorizer: { allow: {} },
+        putAuthorizer: { allow: {} },
+      },
+      executeAuthorizer: { allow: {} },
+    }
+
+  remote-asset.jsonnet: |
+    local common = import 'common.libsonnet';
+
+    {
+      contentAddressableStorage: {
+        grpc: {
+          address: 'storage.buildbarn.svc.cluster.local:8981',
+        },
+      },
+      assetCache: {
+        actionCache: {
+          grpc: {
+            address: 'storage.buildbarn.svc.cluster.local:8981',
+          },
+        },
+      },
+      // BuildStream pushes remote assets through the Remote Asset API. Keep the
+      // fetcher available for any non-pushed assets that need to be resolved from
+      // an external URI while still allowing updates for BuildStream's pushed
+      // assets through the indexed instance.
+      fetcher: {
+        http: {},
+      },
+      grpcServers: [{
+        listenAddresses: [':8984'],
+        authenticationPolicy: { allow: {} },
+      }],
+      global: common.global,
+      allowUpdatesForInstances: [''],
+      maximumMessageSizeBytes: 64 * 1024 * 1024,
+      fetchAuthorizer: { allow: {} },
+      pushAuthorizer: { allow: {} },
+    }
+
+  worker.jsonnet: |
+    local common = import 'common.libsonnet';
+
+    {
+      blobstore: common.blobstore,
+      maximumMessageSizeBytes: common.maximumMessageSizeBytes,
+      scheduler: { address: 'scheduler:8983' },
+      global: common.global {
+        setUmask: { umask: 0 },
+      },
+      buildDirectories: [{
+        native: {
+          buildDirectoryPath: '/worker/build',
+          cacheDirectoryPath: '/worker/cache',
+          maximumCacheFileCount: 20000,
+          maximumCacheSizeBytes: 64 * 1024 * 1024 * 1024,
+          cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
+        },
+        runners: [{
+          endpoint: { address: 'unix:///worker/runner' },
+          // Keep one action slot per worker to stay within scheduler-admitted
+          // memory on lightweight cluster nodes.
+          concurrency: 1,
+          // Match BuildStream REAPI action platform properties so workers
+          // register into the same scheduler queue key.
+          platform: {
+            properties: [
+              { name: 'ISA', value: 'x86-64' },
+              { name: 'OSFamily', value: 'linux' },
+            ],
+          },
+          workerId: {
+            pod: std.extVar('POD_NAME'),
+            node: std.extVar('NODE_NAME'),
+          },
+        }],
+      }],
+      inputDownloadConcurrency: 16,
+      outputUploadConcurrency: 8,
+      directoryCache: {
+        maximumCount: 20000,
+        maximumSizeBytes: 128 * 1024 * 1024,
+        cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
+      },
+    }
+
+  runner.jsonnet: |
+    {
+      buildDirectoryPath: '/worker/build',
+      grpcServers: [{
+        listenPaths: ['/worker/runner'],
+        authenticationPolicy: { allow: {} },
+      }],
+      // BuildStream requires the input root to become the sandbox's `/`.
+      // bb_runner supports this natively via chroot(2); see
+      // bb-remote-execution pkg/proto/configuration/bb_runner/bb_runner.proto.
+      // Keep this config aligned with bb_runner ApplicationConfiguration fields.
+      chrootIntoInputRoot: true,
+      setTmpdirEnvironmentVariable: true,
+    }

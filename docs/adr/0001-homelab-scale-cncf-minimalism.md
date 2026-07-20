@@ -5,7 +5,7 @@ Date: 2026-05-25
 
 ## Context
 
-The testing-lab is a single-user, single-cluster homelab on `ghost`
+The lab is a single-user, single-cluster homelab on `ghost`
 (one k3s node). It is not multi-tenant, not internet-exposed, not on a
 compliance schedule, and never grows past three nodes by design.
 

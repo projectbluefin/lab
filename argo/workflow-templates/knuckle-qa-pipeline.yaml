@@ -154,8 +154,8 @@ spec:
       parameters:
       - name: vm-name
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
-      command: [sh]
+      image: quay.io/fedora/fedora:latest
+      command: [bash, -c]
       resources:
         requests:
           cpu: 500m
@@ -167,32 +167,30 @@ spec:
       - name: knuckle-test
         mountPath: /var/mnt/ghost-data/knuckle-test
       source: |
-        exec bash <<'SCRIPT_EOF'
         set -euo pipefail
+
+        dnf install -y -q buildah >/dev/null
+
         VM="{{inputs.parameters.vm-name}}"
-        WORK="/var/mnt/ghost-data/knuckle-test/.crane-${VM}"
-        mkdir -p "${WORK}"
-
-        curl -fsSL \
-          https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz \
-          | tar xz -C "${WORK}" crane
-        chmod +x "${WORK}/crane"
-
+        STAGING="/var/mnt/ghost-data/knuckle-test/.containerdisk-${VM}"
+        mkdir -p "${STAGING}"
         ISO="/var/mnt/ghost-data/knuckle-test/${VM}-installer.iso"
         IMAGE="192.168.1.102:30500/knuckle-iso-${VM}:latest"
 
-        mkdir -p "${WORK}/disk"
-        cp "${ISO}" "${WORK}/disk/installer.iso"
-        tar -C "${WORK}" -czf "${WORK}/layer.tar.gz" disk/installer.iso
+        cat > "${STAGING}/containerDisk.json" <<'JSON'
+        {"volumes":[{"image":"installer.iso","capacity":"1Gi"}]}
+        JSON
 
-        "${WORK}/crane" append \
-          --base scratch \
-          --new_layer "${WORK}/layer.tar.gz" \
-          --image "${IMAGE}" \
-          --insecure
-        rm -rf "${WORK}"
+        export STORAGE_DRIVER=vfs
+
+        CTR=$(buildah --storage-driver=vfs from scratch)
+        buildah --storage-driver=vfs copy --chown 107:107 "${CTR}" "${ISO}" /disk/installer.iso
+        buildah --storage-driver=vfs copy "${CTR}" "${STAGING}/containerDisk.json" /containerDisk.json
+        buildah --storage-driver=vfs commit "${CTR}" "${IMAGE}"
+        buildah --storage-driver=vfs push --tls-verify=false "${IMAGE}"
+        buildah --storage-driver=vfs rm "${CTR}" 2>/dev/null || true
+        rm -rf "${STAGING}"
         echo "Pushed containerDisk: ${IMAGE}" >&2
-        SCRIPT_EOF
 
   - name: resolve-source
     inputs:
@@ -207,7 +205,7 @@ spec:
     - name: work
       emptyDir: {}
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -222,8 +220,11 @@ spec:
       source: |
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
-        git ls-remote https://github.com/projectbluefin/knuckle \
-          "refs/heads/{{inputs.parameters.branch}}" | awk '{print $1}' > /work/commit-sha
+        read -r commit_sha _ <<EOF
+        $(git ls-remote https://github.com/projectbluefin/knuckle \
+          "refs/heads/{{inputs.parameters.branch}}")
+        EOF
+        printf '%s\n' "$commit_sha" > /work/commit-sha
         if [[ ! -s /work/commit-sha ]]; then
           echo "ERROR: branch {{inputs.parameters.branch}} not found" >&2
           exit 1
@@ -335,6 +336,8 @@ spec:
             value: "{{inputs.parameters.namespace}}"
           - name: ignition-json
             value: "{{steps.write-ignition.outputs.parameters.ignition-json}}"
+          - name: ssh-pubkey
+            value: "{{steps.write-ignition.outputs.parameters.ssh-pubkey}}"
 
   - name: write-ignition
     inputs:
@@ -346,11 +349,14 @@ spec:
       - name: ignition-json
         valueFrom:
           path: /work/ignition.json
+      - name: ssh-pubkey
+        valueFrom:
+          path: /work/ssh-pubkey
     volumes:
     - name: work
       emptyDir: {}
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       env:
       - name: SSH_PUBKEY
@@ -383,6 +389,7 @@ spec:
             "systemd": {"units": [{"name": "sshd.service", "enabled": True}]},
         }, separators=(",", ":")))
         PY
+        printf '%s' "${SSH_PUBKEY}" > /work/ssh-pubkey
         install -D -m 600 /work/ignition.json \
           "/var/mnt/ghost-data/knuckle-test/{{inputs.parameters.vm-name}}-installer.ign"
         echo "Wrote ignition for {{inputs.parameters.vm-name}}" >&2
@@ -429,8 +436,10 @@ spec:
             spec:
               containers:
                 - name: init
-                  image: 192.168.1.102:30500/fsdk/qemu-img:latest
-                  command: [qemu-img, create, -f, raw, /mnt/disk.img, 20G]
+                  image: ghcr.io/projectbluefin/lab-runner:latest
+                  command: [bash, -lc]
+                  args:
+                    - truncate -s 20G /mnt/disk.img
                   securityContext:
                     runAsUser: 0
                   resources:
@@ -455,6 +464,7 @@ spec:
       - name: vm-name
       - name: namespace
       - name: ignition-json
+      - name: ssh-pubkey
     resource:
       action: apply
       manifest: |
@@ -476,6 +486,8 @@ spec:
                 kubevirt.io/ignitiondata: >-
                   {{inputs.parameters.ignition-json}}
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 firmware:
                   bootloader:
@@ -495,6 +507,9 @@ spec:
                       disk:
                         bus: virtio
                       bootOrder: 2
+                    - name: cloudinit
+                      disk:
+                        bus: virtio
                   interfaces:
                     - name: default
                       masquerade: {}
@@ -510,6 +525,17 @@ spec:
                 - name: rootdisk
                   persistentVolumeClaim:
                     claimName: "{{inputs.parameters.vm-name}}-rootdisk"
+                - name: cloudinit
+                  cloudInitNoCloud:
+                    userData: |
+                      #cloud-config
+                      users:
+                        - name: core
+                          ssh_authorized_keys:
+                            - {{inputs.parameters.ssh-pubkey}}
+                        - name: root
+                          ssh_authorized_keys:
+                            - {{inputs.parameters.ssh-pubkey}}
 
   - name: boot-installer
     inputs:
@@ -526,7 +552,7 @@ spec:
       secret:
          secretName: "{{inputs.parameters.ssh-key-secret}}"
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -549,18 +575,28 @@ spec:
             key: id_ed25519.pub
       source: |
         exec bash <<'SCRIPT_EOF'
-        set -euo pipefail
-        curl -fsSL -o /usr/local/bin/virtctl \
+        set -euxo pipefail
+        trap 'rc=$?; echo "ERROR rc=${rc} line=${LINENO} cmd=${BASH_COMMAND}" >&2' ERR
+        VIRTCTL=/tmp/virtctl
+        curl -fsSL -o "${VIRTCTL}" \
           https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
-        chmod +x /usr/local/bin/virtctl
+        chmod +x "${VIRTCTL}"
+        KUBECTL=/tmp/kubectl
+        curl -fsSL -o "${KUBECTL}" \
+          https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl
+        chmod +x "${KUBECTL}"
+        kubectl() { "${KUBECTL}" "$@"; }
 
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
-        KEY="/etc/ssh/test-key/id_ed25519"
+        KEY_SRC="/etc/ssh/test-key/id_ed25519"
+        KEY="/tmp/id_ed25519"
+        cp "${KEY_SRC}" "${KEY}"
+        chmod 600 "${KEY}"
         BIN="/var/mnt/ghost-data/knuckle-test/${VM}-knuckle"
         SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
-        virtctl -n "${NS}" start "${VM}"
+        "${VIRTCTL}" -n "${NS}" start "${VM}"
         kubectl wait vmi -n "${NS}" "${VM}" --for=condition=Ready --timeout=300s >&2
 
         INSTALLER_IP=""
@@ -576,18 +612,53 @@ spec:
           exit 1
         fi
 
+        AGENT_CONNECTED=""
         for _ in $(seq 1 60); do
-          if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true 2>/dev/null; then
+          AGENT_CONNECTED=$(kubectl get vmi -n "${NS}" "${VM}" \
+            -o jsonpath='{.status.conditions[?(@.type=="AgentConnected")].status}' 2>/dev/null || true)
+          if [[ "${AGENT_CONNECTED}" == "True" ]]; then
             break
           fi
           sleep 5
         done
-        ssh ${SSH_OPTS} core@"${INSTALLER_IP}" true >/dev/null
+        if [[ "${AGENT_CONNECTED}" != "True" ]]; then
+          echo "ERROR: guest agent never connected; cannot inject SSH key" >&2
+          exit 1
+        fi
 
-        scp ${SSH_OPTS} "${BIN}" core@"${INSTALLER_IP}":/tmp/knuckle >/dev/null
-        ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'chmod +x /tmp/knuckle'
+        LAUNCHER_POD=$(kubectl get pod -n "${NS}" -l "kubevirt.io/vm=${VM}" -o jsonpath='{.items[0].metadata.name}')
+        DOMAIN="${NS}_${VM}"
+        kubectl exec -n "${NS}" "${LAUNCHER_POD}" -c compute -- bash -lc '
+          set -euo pipefail
+          domain="'"${DOMAIN}"'"
+          key="'"${SSH_PUBKEY}"'"
+          payload=$(cat <<EOF
+        {"execute":"guest-exec","arguments":{"path":"/usr/bin/sh","arg":["-lc","set -euo pipefail; mkdir -p /root/.ssh; printf '\''%s\\n'\'' '\''${key}'\'' > /root/.ssh/authorized_keys; chmod 700 /root/.ssh; chmod 600 /root/.ssh/authorized_keys; if id -u core >/dev/null 2>&1; then mkdir -p /home/core/.ssh; printf '\''%s\\n'\'' '\''${key}'\'' > /home/core/.ssh/authorized_keys; chown -R core:core /home/core/.ssh; chmod 700 /home/core/.ssh; chmod 600 /home/core/.ssh/authorized_keys; fi"],"capture-output":true}}
+        EOF
+          )
+          resp=$(virsh qemu-agent-command "${domain}" "${payload}")
+          pid=$(printf "%s" "${resp}" | sed -n "s/.*\"pid\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p")
+          sleep 2
+          virsh qemu-agent-command "${domain}" "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":${pid}}}"
+        ' >&2
 
-        TARGET_DISK=$(ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "lsblk -dpno NAME,TYPE | awk '\$2 == \"disk\" {print \$1; exit}'")
+        for _ in $(seq 1 60); do
+          if ssh ${SSH_OPTS} root@"${INSTALLER_IP}" true 2>/dev/null; then
+            break
+          fi
+          sleep 5
+        done
+        ssh ${SSH_OPTS} root@"${INSTALLER_IP}" true >/dev/null
+
+        scp ${SSH_OPTS} "${BIN}" root@"${INSTALLER_IP}":/tmp/knuckle >/dev/null
+        ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'chmod +x /tmp/knuckle'
+
+        TARGET_DISK=$(ssh ${SSH_OPTS} root@"${INSTALLER_IP}" \
+          'lsblk -dpno NAME,TYPE | while read -r name type; do
+             [ "$type" = disk ] || continue
+             printf "%s\n" "$name"
+             break
+           done')
         if [[ -z "${TARGET_DISK}" ]]; then
           echo "ERROR: unable to resolve target install disk" >&2
           exit 1
@@ -596,9 +667,9 @@ spec:
         cat > /var/mnt/ghost-data/knuckle-test/${VM}-qa.json <<EOF
         {"channel":"stable","hostname":"${VM}","timezone":"UTC","network":{"mode":"dhcp"},"users":[{"username":"bluefin-test","ssh_keys":["${SSH_PUBKEY}"]}],"disk":"${TARGET_DISK}","update_strategy":"off","reboot":false}
         EOF
-        scp ${SSH_OPTS} /var/mnt/ghost-data/knuckle-test/${VM}-qa.json core@"${INSTALLER_IP}":/tmp/qa.json >/dev/null
+        scp ${SSH_OPTS} /var/mnt/ghost-data/knuckle-test/${VM}-qa.json root@"${INSTALLER_IP}":/tmp/qa.json >/dev/null
 
-        ssh ${SSH_OPTS} core@"${INSTALLER_IP}" "sudo systemd-run --unit knuckle-headless-install --collect /bin/bash -lc 'set -euo pipefail; trap \"touch /install-failed\" ERR; /tmp/knuckle --headless --config /tmp/qa.json --log-file /tmp/knuckle-install.log; touch /install-complete'"
+        ssh ${SSH_OPTS} root@"${INSTALLER_IP}" "systemd-run --unit knuckle-headless-install --collect /bin/bash -lc 'set -euo pipefail; trap \"touch /install-failed\" ERR; /tmp/knuckle --headless --config /tmp/qa.json --log-file /tmp/knuckle-install.log; touch /install-complete'"
         echo "Installer booted and headless install launched against ${TARGET_DISK}" >&2
         SCRIPT_EOF
 
@@ -608,7 +679,7 @@ spec:
       - name: vm-name
       - name: namespace
       - name: ssh-key-secret
-    activeDeadlineSeconds: 600
+    activeDeadlineSeconds: 1800
     podSpecPatch: |
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
@@ -617,7 +688,7 @@ spec:
       secret:
         secretName: "{{inputs.parameters.ssh-key-secret}}"
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -635,30 +706,41 @@ spec:
         set -euo pipefail
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
-        KEY="/etc/ssh/test-key/id_ed25519"
+        KEY_SRC="/etc/ssh/test-key/id_ed25519"
+        KEY="/tmp/id_ed25519"
+        cp "${KEY_SRC}" "${KEY}"
+        chmod 600 "${KEY}"
         SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
-        for _ in $(seq 1 60); do
+        for i in $(seq 1 180); do
           INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
           if [[ -z "${INSTALLER_IP}" ]]; then
             sleep 5
             continue
           fi
-          if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-complete' 2>/dev/null; then
+          if ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'test -f /install-complete' 2>/dev/null; then
             echo "Install complete on ${INSTALLER_IP}" >&2
             exit 0
           fi
-          if ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo test -f /install-failed' 2>/dev/null; then
+          if ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'test -f /install-failed' 2>/dev/null; then
             echo "Installer reported failure" >&2
-            ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo cat /tmp/knuckle-install.log 2>/dev/null || sudo journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
+            ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'cat /tmp/knuckle-install.log 2>/dev/null || journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
             exit 1
+          fi
+          if ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'systemctl is-failed --quiet knuckle-headless-install' 2>/dev/null; then
+            echo "Installer unit failed" >&2
+            ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
+            exit 1
+          fi
+          if (( i % 12 == 0 )); then
+            ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'systemctl is-active knuckle-headless-install || true' >&2 || true
           fi
           sleep 5
         done
 
         INSTALLER_IP=$(kubectl get vmi -n "${NS}" "${VM}" -o jsonpath='{.status.interfaces[0].ipAddress}' 2>/dev/null || true)
         if [[ -n "${INSTALLER_IP}" ]]; then
-          ssh ${SSH_OPTS} core@"${INSTALLER_IP}" 'sudo cat /tmp/knuckle-install.log 2>/dev/null || sudo journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
+          ssh ${SSH_OPTS} root@"${INSTALLER_IP}" 'cat /tmp/knuckle-install.log 2>/dev/null || journalctl -u knuckle-headless-install --no-pager -n 200' >&2 || true
         fi
         echo "ERROR: timed out waiting for /install-complete" >&2
         exit 1
@@ -671,7 +753,7 @@ spec:
       - name: namespace
     activeDeadlineSeconds: 600
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -683,14 +765,20 @@ spec:
       source: |
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
-        curl -fsSL -o /usr/local/bin/virtctl \
+        VIRTCTL=/tmp/virtctl
+        curl -fsSL -o "${VIRTCTL}" \
           https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
-        chmod +x /usr/local/bin/virtctl
+        chmod +x "${VIRTCTL}"
+        KUBECTL=/tmp/kubectl
+        curl -fsSL -o "${KUBECTL}" \
+          https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl
+        chmod +x "${KUBECTL}"
+        kubectl() { "${KUBECTL}" "$@"; }
 
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
 
-        virtctl -n "${NS}" stop "${VM}" || true
+        "${VIRTCTL}" -n "${NS}" stop "${VM}" || true
         for _ in $(seq 1 60); do
           if ! kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
             break
@@ -718,6 +806,8 @@ spec:
               labels:
                 kubevirt.io/vm: ${VM}
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 cpu:
                   cores: 4
@@ -743,7 +833,7 @@ spec:
                     claimName: ${VM}-rootdisk
         EOF
 
-        virtctl -n "${NS}" start "${VM}"
+        "${VIRTCTL}" -n "${NS}" start "${VM}"
         echo "Transitioned ${VM} to installed-disk boot" >&2
         SCRIPT_EOF
 
@@ -769,7 +859,7 @@ spec:
     - name: work
       emptyDir: {}
     script:
-      image: 192.168.1.102:30500/fsdk/lab-runner:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -789,7 +879,10 @@ spec:
         set -euo pipefail
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
-        KEY="/etc/ssh/test-key/id_ed25519"
+        KEY_SRC="/etc/ssh/test-key/id_ed25519"
+        KEY="/tmp/id_ed25519"
+        cp "${KEY_SRC}" "${KEY}"
+        chmod 600 "${KEY}"
         SSH_OPTS="-i ${KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
 
         VM_IP=""
@@ -823,7 +916,7 @@ spec:
       tasks:
       - name: teardown-vm
         templateRef:
-          name: teardown-bluefin-vm
+          name: teardown-vm
           template: teardown-vm
         arguments:
           parameters:
@@ -869,7 +962,7 @@ spec:
       parameters:
       - name: vm-name
     script:
-      image: quay.io/skopeo/stable:latest
+      image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
       command: [sh]
       resources:
         requests:

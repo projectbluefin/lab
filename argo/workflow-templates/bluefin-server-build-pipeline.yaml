@@ -14,7 +14,12 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  activeDeadlineSeconds: 14400   # 4 hours (compiles FSDK kernel and elements)
+  activeDeadlineSeconds: 28800   # 8 hours for cold-cache OS builds + retries
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 86400   # keep successful workflows for 24h
+    secondsAfterFailure: 604800     # keep failed workflows for 7d
 
   arguments:
     parameters:
@@ -175,9 +180,9 @@ spec:
                   value: "{{inputs.parameters.mode}}"
     - name: bst-build-re
       priorityClassName: bst-build
-      activeDeadlineSeconds: 5400
+      activeDeadlineSeconds: 21600   # 6 hours per pod for cold-cache pulls + compile
       retryStrategy:
-        limit: "2"
+        limit: "1"
         retryPolicy: "Always"
       inputs:
         parameters:

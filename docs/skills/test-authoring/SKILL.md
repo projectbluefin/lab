@@ -173,7 +173,9 @@ If the failure instead contains NVMe I/O errors, `pthread_create failed`, or res
 
 When nested target setup reports `useradd: group '<name>' does not exist` immediately after `groupadd -f`, treat it as a group-database/NSS mismatch in the bootc image. Resolve the group IDs with `getent group` and pass numeric IDs to `useradd`/`usermod`; do not revert the udev mount or blindly retry.
 
-Tests run inside `run-gnome-tests` — a Fedora pod SSHing into the VM. Artifacts land in `/tmp/results/` inside the pod.
+The VM-backed `run-gnome-tests` lane connects through KubeVirt's API using `virtctl port-forward --stdio=true`; pass the VM name and namespace, not a VMI pod IP. The setup step validates `/dev/uinput` after attempting module/device setup and fails with a direct diagnostic when uinput-based scenarios cannot run.
+
+Tests run inside `run-gnome-tests` — a runner pod SSHing into the VM. Artifacts land in `/tmp/results/` inside the pod.
 
 ```bash
 # Get workflow logs
@@ -184,8 +186,9 @@ argo logs -n argo <workflow-name>
 # Get specific step logs
 argo logs -n argo <workflow-name> --node-name run-gnome-tests
 
-# SSH directly if VM IP is known (from workflow outputs)
-ssh -i /path/to/id_ed25519 bluefin-test@<pod-ip>
+# For interactive debugging, use virtctl's API-routed SSH proxy
+ssh -o ProxyCommand='virtctl -n <namespace> port-forward --stdio=true vm/<vm-name> 22' \
+  -i /path/to/id_ed25519 bluefin-test@vm
 ```
 
 Common failure table from /docs/ops/RUNBOOK.md:

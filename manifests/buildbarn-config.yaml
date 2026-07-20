@@ -286,6 +286,9 @@ data:
       // bb_runner supports this natively via chroot(2); see
       // bb-remote-execution pkg/proto/configuration/bb_runner/bb_runner.proto.
       // Keep this config aligned with bb_runner ApplicationConfiguration fields.
+      // BuildStream actions redirect compiler output to /dev/null and may use
+      // /dev/zero, /dev/random, and /dev/urandom inside the chroot.
       chrootIntoInputRoot: true,
+      devDirectoryPath: '/worker/dev',
       setTmpdirEnvironmentVariable: true,
     }

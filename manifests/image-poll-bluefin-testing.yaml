@@ -1,4 +1,4 @@
-# CronWorkflow: polls ghcr.io/projectbluefin/bluefin:testing hourly.
+# CronWorkflow: polls ghcr.io/projectbluefin/bluefin:testing every 10 minutes.
 # Triggers bluefin-qa-pipeline only when OCI digest changes vs ConfigMap state.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -6,11 +6,12 @@ metadata:
   name: image-poll-bluefin-testing
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
+  suspend: false
   schedules:
-    - "0 */3 * * *"
+    - "0/10 * * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
@@ -31,11 +32,7 @@ spec:
           value: "testing"
         - name: state-key
           value: "digest-bluefin-testing"
-        - name: namespace
-          value: "bluefin-test"
         - name: suites
-          value: "smoke,common,developer,software,system"
-        - name: vm-memory
-          value: "8Gi"
+          value: "smoke"
         - name: variant
           value: "bluefin"

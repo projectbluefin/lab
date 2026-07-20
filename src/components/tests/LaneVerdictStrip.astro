@@ -1,0 +1,179 @@
+---
+interface LaneBuild {
+  status: string;
+  reason: string | null;
+  run_url?: string | null;
+  finished_at?: string | null;
+}
+
+interface LaneQAInfoRow {
+  id: string;
+  variant: string;
+  branch: string;
+  suite: string;
+  role: string;
+  result_status: string;
+  workflow_name: string | null;
+}
+
+interface LaneQAInformational {
+  status: string;
+  reason: string | null;
+  rows: LaneQAInfoRow[];
+}
+
+interface LaneQA {
+  status: string;
+  reason: string | null;
+  last_run: string | null;
+  lab_sourced: boolean;
+  informational: LaneQAInformational;
+}
+
+interface LaneSignature {
+  status: string;
+  reason: string | null;
+  method?: string;
+}
+
+interface LaneVerdict {
+  id: string;
+  lane: string;
+  variant: string;
+  branch: string;
+  image_ref: string;
+  digest: string | null;
+  verdict: 'good' | 'bad' | 'pending';
+  build: LaneBuild;
+  qa: LaneQA;
+  signature: LaneSignature;
+  source_url: string;
+}
+
+interface Props {
+  lanes: LaneVerdict[];
+}
+
+const { lanes } = Astro.props;
+
+const verdictPill = (verdict: string) => {
+  switch (verdict) {
+    case 'good':
+      return 'passed';
+    case 'bad':
+      return 'failed';
+    default:
+      return 'pending';
+  }
+};
+
+const statusPill = (status: string) => {
+  if (status === 'passed' || status === 'good') return 'passed';
+  if (status === 'failed' || status === 'bad') return 'failed';
+  return 'pending';
+};
+
+const digestShort = (digest: string | null) =>
+  digest ? `${digest.slice(0, 19)}` : 'unknown';
+---
+
+<div class="lane-verdict-strip">
+  {lanes.map((lane) => (
+    <a href={lane.source_url} target="_blank" rel="noreferrer" class="lane-verdict-card">
+      <div class="lane-verdict__header">
+        <span class="lane-verdict__lane">{lane.lane}</span>
+        <span class={`pill pill--${verdictPill(lane.verdict)}`}>{lane.verdict}</span>
+      </div>
+      <div class="lane-verdict__body">
+        <div class="lane-verdict__badges">
+          <span class="role-badge role-badge--gate">GATE {lane.qa.status}</span>
+          <span class="role-badge role-badge--info">INFO {lane.qa.informational.status}</span>
+        </div>
+        <div class="lane-verdict__meta">
+          <span>build {lane.build.status}</span>
+          <span>sig {lane.signature.status}</span>
+          <span class="lane-verdict__digest" title={lane.digest ?? undefined}>{digestShort(lane.digest)}</span>
+        </div>
+      </div>
+    </a>
+  ))}
+</div>
+
+<style>
+  .lane-verdict-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .lane-verdict-card {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 1rem 1.25rem;
+    text-decoration: none;
+    transition: all 0.2s ease-in-out;
+  }
+  .lane-verdict-card:hover {
+    border-color: rgba(56, 189, 248, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+  .lane-verdict__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .lane-verdict__lane {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: -0.02em;
+  }
+  .lane-verdict__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .lane-verdict__badges {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+  .role-badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .role-badge--gate {
+    background: rgba(244, 63, 94, 0.12);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.2);
+  }
+  .role-badge--info {
+    background: rgba(125, 211, 252, 0.12);
+    color: #7dd3fc;
+    border: 1px solid rgba(125, 211, 252, 0.2);
+  }
+  .lane-verdict__meta {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    font-size: 0.72rem;
+    color: #64748b;
+  }
+  .lane-verdict__meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .lane-verdict__digest {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #94a3b8;
+  }
+</style>

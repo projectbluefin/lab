@@ -8,7 +8,7 @@ metadata:
   name: image-poll-kinoite-44
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
     bluefin.io/role: base-image-watcher
 spec:
@@ -29,7 +29,7 @@ spec:
       - name: watch-base
         metadata:
           labels:
-            app.kubernetes.io/part-of: testing-lab
+            app.kubernetes.io/part-of: lab
         dag:
           tasks:
             - name: fetch
@@ -49,7 +49,7 @@ spec:
               valueFrom:
                 path: /tmp/digest
         script:
-          image: quay.io/skopeo/stable:latest
+          image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
           command: [sh]
           resources:
             requests:

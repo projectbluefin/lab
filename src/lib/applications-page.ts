@@ -1,300 +1,163 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-interface SummaryMetric {
-  id: string;
-  label: string;
-  value: number;
-  unit: string;
-  state: string;
-  state_reason: string | null;
-  source_url: string;
+export interface GitOpsApp {
+  name: string;
+  namespace: string;
+  sync_status: string;
+  health_status: string;
+  target_revision: string;
+  path: string;
+  repo_url: string;
+  destination_namespace: string;
+  drifted_count: number;
+  drifted_resources: Array<{
+    group: string;
+    kind: string;
+    name: string;
+    namespace: string;
+    status: string;
+  }>;
   collected_at: string;
-  derivation: string;
+  // Merged metrics
+  pods_count: number;
+  cpu: {
+    usage: number;
+    request: number;
+    limit: number;
+  };
+  memory: {
+    usage: number;
+    request: number;
+    limit: number;
+  };
 }
 
-interface ApplicationEntry {
+export interface ComplianceRule {
   id: string;
-  display_name: string;
-  scope: string;
-  primary_suite: string;
-  fallback_suites: string[];
-  state: string;
-  state_reason: string | null;
-  source_url: string;
-}
-
-interface FallbackSignal {
-  suite: string;
-  matched_scenarios: string[];
+  name: string;
+  description: string;
   status: string;
-  last_run: string | null;
-  workflow_name: string | null;
-  state: string;
-  state_reason: string;
-  source_url: string;
-  collected_at: string;
-  derivation: string;
+  total_checked: number;
+  violations_count: number;
+  violations: Array<{
+    source: string;
+    detail: string;
+  }>;
 }
 
-interface ApplicationRow {
-  id: string;
-  app_id: string;
-  variant: string;
-  branch: string;
-  primary_suite: string;
-  primary_result_status: string;
-  primary_last_run: string | null;
-  scenario_total: number;
-  scenario_failed: number;
-  fallback_signal_count: number;
-  fallback_signals: FallbackSignal[];
-  state: string;
-  state_reason: string;
-  source_url: string;
-  collected_at: string;
-  derivation: string;
-}
-
-interface ApplicationsDataset {
-  schema_version: string;
+export interface ComplianceData {
+  score: number;
+  rules: ComplianceRule[];
   _meta: {
-    page: string;
-    description: string;
-    generated_at: string;
-    starter_artifact: boolean;
-    status: string;
+    git_manifests_scanned: number;
+    live_pods_scanned: number;
   };
-  summary_metrics: SummaryMetric[];
-  applications: ApplicationEntry[];
-  rows: ApplicationRow[];
 }
 
-interface EvidenceHistoryEntry {
-  run_date: string;
-  workflow_name: string | null;
+export interface DeploymentEvent {
+  app: string;
+  id: number;
+  revision: string;
+  started_at: string;
+  finished_at: string;
   status: string;
-  scenarios: number;
-  failed: number;
 }
 
-interface ResultEvidenceFile {
-  history?: EvidenceHistoryEntry[];
-}
-
-export interface ApplicationsPageModel {
-  dataset: ApplicationsDataset;
-  application: ApplicationEntry;
-  summaryMetrics: SummaryMetric[];
-  summaryMetricMap: Record<string, SummaryMetric | undefined>;
-  rows: Array<ApplicationRow & {
-    latestEvidenceAt: string | null;
-    matchedScenarioCount: number;
-    primaryEvidenceLink: string;
-    fallbackEvidenceLinks: string[];
-  }>;
-  fallbackSignals: Array<
-    FallbackSignal & {
-      variant: string;
-      branch: string;
-      rowId: string;
-      matchedScenarioCount: number;
-    }
-  >;
-  historyEvents: Array<{
-    label: string;
-    sourceKind: 'primary' | 'fallback';
-    variant: string;
-    branch: string;
-    suite: string;
-    runDate: string;
-    workflowName: string | null;
-    status: string;
-    failed: number;
-    scenarios: number;
-    sourceUrl: string;
-  }>;
-  chartData: {
-    outcomes: Array<{
-      variant: string;
-      branch: string;
-      stateScore: number;
-      stateLabel: string;
-      primaryStatus: string;
-      fallbackSignalCount: number;
-      matchedScenarioCount: number;
-      latestEvidenceAt: string | null;
-    }>;
-    fallbackDistribution: Array<{
-      variant: string;
-      branch: string;
-      suite: string;
-      status: string;
-      signalCount: number;
-      matchedScenarioCount: number;
-      lastRun: string | null;
-    }>;
-    historySeries: Array<{
-      label: string;
-      sourceKind: 'primary' | 'fallback';
-      runDate: string;
-      failed: number;
-      scenarios: number;
-      status: string;
-      workflowName: string | null;
-      sourceUrl: string;
-    }>;
+export interface GitOpsPageModel {
+  applications: GitOpsApp[];
+  compliance: ComplianceData;
+  deployments: DeploymentEvent[];
+  summary: {
+    total_apps: number;
+    synced_apps: number;
+    outofsync_apps: number;
+    healthy_apps: number;
+    degraded_apps: number;
+    total_pods: number;
+    total_cpu_cores_used: number;
+    total_mem_mib_used: number;
+    compliance_score: number;
+    generated_at: string;
   };
 }
 
-function readJson<T>(path: string): T {
-  return JSON.parse(readFileSync(path, 'utf8')) as T;
-}
-
-function sourceUrlToLocalPath(repoRoot: string, sourceUrl: string): string | null {
-  const marker = '/blob/main/';
-  if (!sourceUrl.includes(marker)) {
-    return null;
+function readJson<T>(path: string, fallback: T): T {
+  if (!existsSync(path)) {
+    return fallback;
   }
-
-  const relativePath = sourceUrl.split(marker)[1];
-  return join(repoRoot, relativePath);
-}
-
-function readEvidenceHistory(repoRoot: string, sourceUrl: string): EvidenceHistoryEntry[] {
-  const localPath = sourceUrlToLocalPath(repoRoot, sourceUrl);
-  if (!localPath || !existsSync(localPath)) {
-    return [];
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as T;
+  } catch {
+    return fallback;
   }
-
-  const evidence = readJson<ResultEvidenceFile>(localPath);
-  return Array.isArray(evidence.history) ? evidence.history : [];
 }
 
-function uniqueStrings(values: string[]) {
-  return [...new Set(values)];
-}
+export function loadGitOpsPageModel(repoRoot: string): GitOpsPageModel {
+  const statusPath = join(repoRoot, 'docs/data/gitops-status.json');
+  const resourcesPath = join(repoRoot, 'docs/data/app-resource-usage.json');
+  const compliancePath = join(repoRoot, 'docs/data/policy-compliance.json');
+  const deploymentsPath = join(repoRoot, 'docs/data/gitops-deployments.json');
 
-export function loadApplicationsPageModel(datasetPath: string, repoRoot: string): ApplicationsPageModel {
-  const dataset = readJson<ApplicationsDataset>(datasetPath);
-  const application = dataset.applications[0];
+  const statusData = readJson<{ applications: any[], _meta: any }>(statusPath, { applications: [], _meta: { generated_at: "" } });
+  const resourcesData = readJson<{ applications: any[] }>(resourcesPath, { applications: [] });
+  const complianceData = readJson<ComplianceData>(compliancePath, {
+    score: 100.0,
+    rules: [],
+    _meta: { git_manifests_scanned: 0, live_pods_scanned: 0 }
+  });
+  const deploymentsData = readJson<{ deployments: DeploymentEvent[] }>(deploymentsPath, { deployments: [] });
 
-  const rows = dataset.rows.map((row) => {
-    const latestFallback = row.fallback_signals
-      .map((signal) => signal.last_run)
-      .filter((value): value is string => Boolean(value))
-      .sort()
-      .at(-1) ?? null;
-    const latestEvidenceAt = row.primary_last_run ?? latestFallback;
-    const matchedScenarioCount = row.fallback_signals.reduce(
-      (total, signal) => total + signal.matched_scenarios.length,
-      0,
-    );
+  const resourcesMap = Object.fromEntries(
+    resourcesData.applications.map((app) => [app.name, app])
+  );
+
+  const applications: GitOpsApp[] = statusData.applications.map((app) => {
+    const res = resourcesMap[app.name] || {
+      pods_count: 0,
+      cpu: { usage: 0.0, request: 0.0, limit: 0.0 },
+      memory: { usage: 0.0, request: 0.0, limit: 0.0 }
+    };
 
     return {
-      ...row,
-      latestEvidenceAt,
-      matchedScenarioCount,
-      primaryEvidenceLink: row.source_url,
-      fallbackEvidenceLinks: uniqueStrings(row.fallback_signals.map((signal) => signal.source_url)),
+      ...app,
+      pods_count: res.pods_count || 0,
+      cpu: res.cpu || { usage: 0.0, request: 0.0, limit: 0.0 },
+      memory: res.memory || { usage: 0.0, request: 0.0, limit: 0.0 }
     };
   });
 
-  const fallbackSignals = rows.flatMap((row) =>
-    row.fallback_signals.map((signal) => ({
-      ...signal,
-      variant: row.variant,
-      branch: row.branch,
-      rowId: row.id,
-      matchedScenarioCount: signal.matched_scenarios.length,
-    })),
-  );
+  // Calculate summaries
+  const total_apps = applications.length;
+  const synced_apps = applications.filter(a => a.sync_status === 'Synced').length;
+  const outofsync_apps = total_apps - synced_apps;
+  const healthy_apps = applications.filter(a => a.health_status === 'Healthy').length;
+  const degraded_apps = total_apps - healthy_apps;
 
-  const historyEvents = [
-    ...rows.flatMap((row) =>
-      readEvidenceHistory(repoRoot, row.source_url).map((entry) => ({
-        label: `${row.variant}/${row.branch} ${row.primary_suite} primary`,
-        sourceKind: 'primary' as const,
-        variant: row.variant,
-        branch: row.branch,
-        suite: row.primary_suite,
-        runDate: entry.run_date,
-        workflowName: entry.workflow_name,
-        status: entry.status,
-        failed: entry.failed,
-        scenarios: entry.scenarios,
-        sourceUrl: row.source_url,
-      })),
-    ),
-    ...fallbackSignals.flatMap((signal) =>
-      readEvidenceHistory(repoRoot, signal.source_url).map((entry) => ({
-        label: `${signal.variant}/${signal.branch} ${signal.suite} fallback`,
-        sourceKind: 'fallback' as const,
-        variant: signal.variant,
-        branch: signal.branch,
-        suite: signal.suite,
-        runDate: entry.run_date,
-        workflowName: entry.workflow_name,
-        status: entry.status,
-        failed: entry.failed,
-        scenarios: entry.scenarios,
-        sourceUrl: signal.source_url,
-      })),
-    ),
-  ].sort((left, right) => left.runDate.localeCompare(right.runDate));
-
-  const summaryMetricMap = Object.fromEntries(
-    dataset.summary_metrics.map((metric) => [metric.id, metric]),
-  ) as Record<string, SummaryMetric | undefined>;
+  const total_pods = applications.reduce((sum, a) => sum + a.pods_count, 0);
+  const total_cpu_cores_used = applications.reduce((sum, a) => sum + a.cpu.usage, 0);
+  const total_mem_mib_used = applications.reduce((sum, a) => sum + a.memory.usage, 0);
 
   return {
-    dataset,
-    application,
-    summaryMetrics: dataset.summary_metrics,
-    summaryMetricMap,
-    rows,
-    fallbackSignals,
-    historyEvents,
-    chartData: {
-      outcomes: rows.map((row) => ({
-        variant: row.variant,
-        branch: row.branch,
-        stateScore:
-          row.primary_result_status === 'completed'
-            ? 2
-            : row.fallback_signal_count > 0
-              ? 1
-              : 0,
-        stateLabel:
-          row.primary_result_status === 'completed'
-            ? 'Primary evidence published'
-            : row.fallback_signal_count > 0
-              ? 'Fallback signal only'
-              : 'No application evidence',
-        primaryStatus: row.primary_result_status,
-        fallbackSignalCount: row.fallback_signal_count,
-        matchedScenarioCount: row.matchedScenarioCount,
-        latestEvidenceAt: row.latestEvidenceAt,
-      })),
-      fallbackDistribution: rows.map((row) => ({
-        variant: row.variant,
-        branch: row.branch,
-        suite: row.fallback_signals[0]?.suite ?? application.fallback_suites[0] ?? 'n/a',
-        status: row.fallback_signals[0]?.status ?? 'none',
-        signalCount: row.fallback_signal_count,
-        matchedScenarioCount: row.matchedScenarioCount,
-        lastRun: row.fallback_signals[0]?.last_run ?? null,
-      })),
-      historySeries: historyEvents.map((event) => ({
-        label: event.label,
-        sourceKind: event.sourceKind,
-        runDate: event.runDate,
-        failed: event.failed,
-        scenarios: event.scenarios,
-        status: event.status,
-        workflowName: event.workflowName,
-        sourceUrl: event.sourceUrl,
-      })),
-    },
+    applications,
+    compliance: complianceData,
+    deployments: deploymentsData.deployments || [],
+    summary: {
+      total_apps,
+      synced_apps,
+      outofsync_apps,
+      healthy_apps,
+      degraded_apps,
+      total_pods,
+      total_cpu_cores_used: roundTo(total_cpu_cores_used, 3),
+      total_mem_mib_used: roundTo(total_mem_mib_used, 1),
+      compliance_score: complianceData.score,
+      generated_at: statusData._meta?.generated_at || new Date().toISOString()
+    }
   };
+}
+
+function roundTo(num: number, dec: number): number {
+  const exp = Math.pow(10, dec);
+  return Math.round(num * exp) / exp;
 }

@@ -21,7 +21,7 @@ spec:
         value: "flatcar-test"
       - name: ssh-pubkey
       - name: flatcar-version
-        value: "current"
+        value: "4593.2.3"
       - name: flatcar-channel
         value: "stable"
     outputs:
@@ -90,7 +90,12 @@ spec:
         VERSION="{{inputs.parameters.flatcar-version}}"
         URL="https://stable.release.flatcar-linux.net/amd64-usr/${VERSION}/flatcar_production_qemu_image.img.bz2"
         CONTAINERDISK="192.168.1.102:30500/flatcar-containerdisk:latest"
-        # ponytail: :latest tag is fine — no nightly CronWorkflow, runs are sequential
+        # ponytail: reuse the existing latest disk when it is already published
+
+        if curl -sfI "http://192.168.1.102:30500/v2/flatcar-containerdisk/manifests/latest" >/dev/null; then
+          echo "Flatcar containerDisk already exists: ${CONTAINERDISK}" >&2
+          exit 0
+        fi
 
         echo "Installing qemu-img and bzip2..." >&2
         dnf install -y -q qemu-img bzip2 buildah
@@ -108,6 +113,10 @@ spec:
         echo "Wrapping as containerDisk and pushing to ${CONTAINERDISK}..." >&2
         CTR=$(buildah from scratch)
         buildah copy --chown 107:107 "${CTR}" /mnt/work/flatcar.raw /disk/flatcar.raw
+        cat <<'JSON' > /mnt/work/containerDisk.json
+        {"volumes":[{"image":"flatcar.raw","capacity":"10Gi"}]}
+        JSON
+        buildah copy "${CTR}" /mnt/work/containerDisk.json /containerDisk.json
         buildah commit "${CTR}" "${CONTAINERDISK}"
         buildah push --tls-verify=false "${CONTAINERDISK}"
         buildah rm "${CTR}" 2>/dev/null || true
@@ -137,6 +146,8 @@ spec:
               labels:
                 kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 cpu:
                   cores: 2
@@ -187,10 +198,10 @@ spec:
       resources:
         requests:
           cpu: 100m
-          memory: 128Mi
+          memory: 256Mi
         limits:
           cpu: 500m
-          memory: 256Mi
+          memory: 1Gi
       env:
       - name: SSH_PUBKEY
         valueFrom:

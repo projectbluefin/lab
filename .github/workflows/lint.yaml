@@ -33,12 +33,23 @@ jobs:
       - name: Lint bootstrap templates (offline)
         run: argo lint --offline argo/bootstrap/
 
-      - name: Lint standalone submit Workflows (offline)
+      - name: Lint standalone submit Workflows (offline, strict)
         run: |
+          FAIL=0
           for f in argo/*.yaml; do
-            echo "Checking $f..."
-            argo lint --offline "$f" || echo "WARNING: $f needs server-side template resolution"
+            # Files that reference WorkflowTemplates cannot be linted offline because
+            # the referenced templates are not loaded. Lint them as advisory only;
+            # every standalone file that embeds its own templates must pass offline.
+            if grep -qE 'workflowTemplateRef|templateRef' "$f"; then
+              echo "Advisory lint (server-side refs): $f"
+              argo lint --offline "$f" || echo "WARNING: $f needs server-side template resolution"
+            else
+              echo "Strict lint: $f"
+              argo lint --offline "$f" || FAIL=1
+            fi
           done
+          exit "$FAIL"
+
 
       - name: Registry allowlist check
         run: |

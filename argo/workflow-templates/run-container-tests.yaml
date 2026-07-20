@@ -150,6 +150,9 @@ spec:
         }
         mkdir -p /tmp/results
         podman run --detach --systemd=always --network host --privileged \
+          --cgroupns=host \
+          --security-opt seccomp=unconfined \
+          --tmpfs /run:rw,nosuid,nodev,mode=755,size=256m \
           --name "${TARGET_NAME}" \
           --volume /workspace:/workspace:ro \
           --volume /tmp/results:/tmp/results \
@@ -168,7 +171,8 @@ spec:
         done
         if [[ "${ready}" != true ]]; then
           echo "Nested systemd host did not reach a usable session state" >&2
-          podman exec "${TARGET_NAME}" journalctl --no-pager || true
+          podman exec "${TARGET_NAME}" systemctl status dbus systemd-logind || true
+          podman exec "${TARGET_NAME}" journalctl --no-pager -xb -n 300 || true
           exit 1
         fi
 
@@ -197,9 +201,16 @@ spec:
             "AutomaticLoginEnable=True" \
             "AutomaticLogin=bluefin-test" \
             "InitialSetupEnable=False" >/etc/gdm/custom.conf
-          mkdir -p /home/bluefin-test/run /tmp/results
-          chown -R 1000:1000 /home/bluefin-test /tmp/results
-          chmod 700 /home/bluefin-test/run
+          # Disable first-boot setup paths that assume installer-created state.
+          # Use plain mask (not --now) because stopping these units can trigger
+          # systemd-tmpfiles cleanup that removes /var/home on this image.
+          systemctl mask gnome-initial-setup.service gnome-initial-setup-first-login.service ublue-user-setup.service >/dev/null 2>&1 || true
+          # Use the real /var/home path for the test user. /home is a symlink
+          # to var/home in these images, and the symlink target can be briefly
+          # unavailable to mkdir -p during early container boot.
+          mkdir -p /run/gdm/home /var/home/bluefin-test/run /tmp/results
+          chown -R 1000:1000 /var/home/bluefin-test /tmp/results
+          chmod 700 /var/home/bluefin-test/run
           systemctl restart gdm
         '
         for _ in $(seq 1 60); do
@@ -210,13 +221,15 @@ spec:
         done
         podman exec "${TARGET_NAME}" pgrep -u 1000 -f gnome-session >/dev/null || {
           echo "GDM did not start a GNOME session for bluefin-test" >&2
-          podman exec "${TARGET_NAME}" journalctl --no-pager -u gdm || true
+          podman exec "${TARGET_NAME}" systemctl status gdm || true
+          podman exec "${TARGET_NAME}" journalctl --no-pager -u gdm -n 300 || true
           exit 1
         }
 
         cat >/workspace/run-behave.sh <<'EOF'
         #!/bin/bash
         set -euo pipefail
+        export PATH="/usr/local/bin:/usr/bin:/bin:/usr/libexec:${PATH}"
         # testsuite uses its own PYTHONPATH root so 'tests.shared.*' imports resolve.
         export PYTHONPATH="/workspace/testsuite"
         SUITE="@@SUITE@@"
@@ -259,15 +272,23 @@ spec:
         chmod +x /workspace/run-behave.sh
 
         echo "Running qecore against the nested systemd/GDM host..." >&2
+        # Bound the accessibility wait/behave execution so a stuck shell search
+        # cannot hold the workflow lane for the full hour.
+        case "${SUITE}" in
+          smoke)   QECORE_TIMEOUT=900 ;;
+          common)  QECORE_TIMEOUT=1200 ;;
+          *)       QECORE_TIMEOUT=1800 ;;
+        esac
         QECORE_RC=0
-        podman exec \
+        timeout --signal=TERM --kill-after=30s "${QECORE_TIMEOUT}s" podman exec \
           --user 1000:1000 \
           --env SUITE \
           --env BEHAVE_TAGS \
-          --env HOME=/home/bluefin-test \
-          --env XDG_RUNTIME_DIR=/home/bluefin-test/run \
-          --env DBUS_SESSION_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
-          --env AT_SPI_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+          --env HOME=/var/home/bluefin-test \
+          --env XDG_RUNTIME_DIR=/var/home/bluefin-test/run \
+          --env DBUS_SESSION_BUS_ADDRESS=unix:path=/var/home/bluefin-test/run/bus \
+          --env AT_SPI_BUS_ADDRESS=unix:path=/var/home/bluefin-test/run/bus \
+          --env PATH=/usr/local/bin:/usr/bin:/bin:/usr/libexec \
           --env XDG_SESSION_TYPE=wayland \
           --env XDG_SESSION_DESKTOP=gnome \
           --env LIBGL_ALWAYS_SOFTWARE=1 \
@@ -277,6 +298,11 @@ spec:
           --session-type wayland \
           --session-desktop gnome \
           /workspace/run-behave.sh || QECORE_RC=$?
+        if [[ "${QECORE_RC}" -eq 124 ]]; then
+          echo "qecore-headless timed out after ${QECORE_TIMEOUT}s (accessibility search or behave hang)" >&2
+          podman exec "${TARGET_NAME}" systemctl status gdm || true
+          podman exec "${TARGET_NAME}" journalctl --no-pager -u gdm -n 300 || true
+        fi
 
         BEHAVE_RC=$(cat /tmp/results/behave-rc.txt 2>/dev/null || printf '%s' "${QECORE_RC}")
 

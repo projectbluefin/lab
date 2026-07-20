@@ -114,6 +114,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - Chart section disappears entirely when data is missing
 - Detail cards show pass/fail text without raw result, source, screenshot, or workflow links
 - Browser script invents fallback metrics not present in the contract
+- Astro page emits hard-coded `pulls_sparkline` / `build_sparkline` arrays, or fabricated sizes/digests/fsdk refs, when the live registry is offline
 - Runtime script tags lose `data-cfasync="false"` and Cloudflare rewrites the page boot path
 - Route split duplicates collector logic instead of reusing one shared model with page-level filters
 - Wide data tables are crammed into half-width cards and the columns collapse instead of scrolling
@@ -139,6 +140,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 - [ ] ECharts mounts at least one real chart from published fields and shows explicit empty states otherwise
 - [ ] Detail cards link to `results_path`, `source_url`, and screenshot/workflow evidence when present
 - [ ] Repeated `npm run build` runs succeed from the same worktree without stale chunk imports
+- [ ] No fabricated registry heat labels, sparklines, or fallback metadata are rendered when live data is unavailable; an explicit unavailable state is shown instead
 - [ ] Build cleanup includes every generated route directory (for example `docs/images`, `docs/tests`, `docs/applications`)
 - [ ] Built HTML prefixes Astro `_astro` assets with the active domain root path contract (currently `/_astro/*` on `factory.projectbluefin.io`)
 - [ ] Runtime script tags that must execute unmodified keep `data-cfasync="false"` in built HTML

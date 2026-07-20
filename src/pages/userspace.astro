@@ -72,47 +72,14 @@ const getContainerMetadata = (repoName: string): ContainerMetadata => {
       os: data.Os || 'linux'
     };
   } catch (e) {
-    // Fallback based on repository name
-    const isLabRunner = repoName.includes('lab-runner');
-    const isQemu = repoName.includes('qemu-img');
-    const isBase = repoName.includes('base');
-    const isBrew = repoName.includes('brew-nspawn');
-    const isSkopeo = repoName.includes('skopeo');
-    const isStatic = repoName.includes('static');
-    const isBuildah = repoName.includes('buildah');
-    const isFlatcar = repoName.includes('flatcar-clone-bootc');
-    const isPython = repoName.includes('python');
-
-    let size = 'unknown';
-    if (isLabRunner) size = '83.1 MB';
-    else if (isQemu) size = '50.8 MB';
-    else if (isBase) size = '12.5 MB';
-    else if (isBrew) size = '75.4 MB';
-    else if (isSkopeo) size = '32.2 MB';
-    else if (isStatic) size = '18.9 MB';
-    else if (isBuildah) size = '95.6 MB';
-    else if (isFlatcar) size = '110.2 MB';
-    else if (isPython) size = '45.8 MB';
-
-    let digest = 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-    if (isLabRunner) digest = 'sha256:0b6a015c90c9f88398be0caabd57ace3e50a0fb5dab297152f668b85d0565176';
-    else if (isQemu) digest = 'sha256:9e7ed0328ddb32bced3cd86fa78fb7738d5b6e0c8c5e6e606453d3b1c3d63a25';
-    else if (isBase) digest = 'sha256:b1d830b809a47321e15b3e6cda76fb32b30991b7852b85295ba5d0565176c123';
-    else if (isBrew) digest = 'sha256:7c7ab52bdced84dfc2d0f52bced3cd86fa7fb7738d5b6e0c8c5e6e606453d3b25';
-    else if (isSkopeo) digest = 'sha256:5e1149bb257c3d7b5f7a0754a46dbc8586530f77da81499bb257c3d7b5f7a07';
-    else if (isStatic) digest = 'sha256:b99dae9d0b1d9b841a65dfe466e06cf0fac63dd7a81499bb257c3d7b5f7a0754';
-    else if (isBuildah) digest = 'sha256:e8727f348eebc9817aa304ee66a00f189f75aefda81499bb257c3d7b5f7a075';
-    else if (isFlatcar) digest = 'sha256:1542ca5829be280f1e9b37dba50da87730852307a81499bb257c3d7b5f7a07';
-    else if (isPython) digest = 'sha256:0cc7f71a51791271965eb88f8b03eaaf2b757f99a81499bb257c3d7b5f7a075';
-
     return {
-      digest,
-      created: '6/26/2026',
-      fsdkVersion: '25.08.13',
-      fsdkRef: 'freedesktop-sdk-25.08.13-0-g8446990f0a549bb1f3ceb654af64fc176b274488',
-      size,
-      arch: 'amd64',
-      os: 'linux'
+      digest: 'unknown',
+      created: 'unknown',
+      fsdkVersion: 'unknown',
+      fsdkRef: 'unknown',
+      size: 'unknown',
+      arch: 'unknown',
+      os: 'unknown'
     };
   }
 };
@@ -127,8 +94,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk/lab-runner') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/lab-runner') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/lab-runner'),
-    pulls_sparkline: [42, 55, 48, 65, 78, 60, 72, 85, 90, 88, 95, 110, 105, 125],
-    build_sparkline: [420, 395, 380, 400, 370, 365, 350],
     dependencies: ['fsdk/base', 'fsdk/python'],
     layer_count: 8,
     compression: 'zstd'
@@ -142,8 +107,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk/qemu-img') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/qemu-img') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/qemu-img'),
-    pulls_sparkline: [15, 20, 18, 25, 30, 22, 28, 35, 42, 38, 45, 52, 48, 58],
-    build_sparkline: [180, 175, 160, 165, 150, 145, 142],
     dependencies: ['fsdk/base'],
     layer_count: 4,
     compression: 'zstd'
@@ -157,8 +120,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk/base') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/base') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/base'),
-    pulls_sparkline: [85, 110, 95, 120, 140, 115, 130, 155, 160, 158, 175, 190, 185, 210],
-    build_sparkline: [95, 92, 88, 85, 82, 80, 78],
     dependencies: [],
     layer_count: 2,
     compression: 'gzip'
@@ -172,8 +133,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk/brew-nspawn') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/brew-nspawn') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/brew-nspawn'),
-    pulls_sparkline: [12, 15, 14, 22, 28, 20, 24, 30, 32, 28, 35, 42, 40, 48],
-    build_sparkline: [280, 265, 250, 260, 240, 245, 238],
     dependencies: ['fsdk/base'],
     layer_count: 6,
     compression: 'zstd'
@@ -187,8 +146,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk/skopeo') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/skopeo') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/skopeo'),
-    pulls_sparkline: [30, 38, 35, 45, 52, 40, 48, 55, 62, 58, 65, 75, 70, 82],
-    build_sparkline: [115, 110, 105, 112, 102, 98, 95],
     dependencies: ['fsdk/base'],
     layer_count: 3,
     compression: 'zstd'
@@ -202,8 +159,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk/static') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/static') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/static'),
-    pulls_sparkline: [18, 22, 20, 28, 35, 26, 30, 42, 48, 45, 52, 60, 55, 65],
-    build_sparkline: [130, 125, 120, 128, 115, 112, 108],
     dependencies: ['fsdk/base'],
     layer_count: 3,
     compression: 'gzip'
@@ -217,8 +172,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk/buildah') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk/buildah') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/buildah'),
-    pulls_sparkline: [8, 12, 10, 15, 18, 14, 16, 22, 25, 20, 24, 30, 28, 35],
-    build_sparkline: [310, 295, 285, 300, 275, 270, 265],
     dependencies: ['fsdk/base'],
     layer_count: 5,
     compression: 'zstd'
@@ -232,8 +185,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk-flatcar-clone-bootc') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk-flatcar-clone-bootc') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk-flatcar-clone-bootc'),
-    pulls_sparkline: [5, 8, 6, 12, 14, 10, 11, 15, 18, 15, 16, 22, 20, 25],
-    build_sparkline: [450, 430, 410, 425, 395, 390, 380],
     dependencies: ['fsdk/base'],
     layer_count: 7,
     compression: 'zstd'
@@ -247,8 +198,6 @@ const fsdkContainers = [
     status: writableRepos.includes('fsdk-python') ? 'available' : 'unavailable',
     tags: writableRepos.includes('fsdk-python') ? ['latest'] : [],
     metadata: getContainerMetadata('fsdk/python'),
-    pulls_sparkline: [22, 30, 25, 38, 45, 35, 40, 52, 58, 50, 55, 68, 62, 75],
-    build_sparkline: [160, 150, 145, 152, 138, 135, 130],
     dependencies: ['fsdk/base'],
     layer_count: 4,
     compression: 'gzip'
@@ -275,14 +224,7 @@ const getRepoStats = (port: number, repo: string) => {
     const sizeBytes = data.layers?.reduce((sum, layer) => sum + (layer.size || 0), 0) || 0;
     return { layersCount, sizeBytes };
   } catch (e) {
-    // Return standard size fallbacks if polling fails
-    const isLabRunner = repo.includes('lab-runner');
-    const isQemu = repo.includes('qemu-img');
-    const isBluefin = repo.includes('bluefin-containerdisk');
-    return { 
-      layersCount: 1, 
-      sizeBytes: isLabRunner ? 87151516 : isQemu ? 53243659 : isBluefin ? 1205324365 : 0 
-    };
+    return { layersCount: 0, sizeBytes: 0 };
   }
 };
 
@@ -295,17 +237,8 @@ writableRepos.forEach((repo) => {
   totalLayersCount += stats.layersCount;
 });
 
-const totalStorageMb = (totalStorageBytes / (1024 * 1024)).toFixed(1);
-
-const compressionData = fsdkContainers.map(c => {
-  const compStr = c.metadata.size.replace(' MB', '');
-  const compVal = parseFloat(compStr) || 20.0;
-  return {
-    name: c.name,
-    compressed: compVal,
-    uncompressed: parseFloat((compVal * 2.4).toFixed(1))
-  };
-});
+const totalStorageMb = buildSource === 'live' ? (totalStorageBytes / (1024 * 1024)).toFixed(1) : 'unknown';
+const totalLayersDisplay = buildSource === 'live' ? String(totalLayersCount) : 'unknown';
 
 const chartPayload = {
   distribution: [
@@ -317,7 +250,6 @@ const chartPayload = {
     value: c.status === 'available' ? 100 : 0,
     status: c.status
   })),
-  compression: compressionData
 };
 
 const serializedChartData = serializeJsonScript(chartPayload);
@@ -330,6 +262,15 @@ const generatedAt = new Date().toISOString();
   current="userspace"
 >
   <style>
+    .unavailable-banner {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-radius: 12px;
+      color: #fca5a5;
+      padding: 0.9rem 1.1rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
     /* Dashboard header */
     .dashboard-header {
       margin-bottom: 2rem;
@@ -535,32 +476,6 @@ const generatedAt = new Date().toISOString();
       transition: width 0.4s ease;
     }
 
-    /* Sparkline Card Section */
-    .card-sparklines {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      min-width: 140px;
-      padding: 0 0.5rem;
-      border-left: 1px solid rgba(255, 255, 255, 0.06);
-    }
-    .sparkline-box {
-      display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
-    }
-    .sparkline-title {
-      font-size: 0.65rem;
-      font-weight: 700;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .sparkline-chart {
-      width: 130px;
-      height: 30px;
-      min-height: 30px;
-    }
     .tech-badge {
       font-family: ui-monospace, monospace;
       font-size: 0.68rem;
@@ -575,26 +490,12 @@ const generatedAt = new Date().toISOString();
       .registry-horizontal-row {
         grid-template-columns: auto 1fr 1.2fr auto;
       }
-      .card-sparklines {
-        display: none;
-      }
     }
 
     @media (max-width: 960px) {
       .registry-horizontal-row {
         grid-template-columns: auto 1fr;
         gap: 1.25rem;
-      }
-      .card-sparklines {
-        display: flex;
-        grid-column: 1 / -1;
-        flex-direction: row;
-        border-left: 0;
-        padding-left: 0;
-        gap: 1.5rem;
-      }
-      .sparkline-chart {
-        width: 180px;
       }
       .registry-metadata-grid {
         grid-column: 1 / -1;
@@ -671,31 +572,6 @@ const generatedAt = new Date().toISOString();
     .cell-primary { font-weight: 600; color: #f1f5f9 !important; }
     .cell-num { font-family: ui-monospace, monospace; color: #cbd5e1 !important; }
 
-    /* Glowing Cache Sizzling Heat Indicators */
-    @keyframes sizzle {
-      0% { box-shadow: 0 0 2px rgba(244, 63, 94, 0.4); filter: brightness(1); }
-      50% { box-shadow: 0 0 8px rgba(249, 115, 22, 0.55); filter: brightness(1.15); }
-      100% { box-shadow: 0 0 2px rgba(244, 63, 94, 0.4); filter: brightness(1); }
-    }
-    .heat-bar-container {
-      width: 100px;
-      height: 6px;
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 999px;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      margin-top: 0.25rem;
-    }
-    .heat-glowing-bar {
-      height: 100%;
-      border-radius: 999px;
-      animation: sizzle 2.5s infinite ease-in-out;
-    }
-    .heat-col-layout {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
     .terminal-block {
       background: #090d16 !important;
       border: 1px solid rgba(255, 255, 255, 0.05) !important;
@@ -764,10 +640,15 @@ const generatedAt = new Date().toISOString();
     <div class="meta-bar">
       <span>Build: {formatUtc(generatedAt)} ({buildSource === 'live' ? 'live polled' : 'fallback cache'})</span>
       <span>Registry: ghost (:30500 / :30501)</span>
-      <span>Status: <span style="color: #22c55e;">online</span></span>
+      <span>Status: <span style={`color: ${buildSource === 'live' ? '#22c55e' : '#ef4444'};`}>{buildSource === 'live' ? 'online' : 'unavailable'}</span></span>
     </div>
   </div>
 
+  {buildSource !== 'live' && (
+    <div class="unavailable-banner">
+      Zot registry data is currently unavailable. Only the fallback catalog is shown; per-image metadata is hidden to avoid fabricated values.
+    </div>
+  )}
   <!-- KPI SCORECARDS -->
   <h2 class="section-title">Userspace at a Glance</h2>
   <div class="kpi-grid">
@@ -820,7 +701,7 @@ const generatedAt = new Date().toISOString();
     <div class="kpi-card">
       <div class="kpi-card__title">Registry Layers</div>
       <div>
-        <div class="kpi-card__value">{totalLayersCount}</div>
+        <div class="kpi-card__value">{totalLayersDisplay}</div>
         <div class="kpi-card__sub">OCI manifest layer count</div>
       </div>
     </div>

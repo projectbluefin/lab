@@ -173,6 +173,9 @@ test('userspace page renders FSDK containers, registry metadata, and charts', ()
   assert.doesNotMatch(userspacePage, /Registry Heat \/ Activity/i, 'fabricated registry heat column is removed');
   assert.doesNotMatch(userspacePage, /Sizzling/i, 'fabricated sizzling heat metric label is removed');
   assert.doesNotMatch(userspacePage, /heat-glowing-bar/i, 'fabricated heat glowing bar is removed');
+  assert.doesNotMatch(userspacePage, /pulls_sparkline|build_sparkline/i, 'fabricated pull/build sparkline arrays are not emitted');
+  assert.doesNotMatch(userspacePage, /25\.08\.13|sha256:0b6a015c|sha256:9e7ed032|83\.1 MB/i, 'fabricated fallback metadata values are not emitted');
+  assert.match(userspacePage, /unavailable|fallback cache/i, 'userspace page renders an explicit unavailable/fallback state');
   assert.match(userspacePage, /Raw dataset/i, 'userspace page keeps the raw dataset provenance link');
 });
 

@@ -79,6 +79,8 @@ Run `just logs` first. Then match a row. **Bluefin and Dakota image-poll QA are 
 | exo-0 not on expected 7.1 kernel | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` then verify Nebraska packages: `curl -s http://<control-plane-ip>:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages \| jq '.[-5:]'` |
 | Kernel poller keeps retriggering wrong versions | Check state: `kubectl get configmap flatcar-kernel-polling-state -n argo -o yaml` and verify CronWorkflow policy is `Forbid`: `kubectl get cronworkflow flatcar-kernel-poller -n argo -o jsonpath='{.spec.concurrencyPolicy}{"\n"}'` |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
+| Container-only smoke fails before tests with nested `systemd-resolved` reporting `/run: Read-only file system` | Classify as shared QA-runner infrastructure failure; do not edit or blindly rerun the PR. Record the workflow evidence, repair the runner/runtime, then rerun a fresh SHA. |
+| Container-only smoke fails on `exo-0` with NVMe I/O errors or `pthread_create failed` | Classify as `exo-0` storage/node infrastructure failure; inspect node and disk health, stop submitting retries to that lane, then rerun after remediation. |
 | Workflow stuck `Pending` | Run §3 |
 | Workflow stuck on a `NotReady` node / pod never progresses | `kubectl get nodes`; if the worker is `NotReady`, `argo stop -n argo <workflow>` and submit a fresh run so the scheduler can place it on a healthy node (often `ghost`) |
 | Template change did not take effect | Run §4 |

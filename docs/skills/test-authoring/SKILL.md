@@ -167,6 +167,10 @@ Must be called before any AT-SPI interaction with the top bar.
 
 ### 7. Debugging test failures in the workflow
 
+Before diagnosing a PR, confirm the runner reached test execution. If a container-only smoke lane fails while starting nested systemd — especially `systemd-resolved` reporting `/run: Read-only file system`, or `systemd-logind` failing to initialize state — classify it as shared QA-runner infrastructure, not a PR regression. Do not blindly rerun dependency or documentation PRs; capture the workflow evidence, repair the runner/runtime, and rerun a fresh SHA.
+
+If the failure instead contains NVMe I/O errors, `pthread_create failed`, or resource-exhaustion messages on `exo-0`, stop retries for that lane and investigate node/storage health before resubmitting. A Ready node can still have degraded local storage.
+
 Tests run inside `run-gnome-tests` — a Fedora pod SSHing into the VM. Artifacts land in `/tmp/results/` inside the pod.
 
 ```bash

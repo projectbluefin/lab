@@ -79,7 +79,8 @@ spec:
             mountPath: /dev/fuse
         source: |
           exec bash <<'SCRIPT_EOF'
-          set -euxo pipefail
+          # Do not trace authenticated GitHub API commands or token-bearing variables.
+          set -euo pipefail
 
           REPO_SLUG="{{workflow.parameters.repo-slug}}"
           REPO_URL="{{workflow.parameters.repo-url}}"

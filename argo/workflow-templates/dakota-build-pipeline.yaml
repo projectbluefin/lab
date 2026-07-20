@@ -104,7 +104,7 @@ spec:
                   value: "{{workflow.name}}-bst-cache-dakota"
           - name: build-bluefin-nvidia
             template: run-bst-step
-            depends: build-bluefin.Succeeded
+            depends: create-bst-cache-bluefin-nvidia && detect-build-mode
             arguments:
               parameters:
                 - name: element

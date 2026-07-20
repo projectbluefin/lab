@@ -33,8 +33,9 @@ Tests that belong in `lab/tests/` are lab infrastructure tests only:
 ## When NOT to Use
 
 - Adding new Bluefin image scenarios → go to `projectbluefin/testsuite`
-- Argo Workflows template YAML → `argo-workflows.md`
-- VM boot failures before tests start → `kubevirt-vms.md`
+- Argo Workflows template YAML → [`argo-workflows/SKILL.md`](../argo-workflows/SKILL.md)
+- VM boot failures before tests start → [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md)
+- Detailed dogtail patterns and GNOME Shell 50 caveats → [`dogtail-patterns.md`](dogtail-patterns.md)
 
 ## Core Process
 

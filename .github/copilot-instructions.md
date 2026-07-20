@@ -9,6 +9,8 @@ Keep only these repo-specific inline reminders:
 - No `kubectl apply` for `argo/workflow-templates/` or `manifests/`; edit git-tracked YAML and let ArgoCD reconcile it.
 - All test runs use ephemeral KubeVirt VMs — no persistent titan VMs. `just list-vms` should show empty when no workflows run.
 - After pushing a fix, verify the live template via `argo-mcp-get_workflow_template` before resubmitting — templates snapshot at submit time.
+- Never enable shell tracing in Argo scripts that call authenticated APIs; workflow logs must be inspected for secret redaction before being linked to PRs.
+- Treat `pr/needs-review` as a hard maintainer gate; `automerge` and `chore/deps` labels alone do not authorize a PR-batch run.
 - For `docs/` Pages changes, wait for `gh api repos/<owner>/<repo>/pages/builds/latest --jq '.status'` to be `built` and confirm the live page shows the new HTML/JS before claiming success.
 - Keep generated dashboard JSON in sync with the workflow that writes it; missing data should render an explicit unavailable state, not disappear silently.
 - Wide dashboard tables belong in full-width cards; if a table has many columns, let the card span the full grid row so the columns can scroll instead of collapsing.

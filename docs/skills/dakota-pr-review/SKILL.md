@@ -29,10 +29,11 @@ metadata:
 ## Core Process
 
 1. Treat Dakota PRs as lab-backed changes, not just code-review items.
-2. Let the PR poller dispatch `dakota-pr-batch-pipeline` for open Dakota PRs labeled `test-on-lab`; if it does not, trigger the workflow manually against the PR number or branch.
-3. Track the workflow in Argo and keep the run linked to the PR.
-4. Report the outcome as pass/fail with blockers, not a vague “looks fine.”
-5. Return to maintainers with a short summary and the next action.
+2. Before dispatch, confirm the PR has verified maintainer approval. `pr/needs-review`, `automerge`, and `chore/deps` labels do not substitute for an approval review; stop at the human gate when approval is absent.
+3. Let the PR poller dispatch `dakota-pr-batch-pipeline` for open Dakota PRs labeled `test-on-lab`; if it does not, trigger the workflow manually against the PR number or branch.
+4. Track the workflow in Argo and keep the run linked to the PR.
+5. Report the outcome as pass/fail with blockers, not a vague “looks fine.”
+6. Return to maintainers with a short summary and the next action.
 
 ## Maintainer Policy
 
@@ -59,11 +60,15 @@ metadata:
 
 - No linked Dakota workflow for a PR that is otherwise ready to merge
 - Workflow fails before the Dakota tests run
+- Workflow logs contain authenticated command lines, token-bearing variables, or unredacted API output
+- A routine Renovate label is treated as maintainer approval
 - Operator report lacks evidence or a workflow link
 - PR is merged while the latest lab run is still failing or missing
 
 ## Verification
 
+- [ ] Maintainer approval and required lifecycle labels were verified before dispatch
 - [ ] The PR has a fresh Dakota workflow run attached
+- [ ] Workflow logs were checked for secret redaction before linking them
 - [ ] The operator report includes the workflow link and outcome
 - [ ] Maintainer decision is based on the evidence, not a guess

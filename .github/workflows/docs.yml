@@ -34,7 +34,7 @@ jobs:
           set +e
           found=0
           # Look for old flat skill filenames that should no longer exist
-          for pattern in "docs/skills/[^/]+\.md"; do
+          for pattern in "docs/skills/[a-z0-9_-]+\.md"; do
             matches=$(grep -R -n -E "$pattern" --include="*.md" . || true)
             if [ -n "$matches" ]; then
               echo "$matches"

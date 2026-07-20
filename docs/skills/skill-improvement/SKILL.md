@@ -59,18 +59,17 @@ Route by area changed:
 
 | Area changed | Skill file to update |
 |---|---|
-| `argo/workflow-templates/` or `argo/*.yaml` | `docs/skills/argo-workflows.md` |
-| `provision-vm`, `KubeVirt`, `btrfs reflink` | `docs/skills/kubevirt-vms.md` |
-| ArgoCD Applications, `argocd/`, `manifests/` | `docs/skills/gitops-argocd.md` |
-| `tests/`, `behave`, `dogtail`, `qecore` | `docs/skills/test-authoring.md` |
-| `.github/workflows/` | `docs/skills/ci-tooling.md` |
-| `scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py` | `docs/skills/ci-tooling.md` (+ `docs/skills/astro-dashboard-pages.md` when page contracts/rendering changed) |
-| Repo-wide agent behavior or session hygiene | `.github/copilot-instructions.md` |
-| Bootstrap cluster setup, `argo/bootstrap/` | `docs/bootstrap.md` |
-| Cluster topology, namespaces, RBAC | `AGENTS.md` |
-| Agent operations, MCP tools | `docs/agent-cheatsheet.md` |
-| MCP RBAC, permissions model | `manifests/mcp-kubernetes-mcp-server.yaml` + `manifests/mcp-README.md` |
-| Failure modes, architecture | `RUNBOOK.md` |
+| `argo/workflow-templates/` or `argo/*.yaml` | [`argo-workflows/SKILL.md`](../argo-workflows/SKILL.md) |
+| `provision-vm`, `KubeVirt`, `btrfs reflink` | [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md) |
+| ArgoCD Applications, `argocd/`, `manifests/` | [`gitops-argocd/SKILL.md`](../gitops-argocd/SKILL.md) |
+| `tests/`, `behave`, `dogtail`, `qecore` | [`test-authoring/SKILL.md`](../test-authoring/SKILL.md) |
+| `.github/workflows/` | [`ci-tooling/SKILL.md`](../ci-tooling/SKILL.md) |
+| `scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py` | [`ci-tooling/SKILL.md`](../ci-tooling/SKILL.md) (+ [`astro-dashboard-pages/SKILL.md`](../astro-dashboard-pages/SKILL.md) when page contracts/rendering changed) |
+| Repo-wide agent behavior or session hygiene | [`agents.md`](../../../agents.md) |
+| Bootstrap cluster setup, `argo/bootstrap/` | [`docs/ops/bootstrap.md`](../../ops/bootstrap.md) |
+| Cluster topology, namespaces, RBAC | [`docs/ops/architecture.md`](../../ops/architecture.md) |
+| Agent operations, MCP tools | [`docs/reference/agent-cheatsheet.md`](../../reference/agent-cheatsheet.md) |
+| Failure modes, architecture | [`docs/ops/RUNBOOK.md`](../../ops/RUNBOOK.md) |
 
 Ask: *"If this finding had been in the skill file when I started, would I have avoided the trial-and-error?"* If yes — update the skill file.
 
@@ -174,7 +173,7 @@ docs/skills/
 - Session ending after Pages/dashboard work without a skill or instructions write-back
 - Skill files with no `## Verification` section
 - Skill files covering Argo or ArgoCD with unverified code examples
-- Any `docs/skills/*.md` file missing the canonical sections
+- Any `docs/skills/*/SKILL.md` file missing the canonical sections
 
 ## Verification
 

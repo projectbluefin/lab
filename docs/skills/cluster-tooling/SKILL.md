@@ -22,8 +22,8 @@ metadata:
 
 ## When NOT to Use
 
-- Argo WorkflowTemplate authoring details (`docs/skills/argo-workflows.md`).
-- KubeVirt VM provisioning/test authoring workflows (`docs/skills/kubevirt-vms.md`, `docs/skills/test-authoring.md`).
+- Argo WorkflowTemplate authoring details → [`argo-workflows/SKILL.md`](../argo-workflows/SKILL.md).
+- KubeVirt VM provisioning/test authoring workflows → [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md) and [`test-authoring/SKILL.md`](../test-authoring/SKILL.md).
 
 ## Core Process
 

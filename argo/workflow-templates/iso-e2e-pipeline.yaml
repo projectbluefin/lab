@@ -1,0 +1,106 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: iso-e2e-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      Run the projectbluefin/iso smoke and unattended installer E2E harness in the lab.
+      The workflow downloads a published ISO, checks out the requested ISO harness ref,
+      and runs QEMU inside a resource-limited lab pod. No GitHub Actions runner is needed.
+  labels:
+    app.kubernetes.io/component: iso-qa
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  entrypoint: validate
+  activeDeadlineSeconds: 7200
+  arguments:
+    parameters:
+    - name: iso-url
+      value: ""
+    - name: iso-ref
+      value: "main"
+    - name: variant
+      value: ""
+    - name: run-e2e
+      value: "true"
+  templates:
+  - name: validate
+    inputs:
+      parameters:
+      - name: iso-url
+      - name: iso-ref
+      - name: variant
+      - name: run-e2e
+    script:
+      image: quay.io/fedora/fedora:latest
+      command: [bash]
+      securityContext:
+        privileged: true
+        runAsUser: 0
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+        limits:
+          cpu: "8"
+          memory: 12Gi
+      volumeMounts:
+      - name: work
+        mountPath: /work
+      - name: kvm
+        mountPath: /dev/kvm
+      source: |
+        set -euo pipefail
+
+        ISO_URL="{{inputs.parameters.iso-url}}"
+        ISO_REF="{{inputs.parameters.iso-ref}}"
+        VARIANT="{{inputs.parameters.variant}}"
+        RUN_E2E="{{inputs.parameters.run-e2e}}"
+        WORK=/work
+        ISO_DIR="${WORK}/iso"
+        OUTPUT="${WORK}/output"
+
+        [[ -n "${ISO_URL}" ]] || { echo "iso-url is required" >&2; exit 1; }
+        dnf install -y --setopt=install_weak_deps=False \
+          curl ffmpeg git qemu-img qemu-system-x86-core xorriso
+
+        mkdir -p "${ISO_DIR}" "${OUTPUT}"
+        git -C "${ISO_DIR}" init
+        git -C "${ISO_DIR}" remote add origin https://github.com/projectbluefin/iso
+        git -C "${ISO_DIR}" fetch --depth=1 origin "${ISO_REF}"
+        git -C "${ISO_DIR}" checkout --detach FETCH_HEAD
+
+        curl --fail --location --retry 3 --retry-all-errors \
+          --output "${WORK}/source.iso" "${ISO_URL}"
+        test -s "${WORK}/source.iso"
+        sha256sum "${WORK}/source.iso"
+        printf 'variant=%s\niso-ref=%s\n' "${VARIANT}" "${ISO_REF}"
+
+        if [[ -e /dev/kvm ]]; then
+          export QEMU_ACCEL=kvm:tcg
+        else
+          echo 'WARNING: /dev/kvm unavailable; falling back to TCG' >&2
+          export QEMU_ACCEL=tcg
+        fi
+
+        if [[ "${RUN_E2E}" == true ]]; then
+          bash "${ISO_DIR}/tests/iso/suite.sh" "${WORK}/source.iso" "${OUTPUT}"
+        else
+          bash "${ISO_DIR}/tests/iso/smoke.sh" "${WORK}/source.iso" "${OUTPUT}/smoke"
+        fi
+
+        find "${OUTPUT}" -maxdepth 2 -type f -printf '%p (%s bytes)\n' | sort
+        for summary in "${OUTPUT}"/*/*summary.json; do
+          [[ -f "${summary}" ]] || continue
+          echo "=== ${summary} ==="
+          cat "${summary}"
+        done
+    volumes:
+    - name: work
+      emptyDir:
+        sizeLimit: 40Gi
+    - name: kvm
+      hostPath:
+        path: /dev/kvm
+        type: CharDevice

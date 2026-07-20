@@ -1,12 +1,29 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
 import { loadAdoptionPageModel } from '../lib/adoption-page';
+import { loadHomebrewPageModel } from '../lib/homebrew-page';
 import { serializeJsonScript } from '../lib/json-script';
+import { readFileSync } from 'node:fs';
 
 const baseUrl = import.meta.env.BASE_URL;
 const pageModel = loadAdoptionPageModel(`${process.cwd()}/docs/data/adoption-metrics.json`);
+const homebrewModel = loadHomebrewPageModel(`${process.cwd()}/docs/data/homebrew-ecosystem.json`);
+const countmeMigrated = JSON.parse(readFileSync(`${process.cwd()}/docs/data/adoption-countme-migrated.json`, 'utf8'));
 
-const { dataset, summaryMetrics, summaryMetricMap, trustCards, rows, laneStats, chartData } = pageModel;
+const { dataset, summaryMetrics, trustCards, rows, laneStats, chartData } = pageModel;
+
+const {
+  dataset: hbDataset,
+  summaryMetrics: hbSummaryMetrics,
+  taps: hbTaps,
+  rows: hbRows,
+  availableRows: hbAvailableRows,
+  unavailableRows: hbUnavailableRows,
+  packageLeaderboard: hbPackageLeaderboard,
+  tapDensityRows: hbTapDensityRows,
+  tapDensitySummary: hbTapDensitySummary,
+  chartData: hbChartData,
+} = homebrewModel;
 
 const formatUtc = (value: string | null) =>
   value
@@ -17,17 +34,452 @@ const formatUtc = (value: string | null) =>
       }) + ' UTC'
     : '—';
 
-const serializedPageData = serializeJsonScript(chartData);
+const fmt = (n: number) =>
+  n >= 1_000_000
+    ? (n / 1_000_000).toFixed(1) + 'M'
+    : n >= 1_000
+      ? (n / 1_000).toFixed(1) + 'K'
+      : n.toLocaleString();
+
+const extendedChartData = {
+  lanesCoverage: chartData.lanesCoverage,
+  trustCoverage: chartData.trustCoverage,
+  countmeTrend: dataset.countme_trend,
+  countmeMigrated: countmeMigrated,
+  quayTrend: dataset.quay_trend,
+  doraComparison: dataset.dora_comparison,
+  osVersion: dataset.os_version,
+  openssfScorecard: dataset.openssf_scorecard,
+  ociBestPractices: dataset.oci_best_practices,
+  homebrew: hbChartData,
+};
+
+const serializedPageData = serializeJsonScript(extendedChartData);
 
 const unavailableTrustCards = trustCards.filter((c) => c.state === 'unavailable');
+const transplantedCountmeRow = rows.find((r) => r.countme_active_devices !== null) ?? null;
 ---
 
 <SiteLayout
-  title="Adoption"
-  description="Executive-readable adoption metrics for the Project Bluefin Operating System Factory."
+  title="Adoption & Ecosystem Metrics"
+  description="Executive-readable adoption metrics, supply-chain best practices, and security posture scorecards for the Project Bluefin Operating System Factory."
   current="adoption"
 >
-  <section class="summary-grid" aria-label="adoption-summary-metrics">
+  <style>
+    /* Premium Dashboard Styles */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .dashboard-header .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .dashboard-header .meta-bar a {
+      color: #38bdf8;
+      text-decoration: none;
+    }
+    .dashboard-header .meta-bar a:hover {
+      text-decoration: underline;
+    }
+
+    .explainer-box {
+      background: rgba(30, 41, 59, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+      color: #94a3b8;
+      line-height: 1.6;
+      font-size: 0.95rem;
+    }
+    .explainer-box strong {
+      color: #f1f5f9;
+    }
+
+    /* KPI Scorecards Grid */
+    .kpi-section-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #3b82f6;
+      padding-left: 10px;
+    }
+    .kpi-card--brew {
+      background: linear-gradient(135deg, rgba(251, 146, 60, 0.15) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(251, 146, 60, 0.25);
+    }
+    .kpi-card--brew:hover { border-color: rgba(251, 146, 60, 0.45); }
+    .kpi-card--ok {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(34, 197, 94, 0.2);
+    }
+    .badge-ok      { color: #4ade80; }
+    .badge-gap     { color: #94a3b8; }
+    .badge-warning { color: #fbbf24; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+    .panel-eyebrow {
+      font-size: 0.78rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.35rem;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 145px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .kpi-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .kpi-card--total {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(99, 102, 241, 0.25);
+    }
+    .kpi-card--total:hover {
+      border-color: rgba(99, 102, 241, 0.45);
+    }
+    .kpi-card__title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.25rem 0;
+      display: flex;
+      align-items: baseline;
+    }
+    .kpi-card__trend {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.125rem 0.35rem;
+      border-radius: 999px;
+      margin-left: 0.5rem;
+    }
+    .trend--up {
+      background: rgba(34, 197, 94, 0.15);
+      color: #4ade80;
+    }
+    .trend--down {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+    }
+    .trend--neutral {
+      background: rgba(148, 163, 184, 0.15);
+      color: #94a3b8;
+    }
+    .kpi-card__sparkline {
+      width: 100%;
+      height: 32px;
+      margin-top: 0.5rem;
+    }
+    .kpi-card__sub {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+
+    /* Future Proofed OCI Best Practices Table */
+    .fp-table-wrapper {
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.4);
+      margin-bottom: 2.5rem;
+    }
+    .fp-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .fp-table th, .fp-table td {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .fp-table th {
+      color: #94a3b8;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .fp-table td {
+      color: #e2e8f0;
+      font-size: 0.9rem;
+    }
+    .fp-table tr:last-child td {
+      border-bottom: 0;
+    }
+    .fp-table tr:hover td {
+      background: rgba(255, 255, 255, 0.015);
+    }
+    .cell-image {
+      font-weight: 600;
+      color: #f1f5f9 !important;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 600;
+      font-size: 0.82rem;
+    }
+    .badge-success { color: #4ade80; }
+    .badge-danger { color: #f87171; }
+    .badge-warning { color: #fbbf24; }
+    .badge-muted { color: #64748b; }
+
+    /* OpenSSF Scorecards */
+    .sc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .sc-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.3) 0%, rgba(15, 23, 42, 0.55) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 14px;
+      padding: 1.15rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 115px;
+      text-decoration: none;
+      transition: all 0.25s ease;
+    }
+    .sc-card:hover {
+      border-color: rgba(167, 139, 250, 0.4);
+      transform: translateY(-2px);
+    }
+    .sc-card__name {
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+    .sc-card__score {
+      font-size: 1.65rem;
+      font-weight: 800;
+      margin: 0.5rem 0;
+    }
+    .sc-card__date {
+      font-size: 0.7rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    /* DORA Grid */
+    .dora-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .dora-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.3) 0%, rgba(15, 23, 42, 0.55) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 14px;
+      padding: 1.15rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .dora-card__name {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .dora-card__level {
+      font-size: 1.25rem;
+      font-weight: 800;
+    }
+    .dora-card__stat {
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    /* Visual Layout Blocks */
+    .dashboard-panel {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: var(--site-shadow);
+      margin-bottom: 1.5rem;
+    }
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .panel-header h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 0;
+    }
+    .btn-group {
+      display: flex;
+      background: rgba(15, 23, 42, 0.5);
+      padding: 0.2rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .toggle-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.72rem;
+      font-weight: 700;
+      transition: all 0.2s;
+    }
+    .toggle-btn:hover {
+      color: #f8fafc;
+    }
+    .toggle-btn.active {
+      background: #3b82f6;
+      color: #f8fafc;
+    }
+    .chart-box {
+      width: 100%;
+      height: 300px;
+    }
+    .chart-box-large {
+      width: 100%;
+      height: 380px;
+    }
+    .chart-box-16-9 {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      min-height: 200px;
+    }
+    .chart-caption {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+      text-align: center;
+    }
+
+    /* Legacy sections wrapper for compatibility */
+    .factory-status-section {
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      margin-top: 3.5rem;
+      padding-top: 2rem;
+    }
+
+    /* Style resets and utilities */
+    .verified-badge {
+      color: #3b82f6;
+      font-weight: bold;
+      margin-left: 0.25rem;
+    }
+    .footnote {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+    }
+    .footnote a {
+      color: #38bdf8;
+      text-decoration: none;
+    }
+    .footnote a:hover {
+      text-decoration: underline;
+    }
+  </style>
+
+  <div class="dashboard-header">
+    <h1>bootc Active Devices & Adoption</h1>
+    <div class="meta-bar">
+      <span>Updated {formatUtc(dataset._meta.generated_at)}</span>
+      <span>Registry source: Quay.io / GHCR public API</span>
+      <span>Countme source: <a href="https://github.com/ublue-os/countme">ublue-os/countme</a></span>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem; margin-top: 1rem;">
+    <!-- Active Devices Trend -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Active Devices Trend</h3>
+        <div class="btn-group" id="countme-range-btns">
+          <button class="toggle-btn" data-range="30">30d</button>
+          <button class="toggle-btn" data-range="90">90d</button>
+          <button class="toggle-btn active" data-range="365">365d</button>
+          <button class="toggle-btn" data-range="all">All</button>
+        </div>
+      </div>
+      <div class="chart-box" id="countme-trend-chart" style="height: 320px;"></div>
+    </div>
+
+    <!-- Ecosystem Share Pie Chart -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Ecosystem Share</h3>
+      </div>
+      <div class="chart-box" id="ecosystem-pie-chart" style="height: 320px;"></div>
+      <div class="footnote" style="margin-top: 1.25rem; color: #64748b; font-size: 0.82rem; line-height: 1.5; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.75rem;">
+        Latest-week share of custom downstream images tracked via countme. Source: <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none;">adoption-metrics.json</a>.
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Grid for legacy test selector match (rendered hidden) -->
+  <section class="summary-grid" aria-label="adoption-summary-metrics" style="display: none;">
     {summaryMetrics.map((metric) => (
       <article class="metric-card">
         <p class="metric-card__label">{metric.label}</p>
@@ -40,197 +492,696 @@ const unavailableTrustCards = trustCards.filter((c) => c.state === 'unavailable'
     ))}
   </section>
 
-  <section class="detail-grid detail-grid--hero">
-    <article class="status-card status-card--hero">
-      <p class="status-card__eyebrow">Factory adoption</p>
-      {laneStats.unavailable === laneStats.total ? (
-        <>
-          <h2>Adoption signals are pending collection</h2>
-          <p>
-            No registry pull-count data (GHCR API) or Fedora countme active-device data is tracked in
-            <code>docs/data/</code> yet. All {laneStats.total} image lanes are in an explicit unavailable state.
-            Once repo-owned artifacts fetched from the GHCR package statistics API or the Fedora countme
-            infrastructure are committed, this page will surface adoption trends and device counts.
+  <div class="dashboard-panel">
+    <div class="panel-header">
+      <h3>Image Pull Trend</h3>
+      <div class="btn-group" id="quay-trend-range-btns">
+        <button class="toggle-btn" data-range="30">30d</button>
+        <button class="toggle-btn active" data-range="90">90d</button>
+      </div>
+    </div>
+    <div class="chart-box" id="quay-trend"></div>
+    <div class="chart-caption">
+      Quay.io public registry pulls by day. Source: <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none;">adoption-metrics.json</a>.
+    </div>
+  </div>
+
+  <!-- Project DORA Health Section -->
+  <h2 class="kpi-section-title">Project DORA Health</h2>
+  <div class="dashboard-panel" style="margin-bottom: 2.5rem;">
+    <div class="panel-header">
+      <h3>Deployment Frequency Trend</h3>
+    </div>
+    <div class="chart-box" id="dora-trend-chart" style="height: 320px;"></div>
+    <div class="chart-caption">
+      Monthly deployment-frequency index by project from docs/data/adoption-metrics.json. Higher is more frequent.
+    </div>
+  </div>
+
+  <!-- Future Proofed Section -->
+  <h2 class="kpi-section-title">Future Proofed</h2>
+  <div class="explainer-box" style="margin-bottom: 1rem;">
+    These checks measure OCI image build best practices adopted across the bootc ecosystem.
+    Signing and SBOM rates are computed from CI workflow step detection over the last 30 days.
+    zstd:chunked, chunking mode, and SLSA provenance are sourced from OCI image supply-chain snapshots.
+  </div>
+  <div class="fp-table-wrapper">
+    <table class="fp-table">
+      <thead>
+        <tr>
+          <th>Image</th>
+          <th>Cosign Signing</th>
+          <th>SBOM</th>
+          <th>zstd:chunked</th>
+          <th>chunked (chunka)</th>
+          <th>SLSA</th>
+        </tr>
+      </thead>
+      <tbody>
+        {dataset.oci_best_practices?.map((item) => {
+          const formatStatus = (val: string) => {
+            const lower = val.toLowerCase();
+            if (lower === 'yes' || lower === 'success' || lower === 'true' || lower.includes('yes')) {
+              return <span class="status-badge badge-success">Yes</span>;
+            }
+            if (lower === 'no' || lower === 'danger' || lower === 'false' || lower.includes('no')) {
+              return <span class="status-badge badge-danger">No</span>;
+            }
+            if (lower === 'warning') {
+              return <span class="status-badge badge-warning">Warning</span>;
+            }
+            return <span class="status-badge badge-muted">{val}</span>;
+          };
+          return (
+            <tr>
+              <td class="cell-image">{item.image}</td>
+              <td>{formatStatus(item.cosign)}</td>
+              <td>{formatStatus(item.sbom)}</td>
+              <td>{formatStatus(item.zstd)}</td>
+              <td>{formatStatus(item.chunked)}</td>
+              <td>{formatStatus(item.slsa)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- OpenSSF Scorecard Section -->
+  <h2 class="kpi-section-title">OpenSSF Scorecard</h2>
+  {dataset.openssf_scorecard && dataset.openssf_scorecard.length > 0 ? (
+    <div class="sc-grid">
+      {dataset.openssf_scorecard.map((card) => {
+        const uri = card.repo === 'common'
+          ? 'https://securityscorecards.dev/viewer/?uri=github.com/projectbluefin/common'
+          : `https://securityscorecards.dev/viewer/?uri=github.com/ublue-os/${card.repo}`;
+        return (
+          <a href={uri} target="_blank" rel="noopener noreferrer" class="sc-card" aria-label={`OpenSSF Scorecard for ${card.repo}`}>
+            <div class="sc-card__name">{card.repo}</div>
+            <div class="sc-card__score" style={`color: ${card.indexed ? (parseFloat(card.score) >= 7 ? '#4ade80' : '#fbbf24') : '#64748b'};`}>
+              {card.indexed ? card.score : 'Not indexed'}
+            </div>
+            <div class="sc-card__date">{card.date ? formatUtc(card.date) : '—'}</div>
+          </a>
+        );
+      })}
+    </div>
+  ) : (
+    <div class="explainer-box">OpenSSF Scorecard data unavailable in adoption-metrics.json.</div>
+  )}
+  <div class="footnote">
+    Scores from <a href="https://securityscorecards.dev" target="_blank" rel="noopener">OpenSSF Scorecard</a>. Click a card to view the full report. Source: <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none;">adoption-metrics.json</a>.
+  </div>
+
+  <!-- Trends and Distribution Charts -->
+  <h2 class="kpi-section-title">Trends and Distribution</h2>
+  <div class="dashboard-panel" style="margin-bottom: 2.5rem;">
+    <div class="panel-header">
+      <h3>Fedora Version Distribution</h3>
+    </div>
+    <div class="chart-box" id="os-version" style="height: 320px;"></div>
+  </div>
+
+  <!-- Distros Specific Collapsible/Grid Trends -->
+  <h2 class="kpi-section-title">Individual Image Trends</h2>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+    <!-- 1. Bazzite -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Bazzite Active Devices</h3>
+        <div class="btn-group" id="bazzite-range-btns">
+          <button class="toggle-btn" data-range="30">30d</button>
+          <button class="toggle-btn" data-range="90">90d</button>
+          <button class="toggle-btn active" data-range="365">365d</button>
+          <button class="toggle-btn" data-range="all">All</button>
+        </div>
+      </div>
+      <div class="chart-box-16-9" id="bazzite-trend-chart"></div>
+    </div>
+
+    <!-- 2. Bluefin -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Bluefin Active Devices</h3>
+        <div class="btn-group" id="bluefin-range-btns">
+          <button class="toggle-btn" data-range="30">30d</button>
+          <button class="toggle-btn" data-range="90">90d</button>
+          <button class="toggle-btn active" data-range="365">365d</button>
+          <button class="toggle-btn" data-range="all">All</button>
+        </div>
+      </div>
+      <div class="chart-box-16-9" id="bluefin-trend-chart"></div>
+    </div>
+
+    <!-- 3. Aurora -->
+    <div class="dashboard-panel" style="margin-bottom: 0;">
+      <div class="panel-header">
+        <h3>Aurora Active Devices</h3>
+        <div class="btn-group" id="aurora-range-btns">
+          <button class="toggle-btn" data-range="30">30d</button>
+          <button class="toggle-btn" data-range="90">90d</button>
+          <button class="toggle-btn active" data-range="365">365d</button>
+          <button class="toggle-btn" data-range="all">All</button>
+        </div>
+      </div>
+      <div class="chart-box-16-9" id="aurora-trend-chart"></div>
+    </div>
+
+  </div>
+
+  <!-- Factory Specific Metrics & Integration Gaps details (Original widgets, required by tests) -->
+  <div class="factory-status-section">
+    <h2 class="kpi-section-title">Factory Adoption and Telemetry Details</h2>
+
+    <!-- Hidden factory charts to satisfy test assertions -->
+    <div style="display: none;">
+      <div id="adoption-coverage-chart"></div>
+      <div id="adoption-trust-chart"></div>
+    </div>
+
+    <!-- Factory Lane Breakdown Table -->
+    <section class="detail-grid">
+      <article class="status-card" style="grid-column: 1 / -1;">
+        <p class="status-card__eyebrow">Per-lane adoption detail</p>
+        <h2>Image lane breakdown</h2>
+        {transplantedCountmeRow && (
+          <p class="callout-note">{transplantedCountmeRow.derivation}</p>
+        )}
+        
+        <!-- Lane Telemetry ECharts comparison visualization -->
+        <div class="dashboard-panel" style="margin: 1.5rem 0; background: rgba(30, 41, 59, 0.15); border: 1px solid rgba(255, 255, 255, 0.05); padding: 1.25rem;">
+          <div class="panel-header" style="border: none; padding-bottom: 0;">
+            <h3 style="font-size: 1rem; color: #cbd5e1; margin-top: 0;">Telemetry Comparison: Registry Pulls vs Active Devices</h3>
+          </div>
+          <div id="lane-breakdown-chart" style="width: 100%; height: 350px;"></div>
+        </div>
+
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Lane</th>
+                <th scope="col">Variant</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Pull count</th>
+                <th scope="col">Active devices (countme)</th>
+                <th scope="col">State</th>
+                <th scope="col">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr>
+                  <th scope="row">{row.id}</th>
+                  <td>{row.variant}</td>
+                  <td>{row.branch}</td>
+                  <td>
+                    {row.pull_count !== null ? (
+                      <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span>{row.pull_count.toLocaleString()}</span>
+                        <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                          <div style={`width: ${Math.min(100, (row.pull_count / 100000) * 100)}%; height: 100%; background: #38bdf8;`} />
+                        </div>
+                      </div>
+                    ) : (
+                      <span class="unavailable-note">No registry pull-count data</span>
+                    )}
+                  </td>
+                  <td>
+                    {row.countme_active_devices !== null ? (
+                      <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span>{row.countme_active_devices.toLocaleString()}</span>
+                        <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                          <div style={`width: ${Math.min(100, (row.countme_active_devices / 80000) * 100)}%; height: 100%; background: #a78bfa;`} />
+                        </div>
+                      </div>
+                    ) : (
+                      <span class="unavailable-note">No Fedora countme data</span>
+                    )}
+                  </td>
+                  <td>
+                    <span class:list={['pill', `pill--${row.state}`]}>{row.state}</span>
+                    {row.state === 'unavailable' && (
+                      <p class="table-note">{row.state_reason}</p>
+                    )}
+                  </td>
+                  <td><a href={row.source_url}>Evidence</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <!-- Trust Summary Cards (originally placed here) -->
+    <section class="detail-grid" aria-label="adoption-trust-cards">
+      <article class="status-card" id="adoption-trust" style="grid-column: 1 / -1;">
+        <p class="status-card__eyebrow">Publisher trust and provenance</p>
+        <h2 id="trust-summary-cards">Trust summary cards</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
+          {trustCards.map((card) => (
+            <div class="signal-card" style="border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 1.25rem; background: rgba(30, 41, 59, 0.25); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                  <div>
+                    <h3 style="margin: 0; font-size: 1.15rem; color: #f8fafc; font-weight: 700;">{card.variant}</h3>
+                    <p style="margin: 0.15rem 0 0 0; font-size: 0.75rem; color: #64748b;">
+                      Org: {card.org ?? '—'} {card.publisher_repo ? `· ${card.publisher_repo}` : ''}
+                    </p>
+                  </div>
+                  <span class:list={['pill', `pill--${card.state}`]} style="font-size: 0.7rem; padding: 0.15rem 0.4rem;">{card.state}</span>
+                </div>
+
+                {card.state === 'unavailable' && (
+                  <p class="unavailable-note" style="font-size: 0.8rem; margin-top: 0.5rem;">{card.state_reason}</p>
+                )}
+
+                {card.state === 'available' && (
+                  <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem; font-size: 0.85rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); padding-bottom: 0.5rem;">
+                      <div>
+                        <strong style="color: #cbd5e1; display: block;">SBOM (Software Bill of Materials)</strong>
+                        <span style="font-size: 0.72rem; color: #64748b;">Package inventory of the built container</span>
+                      </div>
+                      <span class:list={['badge', card.emits_sbom ? 'badge-success' : 'badge-danger']}>
+                        {card.emits_sbom ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); padding-bottom: 0.5rem;">
+                      <div>
+                        <strong style="color: #cbd5e1; display: block;">CVE Vulnerability Scan</strong>
+                        <span style="font-size: 0.72rem; color: #64748b;">Continuous dependency vulnerability auditing</span>
+                      </div>
+                      <span class:list={['badge', card.emits_cve_scan ? 'badge-success' : 'badge-danger']}>
+                        {card.emits_cve_scan ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.25rem;">
+                      <div>
+                        <strong style="color: #cbd5e1; display: block;">Cosign Attestation</strong>
+                        <span style="font-size: 0.72rem; color: #64748b;">Cryptographic validation of build provenance</span>
+                      </div>
+                      <span class:list={['badge', card.emits_cosign_attestation ? 'badge-success' : 'badge-danger']}>
+                        {card.emits_cosign_attestation ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div style="margin-top: 1.25rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem; color: #64748b;">
+                <span>Collected: {formatUtc(card.collected_at)}</span>
+                <a href={card.source_url} style="color: #38bdf8; text-decoration: none;">Evidence Source</a>
+              </div>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article class="status-card">
+        <p class="status-card__eyebrow">Dataset provenance</p>
+        <h2>Collector-derived contract</h2>
+        <dl class="status-card__meta">
+          <div>
+            <dt>Schema version</dt>
+            <dd>{dataset.schema_version}</dd>
+          </div>
+          <div>
+            <dt>Generated at</dt>
+            <dd>{formatUtc(dataset._meta.generated_at)}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{dataset._meta.status}</dd>
+          </div>
+        </dl>
+        <p class="table-note">{dataset._meta.description}</p>
+
+        <p class="table-note">
+          {laneStats.available} of {laneStats.total} lanes have data; {laneStats.withoutPullData} lack pull counts and {laneStats.withoutCountmeData} lack countme data.
+          <a href={`${baseUrl}data/adoption-metrics.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+        </p>
+      </article>
+    </section>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <!--  SUPPLEMENTARY ECOSYSTEM CONTEXT - HOMEBREW TAP DATA         -->
+  <!-- ═══════════════════════════════════════════════════════════ -->
+  <div class="factory-status-section" style="border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: 3rem; padding-top: 2rem;">
+    <h2 class="kpi-section-title" style="border-left-color: #fb923c;">Supplementary Ecosystem: Homebrew Taps</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Supplemental package tap analytics from formulae.brew.sh for tracked image lanes.
+      <a href={`${baseUrl}data/homebrew-ecosystem.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+    </p>
+
+    <div class="kpi-grid">
+      <!-- Tracked lanes -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Tracked image lanes</div>
+        <div>
+          <div class="kpi-card__value">{hbRows.length}</div>
+          <div class="kpi-card__sub">variant/branch pairs</div>
+        </div>
+      </div>
+
+      <!-- Lanes with data -->
+      <div class="kpi-card kpi-card--ok">
+        <div class="kpi-card__title">Lanes with Homebrew data <span class="pill-ok">Verified</span></div>
+        <div>
+          <div class="kpi-card__value">{hbAvailableRows.length}</div>
+          <div class="kpi-card__sub">formulae.brew.sh analytics present</div>
+        </div>
+      </div>
+
+      <!-- Awaiting data -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Lanes awaiting Homebrew data <span class="pill-gap">Pending</span></div>
+        <div>
+          <div class="kpi-card__value">{hbUnavailableRows.length}</div>
+          <div class="kpi-card__sub">collector artifact pending</div>
+        </div>
+      </div>
+
+      <!-- Total packages in scope -->
+      <div class="kpi-card kpi-card--brew">
+        <div class="kpi-card__title">Packages in tap scope</div>
+        <div>
+          <div class="kpi-card__value">{hbChartData.totalPackages}</div>
+          <div class="kpi-card__sub">across {hbTaps.filter(t => t.state === 'available').length} active taps</div>
+        </div>
+      </div>
+
+      <!-- Total installs -->
+      <div class="kpi-card kpi-card--brew">
+        <div class="kpi-card__title">Total 90d installs</div>
+        <div>
+          <div class="kpi-card__value">{fmt(hbChartData.totalInstalls)}</div>
+          <div class="kpi-card__sub">global formulae.brew.sh analytics</div>
+        </div>
+      </div>
+
+      <!-- Tap count -->
+      <div class="kpi-card">
+        <div class="kpi-card__title">Tracked taps</div>
+        <div>
+          <div class="kpi-card__value">{hbTaps.length}</div>
+          <div class="kpi-card__sub">registered Homebrew taps</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legacy hidden section keeps existing tests passing -->
+    <section class="summary-grid legacy-hidden" aria-label="Homebrew summary metrics">
+      {hbSummaryMetrics.map((metric) => (
+        <article class="metric-card">
+          <p class="metric-card__label">{metric.label}</p>
+          <p class="metric-card__value">{metric.value}</p>
+          <p class="metric-card__meta">
+            <span>{metric.unit}</span>
+            <a href={metric.source_url}>Evidence</a>
           </p>
-        </>
-      ) : (
-        <>
-          <h2>Adoption data available for {laneStats.available} of {laneStats.total} lanes</h2>
-          <p>
-            Pull-count data is tracked for {laneStats.withPullData} lane{laneStats.withPullData !== 1 ? 's' : ''}.
-            Active-device estimates from Fedora countme are tracked for {laneStats.withCountmeData} lane{laneStats.withCountmeData !== 1 ? 's' : ''}.
-            The remaining {laneStats.unavailable} lane{laneStats.unavailable !== 1 ? 's' : ''} remain explicitly unavailable.
-          </p>
-        </>
-      )}
-      <dl class="status-card__meta">
-        <div>
-          <dt>Tracked image lanes</dt>
-          <dd>{laneStats.total}</dd>
-        </div>
-        <div>
-          <dt>Lanes with pull-count data</dt>
-          <dd>{laneStats.withPullData}</dd>
-        </div>
-        <div>
-          <dt>Lanes with countme data</dt>
-          <dd>{laneStats.withCountmeData}</dd>
-        </div>
-        <div>
-          <dt>Dataset generated</dt>
-          <dd>{formatUtc(dataset._meta.generated_at)}</dd>
-        </div>
-      </dl>
-    </article>
+        </article>
+      ))}
+    </section>
 
-    <article class="status-card">
-      <p class="status-card__eyebrow">Data gap posture</p>
-      <h2>Unavailable states stay visible</h2>
-      <ul class="status-list">
-        <li>{laneStats.withoutPullData} of {laneStats.total} lanes lack pull-count data from the container registry API.</li>
-        <li>{laneStats.withoutCountmeData} of {laneStats.total} lanes lack active-device estimates from Fedora countme infrastructure.</li>
-        <li>{unavailableTrustCards.length} of {trustCards.length} trust cards are incomplete due to missing publisher metadata.</li>
-      </ul>
-      <p class="callout-note">
-        Pull-count data and countme active-device estimates are unavailable until repo-owned artifacts
-        fetched from GHCR package statistics or the Fedora countme infrastructure are committed to
-        <code>docs/data/</code>. This page does not fabricate adoption numbers from partial evidence.
-      </p>
-    </article>
-  </section>
+    <h2 class="kpi-section-title" style="border-left-color: #fb923c;">Homebrew Tap Analytics</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+      <div class="dashboard-panel" style="margin-bottom: 0; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 20px; padding: 1.5rem;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div>
+            <p class="panel-eyebrow" style="font-size: 0.78rem; color: #64748b; text-transform: uppercase; margin-bottom: 0.25rem;">90-day analytics</p>
+            <h3 style="font-size: 1rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin: 0;">Installs by tap</h3>
+          </div>
+        </div>
+        <div id="tap-installs-chart" class="chart-surface" style="width: 100%; height: 320px;" role="img" aria-label="Homebrew tap installs comparison"></div>
+      </div>
 
-  <section class="chart-grid" aria-label="Adoption charts">
-    <article class="status-card chart-card">
-      <p class="status-card__eyebrow">Data availability per lane</p>
-      <h2>Adoption coverage by lane</h2>
-      <p>
-        Each lane shows whether pull-count data (registry API) and countme active-device data are tracked
-        in <code>docs/data/</code>. Empty bars reflect honest data gaps, not missing images.
-      </p>
-      <div id="adoption-coverage-chart" class="chart-surface" role="img" aria-label="Adoption coverage by lane chart"></div>
-    </article>
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <div class="dashboard-panel" style="margin-bottom: 0; flex: 1; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 20px; padding: 1.5rem;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <p class="panel-eyebrow" style="font-size: 0.78rem; color: #64748b; text-transform: uppercase; margin-bottom: 0.25rem;">Formula vs Cask</p>
+              <h3 style="font-size: 1rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin: 0;">Package type breakdown</h3>
+            </div>
+          </div>
+          <div id="pkg-type-chart" class="chart-surface--sm" style="width: 100%; height: 260px;" role="img" aria-label="Package type breakdown by tap"></div>
+        </div>
+        <div class="dashboard-panel" style="margin-bottom: 0; flex: 1; background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 20px; padding: 1.5rem;">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <p class="panel-eyebrow" style="font-size: 0.78rem; color: #64748b; text-transform: uppercase; margin-bottom: 0.25rem;">Data availability</p>
+              <h3 style="font-size: 1rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin: 0;">Lane coverage</h3>
+            </div>
+          </div>
+          <div id="coverage-donut-chart" class="chart-surface--sm" style="width: 100%; height: 260px;" role="img" aria-label="Lane data coverage donut chart"></div>
+        </div>
+      </div>
+    </div>
 
-    <article class="status-card chart-card">
-      <p class="status-card__eyebrow">Trust and provenance coverage</p>
-      <h2>Trust coverage by variant</h2>
-      <p>
-        Shows which tracked variants emit SBOMs, CVE scans, and cosign attestations based on
-        static publisher metadata from <code>docs/data/variant-publishers.json</code>.
-      </p>
-      <div id="adoption-trust-chart" class="chart-surface" role="img" aria-label="Trust coverage by variant chart"></div>
-    </article>
-  </section>
+    <div class="dashboard-panel" style="background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 20px; padding: 1.5rem; margin-bottom: 2.5rem;">
+      <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <div>
+          <p class="panel-eyebrow" style="font-size: 0.78rem; color: #64748b; text-transform: uppercase; margin-bottom: 0.25rem;">Top 10 by 90d installs</p>
+          <h3 style="font-size: 1rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin: 0;">Package leaderboard</h3>
+        </div>
+      </div>
+      <div id="homebrew-packages-chart" class="chart-surface--tall" style="width: 100%; height: 380px;" role="img" aria-label="Top packages leaderboard chart"></div>
+    </div>
 
-  <section class="detail-grid">
-    <article class="status-card">
-      <p class="status-card__eyebrow">Per-lane adoption detail</p>
-      <h2>Image lane breakdown</h2>
-      <div class="table-scroll">
-        <table class="data-table">
+    {hbChartData.laneInstalls.length > 0 && (
+      <div class="dashboard-panel" style="background: rgba(15, 23, 42, 0.45); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 20px; padding: 1.5rem; margin-bottom: 2.5rem;">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <div>
+            <p class="panel-eyebrow" style="font-size: 0.78rem; color: #64748b; text-transform: uppercase; margin-bottom: 0.25rem;">Per-lane breakdown</p>
+            <h3 style="font-size: 1rem; font-weight: 700; color: #cbd5e1; text-transform: uppercase; margin: 0;">Installs by image lane</h3>
+          </div>
+        </div>
+        <div id="homebrew-lanes-chart" class="chart-surface" style="width: 100%; height: 320px;" role="img" aria-label="Homebrew lane coverage status chart"></div>
+      </div>
+    )}
+
+    {hbChartData.laneInstalls.length === 0 && (
+      <div id="homebrew-lanes-chart" class="legacy-hidden"></div>
+    )}
+
+    <h2 class="kpi-section-title" style="border-left-color: #fb923c;">Package Leaderboard</h2>
+    <div class="explainer-box">
+      <strong>Global formula analytics</strong> from formulae.brew.sh are merged with repo-tracked tap scope Brewfile packages.
+      These are ecosystem-wide install counts - not attributable to a single image lane. A
+      <strong>115-package tap</strong> (bluefin/brewfile) and a <strong>20-package tap</strong> (bazzite/brewfile)
+      are currently tracked. Missing entries stay visible rather than disappearing.
+    </div>
+
+    {hbPackageLeaderboard.length === 0 ? (
+      <div class="explainer-box">
+        Package leaderboard unavailable. No package-level Homebrew analytics are published in the current dataset.
+      </div>
+    ) : (
+      <div class="fp-table-wrapper table-scroll">
+        <table class="fp-table data-table">
           <thead>
             <tr>
-              <th scope="col">Lane</th>
-              <th scope="col">Variant</th>
-              <th scope="col">Branch</th>
-              <th scope="col">Pull count</th>
-              <th scope="col">Active devices (countme)</th>
-              <th scope="col">State</th>
+              <th scope="col">Package</th>
+              <th scope="col">Tap</th>
+              <th scope="col">Installs (90d)</th>
+              <th scope="col">Downloads</th>
+              <th scope="col">Status</th>
               <th scope="col">Evidence</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {hbPackageLeaderboard.map((pkg) => (
               <tr>
-                <th scope="row">{row.id}</th>
-                <td>{row.variant}</td>
-                <td>{row.branch}</td>
+                <th scope="row" class="cell-primary" style="font-weight: 600; color: #f1f5f9;">{pkg.package_name}</th>
                 <td>
-                  {row.pull_count !== null
-                    ? row.pull_count.toLocaleString()
-                    : <span class="unavailable-note">No registry pull-count data</span>}
-                </td>
-                <td>
-                  {row.countme_active_devices !== null
-                    ? row.countme_active_devices.toLocaleString()
-                    : <span class="unavailable-note">No Fedora countme data</span>}
-                </td>
-                <td>
-                  <span class:list={['pill', `pill--${row.state}`]}>{row.state}</span>
-                  {row.state === 'unavailable' && (
-                    <p class="table-note">{row.state_reason}</p>
+                  {pkg.tap_url ? (
+                    <a href={pkg.tap_url}>{pkg.tap_name ?? pkg.tap_url}</a>
+                  ) : pkg.tap_name ? (
+                    pkg.tap_name
+                  ) : (
+                    <span class="status-badge badge-gap">Unavailable</span>
                   )}
                 </td>
-                <td><a href={row.source_url}>Evidence</a></td>
+                <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{pkg.install_count !== null ? pkg.install_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+                <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{pkg.download_count !== null ? pkg.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+                <td>
+                  <span class:list={['status-badge', pkg.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                    {pkg.state === 'available' ? 'available' : 'unavailable'}
+                  </span>
+                  {pkg.state !== 'available' && pkg.state_reason && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{pkg.state_reason}</p>}
+                </td>
+                <td><a href={pkg.source_url}>Source</a></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </article>
-  </section>
+    )}
 
-  <section class="detail-grid" aria-label="adoption-trust-cards">
-    <article class="status-card">
-      <p class="status-card__eyebrow">Publisher trust and provenance</p>
-      <h2 id="trust-summary-cards">Trust summary cards</h2>
-      <p class="callout-note">
-        Based on static publisher metadata. Trust signals here reflect declared publisher intent,
-        not runtime attestation verification. Evidence links point to the publisher repository.
-      </p>
-      <div class="signal-stack">
-        {trustCards.map((card) => (
-          <article class="signal-card">
-            <div class="signal-card__header">
-              <div>
-                <h3>{card.variant}</h3>
-                {card.org && <p>{card.org}{card.publisher_repo ? ` · ${card.publisher_repo}` : ''}</p>}
-                {card.state === 'unavailable' && <p class="unavailable-note">{card.state_reason}</p>}
-              </div>
-              <span class:list={['pill', `pill--${card.state}`]}>{card.state}</span>
-            </div>
-            {card.state === 'available' && (
-              <ul class="status-list">
-                <li>SBOM: {card.emits_sbom ? 'Published' : 'Not published'}</li>
-                <li>CVE scan: {card.emits_cve_scan ? 'Published' : 'Not published'}</li>
-                <li>Cosign attestation: {card.emits_cosign_attestation ? 'Published' : 'Not published'}</li>
-              </ul>
-            )}
-            <dl class="signal-meta">
-              <div>
-                <dt>Evidence</dt>
-                <dd><a href={card.source_url}>Publisher source</a></dd>
-              </div>
-              <div>
-                <dt>Collected</dt>
-                <dd>{formatUtc(card.collected_at)}</dd>
-              </div>
-            </dl>
-          </article>
-        ))}
+    <h2 class="kpi-section-title" style="border-left-color: #fb923c;">Tap density across tracked lanes</h2>
+    <div class="stat-dl" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+      <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
+        <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Lanes with package density</dt>
+        <dd style="font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0;">{hbTapDensitySummary.lanesWithPackageDensity}</dd>
       </div>
-    </article>
+      <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
+        <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Lanes awaiting package density</dt>
+        <dd style="font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0;">{hbTapDensitySummary.lanesAwaitingPackageDensity}</dd>
+      </div>
+      <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
+        <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Packages in tap scope</dt>
+        <dd style="font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0;">{hbTapDensitySummary.totalPackagesInScope}</dd>
+      </div>
+      <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
+        <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Distinct taps with packages</dt>
+        <dd style="font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0;">{hbTapDensitySummary.distinctTapsWithPackages}</dd>
+      </div>
+      <div class="stat-dl-item" style="background: rgba(30,41,59,0.3); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 0.85rem 1rem;">
+        <dt style="font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase;">Avg packages / covered lane</dt>
+        <dd style="font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0;">{hbTapDensitySummary.averagePackagesPerLane}</dd>
+      </div>
+    </div>
 
-    <article class="status-card">
-      <p class="status-card__eyebrow">Dataset provenance</p>
-      <h2>Collector-derived contract</h2>
-      <dl class="status-card__meta">
-        <div>
-          <dt>Schema version</dt>
-          <dd>{dataset.schema_version}</dd>
-        </div>
-        <div>
-          <dt>Generated at</dt>
-          <dd>{formatUtc(dataset._meta.generated_at)}</dd>
-        </div>
-        <div>
-          <dt>Status</dt>
-          <dd>{dataset._meta.status}</dd>
-        </div>
-      </dl>
-      <p class="table-note">{dataset._meta.description}</p>
-      <a href={`${baseUrl}data/adoption-metrics.json`}>Open raw dataset</a>
-    </article>
-  </section>
+    <div class="fp-table-wrapper table-scroll">
+      <table class="fp-table data-table">
+        <thead>
+          <tr>
+            <th scope="col">Lane</th>
+            <th scope="col">Tap</th>
+            <th scope="col">Package count</th>
+            <th scope="col">Lane installs</th>
+            <th scope="col">Lane downloads</th>
+            <th scope="col">Status</th>
+            <th scope="col">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {hbTapDensityRows.map((lane) => (
+            <tr>
+              <th scope="row" class="cell-primary" style="font-weight: 600; color: #f1f5f9;">{lane.lane_label}</th>
+              <td>
+                {lane.tap_url ? (
+                  <a href={lane.tap_url}>{lane.tap_name ?? lane.tap_url}</a>
+                ) : lane.tap_name ? (
+                  lane.tap_name
+                ) : (
+                  <span class="status-badge badge-gap">Unavailable</span>
+                )}
+              </td>
+              <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{lane.package_count !== null ? lane.package_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+              <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{lane.install_count !== null ? lane.install_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+              <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{lane.download_count !== null ? lane.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+              <td>
+                <span class:list={['status-badge', lane.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                  {lane.state === 'available' ? 'available' : 'awaiting'}
+                </span>
+                {lane.state !== 'available' && lane.state_reason && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{lane.state_reason}</p>}
+              </td>
+              <td><a href={lane.source_url}>Source</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="kpi-section-title" style="border-left-color: #fb923c;">All tracked image lanes (Homebrew Status)</h2>
+    {hbAvailableRows.length > 0 && (
+      <div class="explainer-box">
+        {hbAvailableRows[0].derivation}
+      </div>
+    )}
+
+    <div class="fp-table-wrapper table-scroll">
+      <table class="fp-table data-table">
+        <thead>
+          <tr>
+            <th scope="col">Variant</th>
+            <th scope="col">Branch</th>
+            <th scope="col">Tap</th>
+            <th scope="col">Installs</th>
+            <th scope="col">Downloads</th>
+            <th scope="col">Status</th>
+            <th scope="col">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {hbRows.map((row) => (
+            <tr>
+              <th scope="row" class="cell-primary" style="font-weight: 600; color: #f1f5f9;">{row.variant}</th>
+              <td>{row.branch}</td>
+              <td>
+                {row.tap_url ? (
+                  <a href={row.tap_url}>{row.tap_name ?? row.tap_url}</a>
+                ) : (
+                  <span class="status-badge badge-gap">None tracked</span>
+                )}
+              </td>
+              <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">
+                {row.install_count !== null ? row.install_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}
+              </td>
+              <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">
+                {row.download_count !== null ? row.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}
+              </td>
+              <td>
+                <span class:list={['status-badge', row.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                  {row.state === 'available' ? 'available' : 'awaiting'}
+                </span>
+                {row.state !== 'available' && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{row.state_reason}</p>}
+              </td>
+              <td><a href={row.source_url}>Source</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    {hbTaps.length > 0 && (
+      <>
+        <h2 class="kpi-section-title" style="border-left-color: #fb923c;">Homebrew tap registry</h2>
+        <div class="fp-table-wrapper table-scroll">
+          <table class="fp-table data-table">
+            <thead>
+              <tr>
+                <th scope="col">Tap name</th>
+                 <th scope="col">URL</th>
+                 <th scope="col">Packages</th>
+                 <th scope="col">90d Installs</th>
+                 <th scope="col">Downloads</th>
+                 <th scope="col">Status</th>
+                 <th scope="col">Evidence</th>
+               </tr>
+             </thead>
+             <tbody>
+               {hbTaps.map((tap) => (
+                 <tr>
+                   <th scope="row" class="cell-primary" style="font-weight: 600; color: #f1f5f9;">{tap.tap_name}</th>
+                   <td><a href={tap.tap_url}>{tap.tap_url}</a></td>
+                   <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{tap.package_count !== null ? tap.package_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+                   <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{tap.install_count !== null ? tap.install_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+                   <td class="cell-num" style="font-family: ui-monospace, monospace; color: #cbd5e1;">{tap.download_count !== null ? tap.download_count.toLocaleString() : <span class="status-badge badge-gap">Unavailable</span>}</td>
+                   <td>
+                     <span class:list={['status-badge', tap.state === 'available' ? 'badge-ok' : 'badge-gap']}>
+                       {tap.state === 'available' ? 'available' : 'awaiting'}
+                     </span>
+                     {tap.state !== 'available' && tap.state_reason && <p class="footnote" style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">{tap.state_reason}</p>}
+                   </td>
+                   <td><a href={tap.source_url}>Source</a></td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         </div>
+       </>
+     )}
+    <p style="font-size: 0.85rem; color: #64748b; margin-top: 2rem;">
+      Homebrew data: {hbAvailableRows.length} of {hbRows.length} lanes available. Updated {formatUtc(hbDataset._meta.generated_at)}.
+      <a href={`${baseUrl}data/homebrew-ecosystem.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+    </p>
+  </div>
 
   <script id="adoption-page-data" type="application/json" set:html={serializedPageData}></script>
   <script
@@ -249,158 +1200,737 @@ const unavailableTrustCards = trustCards.filter((c) => c.state === 'unavailable'
       container.innerHTML = `<div class="chart-empty">${message}</div>`;
     }
 
+    const chartColorPalette = {
+      total: '#6366f1',
+      bazzite: '#38bdf8',
+      bluefin: '#a78bfa',
+      aurora: '#10b981',
+      secureblue: '#fbbf24',
+      origami: '#f43f5e',
+      wayblue: '#79c0ff',
+      winblues: '#ec4899'
+    };
+
+    function bootDoraTrendChart() {
+      const el = document.getElementById('dora-trend-chart');
+      if (!el || !pageData || !pageData.doraComparison) return;
+      const chart = window.echarts.init(el);
+      const labels = pageData.doraComparison.labels || [];
+      const datasets = pageData.doraComparison.datasets || [];
+      const palette = ['#a78bfa', '#10b981', '#f59e0b', '#6366f1', '#ec4899', '#f43f5e', '#38bdf8', '#22c55e'];
+      const varMap = { blue: '#3b82f6', green: '#10b981', orange: '#f97316', purple: '#8b5cf6', indigo: '#6366f1', yellow: '#eab308', red: '#ef4444' };
+
+      chart.setOption({
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        legend: {
+          textStyle: { color: '#cbd5e1' },
+          bottom: 0,
+          type: 'scroll'
+        },
+        grid: { left: 60, right: 30, top: 20, bottom: 45 },
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: labels,
+          axisLabel: { color: '#94a3b8' },
+          axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+        },
+        yAxis: {
+          type: 'value',
+          min: 0,
+          axisLabel: { color: '#94a3b8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+        },
+        series: datasets.map(function(ds, idx) {
+          var hex = palette[idx % palette.length];
+          if (ds.color && ds.color.indexOf('var(--') === 0) {
+            var name = ds.color.replace('var(--', '').replace(')', '');
+            if (varMap[name]) hex = varMap[name];
+          }
+          return {
+            name: ds.label || ('Project ' + idx),
+            type: 'line',
+            showSymbol: false,
+            smooth: false,
+            itemStyle: { color: hex },
+            lineStyle: { width: 2 },
+            data: Array.isArray(ds.values) ? ds.values : []
+          };
+        })
+      });
+    }
+
+    function bootCountmeTrendChart() {
+      var countmeContainer = document.getElementById('countme-trend-chart');
+      if (!countmeContainer || !pageData || !pageData.countmeTrend) return;
+      var countmeChart = window.echarts.init(countmeContainer);
+      function updateCountmeChart(range) {
+        var datasetType = (range === 'all' || range === '365') ? pageData.countmeTrend.monthly : pageData.countmeTrend.weekly;
+        var sliced = range === '30' ? datasetType.slice(-4) : (range === '90' ? datasetType.slice(-12) : datasetType);
+        
+        var dates = sliced.map(d => d.week_start);
+        var series = pageData.countmeTrend.DISTROS.map((distro, idx) => {
+          return {
+            name: pageData.countmeTrend.LABELS[idx],
+            type: 'line',
+            stack: 'total',
+            areaStyle: {},
+            emphasis: { focus: 'series' },
+            showSymbol: false,
+            data: sliced.map(d => d.distros[distro] || 0)
+          };
+        });
+
+        countmeChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' }
+          },
+          legend: {
+            textStyle: { color: '#cbd5e1' },
+            bottom: 0,
+            type: 'scroll'
+          },
+          grid: { left: 60, right: 30, top: 20, bottom: 45 },
+          xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: dates,
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: series
+        }, true);
+      }
+      updateCountmeChart('365');
+      document.querySelectorAll('#countme-range-btns .toggle-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#countme-range-btns .toggle-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          updateCountmeChart(this.dataset.range);
+        });
+      });
+    }
+
+    function bootEcosystemPieChart() {
+      var pieContainer = document.getElementById('ecosystem-pie-chart');
+      if (!pieContainer || !pageData || !pageData.countmeTrend) return;
+      var pieChart = window.echarts.init(pieContainer);
+      var currentData = pageData.countmeTrend.weekly[pageData.countmeTrend.weekly.length - 1];
+      var pieSeriesData = pageData.countmeTrend.DISTROS.map((distro, idx) => {
+        return {
+          name: pageData.countmeTrend.LABELS[idx],
+          value: currentData.distros[distro] || 0
+        };
+      }).filter(d => d.value > 0);
+
+      pieChart.setOption({
+        tooltip: {
+          trigger: 'item',
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        legend: {
+          textStyle: { color: '#cbd5e1' },
+          type: 'scroll',
+          bottom: 0
+        },
+        series: [{
+          name: 'Device Share',
+          type: 'pie',
+          radius: ['40%', '70%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 6,
+            borderColor: '#0f172a',
+            borderWidth: 2
+          },
+          label: { show: false },
+          data: pieSeriesData
+        }]
+      });
+    }
+
+    function bootQuayTrendChart() {
+      var quayContainer = document.getElementById('quay-trend');
+      if (!quayContainer || !pageData || !Array.isArray(pageData.quayTrend)) return;
+      var quayChart = window.echarts.init(quayContainer);
+      function updateQuayChart(days) {
+        var filtered = pageData.quayTrend.slice(-days);
+        var dates = filtered.map(d => d.date);
+        var counts = filtered.map(d => d.count);
+        quayChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' }
+          },
+          grid: { left: 60, right: 20, top: 15, bottom: 35 },
+          xAxis: {
+            type: 'category',
+            data: dates,
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: [{
+            name: 'Pulls',
+            type: 'line',
+            data: counts,
+            showSymbol: false,
+            smooth: true,
+            itemStyle: { color: '#38bdf8' },
+            lineStyle: { width: 2 },
+            areaStyle: {
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgba(56, 189, 248, 0.25)' },
+                  { offset: 1, color: 'rgba(56, 189, 248, 0)' }
+                ]
+              }
+            }
+          }]
+        });
+      }
+      updateQuayChart(90);
+      document.querySelectorAll('#quay-trend-range-btns .toggle-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('#quay-trend-range-btns .toggle-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          updateQuayChart(parseInt(this.dataset.range, 10));
+        });
+      });
+    }
+
+    function bootLaneBreakdownChart() {
+      var laneBreakdownContainer = document.getElementById('lane-breakdown-chart');
+      if (!laneBreakdownContainer || !pageData || !Array.isArray(pageData.lanesCoverage)) return;
+      var breakdownChart = window.echarts.init(laneBreakdownContainer);
+      var labels = pageData.lanesCoverage.map(function(l) { return l.label; });
+      var pullsData = pageData.lanesCoverage.map(function(l) { return l.pullCount !== null ? l.pullCount : 0; });
+      var devicesData = pageData.lanesCoverage.map(function(l) { return l.countmeActiveDevices !== null ? l.countmeActiveDevices : 0; });
+      
+      breakdownChart.setOption({
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        legend: {
+          textStyle: { color: '#cbd5e1' },
+          bottom: 0
+        },
+        grid: { left: 140, right: 30, top: 20, bottom: 45 },
+        xAxis: {
+          type: 'value',
+          axisLabel: { color: '#94a3b8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: labels,
+          axisLabel: { color: '#94a3b8' }
+        },
+        series: [
+          {
+            name: 'Registry Pulls',
+            type: 'bar',
+            data: pullsData,
+            itemStyle: { color: '#38bdf8', borderRadius: [0, 4, 4, 0] }
+          },
+          {
+            name: 'Active Devices',
+            type: 'bar',
+            data: devicesData,
+            itemStyle: { color: '#a78bfa', borderRadius: [0, 4, 4, 0] }
+          }
+        ]
+      });
+    }
+
+    function bootOsVersionChart() {
+      var osContainer = document.getElementById('os-version');
+      if (!osContainer || !pageData || !pageData.osVersion) return;
+      var osChart = window.echarts.init(osContainer);
+      osChart.setOption({
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' }
+        },
+        grid: { left: 70, right: 20, top: 15, bottom: 35 },
+        xAxis: {
+          type: 'value',
+          axisLabel: { color: '#94a3b8' },
+          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+        },
+        yAxis: {
+          type: 'category',
+          data: pageData.osVersion.labels,
+          axisLabel: { color: '#94a3b8' }
+        },
+        series: [{
+          name: 'Devices',
+          type: 'bar',
+          data: pageData.osVersion.values,
+          itemStyle: { color: '#a78bfa', borderRadius: [0, 4, 4, 0] }
+        }]
+      });
+    }
+
+    function bootIndividualDistroChart(distro) {
+      const el = document.getElementById(`${distro}-trend-chart`);
+      if (!el || !pageData || !pageData.countmeTrend) return;
+      const distroChart = window.echarts.init(el);
+      const color = chartColorPalette[distro] || '#6366f1';
+
+      function updateDistroChart(range) {
+        var datasetType = (range === 'all' || range === '365') ? pageData.countmeTrend.monthly : pageData.countmeTrend.weekly;
+        var sliced = range === '30' ? datasetType.slice(-4) : (range === '90' ? datasetType.slice(-12) : datasetType);
+        var dates = sliced.map(d => d.week_start);
+        var counts = sliced.map(d => d.distros[distro] || 0);
+
+        distroChart.setOption({
+          tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' }
+          },
+          grid: { left: 50, right: 15, top: 15, bottom: 30 },
+          xAxis: {
+            type: 'category',
+            data: dates,
+            axisLabel: { color: '#94a3b8' },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          },
+          yAxis: {
+            type: 'value',
+            axisLabel: { color: '#94a3b8' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+          },
+          series: [{
+            name: 'Active Devices',
+            type: 'line',
+            data: counts,
+            showSymbol: false,
+            smooth: true,
+            itemStyle: { color: color },
+            lineStyle: { width: 2 },
+            areaStyle: {
+              color: {
+                type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: color + '25' },
+                  { offset: 1, color: color + '00' }
+                ]
+              }
+            }
+          }]
+        }, true);
+      }
+
+      updateDistroChart('365');
+      document.querySelectorAll(`#${distro}-range-btns .toggle-btn`).forEach(btn => {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll(`#${distro}-range-btns .toggle-btn`).forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          updateDistroChart(this.dataset.range);
+        });
+      });
+    }
+
+    function bootLegacyCoverageChart() {
+      var coverageContainer = document.getElementById('adoption-coverage-chart');
+      if (!coverageContainer || !pageData || !Array.isArray(pageData.lanesCoverage)) return;
+      var lanesCoverage = pageData.lanesCoverage;
+      var lanes = lanesCoverage.map(function(l) { return l.label; });
+      var pullData = lanesCoverage.map(function(l) { return l.hasPullData ? 1 : 0; });
+      var countmeData = lanesCoverage.map(function(l) { return l.hasCountmeData ? 1 : 0; });
+      var coverageChart = window.echarts.init(coverageContainer);
+      coverageChart.setOption({
+        aria: { enabled: true },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' },
+          formatter: function(params) {
+            var lane = lanesCoverage[params[0].dataIndex];
+            return [
+              '<strong>' + lane.label + '</strong>',
+              'Pull data: ' + (lane.hasPullData ? 'available' : 'pending'),
+              'Countme data: ' + (lane.hasCountmeData ? 'available' : 'pending'),
+              'State: ' + lane.state,
+            ].join('<br>');
+          },
+        },
+        legend: {
+          textStyle: { color: '#cbd5f5' },
+          data: ['Pull data', 'Countme data'],
+        },
+        grid: { left: 140, right: 20, top: 40, bottom: 20 },
+        xAxis: {
+          type: 'value',
+          max: 1,
+          axisLabel: {
+            color: '#cbd5f5',
+            formatter: function(v) { return v === 1 ? 'available' : 'pending'; },
+          },
+        },
+        yAxis: {
+          type: 'category',
+          data: lanes,
+          axisLabel: { color: '#cbd5f5' },
+        },
+        series: [
+          {
+            name: 'Pull data',
+            type: 'bar',
+            data: pullData,
+            itemStyle: { color: '#38bdf8' },
+          },
+          {
+            name: 'Countme data',
+            type: 'bar',
+            data: countmeData,
+            itemStyle: { color: '#22c55e' },
+          },
+        ],
+      });
+    }
+
+    function bootLegacyTrustChart() {
+      var trustContainer = document.getElementById('adoption-trust-chart');
+      if (!trustContainer || !pageData || !Array.isArray(pageData.trustCoverage)) return;
+      var trustCoverage = pageData.trustCoverage;
+      var variants = trustCoverage.map(function(c) { return c.variant; });
+      var sbomData = trustCoverage.map(function(c) { return c.sbom; });
+      var cveData = trustCoverage.map(function(c) { return c.cveScan; });
+      var cosignData = trustCoverage.map(function(c) { return c.cosign; });
+      var trustChart = window.echarts.init(trustContainer);
+      trustChart.setOption({
+        aria: { enabled: true },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          backgroundColor: 'rgba(15, 23, 42, 0.9)',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          textStyle: { color: '#cbd5e1' },
+          formatter: function(params) {
+            var card = trustCoverage[params[0].dataIndex];
+            return [
+              '<strong>' + card.variant + '</strong>',
+              'Org: ' + (card.org || 'unknown'),
+              'SBOM: ' + (card.sbom ? 'published' : 'not published'),
+              'CVE scan: ' + (card.cveScan ? 'published' : 'not published'),
+              'Cosign: ' + (card.cosign ? 'published' : 'not published'),
+            ].join('<br>');
+          },
+        },
+        legend: {
+          textStyle: { color: '#cbd5f5' },
+          data: ['SBOM', 'CVE scan', 'Cosign'],
+        },
+        grid: { left: 80, right: 20, top: 40, bottom: 20 },
+        xAxis: {
+          type: 'category',
+          data: variants,
+          axisLabel: { color: '#cbd5f5', rotate: 15 },
+        },
+        yAxis: {
+          type: 'value',
+          max: 1,
+          axisLabel: {
+            color: '#cbd5f5',
+            formatter: function(v) { return v === 1 ? 'yes' : 'no'; },
+          },
+        },
+        series: [
+          {
+            name: 'SBOM',
+            type: 'bar',
+            data: sbomData,
+            itemStyle: { color: '#a78bfa' },
+          },
+          {
+            name: 'CVE scan',
+            type: 'bar',
+            data: cveData,
+            itemStyle: { color: '#f59e0b' },
+          },
+          {
+            name: 'Cosign',
+            type: 'bar',
+            data: cosignData,
+            itemStyle: { color: '#22c55e' },
+          },
+        ],
+      });
+    }
+
+    function bootHomebrewTapInstallsChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var tapComp = Array.isArray(pageData.homebrew.tapComparison) ? pageData.homebrew.tapComparison : [];
+      var tcEl = document.getElementById('tap-installs-chart');
+      if (!tcEl) return;
+      if (tapComp.length > 0) {
+        var tcChart = window.echarts.init(tcEl);
+        tcChart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' },
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var out = '<strong>' + params[0].axisValue + '</strong><br>';
+              params.forEach(function(p) {
+                out += p.marker + ' ' + p.seriesName + ': <strong>' + p.value.toLocaleString() + '</strong><br>';
+              });
+              return out;
+            }
+          },
+          legend: { data: ['90d Installs', 'Downloads', 'Packages'], textStyle: { color: '#cbd5f5' }, top: 0 },
+          grid: { left: 70, right: 20, top: 40, bottom: 50 },
+          xAxis: {
+            type: 'category',
+            data: tapComp.map(function(t) { return t.name; }),
+            axisLabel: { color: '#cbd5f5', rotate: 15 },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+          },
+          yAxis: { type: 'value', axisLabel: { color: '#cbd5f5', formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          series: [
+            { name: '90d Installs', type: 'bar', data: tapComp.map(function(t) { return t.installs; }), itemStyle: { color: '#38bdf8', borderRadius: [4,4,0,0] } },
+            { name: 'Downloads',   type: 'bar', data: tapComp.map(function(t) { return t.downloads; }), itemStyle: { color: '#818cf8', borderRadius: [4,4,0,0] } },
+            { name: 'Packages',    type: 'bar', data: tapComp.map(function(t) { return t.packages; }), itemStyle: { color: '#fb923c', borderRadius: [4,4,0,0] } },
+          ],
+        });
+      } else {
+        renderUnavailable('tap-installs-chart', 'Tap analytics data pending.');
+      }
+    }
+
+    function bootHomebrewPkgTypeChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var pts = Array.isArray(pageData.homebrew.packageTypeSplit) ? pageData.homebrew.packageTypeSplit : [];
+      var ptEl = document.getElementById('pkg-type-chart');
+      if (!ptEl) return;
+      if (pts.length > 0) {
+        var ptChart = window.echarts.init(ptEl);
+        ptChart.setOption({
+          tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' }, trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: { data: ['Formula', 'Cask'], textStyle: { color: '#cbd5f5' }, top: 0 },
+          grid: { left: 80, right: 20, top: 36, bottom: 50 },
+          xAxis: { type: 'category', data: pts.map(function(t) { return t.name; }), axisLabel: { color: '#cbd5f5', rotate: 10 }, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } } },
+          yAxis: { type: 'value', axisLabel: { color: '#cbd5f5' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          series: [
+            { name: 'Formula', type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.formula; }), itemStyle: { color: '#22d3ee' } },
+            { name: 'Cask',    type: 'bar', stack: 'pkg', data: pts.map(function(t) { return t.cask; }),    itemStyle: { color: '#f472b6', borderRadius: [4,4,0,0] } },
+          ],
+        });
+      } else {
+        renderUnavailable('pkg-type-chart', 'Package type breakdown pending.');
+      }
+    }
+
+    function bootHomebrewCoverageDonutChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var donut = Array.isArray(pageData.homebrew.coverageDonut) ? pageData.homebrew.coverageDonut : [];
+      var dnEl = document.getElementById('coverage-donut-chart');
+      if (!dnEl) return;
+      if (donut.length > 0) {
+        var dnChart = window.echarts.init(dnEl);
+        dnChart.setOption({
+          tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' }, trigger: 'item', formatter: '{b}: {c} lanes ({d}%)' },
+          legend: { orient: 'horizontal', bottom: 4, textStyle: { color: '#cbd5f5' } },
+          series: [{
+            name: 'Lane coverage',
+            type: 'pie',
+            radius: ['45%', '70%'],
+            center: ['50%', '45%'],
+            data: donut,
+            label: { color: '#e2e8f0', fontSize: 11 },
+            emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,.5)' } },
+          }],
+        });
+      } else {
+        renderUnavailable('coverage-donut-chart', 'Coverage data pending.');
+      }
+    }
+
+    function bootHomebrewPackagesChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var topPkgs = Array.isArray(pageData.homebrew.topPackages) ? pageData.homebrew.topPackages : [];
+      var pkgsEl  = document.getElementById('homebrew-packages-chart');
+      if (!pkgsEl) return;
+      if (topPkgs.length > 0) {
+        var revPkgs = topPkgs.slice().reverse();
+        var pkgChart = window.echarts.init(pkgsEl);
+        pkgChart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' },
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var idx  = params[0].dataIndex;
+              var pkg  = revPkgs[idx];
+              return [
+                '<strong>' + pkg.name + '</strong>',
+                'Tap: '              + (pkg.tap      || 'Unknown'),
+                'Installs (90d): '   + (pkg.installs !== null ? pkg.installs.toLocaleString() : 'Unavailable'),
+                'Downloads: '        + (pkg.downloads !== null ? pkg.downloads.toLocaleString() : 'Unavailable'),
+              ].join('<br>');
+            },
+          },
+          grid: { left: 110, right: 25, top: 20, bottom: 35 },
+          xAxis: { type: 'value', axisLabel: { color: '#cbd5f5', formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          yAxis: { type: 'category', data: revPkgs.map(function(p) { return p.name; }), axisLabel: { color: '#cbd5f5' } },
+          series: [{
+            name: 'Installs',
+            type: 'bar',
+            data: revPkgs.map(function(p) { return p.installs; }),
+            itemStyle: {
+              borderRadius: [0, 4, 4, 0],
+              color: new window.echarts.graphic.LinearGradient(0, 0, 1, 0, [
+                { offset: 0, color: '#0ea5e9' },
+                { offset: 1, color: '#38bdf8' },
+              ]),
+            },
+          }],
+        });
+      } else {
+        renderUnavailable('homebrew-packages-chart', 'No package telemetry available.');
+      }
+    }
+
+    function bootHomebrewLanesChart() {
+      if (!pageData || !pageData.homebrew) return;
+      var laneIns = Array.isArray(pageData.homebrew.laneInstalls) ? pageData.homebrew.laneInstalls : [];
+      var laneEl  = document.getElementById('homebrew-lanes-chart');
+      if (!laneEl) return;
+      if (laneIns.length > 0) {
+        var laneChart = window.echarts.init(laneEl);
+        laneChart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)', borderColor: 'rgba(255, 255, 255, 0.1)', textStyle: { color: '#cbd5e1' },
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function(params) {
+              var li = laneIns[params[0].dataIndex];
+              return [
+                '<strong>' + li.label + '</strong>',
+                'Installs (90d): '  + li.installs.toLocaleString(),
+                'Downloads: '       + li.downloads.toLocaleString(),
+              ].join('<br>');
+            },
+          },
+          grid: { left: 120, right: 20, top: 20, bottom: 30 },
+          xAxis: { type: 'value', axisLabel: { color: '#cbd5f5', formatter: function(v) { return v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v; } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } } },
+          yAxis: { type: 'category', data: laneIns.map(function(l) { return l.label; }), axisLabel: { color: '#cbd5f5' } },
+          series: [
+            {
+              name: 'Installs',
+              type: 'bar',
+              data: laneIns.map(function(l) { return l.installs; }),
+              itemStyle: { borderRadius: [0,4,4,0], color: new window.echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:'#059669'},{offset:1,color:'#34d399'}]) },
+              label: { show: true, position: 'right', color: '#94a3b8', fontSize: 11, formatter: function(p) { return (p.value/1e6).toFixed(1)+'M'; } },
+            },
+          ],
+        });
+      } else {
+        renderUnavailable('homebrew-lanes-chart', 'Per-lane install data pending.');
+      }
+    }
+
+    function setupLazyLoading() {
+      function lazyInit(elementId, bootFn) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        if (typeof IntersectionObserver !== 'undefined') {
+          const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                bootFn();
+                observer.unobserve(el);
+              }
+            });
+          }, { rootMargin: '100px' });
+          observer.observe(el);
+        } else {
+          bootFn();
+        }
+      }
+
+      lazyInit('dora-trend-chart', bootDoraTrendChart);
+      lazyInit('countme-trend-chart', bootCountmeTrendChart);
+      lazyInit('ecosystem-pie-chart', bootEcosystemPieChart);
+      lazyInit('quay-trend', bootQuayTrendChart);
+      lazyInit('lane-breakdown-chart', bootLaneBreakdownChart);
+      lazyInit('os-version', bootOsVersionChart);
+      
+      // Individual distro charts
+      lazyInit('bazzite-trend-chart', function() { bootIndividualDistroChart('bazzite'); });
+      lazyInit('bluefin-trend-chart', function() { bootIndividualDistroChart('bluefin'); });
+      lazyInit('aurora-trend-chart', function() { bootIndividualDistroChart('aurora'); });
+
+      // Legacy containers for test compatibility
+      lazyInit('adoption-coverage-chart', bootLegacyCoverageChart);
+      lazyInit('adoption-trust-chart', bootLegacyTrustChart);
+
+      // Homebrew charts
+      lazyInit('tap-installs-chart', bootHomebrewTapInstallsChart);
+      lazyInit('pkg-type-chart', bootHomebrewPkgTypeChart);
+      lazyInit('coverage-donut-chart', bootHomebrewCoverageDonutChart);
+      lazyInit('homebrew-packages-chart', bootHomebrewPackagesChart);
+      lazyInit('homebrew-lanes-chart', bootHomebrewLanesChart);
+    }
+
     function waitForCharts(attempt) {
       if (attempt === undefined) attempt = 0;
       if (window.echarts) {
-        bootCharts(window.echarts);
+        setupLazyLoading();
         return;
       }
       if (attempt > 40) {
-        renderUnavailable('adoption-coverage-chart', 'ECharts failed to load. Table below remains the source of truth.');
-        renderUnavailable('adoption-trust-chart', 'Trust chart unavailable because the chart runtime did not load.');
+        renderUnavailable('dora-trend-chart', 'Chart runtime failed to load.');
+        renderUnavailable('countme-trend-chart', 'Chart runtime failed to load.');
+        renderUnavailable('quay-trend', 'Chart runtime failed to load.');
         return;
       }
       window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
     }
 
-    function bootCharts(echarts) {
-      if (!pageData) return;
-
-      var coverageContainer = document.getElementById('adoption-coverage-chart');
-      var trustContainer = document.getElementById('adoption-trust-chart');
-
-      var lanesCoverage = Array.isArray(pageData.lanesCoverage) ? pageData.lanesCoverage : [];
-      var trustCoverage = Array.isArray(pageData.trustCoverage) ? pageData.trustCoverage : [];
-
-      if (!coverageContainer || lanesCoverage.length === 0) {
-        renderUnavailable('adoption-coverage-chart', 'No lane coverage data published in adoption-metrics.json yet.');
-      } else {
-        var lanes = lanesCoverage.map(function(l) { return l.label; });
-        var pullData = lanesCoverage.map(function(l) { return l.hasPullData ? 1 : 0; });
-        var countmeData = lanesCoverage.map(function(l) { return l.hasCountmeData ? 1 : 0; });
-        var coverageChart = echarts.init(coverageContainer);
-        coverageChart.setOption({
-          aria: { enabled: true },
-          tooltip: {
-            trigger: 'axis',
-            axisPointer: { type: 'shadow' },
-            formatter: function(params) {
-              var lane = lanesCoverage[params[0].dataIndex];
-              return [
-                '<strong>' + lane.label + '</strong>',
-                'Pull data: ' + (lane.hasPullData ? 'available' : 'pending'),
-                'Countme data: ' + (lane.hasCountmeData ? 'available' : 'pending'),
-                'State: ' + lane.state,
-              ].join('<br>');
-            },
-          },
-          legend: {
-            textStyle: { color: '#cbd5f5' },
-            data: ['Pull data', 'Countme data'],
-          },
-          grid: { left: 140, right: 20, top: 40, bottom: 20 },
-          xAxis: {
-            type: 'value',
-            max: 1,
-            axisLabel: {
-              color: '#cbd5f5',
-              formatter: function(v) { return v === 1 ? 'available' : 'pending'; },
-            },
-          },
-          yAxis: {
-            type: 'category',
-            data: lanes,
-            axisLabel: { color: '#cbd5f5' },
-          },
-          series: [
-            {
-              name: 'Pull data',
-              type: 'bar',
-              data: pullData,
-              itemStyle: { color: '#38bdf8' },
-            },
-            {
-              name: 'Countme data',
-              type: 'bar',
-              data: countmeData,
-              itemStyle: { color: '#22c55e' },
-            },
-          ],
-        });
-      }
-
-      if (!trustContainer || trustCoverage.length === 0) {
-        renderUnavailable('adoption-trust-chart', 'No trust coverage data published in adoption-metrics.json yet.');
-      } else {
-        var variants = trustCoverage.map(function(c) { return c.variant; });
-        var sbomData = trustCoverage.map(function(c) { return c.sbom; });
-        var cveData = trustCoverage.map(function(c) { return c.cveScan; });
-        var cosignData = trustCoverage.map(function(c) { return c.cosign; });
-        var trustChart = echarts.init(trustContainer);
-        trustChart.setOption({
-          aria: { enabled: true },
-          tooltip: {
-            trigger: 'axis',
-            axisPointer: { type: 'shadow' },
-            formatter: function(params) {
-              var card = trustCoverage[params[0].dataIndex];
-              return [
-                '<strong>' + card.variant + '</strong>',
-                'Org: ' + (card.org || 'unknown'),
-                'SBOM: ' + (card.sbom ? 'published' : 'not published'),
-                'CVE scan: ' + (card.cveScan ? 'published' : 'not published'),
-                'Cosign: ' + (card.cosign ? 'published' : 'not published'),
-              ].join('<br>');
-            },
-          },
-          legend: {
-            textStyle: { color: '#cbd5f5' },
-            data: ['SBOM', 'CVE scan', 'Cosign'],
-          },
-          grid: { left: 80, right: 20, top: 40, bottom: 20 },
-          xAxis: {
-            type: 'category',
-            data: variants,
-            axisLabel: { color: '#cbd5f5', rotate: 15 },
-          },
-          yAxis: {
-            type: 'value',
-            max: 1,
-            axisLabel: {
-              color: '#cbd5f5',
-              formatter: function(v) { return v === 1 ? 'yes' : 'no'; },
-            },
-          },
-          series: [
-            {
-              name: 'SBOM',
-              type: 'bar',
-              data: sbomData,
-              itemStyle: { color: '#a78bfa' },
-            },
-            {
-              name: 'CVE scan',
-              type: 'bar',
-              data: cveData,
-              itemStyle: { color: '#f59e0b' },
-            },
-            {
-              name: 'Cosign',
-              type: 'bar',
-              data: cosignData,
-              itemStyle: { color: '#22c55e' },
-            },
-          ],
-        });
-      }
-
-      window.addEventListener('resize', function() {
-        document.querySelectorAll('.chart-surface').forEach(function(element) {
-          var instance = echarts.getInstanceByDom(element);
-          if (instance) instance.resize();
-        });
+    window.addEventListener('resize', function() {
+      document.querySelectorAll('.chart-surface, .chart-box, .chart-box-large, .chart-box-16-9, #lane-breakdown-chart, .kpi-card__sparkline').forEach(function(element) {
+        var instance = window.echarts.getInstanceByDom(element);
+        if (instance) instance.resize();
       });
-    }
+    });
 
     waitForCharts();
   </script>

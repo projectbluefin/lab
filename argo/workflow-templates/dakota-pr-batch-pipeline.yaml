@@ -1,0 +1,241 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: dakota-pr-batch-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      Review Dakota PRs in-cluster by fetching open PRs from GitHub, enforcing a
+      maintainer approval gate, preparing an ephemeral merge candidate from the PR
+      head merged onto the base branch, and running build and QA commands inside
+      the workflow pod. This path stays isolated from the remote builder path and
+      uses the same WorkflowTemplate conventions as the rest of the lab.
+  labels:
+    app.kubernetes.io/component: pr-batch
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  podGC:
+    strategy: OnWorkflowCompletion
+  ttlStrategy:
+    secondsAfterSuccess: 3600
+    secondsAfterFailure: 86400
+  activeDeadlineSeconds: 86400
+  entrypoint: review-batch
+
+  arguments:
+    parameters:
+      - name: pr-numbers
+        value: ""
+      - name: repo-slug
+        value: "projectbluefin/dakota"
+      - name: repo-url
+        value: "https://github.com/projectbluefin/dakota.git"
+      - name: base-branch
+        value: "testing"
+      - name: max-prs
+        value: "10"
+      - name: approval-state
+        value: "APPROVED"
+      - name: approval-author-associations
+        value: "OWNER,MEMBER,COLLABORATOR"
+      - name: build-command
+        value: "just validate && just build default"
+      - name: qa-command
+        value: "just lint"
+
+  templates:
+    - name: review-batch
+      priorityClassName: bst-build
+      metadata:
+        labels:
+          app.kubernetes.io/part-of: bluefin-test-suite
+          bluefin.io/step: dakota-pr-batch
+      volumes:
+        - name: dev-fuse
+          hostPath:
+            path: /dev/fuse
+            type: CharDevice
+      script:
+        image: ghcr.io/projectbluefin/lab-runner:latest
+        command: [sh]
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: "12"
+            memory: 24Gi
+          limits:
+            cpu: "24"
+            memory: 48Gi
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
+        volumeMounts:
+          - name: dev-fuse
+            mountPath: /dev/fuse
+        source: |
+          exec bash <<'SCRIPT_EOF'
+          set -euxo pipefail
+
+          REPO_SLUG="{{workflow.parameters.repo-slug}}"
+          REPO_URL="{{workflow.parameters.repo-url}}"
+          BASE_BRANCH="{{workflow.parameters.base-branch}}"
+          MAX_PRS="{{workflow.parameters.max-prs}}"
+          PR_NUMBERS="{{workflow.parameters.pr-numbers}}"
+          BUILD_COMMAND="{{workflow.parameters.build-command}}"
+          QA_COMMAND="{{workflow.parameters.qa-command}}"
+          APPROVAL_STATE="{{workflow.parameters.approval-state}}"
+          APPROVAL_AUTHOR_ASSOCIATIONS="{{workflow.parameters.approval-author-associations}}"
+          WORK_ROOT="${PWD}/.dakota-pr-batch"
+
+          echo "Running as $(whoami)"
+          echo "Podman version: $(podman --version 2>/dev/null || true)"
+          mkdir -p "${WORK_ROOT}"
+          mkdir -p /etc/containers
+          cat > /etc/containers/storage.conf <<'EOF'
+          [storage]
+          driver = "vfs"
+
+          [storage.options]
+          mount_program = ""
+          EOF
+          export BUILDAH_ISOLATION=chroot
+          export PODMAN_USERNS=host
+          cleanup() {
+            rm -rf "${WORK_ROOT}"
+          }
+          trap cleanup EXIT
+
+          github_get() {
+            local URL="$1"
+            curl -fsS \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${URL}"
+          }
+
+          if [[ -z "${GITHUB_TOKEN:-}" ]]; then
+            echo "GITHUB_TOKEN is required" >&2
+            exit 1
+          fi
+
+          echo "Fetching PR metadata from ${REPO_SLUG}" >&2
+          if [[ -n "${PR_NUMBERS}" ]]; then
+            PRS_JSON_FILE="${WORK_ROOT}/prs.json"
+            printf '[]\n' > "${PRS_JSON_FILE}"
+            IFS=',' read -r -a PR_LIST <<< "${PR_NUMBERS}"
+            for PR_NUM in "${PR_LIST[@]}"; do
+              PR_JSON=$(github_get "https://api.github.com/repos/${REPO_SLUG}/pulls/${PR_NUM}")
+              jq --argjson item "${PR_JSON}" '. + [$item]' "${PRS_JSON_FILE}" > "${WORK_ROOT}/prs.tmp"
+              mv "${WORK_ROOT}/prs.tmp" "${PRS_JSON_FILE}"
+            done
+            PRS_JSON=$(cat "${PRS_JSON_FILE}")
+          else
+            PRS_JSON=$(github_get "https://api.github.com/repos/${REPO_SLUG}/pulls?state=open&per_page=${MAX_PRS}")
+          fi
+          PR_COUNT=$(echo "${PRS_JSON}" | jq 'length')
+          echo "Discovered ${PR_COUNT} PR(s)" >&2
+
+          if [[ "${PR_COUNT}" -eq 0 ]]; then
+            echo "No PRs to review" >&2
+            exit 0
+          fi
+
+          ORG_MAINTAINERS_JSON=$(github_get "https://api.github.com/orgs/projectbluefin/members?role=maintainer&per_page=100")
+          ORG_MAINTAINERS=$(echo "${ORG_MAINTAINERS_JSON}" | jq -r '.[].login' | tr '\n' ' ')
+          REPO_MAINTAINERS_JSON=$(github_get "https://api.github.com/repos/${REPO_SLUG}/collaborators?per_page=100")
+          REPO_MAINTAINERS=$(echo "${REPO_MAINTAINERS_JSON}" | jq -r '.[] | select(.permissions.maintain == true or .permissions.admin == true) | .login' | tr '\n' ' ')
+
+          is_maintainer() {
+            local login="$1"
+            if echo "${ORG_MAINTAINERS}" | tr ' ' '\n' | grep -Fxq "${login}"; then
+              return 0
+            fi
+            if echo "${REPO_MAINTAINERS}" | tr ' ' '\n' | grep -Fxq "${login}"; then
+              return 0
+            fi
+            return 1
+          }
+
+          failures=0
+          while read -r pr; do
+            PR_NUM=$(echo "${pr}" | jq -r '.number')
+            PR_TITLE=$(echo "${pr}" | jq -r '.title')
+            PR_AUTHOR=$(echo "${pr}" | jq -r '.user.login')
+            PR_DRAFT=$(echo "${pr}" | jq -r '.draft')
+            echo "Reviewing PR #${PR_NUM}: ${PR_TITLE}" >&2
+
+            if [[ "${PR_DRAFT}" == "true" ]]; then
+              echo "Skipping draft PR #${PR_NUM}" >&2
+              continue
+            fi
+
+            REVIEWS_JSON=$(github_get "https://api.github.com/repos/${REPO_SLUG}/pulls/${PR_NUM}/reviews")
+            approved=0
+            if is_maintainer "${PR_AUTHOR}"; then
+              approved=1
+            else
+              while read -r review; do
+                review_state=$(echo "${review}" | jq -r '.state // empty')
+                review_user=$(echo "${review}" | jq -r '.user.login // empty')
+                if [[ "${review_state}" == "${APPROVAL_STATE}" ]] && [[ "${review_user}" != "${PR_AUTHOR}" ]] && is_maintainer "${review_user}"; then
+                  approved=1
+                  break
+                fi
+              done < <(echo "${REVIEWS_JSON}" | jq -c '.[]')
+            fi
+
+            if [[ "${approved}" -ne 1 ]]; then
+              echo "PR #${PR_NUM} failed the maintainer approval gate" >&2
+              failures=$((failures + 1))
+              continue
+            fi
+
+            PR_DIR="${WORK_ROOT}/pr-${PR_NUM}"
+            rm -rf "${PR_DIR}"
+            git clone --depth 1 --branch "${BASE_BRANCH}" "${REPO_URL}" "${PR_DIR}" >/dev/null 2>&1
+            cd "${PR_DIR}"
+            git config user.name "argo-workflow"
+            git config user.email "argo-workflow@local"
+
+            if ! git fetch origin "pull/${PR_NUM}/head:pr-${PR_NUM}" >/dev/null 2>&1; then
+              echo "PR #${PR_NUM} could not be fetched from GitHub" >&2
+              failures=$((failures + 1))
+              continue
+            fi
+
+            if ! git checkout -B "batch-review/pr-${PR_NUM}" "pr-${PR_NUM}" >/dev/null 2>&1; then
+              echo "PR #${PR_NUM} could not create the review branch" >&2
+              failures=$((failures + 1))
+              continue
+            fi
+
+            echo "Prepared review branch $(git rev-parse --short HEAD) for PR #${PR_NUM}" >&2
+
+            if ! bash -euo pipefail -c "${BUILD_COMMAND}" > "${PR_DIR}/build.log" 2>&1; then
+              echo "Build failed for PR #${PR_NUM}" >&2
+              cat "${PR_DIR}/build.log" >&2
+              failures=$((failures + 1))
+              continue
+            fi
+
+            if ! bash -euo pipefail -c "${QA_COMMAND}" > "${PR_DIR}/qa.log" 2>&1; then
+              echo "QA failed for PR #${PR_NUM}" >&2
+              cat "${PR_DIR}/qa.log" >&2
+              failures=$((failures + 1))
+              continue
+            fi
+
+            echo "Completed PR #${PR_NUM}" >&2
+          done < <(echo "${PRS_JSON}" | jq -c '.[]')
+
+          if [[ "${failures}" -gt 0 ]]; then
+            echo "${failures} PR review(s) failed" >&2
+            exit 1
+          fi
+
+          SCRIPT_EOF

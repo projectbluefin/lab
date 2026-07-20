@@ -59,14 +59,20 @@ spec:
       # Results are captured via outputs.result (stdout) + kubectl logs.
     initContainers:
     - name: git-sync
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
       env:
       - name: BRANCH
         value: "{{inputs.parameters.branch}}"
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         for attempt in 1 2 3; do
           # Clear any partial clone from a previous attempt — git clone
@@ -98,7 +104,7 @@ spec:
         mountPath: /workspace
     container:
         # Fedora: has dnf, python3, pip3 — matches Bluefin (Fedora-based) package names
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       imagePullPolicy: Always
       resources:
         requests:
@@ -138,7 +144,6 @@ spec:
       command: [sh, -c]
       args:
       - |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         {
         set -euo pipefail
@@ -431,13 +436,14 @@ spec:
         # Derive image slug for screenshot tag and results JSON push.
         # Convention: testing -> bluefin-testing, lts-testing -> bluefin-lts-testing,
         # bazzite-testing -> bazzite-testing, aurora-testing -> aurora-testing,
-        # dakota-testing -> dakota-testing.
+        # dakota-testing -> dakota-testing, snosi-latest -> snosi-latest.
         VARIANT_TAG="{{inputs.parameters.containerdisk-tag}}"
         case "${VARIANT_TAG}" in
           lts-*)     IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
           dakota-*)  IMG_SLUG="${VARIANT_TAG}" ;;
           bazzite-*) IMG_SLUG="${VARIANT_TAG}" ;;
           aurora-*)  IMG_SLUG="${VARIANT_TAG}" ;;
+          snosi-*)   IMG_SLUG="${VARIANT_TAG}" ;;
           *)         IMG_SLUG="bluefin-${VARIANT_TAG}" ;;
         esac
 
@@ -459,13 +465,23 @@ spec:
               cp "$SHOT" /tmp/desktop-screenshot.png
               oras push "${SCREENSHOT_IMAGE}:${PUSH_TAG}" \
                 --annotation "org.opencontainers.image.description=Bluefin desktop screenshot from lab e2e suite: ${SUITE}" \
-                --annotation "io.github.projectbluefin.caller_repo=projectbluefin/testing-lab" \
+                --annotation "io.github.projectbluefin.caller_repo=projectbluefin/lab" \
                 /tmp/desktop-screenshot.png:image/png 2>&1 || true
               echo "Screenshot pushed to ${SCREENSHOT_IMAGE}:${PUSH_TAG}" >&2
             else
               echo "No GITHUB_TOKEN - skipping GHCR screenshot push" >&2
             fi
           fi
+        fi
+
+
+        if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+          echo "Publishing test results back to lab repository..." >&2
+          rm -rf /tmp/lab-code
+          git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+          python3 /tmp/lab-code/scripts/publish_test_results.py /tmp/results/results.json "${IMG_SLUG}" "${SUITE}" "{{workflow.name}}" "${GITHUB_TOKEN}" || echo "Warning: failed to publish test results" >&2
+        else
+          echo "No GITHUB_TOKEN - skipping test results publication" >&2
         fi
 
 

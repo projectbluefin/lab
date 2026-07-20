@@ -5,8 +5,6 @@ import time
 from dogtail import tree as dtree
 
 
-last_err = "unknown"
-
 def wait_for_shell(attempts=30, sleep_time=2):
     last_err = "unknown"
 

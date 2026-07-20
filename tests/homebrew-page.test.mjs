@@ -17,7 +17,7 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
     encoding: 'utf8',
   });
 
-  const homebrewPage = html('docs/homebrew/index.html');
+  const homebrewPage = html('docs/adoption/index.html');
 
   assert.match(
     homebrewPage,
@@ -46,11 +46,8 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
     'homebrew page includes aurora lane',
   );
 
-  assert.match(
-    homebrewPage,
-    /No Homebrew analytics data/i,
-    'homebrew page renders explicit unavailable state reason',
-  );
+  assert.match(homebrewPage, /bluefin\/brewfile/i, 'homebrew page shows the transplanted tap');
+  assert.match(homebrewPage, /Lanes with Homebrew data/i, 'homebrew metrics still render');
 
   assert.match(
     homebrewPage,
@@ -60,13 +57,13 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
 
   assert.match(
     homebrewPage,
-    /homebrew-page-data/,
+    /adoption-page-data/,
     'homebrew page serializes client chart data',
   );
 
   assert.match(
     homebrewPage,
-    /https:\/\/github\.com\/projectbluefin\/testing-lab\/blob\/main\/docs\/data\/variant-publishers\.json/,
+    /https:\/\/github\.com\/projectbluefin\/lab\/blob\/main\/docs\/data\/variant-publishers\.json/,
     'homebrew page links source evidence from variant-publishers.json',
   );
 
@@ -75,6 +72,80 @@ test('homebrew page renders summary metrics, lane details, explicit unavailable 
     /homebrew-ecosystem\.json/,
     'homebrew page references the raw homebrew-ecosystem dataset',
   );
+
+  assert.match(
+    homebrewPage,
+    /global formula analytics/i,
+    'homebrew page discloses that transplanted values are global formula analytics',
+  );
+  assert.match(
+    homebrewPage,
+    /115-package tap/i,
+    'homebrew page discloses that transplanted values include full tap scope reused across branches',
+  );
+
+  assert.match(
+    homebrewPage,
+    /Package leaderboard/i,
+    'homebrew page renders package leaderboard section',
+  );
+  assert.match(
+    homebrewPage,
+    /claude-code|gemini-cli|gh/i,
+    'homebrew page renders package-level leaderboard entries',
+  );
+  assert.match(
+    homebrewPage,
+    /bazzite\/brewfile/i,
+    'homebrew page renders imported bazzite tap coverage',
+  );
+  assert.match(
+    homebrewPage,
+    /Tap density across tracked lanes/i,
+    'homebrew page renders tap density section',
+  );
+  assert.match(
+    homebrewPage,
+    /Packages in tap scope/i,
+    'homebrew page renders richer tap density metrics',
+  );
+  assert.match(
+    homebrewPage,
+    /Unavailable<\/span>/i,
+    'homebrew page keeps explicit unavailable states visible in density lanes',
+  );
+});
+
+test('homebrew data tables span the full grid width and stay scrollable when squeezed', () => {
+  const homebrewPage = html('docs/adoption/index.html');
+
+  const cssHref = homebrewPage.match(/href="(\/_astro\/SiteLayout\.[A-Za-z0-9_]+\.css)"/);
+  assert.ok(cssHref, 'homebrew page links a compiled SiteLayout stylesheet');
+
+  const css = html(path.join('docs', cssHref[1].replace(/^\//, '')));
+
+  assert.match(
+    css,
+    /\.detail-grid>article:has\(\.table-scroll\)\{grid-column:1\/-1\}/,
+    'table cards span the full grid row so 6-7 column tables are not crushed into a half-width cell',
+  );
+  assert.match(
+    css,
+    /\.data-table\{[^}]*min-width:48rem[^}]*\}/,
+    'data tables have a min-width floor so .table-scroll scrolls horizontally instead of crushing columns',
+  );
+  assert.match(
+    css,
+    /\.table-scroll\{[^}]*overflow-x:auto[^}]*\}/,
+    'table-scroll wrapper enables horizontal scrolling on narrow viewports',
+  );
+});
+
+test('homebrew page renders migrated tap coverage instead of the starter empty state', () => {
+  const homebrewPage = html('docs/adoption/index.html');
+  assert.match(homebrewPage, /Homebrew data: \d+ of \d+ lanes available/i);
+  assert.match(homebrewPage, /bluefin\/brewfile/i);
+  assert.doesNotMatch(homebrewPage, /No Homebrew analytics data is published for any tracked lane/i);
 });
 
 test('homebrew-ecosystem.json contract satisfies the page model contract', () => {
@@ -85,7 +156,7 @@ test('homebrew-ecosystem.json contract satisfies the page model contract', () =>
   assert.ok(Array.isArray(dataset.taps), 'taps is an array');
   assert.ok(Array.isArray(dataset.rows), 'rows is an array');
 
-  assert.equal(dataset.rows.length, 10, 'homebrew dataset has 10 lane rows (one per variant-branch)');
+  assert.equal(dataset.rows.length, 13, 'homebrew dataset has 13 lane rows (one per variant-branch)');
 
   const trackedMetric = dataset.summary_metrics.find((m) => m.id === 'tracked_image_lanes');
   const withDataMetric = dataset.summary_metrics.find((m) => m.id === 'lanes_with_brew_data');

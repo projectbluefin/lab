@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: dakota-build-pipeline-iter2-
+  namespace: argo
+spec:
+  workflowTemplateRef:
+    name: dakota-build-pipeline
+  arguments:
+    parameters:
+    - name: ref
+      value: "testing"
+    - name: build-mode
+      value: "re"
+    - name: lock-key
+      value: "bst-build-manual"

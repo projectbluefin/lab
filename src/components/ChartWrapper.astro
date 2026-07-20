@@ -1,0 +1,27 @@
+---
+interface Props {
+  id: string;
+  eyebrow?: string;
+  pillText?: string;
+  pillType?: string;
+  title: string;
+  description: string;
+  height?: string;
+  ariaLabel?: string;
+  class?: string;
+}
+
+const { id, eyebrow, pillText, pillType = "passed", title, description, height = "320px", ariaLabel, class: className = "" } = Astro.props;
+---
+<article class:list={["chart-panel-custom", className]}>
+  {(eyebrow || pillText) && (
+    <div class="upstream-card__header">
+      {eyebrow && <p class="status-card__eyebrow">{eyebrow}</p>}
+      {pillText && <span class:list={["pill", `pill--${pillType}`]}>{pillText}</span>}
+    </div>
+  )}
+  <h2>{title}</h2>
+  <p>{description}</p>
+  <div id={id} class="chart-box-custom" style={`height: ${height}; min-height: ${height};`} role="img" aria-label={ariaLabel || title}></div>
+  <slot />
+</article>

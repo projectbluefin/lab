@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arc-runner-workflow-submitter
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/component: arc-runner
+    app.kubernetes.io/part-of: lab
+---
+# Container-mode permissions in the runner namespace.
+# gha-runner-scale-set only creates its own kube-mode Role when no custom
+# serviceAccountName is provided; when we supply one, we must grant the
+# in-namespace permissions ourselves.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-runner-kube-mode
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/component: arc-runner
+    app.kubernetes.io/part-of: lab
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["get", "create"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-runner-kube-mode
+  namespace: arc-runners
+  labels:
+    app.kubernetes.io/component: arc-runner
+    app.kubernetes.io/part-of: lab
+subjects:
+  - kind: ServiceAccount
+    name: arc-runner-workflow-submitter
+    namespace: arc-runners
+  - kind: ServiceAccount
+    name: default
+    namespace: arc-runners
+roleRef:
+  kind: Role
+  name: arc-runner-kube-mode
+  apiGroup: rbac.authorization.k8s.io
+---
+# Cross-namespace permissions so runner step pods can submit and monitor
+# Argo Workflows from the argo namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-runner-argo-workflow-submitter
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: arc-runner
+    app.kubernetes.io/part-of: lab
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows", "workflowtemplates", "cronworkflows"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-runner-argo-workflow-submitter
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: arc-runner
+    app.kubernetes.io/part-of: lab
+subjects:
+  - kind: ServiceAccount
+    name: arc-runner-workflow-submitter
+    namespace: arc-runners
+  - kind: ServiceAccount
+    name: default
+    namespace: arc-runners
+roleRef:
+  kind: Role
+  name: arc-runner-argo-workflow-submitter
+  apiGroup: rbac.authorization.k8s.io

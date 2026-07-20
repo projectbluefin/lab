@@ -1,0 +1,41 @@
+name: Example — container-mode ARC runner on Ghost
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Dakota ref to build with USB4-backed remote execution"
+        required: true
+        default: "testing"
+
+# Container mode requires a container: block on every job. The runner pod is
+# tiny; heavy work is submitted to the cluster as an Argo Workflow so the
+# actual build pods get full cluster resources.
+jobs:
+  build-dakota:
+    runs-on: ghost-runners
+    container:
+      image: ghcr.io/projectbluefin/arc-runner:latest
+    steps:
+      - name: Submit distributed Dakota build to the cluster
+        run: |
+          argo submit -n argo \
+            --from workflowtemplate/dakota-build-pipeline \
+            -p ref="${{ github.event.inputs.ref }}" \
+            -p build-mode=re \
+            --wait
+
+  # This job shows a lightweight step that runs entirely inside the small
+  # ARC step container without touching cluster-heavy resources.
+  inspect-tooling:
+    runs-on: ghost-runners
+    container:
+      image: ghcr.io/projectbluefin/arc-runner:latest
+    steps:
+      - name: Verify tooling available in the step container
+        run: |
+          argo version --short
+          kubectl version --client
+          buildah --version
+          skopeo --version
+          jq --version

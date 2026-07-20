@@ -238,6 +238,8 @@ spec:
               labels:
                 kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 firmware:
                   bootloader:
@@ -295,6 +297,8 @@ spec:
                 hooks.kubevirt.io/hookSidecars: >-
                   [{"args":["--version","v1alpha2"],"configMap":{"name":"{{inputs.parameters.console-hook-config-map}}","key":"onDefineDomain","hookPath":"/usr/bin/onDefineDomain"}}]
             spec:
+              # Preempts bst-build pods on resource contention (see lab-test-vm-priorityclass.yaml).
+              priorityClassName: lab-test-vm
               domain:
                 firmware:
                   bootloader:
@@ -329,7 +333,7 @@ spec:
       - name: vm-name
       - name: namespace
     script:
-      image: cgr.dev/chainguard/wolfi-base:latest
+      image: ghcr.io/projectbluefin/lab-runner:latest
       command: [sh]
       resources:
         requests:
@@ -339,7 +343,6 @@ spec:
           cpu: 500m
           memory: 256Mi
       source: |-
-        apk add --no-cache bash curl jq kubectl git python3 xz >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         exec 3>&1

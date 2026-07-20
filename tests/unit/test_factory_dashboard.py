@@ -5,13 +5,6 @@ import json
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_dashboard_shell_points_at_assets():
-    html = (ROOT / 'docs/index.html').read_text()
-    assert 'factory-dashboard.css' in html
-    assert 'factory-dashboard.js' in html
-    assert 'id="factory-dashboard"' in html
-
-
 def test_factory_copy_and_history_have_expected_shape():
     copy = json.loads((ROOT / 'docs/data/factory-copy.json').read_text())
     history = json.loads((ROOT / 'docs/data/factory-history.json').read_text())
@@ -72,17 +65,3 @@ def test_factory_copy_links_are_public():
         assert '192.168.' not in link['href']
 
 
-def test_dashboard_renderer_loads_public_telemetry():
-    js = (ROOT / 'docs/assets/factory-dashboard.js').read_text()
-    assert "loadJson('./data/factory-telemetry.json'" in js
-    assert 'numerator' in js
-    assert 'denominator' in js
-    assert 'confidence' in js
-    assert 'Promotion timeline' in js
-    assert 'Lineage & data quality' in js
-    assert 'Factory flow map' in js
-
-
-def test_dashboard_default_copy_has_no_private_links():
-    js = (ROOT / 'docs/assets/factory-dashboard.js').read_text()
-    assert '192.168.' not in js

@@ -15,12 +15,12 @@ distinguish deliberate decisions from oversights.
 | Mutable image tags (`:latest`, `:latest-dev`) | Silent upstream breakage if image changes incompatibly | Pin to digest; add a nightly digest-update workflow |
 | `argo-server` ClusterRole | Broad cluster-wide read access for workflow submission | Namespace-scoped RBAC scoped to `argo`, `bluefin-test`, `bluefin-lts-test`, `flatcar-test` |
 | `selinux=0` in BLS boot entries | SELinux disabled on test VMs — reduces isolation | Accept for test VMs; production VMs should have SELinux enforcing |
-| NodePort 32746 on LAN | Argo API reachable on 192.168.1.0/24 without TLS | TLS termination + token rotation; restrict to specific agent IPs |
+| NodePort 32746 on LAN | Argo API reachable on the lab subnet without TLS | TLS termination + token rotation; restrict to specific agent IPs |
 | `StrictHostKeyChecking=no` in SSH opts | MITM possible if a VM IP is reused for a different host | Acceptable on isolated homelab VLAN; use known_hosts in production |
 
 ## What is NOT a concern in this environment
 
-- **Multi-tenancy**: single user (jorge), single cluster purpose (Bluefin QA)
+- **Multi-tenancy**: single user, single cluster purpose (Bluefin QA)
 - **Data sensitivity**: test VMs contain no production data or secrets
 - **Compliance scope**: no PCI, HIPAA, or SOC2 requirements
 - **Internet exposure**: NodePort 32746 is LAN-only, not internet-facing

@@ -1,0 +1,118 @@
+---
+name: argo-workflows
+description: >
+  Authoring, linting, and submitting Argo Workflows and WorkflowTemplates in
+  the lab. Use when writing or editing any .yaml file under
+  argo/workflow-templates/, argo/bootstrap/, or argo/*.yaml, or when
+  debugging a failed workflow run.
+metadata:
+  context7-sources:
+    - /argoproj/argo-workflows
+    - /kubernetes/website
+---
+
+# Argo Workflows — lab Skill
+
+## When to Use
+
+- Editing any `argo/workflow-templates/*.yaml` or `argo/bootstrap/*.yaml`
+- Writing a new pipeline (provision, test, teardown)
+- Adding a new `argo/*.yaml` submit-time Workflow
+- Debugging a stuck or failed workflow
+- Adding a CronWorkflow to `manifests/`
+
+## When NOT to Use
+
+- ArgoCD Application changes → `gitops-argocd.md`
+- KubeVirt VM manifest design → `kubevirt-vms.md`
+- behave/dogtail test authoring → `test-authoring.md`
+
+## Core Process
+
+The workflow authoring guidance is split by topic:
+
+- [Authoring rules](authoring.md) — template structure, parameters, outputs, hooks, linting, ArgoCD ownership.
+- [Common patterns](patterns.md) — image-sync, VM concurrency, result publishing, CronWorkflow traps, Dakota lanes.
+
+## Common Rationalizations
+
+| "The sub-template will see workflow.parameters directly." | It will not. Argo Workflows scopes parameters per-template. Always pass explicitly. |
+| "I applied the template with kubectl — it's fine." | ArgoCD selfHeal will overwrite it within minutes. Use git. |
+| "The lint passed locally, I'll skip CI." | CI runs against the same offline linter. If it passed locally, it passes in CI. |
+| "The template is DEPRECATED, I'll clean it up later." | It will never get cleaned up. Delete it now — `prune: true` handles the rest. |
+| "I need each step in the chain to have its own `when` guard." | Use a `dag` with `depends: "prior.Succeeded"` — downstream tasks cascade-omit automatically. |
+
+## Red Flags
+
+- **Host Namespace Crash Risk**: Running containers with `hostPID: true` or `hostIPC: true` (which was previously thought to be needed by loopback installation, but is an anti-pattern). If the container fails or is terminated/deleted, `argoexec` will tear down and SIGTERM all processes in the host namespace, crashing `k3s`, `sshd`, and the node. Avoid `hostPID: true` entirely. Ensure containers-storage and loopback visibility are achieved via volume mounts without host PID exposure.
+- **Permission Denied Risk**: Forgetting to mount an `emptyDir` at `/tmp` for containers running as non-root (1000) that need to write results, scripts, or temporary configs to `/tmp`. Inside bootc images, `/tmp` is root-owned and restricted, leading to immediate execution failures.
+- Adding a separate log aggregation stack (Loki, Promtail, Vector, etc.) alongside Argo — Argo Server already retains pod logs for the workflow TTL. A separate stack duplicates storage, adds pods/PVCs, and creates a Helm-outside-ArgoCD installation with GitOps debt. `argo logs` covers the same use case.
+- **Outage Risk**: Leaving nodes cordoned (`SchedulingDisabled`) after k3s upgrades or manual interventions. This completely blocks system pods (including CoreDNS!) from scheduling, causing cluster-wide DNS timeouts (`read udp i/o timeout`) and a silent, complete cluster outage. Always ensure nodes are uncordoned (`kubectl uncordon`) and `Ready`.
+- **Outage Risk**: Setting low memory limits (under 2Gi) for any runner/script step that performs large file transfers (e.g. copying 400MB+ Flatcar update payloads over SCP/kubectl cp). File caching and transfer buffers will instantly trigger the container OOM-killer (exit code 137). Always set memory limits to at least 2Gi–4Gi for transfer-heavy steps.
+- `synchronization.semaphore:` (singular) in any pipeline — deprecated, rejected by ArgoCD schema. Use `synchronization.semaphores:` (list with `- configMapKeyRef:` item)
+- `spec.schedule:` (singular) on a CronWorkflow — field does not exist in CRD schema; use `spec.schedules:` (array)
+- A pipeline with VMs and no `spec.activeDeadlineSeconds` — a stuck VM holds its semaphore slot forever
+- A pipeline with VMs that adds `spec.synchronization.semaphores` — semaphores are removed; k8s scheduler handles concurrency via virt-launcher memory requests
+- A `steps` or `dag` task calling a sub-template without `arguments:`
+- A pipeline with no `onExit` handler (VM will leak on failure)
+- Any `script:` template without `resources:` limits
+- Templates in `argo/workflow-templates/` applied with `kubectl apply` (not via git)
+- A `pr-poller` (or any PR-gating workflow) that skips on ANY existing commit status — it must skip only `pending` (in-flight) and `success` (already passed), and re-test on `error`/`failure`. Skipping `error` means stale statuses from deleted workflows permanently block retests.
+- A VM or build pipeline that uses a node selector to reach local storage. Use
+  scheduler-selected `WaitForFirstConsumer` PVC placement on an explicitly
+  configured non-root data mount instead.
+- Python inside bash inside YAML (colons + quotes cause parse errors — use `curl`+`jq` instead; never `python3 -c` or heredoc Python; see §16 GitHub Contents API pattern)
+- Heredoc `<< 'EOF'` inside a YAML block scalar — indentation breaks the YAML parser. ArgoCD returns `ManifestGenerationError: yaml: could not find expected ':'`. Write scripts to files in initContainers or use inline jq instead.
+- `registry.k8s.io/kubectl` used as a shell-capable image — it is distroless, has no bash, nc, or any shell utilities. Use `cgr.dev/chainguard/kubectl:latest-dev` when you need kubectl + bash together
+- A WorkflowTemplate file name that doesn't match its `metadata.name` (confuses ArgoCD tracking)
+- Templates annotated `DEPRECATED` that haven't been deleted from git
+- Two CronWorkflows with the same schedule covering overlapping namespaces
+- A `steps` template with the same `when` condition on 3+ sequential steps (convert to `dag` + `depends` chain)
+- A CronWorkflow that has a `dry-run` parameter defaulting to `"true"` — it will log `KEEP`/`DELETE` decisions and then do nothing; disk fills silently
+- Setting a global Argo `parallelism` / `namespaceParallelism` cap in the workflow-controller-configmap — the real backpressure is Kubernetes pod scheduling (pod resource requests). Remove the cap; let the scheduler self-limit.
+- Using `pr-test-N-` as a workflow generateName prefix — use the repo slug: `blu-N-`, `lts-N-`, `dak-N-`, `knu-N-` so k9s and the Argo UI show meaningful names at a glance
+- **GC CronWorkflow using `registry.k8s.io/kubectl`** — distroless, no bash; every run exits with `bash: not found` and the GC step is skipped silently. Pods and orphaned objects accumulate until the cluster fills. Use `cgr.dev/chainguard/kubectl:latest-dev`. Symptom: `kubectl get cronworkflow orphan-pod-gc -n argo` shows `LAST SCHEDULE` advancing but pods keep piling up; check the workflow pod logs for `bash: not found`.
+- Any `image:` in `argo/` or `manifests/` referencing `:5000` for the local OCI registry — `:5000` is the container-internal Zot port; use the NodePort `<lab-ip>:30500` so non-hostNetwork pods can reach it
+- Any `image:` referencing a registry not in the allowlist (`ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`, `registry.k8s.io`, `<lab-ip>`, `localhost`) — enforce with the lint gate in `.github/workflows/lint.yaml`
+- `depends: "X.Succeeded"` on a task that follows a conditionally-skippable upstream — if upstream is Skipped, the downstream task is Omitted and the whole DAG may appear to succeed even though the chain broke; use `depends: "(X.Succeeded || X.Skipped)"` when the upstream has its own `when` guard
+- A downstream `when` condition that references `{{tasks.X.outputs.result}}` where task X has its own `when` guard — if X is Skipped its output is undefined and the downstream task silently skips too. Fix: let X always run; handle the bypass inside the script (see §18).
+- A `force=true` rebuild workflow where only 1–2 nodes appear (DAG + a Skipped check) and no build step ever runs — this is the §18 `when`/Skipped output bug, not a semaphore or mutex issue
+- Post-processing K8sGPT JSON with `for item in data.get("results", [])` or `len(data["results"])` without normalizing first — namespace-scoped empty scans can emit `"results": null`, which crashes the script and then triggers a second Argo missing-output-path error. Normalize with `results = data.get("results") or []` before iterating or counting.
+- Passing `containerdisk-tag`, `ssh-key-secret`, `vm-memory`, or caller-side `namespace` parameters into `bluefin-qa-pipeline`/`dakota-qa-pipeline` after the container-only migration — those callers must send only `image`, `image-tag`, `suites`, `variant`, `branch`, and `testsuite-branch`.
+- Any Argo CronWorkflow script template in `argo` namespace without explicit `resources.requests` and `resources.limits` — the `argo-quota` admission check rejects pod creation.
+- Any pod containing `initContainers` (like `git-sync` in `run-gnome-tests.yaml`) that lacks explicit `resources.requests` and `resources.limits` blocks — the `argo-quota` admission controller evaluates all containers in a pod (including init containers), and will reject the entire pod if any container lacks resource definitions.
+- `orphan-pod-gc` memory capped too low (128Mi) — large pod inventories can OOM the cleanup step (`exit code 137`) and silently skip GC.
+- An image poller that writes the new digest to `image-polling-digests` before the downstream QA pipeline succeeds — failures under cluster pressure then drop work permanently (digest is marked seen, no retry on next poll). Persist digest only after `run-pipeline.Succeeded`.
+- Aurora/Bazzite digest pollers running full GNOME suite sets (`smoke,common,developer,software,system`) even though these variants are KDE-focused — this creates 5x VM pressure per trigger and overloads scheduling. Keep Aurora/Bazzite pollers on `suites: system`.
+- K8sGPT finding no-endpoint Services for `argocd-applicationset-controller`, `argocd-dex-server`, `argocd-notifications-controller-metrics`, or `kubevirt/virt-exportproxy` — these are documented control-plane exceptions in this cluster shape.
+- Commit message not in Conventional Commits format — the pre-commit hook rejects any commit not matching `<type>(<scope>): <description>`. Valid types: `feat fix ci chore docs refactor test build perf revert`
+- Removing `suspend: true` from a CronWorkflow, seeing ArgoCD report `Synced`, and stopping there — the live field can silently stay `true`. Always re-check with `kubectl get cronworkflow <name> -o jsonpath='{.spec.suspend}'` after sync.
+- A digest-comparison poller (`digest-watch`, `dakota-commit-poller`, etc.) treated as a guarantee that a downstream artifact exists — it only reacts to source digest *changes*, not to the artifact disappearing out-of-band (disk wipe, registry GC). After any disk/registry event, force-rebuild manually; don't wait for the poller.
+- **Queue Starvation / `activeDeadlineSeconds` Trap**: Leaving a workflow's `activeDeadlineSeconds` at default (or unspecified) when it queues under a template-level semaphore or resource limit. The workflow-level deadline starts ticking upon *submission/creation*, not *execution/scheduling*. If a workflow queues for longer than the global default deadline (e.g., 2h), it gets instantly canceled with `DeadlineExceeded` as soon as it begins running. Always set a generous workflow-level deadline (e.g., 4h/14400s) on queueable templates and dynamic API submission specs.
+
+## Verification
+
+Before marking any WorkflowTemplate change done:
+
+- [ ] All VM-running pipelines have `spec.activeDeadlineSeconds` set
+- [ ] All queueable templates/dynamic workflows (e.g. `build-containerdisk` and `digest-watch` submit payloads) have a generous workflow-level `activeDeadlineSeconds` (e.g., 14400s / 4h) to avoid queue starvation
+- [ ] Any new CronWorkflow uses `spec.schedules:` (array), not `spec.schedule:` (singular)
+- [ ] All sub-template calls include explicit `arguments:` blocks
+- [ ] Pipeline has `onExit: cleanup` handler
+- [ ] All pod-running templates have `resources:` requests and limits
+- [ ] Change is committed and pushed — not manually applied to cluster
+- [ ] `description:` annotation present on the new/modified template
+- [ ] File name matches `metadata.name` (e.g. `provision-containerdisk-vm.yaml` for `name: provision-containerdisk-vm`)
+- [ ] VM pipeline spec has NO `synchronization.semaphores` block — k8s scheduler handles VM concurrency
+- [ ] VM pipeline spec has `activeDeadlineSeconds` (1h or 2h) so stuck VMs self-evict
+- [ ] No `nodeSelector: kubernetes.io/hostname: ghost` in VM specs — VMs float to any KubeVirt-capable node
+- [ ] GitHub Contents API write-backs use curl+jq, not inline Python; output is
+      retained through the workflow artifact/log mechanism or a workflow PVC,
+      never a root-backed hostPath
+- [ ] `kubectl get workflowtemplate -n argo` shows no cluster-only templates (not in git) unless they're intentional bootstrap one-shots
+- [ ] No CronWorkflow with a `dry-run` parameter whose default is `"true"` — verify GC jobs actually delete
+- [ ] All local OCI registry references use `:30500` (NodePort), not `:5000` (container-internal)
+- [ ] `grep -rn 'image:' argo/ manifests/` shows only allowlisted registries: `ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`, `registry.k8s.io`, `<lab-ip>`, `localhost`
+- [ ] Image pollers update digest state only after QA pipeline success (failed runs must retry on next poll)
+- [ ] After removing `suspend: true` from a CronWorkflow and syncing, live `spec.suspend` confirmed via `kubectl get -o jsonpath` — not assumed from ArgoCD's `Synced` status alone
+- [ ] After any disk wipe/registry migration/Zot cleanup, every affected containerDisk tag manually force-rebuilt rather than assuming a digest-comparison poller will self-heal

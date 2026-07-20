@@ -60,6 +60,8 @@ jobs:
             echo "$line" | grep -q 'registry-lint-ignore' && continue
             imgref=$(echo "$line" | sed 's/.*image:[[:space:]]*//' | awk '{print $1}' | tr -d "\"'")
             [[ -z "$imgref" || "${imgref:0:1}" == "#" ]] && continue
+            # Skip Argo parameter interpolations; the real registry is resolved at runtime.
+            [[ "$imgref" == *'{{'* || "$imgref" == *'}}'* ]] && continue
             registry=$(echo "$imgref" | cut -d/ -f1)
             # skip bare names (no dot or colon = implicit docker.io, handled by zot-docker)
             echo "$registry" | grep -qE '[.:]' || continue

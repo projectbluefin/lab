@@ -163,7 +163,7 @@ Common tags in this repo: `@smoke_suite`, `@top_bar`, `@activities`, `@quick_set
 
 ### Watching results
 
-- Argo UI: <http://192.168.1.102:32746>
+- Argo UI: <http://<lab-ip>:32746>
 - Logs: `just logs` or Argo MCP `logs_workflow`
 - Artifacts (`results.json`, `pytest-results.xml`, `atspi_tree.txt`) are echoed into the
   pod's stderr — use `argo logs <workflow-name> -n argo` to retrieve them.

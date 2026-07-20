@@ -59,13 +59,13 @@ Without this file, `virt-controller` attempts to fetch the uncompressed size fro
 
 ```
 build-containerdisk (build-containerdisk.yaml)
-  ├─ check       — skopeo: exists in 192.168.1.102:30500/bluefin-containerdisk:<tag>?
+  ├─ check       — skopeo: exists in <lab-ip>:30500/bluefin-containerdisk:<tag>?
   ├─ install-to-disk  — podman run bootc install to-disk → /mnt/ghost-data/bluefin-cd-build/<tag>/disk.raw
   ├─ configure-disk   — inject test user, SSH, GDM autologin, sudoers, selinux=0
   └─ convert-and-push — qemu-img raw→qcow2, buildah OCI wrap, push to zot:30500
          │
 provision-containerdisk-vm (provision-containerdisk-vm.yaml)
-  └─ VM boots from containerDisk: 192.168.1.102:30500/bluefin-containerdisk:<tag>
+  └─ VM boots from containerDisk: <lab-ip>:30500/bluefin-containerdisk:<tag>
 ```
 
 Check if a containerDisk exists:
@@ -73,7 +73,7 @@ Check if a containerDisk exists:
 # Fast check — 0 bytes = image lost, rebuild required
 ssh ghost "wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json"
 # Full check
-skopeo inspect --tls-verify=false docker://192.168.1.102:30500/bluefin-containerdisk:testing
+skopeo inspect --tls-verify=false docker://<lab-ip>:30500/bluefin-containerdisk:testing
 ```
 
 **Zot data loss:** The `zot-writable` pod (port 30500) loses its `index.json` on every pod or
@@ -288,7 +288,7 @@ spec:
   volumes:
     - name: containerdisk
       containerDisk:
-        image: 192.168.1.102:30500/bluefin-containerdisk:testing
+        image: <lab-ip>:30500/bluefin-containerdisk:testing
 ```
 
 **No hostDisk VMs remain.** All VM types use containerDisk or PVC — they schedule freely on any KubeVirt-capable node:

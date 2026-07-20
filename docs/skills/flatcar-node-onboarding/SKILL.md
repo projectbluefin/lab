@@ -50,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/flatcar/sysext-bakery/main/create_s
 # Simplest path — k3s provides a sysext-aware installer:
 curl -sfL https://get.k3s.io | \
   INSTALL_K3S_TYPE="agent" \
-  INSTALL_K3S_EXEC="agent --server https://192.168.1.102:6443 --token <TOKEN>" \
+  INSTALL_K3S_EXEC="agent --server https://<lab-ip>:6443 --token <TOKEN>" \
   sh -
 ```
 
@@ -74,7 +74,7 @@ automatically writes `/etc/flatcar/update.conf` pointing at Nebraska:
 
 ```
 GROUP=stable
-SERVER=http://192.168.1.102:30802/v1/update/
+SERVER=http://<lab-ip>:30802/v1/update/
 ```
 
 **Check it worked:**
@@ -91,7 +91,7 @@ kubectl exec -n flatcar-update <pod-name> -- \
 **Expected output:**
 ```
 GROUP=stable
-SERVER=http://192.168.1.102:30802/v1/update/
+SERVER=http://<lab-ip>:30802/v1/update/
 ```
 
 ### 3. Verify Nebraska receives first check-in
@@ -113,7 +113,7 @@ update_engine will receive it on the next poll cycle (default 1h, or trigger man
 
 **Check Nebraska packages:**
 ```bash
-curl -s "http://192.168.1.102:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages" \
+curl -s "http://<lab-ip>:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages" \
   | python3 -m json.tool
 ```
 
@@ -159,7 +159,7 @@ Flatcar mounts `/etc` as overlayfs over a read-only base. `hostPath` mounts of
 ```bash
 nsenter --target 1 --mount -- sh -c "mkdir -p /etc/flatcar && cat > /etc/flatcar/update.conf << EOF
 GROUP=stable
-SERVER=http://192.168.1.102:30802/v1/update/
+SERVER=http://<lab-ip>:30802/v1/update/
 EOF"
 ```
 
@@ -215,7 +215,7 @@ qemu-img convert -f qcow2 -O raw flatcar.img flatcar.raw
 |---|---|
 | NodePort | 30802 |
 | Flatcar app UUID | `e96281a6-d1af-4bde-9a0a-97b76e56dc57` |
-| Update URL (in update.conf) | `http://192.168.1.102:30802/v1/update/` |
+| Update URL (in update.conf) | `http://<lab-ip>:30802/v1/update/` |
 | Auth mode | `noop` |
 | Binary path in image | `/nebraska/nebraska` (no default ENTRYPOINT — must set `command:`) |
 | Package version scheme | `9999.MAJOR.MINOR` (always > any stock Flatcar for semver precedence) |
@@ -224,7 +224,7 @@ qemu-img convert -f qcow2 -O raw flatcar.img flatcar.raw
 ```json
 {
   "filename": "flatcar_production_update-kernel7.1.1.gz",
-  "url": "http://192.168.1.102:30802/flatcar/",
+  "url": "http://<lab-ip>:30802/flatcar/",
   "version": "9999.7.1",
   "hash": "<SHA1 as base64>",
   "hash256": "<SHA256 hex>",
@@ -287,7 +287,7 @@ argo submit -n argo --from workflowtemplate/flatcar-kernel-gate
 kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'
 
 # Nebraska package list (latest entries)
-curl -s "http://192.168.1.102:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages" | jq '.[-5:]'
+curl -s "http://<lab-ip>:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages" | jq '.[-5:]'
 
 # Confirm update.conf on exo-0
 POD=$(kubectl get pods -n flatcar-update -l app=flatcar-update-configurator -o wide \

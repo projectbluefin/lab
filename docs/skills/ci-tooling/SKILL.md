@@ -31,7 +31,7 @@ metadata:
 
 1. Confirm runner network model first: GitHub-hosted runners have public internet by default; private network access requires an overlay/VPN setup or a self-hosted runner.
 2. For dashboard stats jobs, treat private-cluster snapshots as optional: when live fetch fails, preserve last known live values and set explicit freshness/state flags.
-3. Never wipe `recent_runs` or `factory.cluster.nodes` just because a hosted runner cannot reach `192.168.x.x`; preserve and annotate.
+3. Never wipe `recent_runs` or `factory.cluster.nodes` just because a hosted runner cannot reach `<private-subnet>.x.x`; preserve and annotate.
 4. Add explicit metadata in JSON (`_meta.live_snapshot_ok`, `_meta.refreshed_at`) so UI can show freshness honestly.
 5. For GitHub Pages sites, verify the Pages source and build state before assuming a push is live:
    - `gh api repos/<owner>/<repo>/pages --jq '.source'`
@@ -48,7 +48,7 @@ metadata:
 14. Extract large inline scripts (especially Python/bash blocks over ~10-15 lines) from GHA YAML workflow files into standalone executable scripts under `scripts/`. This enables independent local execution, linting, testing, and modular maintenance.
 15. Configure explicit GHA concurrency limits (`concurrency:`) on any automated workflow that commits/pushes files back to git. Use a unique group name (e.g. `group: update-test-results`) and set `cancel-in-progress: true` to prevent race conditions and rebase conflicts when multiple runs trigger in rapid succession.
 16. After changing collector logic (`scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py`), run the same local refresh sequence as CI (`refresh_factory_stats.py` → `generate_page_datasets.py` → `npm run build`) before handoff.
-17. **Network timeouts are mandatory for any cluster-facing call in CI**: every `execSync`, `fetch`, `curl`, `skopeo`, or similar command that reaches `192.168.1.x` or any private endpoint must have an explicit timeout (e.g. `timeout: 2000` for Node.js, `--max-time` for curl, or socket timeout). Without timeouts, a single unreachable endpoint will hang the entire GitHub-hosted runner indefinitely, starving the concurrency group and blocking all downstream runs.
+17. **Network timeouts are mandatory for any cluster-facing call in CI**: every `execSync`, `fetch`, `curl`, `skopeo`, or similar command that reaches `<lab-subnet>.x` or any private endpoint must have an explicit timeout (e.g. `timeout: 2000` for Node.js, `--max-time` for curl, or socket timeout). Without timeouts, a single unreachable endpoint will hang the entire GitHub-hosted runner indefinitely, starving the concurrency group and blocking all downstream runs.
 18. **Build-time assertions must handle environment drift**: if a test asserts presence of specific live data (e.g. `:30501` registry port), but the build environment differs from the test environment (GitHub runners → no homelab network access), the assertion will always fail. Instead: allow the code to handle missing data gracefully (e.g. fallback rendering), and update the assertion to accept both the live path and the fallback path. This prevents false CI failures that don't reflect real code bugs.
 19. **Prefer the Kubernetes API server's service/pod proxy subresource over new NodePorts/manifests** when a collector needs to reach a ClusterIP-only service or a pod's non-Service-exposed diagnostics port: `kubectl get --raw "/api/v1/namespaces/<ns>/services/<svc>:<port>/proxy/<path>"` or `.../pods/<pod>:<port>/proxy/<path>`. This routes through the API server the runner already reaches (the same reachability `kubectl get nodes` relies on), so no cluster manifest changes are needed to expose a new metrics/status endpoint.
 20. When a data source has no direct "value used" gauge (e.g. Buildbarn's block-device-backed storage, which preallocates fixed-size blocks on disk regardless of logical fill), derive an estimate from available counters (e.g. `allocations_total - releases_total` × known block size) and say so explicitly in the row's `derivation` field. Never silently report a physical-allocation number as if it were logical usage.
@@ -102,7 +102,7 @@ metadata:
 - [ ] Browser fetch code avoids unnecessary custom headers that trigger preflight
 - [ ] Production `https://factory.projectbluefin.io/` renders with real table/cluster content (no loading placeholders)
 - [ ] Render validation includes a real browser run (headless is fine) and captures evidence
-- [ ] Every `execSync`, `fetch`, or network call to private endpoints (`192.168.1.x`, internal IPs) has an explicit timeout set
+- [ ] Every `execSync`, `fetch`, or network call to private endpoints (`<lab-subnet>.x`, internal IPs) has an explicit timeout set
 - [ ] Build-time test assertions accept both live-environment data AND fallback/degraded paths (never assert presence of unreachable data)
 - [ ] After fixing network timeouts or assertions, a CI run completed within 10 minutes with no hanging steps
 - [ ] Image-status cards derive age from GHCR package tag publish/update timestamps when available, otherwise release `published_at`, and link to exact evidence URLs.

@@ -86,6 +86,6 @@ The built image must be converted to a `containerDisk` using the `build-containe
 
 ## Verification
 
-- [ ] `skopeo inspect --tls-verify=false docker://192.168.1.102:30500/bluefin-server-bootc:latest` returns a valid OCI manifest.
-- [ ] `podman run --rm --tls-verify=false --entrypoint=ls 192.168.1.102:30500/bluefin-server-bootc:latest /usr/lib/ostree/prepare-root.conf` completes successfully.
+- [ ] `skopeo inspect --tls-verify=false docker://<lab-ip>:30500/bluefin-server-bootc:latest` returns a valid OCI manifest.
+- [ ] `podman run --rm --tls-verify=false --entrypoint=ls <lab-ip>:30500/bluefin-server-bootc:latest /usr/lib/ostree/prepare-root.conf` completes successfully.
 - [ ] `build-containerdisk` workflow completes and pushes to `bluefin-containerdisk` with the target tag.

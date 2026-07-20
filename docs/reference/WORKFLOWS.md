@@ -159,7 +159,7 @@ frontend so the shared cache and worker pool can accelerate the full build path.
 |---|---|---|
 | `ref` | `testing` | Dakota git branch/ref to clone |
 | `repo` | `https://github.com/projectbluefin/dakota.git` | Dakota git repo |
-| `registry` | `192.168.1.102:30500` | Registry endpoint for builder image + pushed artifacts |
+| `registry` | `<lab-ip>:30500` | Registry endpoint for builder image + pushed artifacts |
 
 ```
 just run-bst-build                    # testing branch, default repo
@@ -176,7 +176,7 @@ Builds COSMIC BuildStream OCI artifacts in-cluster. `build-cosmic` and `build-co
 |---|---|---|
 | `ref` | `main` | COSMIC git branch/ref to clone |
 | `repo` | `https://github.com/RazorfinOS-org/cosmic-build-meta.git` | COSMIC build meta git repo |
-| `registry` | `192.168.1.102:30500` | Registry endpoint for builder image + pushed artifacts |
+| `registry` | `<lab-ip>:30500` | Registry endpoint for builder image + pushed artifacts |
 
 ---
 

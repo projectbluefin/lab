@@ -3,7 +3,7 @@
 > **SUPERSEDED (2026-07-08):** the single shared `buildbox-casd` Deployment architecture
 > described in this plan was superseded by the Buildbarn REAPI grid actually deployed to
 > the `buildbarn` namespace (frontend/scheduler/storage/worker/bb-remote-asset). See
-> `docs/ghost-lab-architecture.md` "Compute Model" for the current design. Retained for
+> `/docs/ops/architecture.md` "Compute Model" for the current design. Retained for
 > historical context only.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -782,11 +782,11 @@ Expected: `check-sha` step runs. If dakota:testing HEAD ≠ stored SHA → `run-
 
 ---
 
-### Task 8: Update design spec + AGENTS.md node table
+### Task 8: Update design spec + /agents.md node table
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-06-24-dakota-cluster-build-design.md`
-- Modify: `AGENTS.md` (cluster topology table)
+- Modify: `/agents.md` (cluster topology table)
 
 **Interfaces:**
 - No code interfaces — documentation only
@@ -820,9 +820,9 @@ resources:
     memory: 28Gi
 ```
 
-- [ ] **Step 2: Add bluefin/hamilton and exo-1 to AGENTS.md cluster topology table**
+- [ ] **Step 2: Add bluefin/hamilton and exo-1 to /agents.md cluster topology table**
 
-In `AGENTS.md`, find the Cluster Topology table and add the two new rows:
+In `/agents.md`, find the Cluster Topology table and add the two new rows:
 
 ```markdown
 | bluefin | k3s worker | 192.168.1.x | hamilton workstation — 16c/31Gi |
@@ -833,7 +833,7 @@ In `AGENTS.md`, find the Cluster Topology table and add the two new rows:
 
 ```bash
 cd /var/home/jorge/src/lab
-git add docs/superpowers/specs/2026-06-24-dakota-cluster-build-design.md AGENTS.md
+git add docs/superpowers/specs/2026-06-24-dakota-cluster-build-design.md /agents.md
 git commit -m "docs: update node topology — add bluefin/hamilton, exo-1 ready"
 git push
 ```

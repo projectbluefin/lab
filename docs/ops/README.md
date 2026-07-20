@@ -2,7 +2,7 @@
 
 Long-form guidance for running, bootstrapping, and recovering the lab cluster.
 
-- [`RUNBOOK.md`](RUNBOOK.md) — timeless architecture and failure modes
+- [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) — timeless architecture and failure modes
 - [`architecture.md`](architecture.md) — generic cluster topology
 - [`bootstrap.md`](bootstrap.md) — stand up a new lab from scratch
 - [`maintainer-onboarding.md`](maintainer-onboarding.md) — joining the team that operates this repo

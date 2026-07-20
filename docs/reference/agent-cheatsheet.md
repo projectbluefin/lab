@@ -4,11 +4,11 @@
 > Designed to be the **single file a weak-capability agent needs to load** for routine cluster operations.
 >
 > If your task is not in this file, escalate to:
-> - [`docs/lab-operations.md`](lab-operations.md) — long-form procedures
-> - [`WORKFLOWS.md`](../WORKFLOWS.md) — WorkflowTemplate parameter contracts
-> - [`RUNBOOK.md`](../RUNBOOK.md) — architecture + failure-mode index
-> - [`docs/dogtail-testing.md`](dogtail-testing.md) — writing GUI tests
-> - [`AGENTS.md`](../AGENTS.md) — hard policy and tenets
+> - [`/docs/ops/lab-operations.md`](lab-operations.md) — long-form procedures
+> - [`/docs/reference/WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
+> - [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) — architecture + failure-mode index
+> - [`/docs/skills/test-authoring/dogtail-patterns.md`](dogtail-testing.md) — writing GUI tests
+> - [`/agents.md`](/agents.md) — hard policy and tenets
 
 > [!NOTE]
 > **CLI-first.** Tool hierarchy: `just` (lifecycle recipes) → `argo`/`kubectl` (cluster ops) → `ssh jorge@ghost` (OS-level only).
@@ -73,7 +73,7 @@ Run `just logs` first. Then match a row. **Bluefin and Dakota image-poll QA are 
 | `results.json not found` or summary reports `Execution failed` | `just logs | grep -n "results.json not found\|Execution failed"` → identify the failing `run-container-tests` lane, then rerun after fixing the image or suite issue. |
 | Expected image-poll rerun never starts after a new publish | `kubectl get configmap image-polling-digests -n argo -o yaml` — compare the stored digest with the workflow log; stale state means the previous run already claimed that digest. |
 | VMI `NotFound` 1 second after VM creation | Same as above — KubeVirt refused to start VM due to missing accessCredentials secret; VM status will be `Stopped` |
-| `TypeError: ... requireResult` | Fix the step per [`docs/dogtail-testing.md`](dogtail-testing.md) §6.2 (`findChildren(...)` / `retry=False`) |
+| `TypeError: ... requireResult` | Fix the step per [`/docs/skills/test-authoring/dogtail-patterns.md`](dogtail-testing.md) §6.2 (`findChildren(...)` / `retry=False`) |
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |
 | `outputs.result` is `Waiting...` or other debug text | Send debug output to `>&2`; keep stdout for the result only |
@@ -112,7 +112,7 @@ If no row matches:
 | Node has `DiskPressure` | Do not submit builds. Inspect PV node affinity and `kube-system/local-path-config`; every eligible node needs an explicit non-root data path and there must be no default root-disk fallback. |
 | Many `virt-launcher-*` pods with no corresponding live workflow | `argo submit -n argo --from workflowtemplate/orphan-vm-cleanup` |
 
-Per-template ceilings live in [`AGENTS.md`](../AGENTS.md) under **Resource Limits**.
+Per-template ceilings live in [`/agents.md`](/agents.md) under **Resource Limits**.
 
 ---
 
@@ -387,7 +387,7 @@ Add `runs-on: ghost-runners` and a `container:` block to any projectbluefin work
 A listener pod and ephemeral runner pod will appear in `arc-systems` and
 `arc-runners` respectively. Example: `.github/workflows/example-container-mode-build.yml`.
 For maintainer access, authentication model, and troubleshooting, see
-`docs/maintainer-onboarding.md`.
+`/docs/ops/maintainer-onboarding.md`.
 
 **Writing a container-mode job:**
 - The job **must** declare `container:`; without it the runner will fail.
@@ -415,7 +415,7 @@ Create a second scale set for the maintainer's personal account:
    `runnerScaleSetName: ghost-runners-personal`.
 4. Maintainer uses `runs-on: ghost-runners-personal` in their personal repo.
 
-See `docs/maintainer-onboarding.md` for the full Application manifest and
+See `/docs/ops/maintainer-onboarding.md` for the full Application manifest and
 security notes.
 
 **ArgoCD Applications for ARC** (stored in `argocd/`, applied manually once):

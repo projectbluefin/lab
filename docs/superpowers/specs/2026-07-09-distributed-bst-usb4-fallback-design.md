@@ -12,7 +12,7 @@ Buildbarn remote execution (RE) fans out action input roots across nodes. Over
 the ghost<->exo-0 USB4 link (40 Gbps) this is the intended distributed-build
 path. Over the 1 GbE LAN it saturates the network and starves the control
 plane ("buildstream over ethernet will crash the network"). The USB4 link is
-also unreliable at the EC/PD level (see RUNBOOK.md 2026-07-08/09 incidents),
+also unreliable at the EC/PD level (see /docs/ops/RUNBOOK.md 2026-07-08/09 incidents),
 so the pipeline must degrade gracefully: full RE when the link is up,
 Buildbarn as artifact/source cache only when it is down.
 

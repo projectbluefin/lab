@@ -363,7 +363,7 @@ git commit -m "feat(poller): add fedora bootc and ublue main digest pollers"
 ### Task 5: Rollout verification and evidence capture
 
 **Files:**
-- Modify (if needed for docs): `docs/agent-cheatsheet.md` (image poller section)
+- Modify (if needed for docs): `/docs/reference/agent-cheatsheet.md` (image poller section)
 
 **Interfaces:**
 - Consumes: All manifests/templates from Tasks 1-4.
@@ -410,6 +410,6 @@ Expected: keys exist; changed streams have non-empty digest values.
 - [ ] **Step 4: Final commit for any doc touch-ups**
 
 ```bash
-git add docs/agent-cheatsheet.md
+git add /docs/reference/agent-cheatsheet.md
 git commit -m "docs: add expanded image poller operations notes"
 ```

@@ -97,8 +97,8 @@ No silent fallback. Every failure path emits a concrete reason.
 
 ## Documentation updates linked to this design
 
-- `docs/skills/flatcar-node-onboarding.md`
-- `docs/agent-cheatsheet.md`
+- `/docs/skills/flatcar-node-onboarding/SKILL.md`
+- `/docs/reference/agent-cheatsheet.md`
 
 ## References
 

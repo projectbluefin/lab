@@ -4,7 +4,7 @@ Date: 2026-07-10
 Status: superseded
 
 > Superseded by the USB4-only BuildStream policy. Current worker capacity and
-> admission rules live in `AGENTS.md` and `docs/skills/cluster-tooling.md`.
+> admission rules live in `/agents.md` and `/docs/skills/cluster-tooling/SKILL.md`.
 
 ## Problem
 

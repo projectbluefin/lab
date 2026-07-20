@@ -10,10 +10,10 @@ Most contributors should work in `projectbluefin/testsuite`. Use this repo when 
 - `kubectl`
 - `argocd` CLI
 - access to the test cluster, or a local QEMU/KubeVirt setup you can validate against
-- familiarity with the GitOps flow in `AGENTS.md`
+- familiarity with the GitOps flow in `/agents.md`
 
 ## Development workflow
-- Read `AGENTS.md` and `docs/agent-cheatsheet.md` first
+- Read `/agents.md` and `/docs/reference/agent-cheatsheet.md` first
 - Make infra changes in `argo/workflow-templates/`, `manifests/`, or `argocd/`
 - Validate Argo manifests locally with:
 ```bash

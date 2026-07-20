@@ -8,7 +8,7 @@ Date: 2026-06-24
 > DaemonSet + `bb-remote-asset`, all in the `buildbarn` namespace) as the canonical
 > shared build cache and remote-execution backend, distributing BST actions across the
 > `worker` DaemonSet pods on both `ghost` and `exo-0` rather than a single casd pod.
-> See the "Compute Model" section of `docs/ghost-lab-architecture.md` for the current
+> See the "Compute Model" section of `/docs/ops/architecture.md` for the current
 > topology. This document is retained for historical context only — do not use it to
 > reason about the current system.
 

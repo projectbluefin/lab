@@ -4,9 +4,9 @@
 
 Pair with:
 - [`agent-cheatsheet.md`](agent-cheatsheet.md) — canonical command reference
-- [`../AGENTS.md`](../AGENTS.md) — policy + architecture
-- [`../RUNBOOK.md`](../RUNBOOK.md) — timeless architecture + failure modes
-- [`../WORKFLOWS.md`](../WORKFLOWS.md) — WorkflowTemplate parameter contracts
+- [`../AGENTS.md`](/agents.md) — policy + architecture
+- [`../RUNBOOK.md`](/docs/ops/RUNBOOK.md) — timeless architecture + failure modes
+- [`../WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
 - [`dogtail-testing.md`](dogtail-testing.md) — GUI test authoring
 - [`vanguard-report-template.md`](vanguard-report-template.md) — PR verification report
 
@@ -235,7 +235,7 @@ Answer three questions in order:
 ## 8. SSH key rotation
 
 The key rotation flow is still valid because it manages the **in-cluster** test-access secret, not workstation SSH.
-Use the exact command block in [docs/agent-cheatsheet.md](agent-cheatsheet.md) §6.
+Use the exact command block in [/docs/reference/agent-cheatsheet.md](agent-cheatsheet.md) §6.
 
 After rotation:
 1. Update `manifests/bluefin-test-ssh-pubkey.yaml` with the new base64-encoded public key and push to main.

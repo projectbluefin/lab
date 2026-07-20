@@ -238,7 +238,7 @@ first job may take 30-60 seconds while a pod is created.
 ## Getting help
 
 - Reference workflow: `.github/workflows/example-container-mode-build.yml`
-- Cluster operations guide: `docs/agent-cheatsheet.md`
-- ARC patterns and red flags: `docs/skills/ci-tooling.md`
-- Cluster architecture: `docs/ghost-lab-architecture.md`
+- Cluster operations guide: `/docs/reference/agent-cheatsheet.md`
+- ARC patterns and red flags: `/docs/skills/ci-tooling/SKILL.md`
+- Cluster architecture: `/docs/ops/architecture.md`
 - Open an issue in `projectbluefin/lab` for access or infrastructure problems.

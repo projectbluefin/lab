@@ -162,7 +162,7 @@ just setup-ghost-ssh-banner
 This cluster uses an opt-in model: worker nodes join the cluster manually and can
 leave at any time (useful for laptops and gaming machines).
 
-**Full onboarding steps: `docs/agent-cheatsheet.md` section 14.**
+**Full onboarding steps: `/docs/reference/agent-cheatsheet.md` section 14.**
 
 Quick summary:
 1. Get join token: `ssh jorge@192.168.1.102 "sudo cat /var/lib/rancher/k3s/server/node-token"`

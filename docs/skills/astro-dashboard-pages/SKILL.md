@@ -128,7 +128,7 @@ Read the published JSON contract at prerender time, join any linked result JSON 
 85. For "build status"/CI-status pages, before reaching for anything cluster-side (Argo Workflows, ARC/`ghost-runners`, a CronWorkflow bridge), ask what data the user actually wants to see. Argo QA-pipeline test runs require LAN/cluster access this site's `ubuntu-latest` runner never has, and `ghost-runners` is not a runner pool this cluster actually uses — verify with `gh api orgs/projectbluefin/actions/runners` before assuming otherwise. The real "factory builds" users care about (green/red bootc image builds for bluefin, bluefin-lts, dakota) already exist as public GitHub Actions workflows in those image repos: `gh api repos/{owner}/{repo}/actions/workflows/{workflow_file_name}/runs?branch={branch}&per_page=20` works directly from any GitHub-hosted runner, no cluster/LAN/ARC bridge of any kind needed. Prefer this direct-API approach for CI-status pages; only reach for an in-cluster bridge when the data genuinely doesn't exist anywhere outside the LAN.
 86. When rendering test screenshots, check for local filesystem existence of the target image file at pre-render build time, and display a high-fidelity 16:9 aspect ratio placeholder block with educational descriptions and local run commands (e.g. `just run-tests-tag <tag>`) instead of completely hiding the visual evidence section or rendering a broken image link.
 87. For test evidence cards (such as `TestEvidenceCard.astro`), when rendering individual scenario runs or steps, ensure that if any attributes (such as duration or screenshots) are null, undefined, or missing, they are handled defensively by rendering a clean, explicit 'unavailable' indicator and maintaining column/row alignments, and update page tests to verify that these empty/unavailable states render correctly without breaking the layout.
-88. When a dashboard page makes an architectural claim (for example "disks are provisioned via btrfs reflink"), verify the claim against WorkflowTemplate annotations, RUNBOOK.md, and live cluster state before rendering it. If the claim is stale or wrong, replace it with an explicit correction that names the current mechanism and cites the source file.
+88. When a dashboard page makes an architectural claim (for example "disks are provisioned via btrfs reflink"), verify the claim against WorkflowTemplate annotations, /docs/ops/RUNBOOK.md, and live cluster state before rendering it. If the claim is stale or wrong, replace it with an explicit correction that names the current mechanism and cites the source file.
 89. For containerDisk or OCI image inventory pages, query the local Zot registry at build time with short timeouts and fall back to a static catalog definition when the registry is unreachable. Label sizes as compressed OCI layer sizes, not unpacked raw disk sizes, and show availability per tag explicitly.
 90. Load page-specific chart code as a plain-global script (no ESM imports) in `src/scripts/`, reference it from the Astro page via `import chartSrc from '../scripts/x.js?url'`, and emit it with `<script is:inline src={chartSrc} defer data-cfasync="false">` alongside the echarts CDN tag carrying the same attributes. Never use a bare `<script type="module">` for chart boot code: Cloudflare Rocket Loader rewrites module script types on the live site and the charts silently die. An Astro `<script>` with any attribute is treated as `is:inline` and ships raw — an ESM `import` statement inside it will not be bundled and will throw at runtime. Reference implementations: `src/pages/builds.astro` and `src/components/TestsCharts.astro`.
 
@@ -160,7 +160,7 @@ The index page is the SRE triage view. Its top three sections are driven by:
 
 - `docs/data/release-verdict.json` — written by `scripts/collect_release_verdict.py`
   (ADR 0002: good = build passed + lab QA passed on digest + cosign keyless verify).
-  Contract documented in `docs/data/page-contracts.md`.
+  Contract documented in `/docs/reference/page-contracts.md`.
 - `docs/data/history/release-verdict.ndjson` — append-only verdict transitions, 365d cap.
 - Per-lane build-duration sparklines computed in `index.astro` frontmatter from
   `factory-stats.json` `image_builds` (last 20 runs per lane); rendered via the
@@ -202,7 +202,7 @@ Guidelines:
 
 - Load lines into memory and parse with `JSON.parse` or a streaming NDJSON
   parser; keep only the fields the page needs.
-- Dedupe by the natural key documented in `docs/data/page-contracts.md` before
+- Dedupe by the natural key documented in `/docs/reference/page-contracts.md` before
   rendering; collectors append, but repeated builds must not double-count rows.
 - Slice time ranges (30d, 90d, 180d) client-side from the full deserialized
   payload so the static page ships one dataset and filtering requires no extra

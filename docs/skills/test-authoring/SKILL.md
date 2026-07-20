@@ -182,7 +182,7 @@ argo logs -n argo <workflow-name> --node-name run-gnome-tests
 ssh -i /path/to/id_ed25519 bluefin-test@<pod-ip>
 ```
 
-Common failure table from RUNBOOK.md:
+Common failure table from /docs/ops/RUNBOOK.md:
 
 | Symptom | Root cause | Fix |
 |---|---|---|
@@ -259,7 +259,7 @@ contract test. Bias toward:
 - `uupd` orchestration
 - OCI layer signature verification
 
-See `docs/WORKFLOWS.md` for the full WorkflowTemplate reference.
+See `/docs/reference/WORKFLOWS.md` for the full WorkflowTemplate reference.
 
 ## Common Rationalizations
 

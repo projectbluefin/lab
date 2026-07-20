@@ -5,7 +5,7 @@
 > Any multi-node daisy-chain mesh, ZFS storage tier, or Remote Execution grid described
 > in earlier drafts of this document was aspirational and did not match deployed hardware
 > — it has been removed. Extend this doc only after physically verifying new links/nodes
-> (see RUNBOOK.md:108-116 for the incident this caused previously).
+> (see /docs/ops/RUNBOOK.md:108-116 for the incident this caused previously).
 
 ## Hardware
 
@@ -32,7 +32,7 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 ### Data Plane — Point-to-Point USB4 Link (ghost <-> exo-0 only)
 
 > **STATUS (2026-07-09): LINK UP AND ROUTED.** After the 2026-07-08 EC/PD failure
-> (see RUNBOOK.md), a full power drain of both nodes restored the physical link.
+> (see /docs/ops/RUNBOOK.md), a full power drain of both nodes restored the physical link.
 > `thunderbolt0` is up on both hosts, static IPs and table-40 policy routing are
 > applied and persisted in NetworkManager, and cross-node pod traffic is confirmed
 > flowing over USB4 (~0.16 ms pod-to-pod RTT).
@@ -189,4 +189,4 @@ runner pods idle.
   installation secret.
 
 Example workflow: `.github/workflows/example-container-mode-build.yml`.  
-Access, auth, and troubleshooting: `docs/maintainer-onboarding.md`.
+Access, auth, and troubleshooting: `/docs/ops/maintainer-onboarding.md`.

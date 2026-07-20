@@ -3,7 +3,7 @@
 This doc covers Argo Workflows and WorkflowTemplates. For the GitHub Actions
 bridge that submits Argo Workflows from ephemeral ARC runners, see
 `.github/workflows/example-container-mode-build.yml` and
-`docs/maintainer-onboarding.md`.
+`/docs/ops/maintainer-onboarding.md`.
 
 ## Table of Contents
 - [Pipelines](#pipelines)
@@ -158,7 +158,7 @@ must fail for repair; it must not use an Ethernet, local, or cache-only fallback
 | `image-poll-bluefin-{testing,stable}` / `image-poll-lts-{testing,stable}` | 10 min | `image-poller` when the respective GHCR tag digest changes | Bluefin/LTS container-only QA freshness plus result publication |
 | `image-poll-snosi-latest` | 30 min past every 3 hours | `bluefin-qa-pipeline` when `ghcr.io/frostyard/snow:latest` changes | Snosi GNOME desktop image coverage |
 | `flatcar-kernel-poller` | 10 min | `flatcar-kernel-build` when kernel.org's latest stable version changes | Flatcar kernel build cache |
-| `flatcar-kernel-gate` | 30 min | (gate/promotion check, see `docs/skills/flatcar-node-onboarding.md`) | N/A |
+| `flatcar-kernel-gate` | 30 min | (gate/promotion check, see `/docs/skills/flatcar-node-onboarding/SKILL.md`) | N/A |
 
 Dakota/Cosmic/Bluefin Server/BST lanes now use the shared Buildbarn frontend for
 cache writes and remote execution while leaving upstream mirrors read-only. Cold

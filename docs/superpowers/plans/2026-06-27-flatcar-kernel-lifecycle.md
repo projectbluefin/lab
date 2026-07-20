@@ -32,8 +32,8 @@ If exo-0 is being reimaged, delete the stale node object first and do not advanc
 
 **Files:**
 - Create: `manifests/flatcar-kernel-lifecycle-state.yaml`
-- Modify: `docs/skills/flatcar-node-onboarding.md`
-- Modify: `docs/agent-cheatsheet.md`
+- Modify: `/docs/skills/flatcar-node-onboarding/SKILL.md`
+- Modify: `/docs/reference/agent-cheatsheet.md`
 
 **Interfaces:**
 - Produces: ConfigMap `flatcar-kernel-lifecycle-state` (namespace `argo`) with keys:
@@ -67,7 +67,7 @@ data:
 
 - [ ] **Step 2: Document keys and operator meaning**
 
-Add a short table in `docs/skills/flatcar-node-onboarding.md` under kernel lifecycle:
+Add a short table in `/docs/skills/flatcar-node-onboarding/SKILL.md` under kernel lifecycle:
 
 ```md
 | Key | Meaning |
@@ -85,7 +85,7 @@ Expected: exit 0
 - [ ] **Step 4: Commit**
 
 ```bash
-git add manifests/flatcar-kernel-lifecycle-state.yaml docs/skills/flatcar-node-onboarding.md docs/agent-cheatsheet.md
+git add manifests/flatcar-kernel-lifecycle-state.yaml /docs/skills/flatcar-node-onboarding/SKILL.md /docs/reference/agent-cheatsheet.md
 git commit -m "feat(flatcar): add kernel lifecycle state contract"
 ```
 
@@ -220,8 +220,8 @@ git commit -m "feat(flatcar): add exo-0 24h kernel promotion gate"
 
 **Files:**
 - Modify: `manifests/flatcar-kernel-poller.yaml`
-- Modify: `docs/skills/flatcar-node-onboarding.md`
-- Modify: `docs/agent-cheatsheet.md`
+- Modify: `/docs/skills/flatcar-node-onboarding/SKILL.md`
+- Modify: `/docs/reference/agent-cheatsheet.md`
 
 **Interfaces:**
 - Consumes: candidate state written by Task 2
@@ -266,7 +266,7 @@ Expected: exit 0
 - [ ] **Step 4: Commit**
 
 ```bash
-git add manifests/flatcar-kernel-poller.yaml docs/skills/flatcar-node-onboarding.md docs/agent-cheatsheet.md
+git add manifests/flatcar-kernel-poller.yaml /docs/skills/flatcar-node-onboarding/SKILL.md /docs/reference/agent-cheatsheet.md
 git commit -m "feat(flatcar): wire kernel gate automation and operator runbook"
 ```
 
@@ -320,7 +320,7 @@ Expected: gate workflow refuses promotion and logs rollback/blocked reason.
 - [ ] **Step 5: Commit evidence doc updates**
 
 ```bash
-git add docs/skills/flatcar-node-onboarding.md docs/agent-cheatsheet.md
+git add /docs/skills/flatcar-node-onboarding/SKILL.md /docs/reference/agent-cheatsheet.md
 git commit -m "docs(flatcar): add verified kernel lifecycle promotion evidence"
 ```
 

@@ -28,7 +28,7 @@ image-poller checks the digest, compares it with stored state, fans out
 `run-container-tests`, publishes per-suite results back into this repo, and only
 then records the new digest. This is Bluefin Server's first usecase.
 
-See [docs/bluefin-integration.md](docs/bluefin-integration.md) for the full
+See [/docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) for the full
 image-poll → container test → result publication pipeline.
 
 > The C and C Music Factory is mastery and full of jams that has to be
@@ -57,7 +57,7 @@ The lab continuously validates the core operating system family across multiple 
 `results.json`, then runs `scripts/publish_test_results.py` to push structured
 per-suite results back into this repo for dashboard consumers.
 
-See [docs/bluefin-integration.md](docs/bluefin-integration.md) for full details.
+See [/docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) for full details.
 
 ---
 
@@ -116,9 +116,9 @@ ArgoCD polls (or webhook)
 ```
 lab/
 ├── README.md                         # This file
-├── RUNBOOK.md                        # Timeless architecture + failure modes
-├── AGENTS.md                         # Agent policy, scope rules, cluster topology
-├── WORKFLOWS.md                      # WorkflowTemplate agent contract (submit interface)
+├── agents.md                         # Agent entry point
+├── docs/ops/RUNBOOK.md               # Timeless architecture + failure modes
+├── docs/reference/WORKFLOWS.md       # WorkflowTemplate agent contract
 ├── Justfile                          # Operator convenience wrappers
 │
 ├── argo/
@@ -214,7 +214,7 @@ lab/
     ├── lab-operations.md             long-form operator procedures
     ├── dogtail-testing.md            GUI test authoring + debugging
     ├── bluefin-integration.md        image-poll → container test → result publication pipeline
-    └── WORKFLOWS.md                  full WorkflowTemplate reference (resource profiles, runtime paths)
+    └── /docs/reference/WORKFLOWS.md                  full WorkflowTemplate reference (resource profiles, runtime paths)
 ```
 
 ---
@@ -253,7 +253,7 @@ with two ArgoCD Applications that own distinct resource classes:
 
 ## Getting Started
 
-See **[docs/bootstrap.md](docs/bootstrap.md)** for the complete lab setup guide.
+See **[/docs/ops/bootstrap.md](/docs/ops/bootstrap.md)** for the complete lab setup guide.
 
 **TL;DR for an existing k3s + KubeVirt cluster:**
 
@@ -330,7 +330,7 @@ This lets ArgoCD own the template lifecycle while keeping submission flexible.
 3. Tag new scenarios `@wip` until stable.
 4. Submit a run: `just run-tests` (smoke) or `just run-tests-tag lts-testing`.
 
-See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring.
+See [/docs/skills/test-authoring/dogtail-patterns.md](/docs/skills/test-authoring/dogtail-patterns.md) for AT-SPI test authoring.
 
 ---
 
@@ -339,15 +339,14 @@ See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring
 | Doc | Purpose |
 |---|---|
 | [README.md](README.md) | Architecture overview (this file) |
-| [WORKFLOWS.md](WORKFLOWS.md) | WorkflowTemplate agent contract — submit interface, parameter reference |
-| [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | Full WorkflowTemplate reference — resource profiles, disk paths, pipeline details |
-| [docs/bluefin-integration.md](docs/bluefin-integration.md) | Image-poll → container test → result publication pipeline |
-| [docs/bootstrap.md](docs/bootstrap.md) | How to replicate this lab from scratch |
-| [RUNBOOK.md](RUNBOOK.md) | Timeless architecture + failure-mode reference |
-| [AGENTS.md](AGENTS.md) | Agent policy, cluster topology, issue filing rules |
-| [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md) | Canonical command reference |
-| [docs/lab-operations.md](docs/lab-operations.md) | Long-form operator procedures |
-| [docs/dogtail-testing.md](docs/dogtail-testing.md) | GUI test authoring + debugging |
+| [agents.md](agents.md) | Agent entry point |
+| [docs/reference/WORKFLOWS.md](/docs/reference/WORKFLOWS.md) | WorkflowTemplate submit interface + parameter reference |
+| [docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) | Image-poll → container test → result publication pipeline |
+| [docs/ops/bootstrap.md](/docs/ops/bootstrap.md) | How to replicate this lab from scratch |
+| [docs/ops/RUNBOOK.md](/docs/ops/RUNBOOK.md) | Timeless architecture + failure-mode reference |
+| [docs/reference/agent-cheatsheet.md](/docs/reference/agent-cheatsheet.md) | Canonical command reference |
+| [docs/ops/lab-operations.md](/docs/ops/lab-operations.md) | Long-form operator procedures |
+| [docs/skills/test-authoring/dogtail-patterns.md](/docs/skills/test-authoring/dogtail-patterns.md) | GUI test authoring + debugging |
 
 ---
 

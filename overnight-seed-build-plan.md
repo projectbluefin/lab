@@ -14,7 +14,7 @@
 
 ### 1. Fix `dakota:latest` references
 Files known to contain the string:
-- `AGENTS.md:255` — `image-poll-dakota.yaml` label says "poll dakota:latest digest".
+- `/agents.md:255` — `image-poll-dakota.yaml` label says "poll dakota:latest digest".
 - Search `argo/` for any template still defaulting to `latest` (e.g., `image-poll-dakota.yaml`, `dakota-container-qa-pipeline`). A previous commit already changed `dakota-qa-pipeline` default to `testing`.
 - Search `docs/` and `common/` for stale references.
 Action: replace user-facing references with `:testing` and, where a workflow genuinely needs `latest`, add a comment explaining why or delete the workflow.

@@ -40,7 +40,9 @@ jobs:
             # Files that reference WorkflowTemplates cannot be linted offline because
             # the referenced templates are not loaded. Lint them as advisory only;
             # every standalone file that embeds its own templates must pass offline.
-            if grep -qE 'workflowTemplateRef|templateRef' "$f"; then
+            # Anchor to the start of a YAML key so comments/template names do not
+            # accidentally mark a self-contained workflow as advisory.
+            if grep -qE '^[[:space:]]*(workflowTemplateRef|templateRef):' "$f"; then
               echo "Advisory lint (server-side refs): $f"
               argo lint --offline "$f" || echo "WARNING: $f needs server-side template resolution"
             else
@@ -49,8 +51,6 @@ jobs:
             fi
           done
           exit "$FAIL"
-
-
       - name: Registry allowlist check
         run: |
           # Fail if any image: reference uses a registry not in the cluster cache.

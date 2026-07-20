@@ -1,0 +1,116 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: iso-build-e2e-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      Build a fresh projectbluefin/iso ISO in a privileged lab pod, then run its
+      QEMU smoke and unattended installer E2E tests before publishing the result.
+      This is the fast lab loop for ISO changes; GitHub Actions remains the release gate.
+  labels:
+    app.kubernetes.io/component: iso-qa
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  entrypoint: build-and-test
+  activeDeadlineSeconds: 10800
+  arguments:
+    parameters:
+    - name: iso-ref
+      value: "main"
+    - name: variant
+      value: "bluefin"
+    - name: flavor
+      value: "base"
+    - name: run-e2e
+      value: "true"
+  templates:
+  - name: build-and-test
+    inputs:
+      parameters:
+      - name: iso-ref
+      - name: variant
+      - name: flavor
+      - name: run-e2e
+    script:
+      image: quay.io/fedora/fedora:latest
+      command: [bash]
+      securityContext:
+        privileged: true
+        runAsUser: 0
+      resources:
+        requests:
+          cpu: "4"
+          memory: 8Gi
+        limits:
+          cpu: "8"
+          memory: 16Gi
+      volumeMounts:
+      - name: work
+        mountPath: /work
+      - name: kvm
+        mountPath: /dev/kvm
+      source: |
+        set -euo pipefail
+
+        REF="{{inputs.parameters.iso-ref}}"
+        VARIANT="{{inputs.parameters.variant}}"
+        FLAVOR="{{inputs.parameters.flavor}}"
+        RUN_E2E="{{inputs.parameters.run-e2e}}"
+        WORK=/work
+        ISO_DIR="${WORK}/iso"
+        BUILD_DIR="${WORK}/build"
+        OUTPUT="${WORK}/output"
+
+        dnf install -y --setopt=install_weak_deps=False \
+          curl ffmpeg git just podman qemu-img qemu-system-x86-core rsync xorriso
+
+        mkdir -p "${ISO_DIR}"
+        git -C "${ISO_DIR}" init
+        git -C "${ISO_DIR}" remote add origin https://github.com/projectbluefin/iso
+        git -C "${ISO_DIR}" fetch --depth=1 origin "${REF}"
+        git -C "${ISO_DIR}" checkout --detach FETCH_HEAD
+
+        export BUILD_DIR
+        export PODMAN=podman
+        export GITHUB_REPOSITORY_OWNER=ublue-os
+        bash "${ISO_DIR}/hack/local-iso-build.sh" "${VARIANT}" "${FLAVOR}" ghcr
+
+        ISO_PATH="${ISO_DIR}/bluefin-${VARIANT}-$(date +%Y%m%d).iso"
+        if [[ ! -f "${ISO_PATH}" ]]; then
+          ISO_PATH="$(find "${ISO_DIR}" -maxdepth 1 -type f -name '*.iso' -print -quit)"
+        fi
+        [[ -n "${ISO_PATH}" && -f "${ISO_PATH}" ]] || {
+          echo 'fresh ISO was not produced' >&2
+          exit 1
+        }
+        sha256sum "${ISO_PATH}"
+        mkdir -p "${OUTPUT}"
+
+        if [[ -e /dev/kvm ]]; then
+          export QEMU_ACCEL=kvm:tcg
+        else
+          echo 'WARNING: /dev/kvm unavailable; falling back to TCG' >&2
+          export QEMU_ACCEL=tcg
+        fi
+
+        if [[ "${RUN_E2E}" == true ]]; then
+          bash "${ISO_DIR}/tests/iso/suite.sh" "${ISO_PATH}" "${OUTPUT}"
+        else
+          bash "${ISO_DIR}/tests/iso/smoke.sh" "${ISO_PATH}" "${OUTPUT}/smoke"
+        fi
+
+        find "${OUTPUT}" -maxdepth 2 -type f -printf '%p (%s bytes)\n' | sort
+        for summary in "${OUTPUT}"/*/*summary.json; do
+          [[ -f "${summary}" ]] || continue
+          echo "=== ${summary} ==="
+          cat "${summary}"
+        done
+    volumes:
+    - name: work
+      emptyDir:
+        sizeLimit: 60Gi
+    - name: kvm
+      hostPath:
+        path: /dev/kvm
+        type: CharDevice

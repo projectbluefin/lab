@@ -88,6 +88,45 @@ argo submit --from workflowtemplate/cosmic-qa-pipeline \
 
 ---
 
+### `iso-build-e2e-pipeline`
+
+Builds a fresh ISO from `projectbluefin/iso` inside a privileged lab pod, then runs the canonical smoke and unattended installer E2E harness against that artifact. This is the fast feedback loop for ISO changes; GitHub Actions remains the release gate.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `iso-ref` | `main` | ISO branch, tag, or immutable commit to build. |
+| `variant` | `bluefin` | ISO build variant. |
+| `flavor` | `base` | ISO flavor passed to the local build recipe. |
+| `run-e2e` | `true` | Set `false` for smoke-only validation. |
+
+The build pod uses root Podman inside a privileged, resource-limited pod and uses `/dev/kvm` for QEMU when available. The generated ISO is never written to a workstation.
+
+```bash
+argo submit --from workflowtemplate/iso-build-e2e-pipeline \\
+  -p iso-ref=<iso-commit-or-branch> \\
+  -p variant=bluefin -p flavor=base --wait
+```
+
+### `iso-e2e-pipeline`
+
+Runs the canonical `projectbluefin/iso` validation harness in a lab pod with QEMU and KVM when available. It downloads a published ISO URL, checks out the ISO repository at `iso-ref`, runs smoke plus unattended installer E2E by default, and prints proof summaries to Argo logs.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `iso-url` | empty | Required HTTPS URL for a published ISO. |
+| `iso-ref` | `main` | ISO branch, tag, or immutable commit containing `tests/iso`. |
+| `variant` | empty | Metadata recorded in the run output. |
+| `run-e2e` | `true` | Set `false` for smoke-only validation. |
+
+The lab pod uses `/dev/kvm` when present and falls back to QEMU TCG otherwise. This avoids GitHub Actions runner queue time while preserving the ISO repository's test implementation.
+
+```bash
+argo submit --from workflowtemplate/iso-e2e-pipeline \\
+  -p iso-url=https://example.invalid/candidate.iso \\
+  -p iso-ref=<immutable-iso-sha> \\
+  -p variant=stable --wait
+```
+
 ## Supporting templates (called via `templateRef`)
 
 These are exposed because they are referenced by the entry points;

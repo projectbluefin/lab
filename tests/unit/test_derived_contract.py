@@ -89,7 +89,7 @@ def test_no_derived_files_okay():
     ids=lambda p: str(p) if p else "none",
 )
 def test_every_derived_file_validates_against_schema(path: Path):
-    jsonschema = pytest.importorskip("jsonschema")
+    pytest.importorskip("jsonschema")
     from jsonschema import Draft202012Validator
 
     schema = json.loads(SCHEMA_PATH.read_text())

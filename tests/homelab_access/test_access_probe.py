@@ -4,10 +4,9 @@ In-cluster HTTPS access probe checks.
 
 from __future__ import annotations
 
-import os
 import subprocess
 
-from tests.service_catalog.shared.kube import RESULTS_DIR, TEST_NAMESPACE, TEST_SERVICE_NAME, write_artifact
+from tests.service_catalog.shared.kube import TEST_NAMESPACE, TEST_SERVICE_NAME, write_artifact
 
 
 HOSTNAME = "homelab-access.local"

@@ -5,7 +5,7 @@ from pathlib import Path
 scripts_path = Path(__file__).parent.parent.parent / "scripts"
 sys.path.insert(0, str(scripts_path))
 
-from publish_test_results import parse_results_and_build_update
+from publish_test_results import parse_results_and_build_update  # noqa: E402
 
 def test_parse_results_and_build_update():
     # Sample behave JSON

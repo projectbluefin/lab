@@ -22,8 +22,10 @@ python3 scripts/validate-docs.py
 actionlint .github/workflows/*.yml .github/workflows/*.yaml
 ```
 - Push Git-tracked changes; ArgoCD reconciles them from `main`
+- All pull requests to `main` enter the GitHub merge queue after required checks pass; see [`docs/ops/merge-queue.md`](docs/ops/merge-queue.md)
 
 ## Pull requests
 - Open PRs against `main`
 - Keep changes scoped and explain the operational impact
+- Required-check workflows must include the `merge_group` trigger so queued PRs receive status results
 - Do not treat this repo like a general-purpose newcomer project; it assumes access to the Bluefin lab and knowledge of the workflow stack

@@ -62,6 +62,7 @@ npm ci && npm run build
 | Workflow parameter contracts | [`docs/reference/WORKFLOWS.md`](docs/reference/WORKFLOWS.md) |
 | Release verdict / dashboard data contracts | [`docs/adr/0002-release-verdict-definition.md`](docs/adr/0002-release-verdict-definition.md), [`docs/reference/page-contracts.md`](docs/reference/page-contracts.md) |
 | Architecture / failure modes | [`docs/ops/RUNBOOK.md`](docs/ops/RUNBOOK.md) |
+| GitHub `main` merge queue / branch ruleset | [`docs/ops/merge-queue.md`](docs/ops/merge-queue.md) |
 | Human contributor workflow | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 
 ## Skill maintenance

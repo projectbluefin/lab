@@ -1,0 +1,118 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: iso-e2e-pipeline
+  namespace: argo
+  annotations:
+    description: >-
+      Run the exact projectbluefin/iso unattended installer harness against an
+      immutable ISO candidate on a lab KVM runner, then publish a GitHub status.
+spec:
+  serviceAccountName: argo
+  entrypoint: run
+  activeDeadlineSeconds: 5400
+  arguments:
+    parameters:
+      - name: iso-url
+      - name: iso-sha256
+      - name: source-repo
+        value: projectbluefin/iso
+      - name: source-sha
+      - name: candidate-id
+      - name: image-ref
+        value: ghcr.io/ublue-os/bluefin
+      - name: image-tag
+        value: stable
+  volumeClaimTemplates:
+    - metadata:
+        name: iso-e2e-results
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 40Gi
+  templates:
+    - name: run
+      inputs:
+        parameters:
+          - name: iso-url
+          - name: iso-sha256
+          - name: source-repo
+          - name: source-sha
+          - name: candidate-id
+          - name: image-ref
+          - name: image-tag
+      volumes:
+        - name: kvm
+          hostPath:
+            path: /dev/kvm
+            type: CharDevice
+      script:
+        image: quay.io/fedora/fedora:latest
+        command: [bash]
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: "4"
+            memory: 12Gi
+        volumeMounts:
+          - name: iso-e2e-results
+            mountPath: /results
+          - name: kvm
+            mountPath: /dev/kvm
+        env:
+          - name: GITHUB_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: github-token
+                key: token
+                optional: true
+        source: |
+          set -euo pipefail
+          ISO=/results/candidate.iso
+          OUT=/results/e2e-output
+          mkdir -p "$OUT"
+
+          dnf install -y --setopt=install_weak_deps=False \
+            curl git qemu-img qemu-system-x86-core xorriso ffmpeg python3 >/dev/null
+
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output "$ISO" "{{inputs.parameters.iso-url}}"
+          printf '%s  %s\n' "{{inputs.parameters.iso-sha256}}" "$ISO" | sha256sum -c -
+
+          git clone --quiet --depth 1 \
+            https://github.com/projectbluefin/iso /workspace
+          git -C /workspace fetch --quiet --depth 1 origin \
+            "{{inputs.parameters.source-sha}}"
+          git -C /workspace checkout --quiet "{{inputs.parameters.source-sha}}"
+
+          export IMAGE_REF="{{inputs.parameters.image-ref}}"
+          export IMAGE_TAG="{{inputs.parameters.image-tag}}"
+          export QEMU_ACCEL=kvm:tcg
+          export E2E_DISK_SIZE=32G
+          export E2E_INSTALL_TIMEOUT=2400
+
+          state=failure
+          if bash /workspace/hack/iso-e2e-test.sh "$ISO" "$OUT"; then
+            state=success
+          fi
+
+          export STATE="$state"
+          export CANDIDATE="{{inputs.parameters.candidate-id}}"
+          export RUN_URL="https://factory.projectbluefin.io"
+          if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            curl --fail-with-body --request POST \
+              --url "https://api.github.com/repos/{{inputs.parameters.source-repo}}/statuses/{{inputs.parameters.source-sha}}" \
+              --header "authorization: Bearer ${GITHUB_TOKEN}" \
+              --header 'accept: application/vnd.github+json' \
+              --data "$(python3 -c 'import json,os; print(json.dumps({\"state\":os.environ[\"STATE\"],\"context\":\"projectbluefin/lab / ISO E2E\",\"description\":\"ISO candidate \"+os.environ[\"CANDIDATE\"]+\" lab E2E\",\"target_url\":os.environ[\"RUN_URL\"]}))' )" \
+              || echo 'warning: GitHub status callback failed' >&2
+          fi
+
+          echo "candidate={{inputs.parameters.candidate-id}} state=${state}"
+          test "$state" = success

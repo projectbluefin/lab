@@ -26,6 +26,8 @@ automation — `bluefin-lts` has no `:latest` tag.
 
 All Bluefin image test scenarios live in **[`projectbluefin/testsuite`](https://github.com/projectbluefin/testsuite)** — the single source of truth. The lab's `run-container-tests` WorkflowTemplate clones `testsuite` (main or a branch) and runs qecore-headless + behave directly inside the published bootc OCI image. VM-backed KubeVirt coverage remains for the workflows that explicitly still need it, but the image-poll path no longer boots or installs a guest.
 
+ISO candidates use the separate `iso-e2e-pipeline` WorkflowTemplate. It downloads the exact candidate URL, verifies the supplied SHA256, checks out the source SHA from `projectbluefin/iso`, and runs the repository's unattended installer harness on a KVM-capable lab runner. The pipeline publishes a `projectbluefin/lab / ISO E2E` commit status and fails if the candidate checksum or installer test fails.
+
 Each pipeline run executes one or more suites via the `suites` parameter (comma-separated).
 
 ### smoke
@@ -95,6 +97,18 @@ The result: a Bluefin release is published → tests run in containers → the r
 receives per-suite QA results without any VM-specific artifact handling.
 
 ---
+
+## Triggering an ISO E2E Run
+
+```bash
+argo submit --from workflowtemplate/iso-e2e-pipeline --watch \
+  -p iso-url=https://download.projectbluefin.io/testing/<candidate>.iso \
+  -p iso-sha256=<sha256> \
+  -p source-sha=<iso-commit> \
+  -p candidate-id=<candidate-id>
+```
+
+The ISO runner requires a KVM-capable node and writes the normal ISO E2E evidence bundle to its result PVC. The source ISO, checksum, source SHA, and candidate ID are all recorded before testing.
 
 ## Triggering a Test Run Manually
 

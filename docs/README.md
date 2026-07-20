@@ -8,7 +8,7 @@ The architecture and maintenance contract is [`DOCUMENTATION-OVERHAUL.md`](DOCUM
 
 - **Agent instructions:** [`../AGENTS.md`](../AGENTS.md)
 - **Skill discovery:** [`skills/README.md`](skills/README.md)
-- **Operations and failure recovery:** [`operations/README.md`](operations/README.md)
+- **Operations and failure recovery:** [`ops/README.md`](ops/README.md)
 - **Commands:** [`reference/commands.md`](reference/commands.md)
 - **Workflow contracts:** [`reference/WORKFLOWS.md`](reference/WORKFLOWS.md)
 - **Data contracts:** [`reference/page-contracts.md`](reference/page-contracts.md)

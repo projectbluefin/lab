@@ -37,9 +37,19 @@ def validate_skill_manifest(files: set[Path]) -> list[str]:
         return []
     errors: list[str] = []
     pattern = r"\]\(([^)]+/SKILL\.md)\)"
-    for target in re.findall(pattern, manifest.read_text(encoding="utf-8")):
+    targets = set(re.findall(pattern, manifest.read_text(encoding="utf-8")))
+    for target in targets:
         if not (manifest.parent / target).exists():
             errors.append(f"{manifest.relative_to(ROOT)}: missing skill target {target}")
+
+    expected = {
+        p.parent.name + "/SKILL.md"
+        for p in skills()
+        if p.parent.name != "_template"
+    }
+    missing = sorted(expected - targets)
+    for target in missing:
+        errors.append(f"{manifest.relative_to(ROOT)}: skill is not indexed: {target}")
     return errors
 
 

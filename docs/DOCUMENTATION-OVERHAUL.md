@@ -44,9 +44,10 @@ skills. Run:
 python3 scripts/validate-docs.py
 ```
 
-Documentation CI validates entry points, skill front matter, manifest targets,
-relative links, and size budgets. Architecture or ownership changes require an
-ADR.
+Documentation CI validates entry points, skill front matter, manifest
+coverage, local relative-link targets, and size budgets. It does not validate
+external URLs or Markdown anchors. Architecture or ownership changes require
+an ADR.
 
 ## Sources
 

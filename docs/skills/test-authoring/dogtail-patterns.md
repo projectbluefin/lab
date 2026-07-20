@@ -722,8 +722,8 @@ shape for new suites.
 - **Shell.Eval API surface** (GJS): `Main.overview`, `Main.panel.statusArea.*.menu`,
   `Main.panel.statusArea.quickSettings`, `Main.panel.statusArea.dateMenu`.
 - **In-repo source of truth**:
-  - [`tests/smoke/features/`](/tests/smoke/features/) — canonical GNOME shell patterns.
-  - [`tests/developer/features/`](/tests/developer/features/) — canonical app-window
+  - [`tests/smoke/features/`](https://github.com/projectbluefin/testsuite/tree/main/tests/smoke/features/) — canonical GNOME shell patterns.
+  - [`tests/developer/features/`](https://github.com/projectbluefin/testsuite/tree/main/tests/developer/features/) — canonical app-window
     patterns (Ptyxis, Podman Desktop Flatpak).
   - [`tests/shared/wait_for_shell.py`](/tests/shared/wait_for_shell.py) — readiness probe.
   - [`argo/workflow-templates/run-gnome-tests.yaml`](/argo/workflow-templates/run-gnome-tests.yaml)

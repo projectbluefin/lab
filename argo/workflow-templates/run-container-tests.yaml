@@ -109,6 +109,8 @@ spec:
         name: containers-storage
       - mountPath: /run/containers
         name: containers-runroot
+      - mountPath: /run/udev
+        name: udev
       command: [bash]
       source: |
         set -euo pipefail
@@ -349,4 +351,6 @@ spec:
     - name: containers-storage
       emptyDir: {}
     - name: containers-runroot
+      emptyDir: {}
+    - name: udev
       emptyDir: {}

@@ -390,21 +390,21 @@ non-root local-path PVC data. **`/dev/nvme0n1` on `exo-0` is the live system dis
 3. **Stop K3s service on `ghost`**:
    Stop the container orchestrator to release all active container storage references, open file descriptors, and mount locks on `/var/mnt/ghost-data`:
    ```bash
-   ssh jorge@192.168.1.102 "sudo systemctl stop k3s"
+   ssh core@192.168.1.102 "sudo systemctl stop k3s"
    ```
 4. **Back up `/var/mnt/ghost-data` to `exo-0`**:
    Perform a root-elevated rsync using `sudo` and `--rsync-path="sudo rsync"` to preserve numeric UIDs, ACLs, and SELinux contexts over the 40G USB4 link:
    ```bash
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" /var/mnt/ghost-data/ core@192.168.1.170:/var/mnt/exo0-data/ghost-backup-temp/"
+   ssh core@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" /var/mnt/ghost-data/ core@192.168.1.170:/var/mnt/exo0-data/ghost-backup-temp/"
    ```
 5. **Unmount on `ghost`**:
    Since K3s is stopped, the unmount will now succeed cleanly without "device is busy" failures:
    ```bash
-   ssh jorge@192.168.1.102 "sudo umount /var/mnt/ghost-data"
+   ssh core@192.168.1.102 "sudo umount /var/mnt/ghost-data"
    ```
 6. **Format `ghost` NVMe to XFS**:
    ```bash
-   ssh jorge@192.168.1.102 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme0n1"
+   ssh core@192.168.1.102 "sudo mkfs.xfs -f -K -m reflink=1,crc=1 /dev/nvme0n1"
    ```
 7. **Update `/etc/fstab` on `ghost`**:
    Get the new UUID: `blkid /dev/nvme0n1`.
@@ -414,17 +414,17 @@ non-root local-path PVC data. **`/dev/nvme0n1` on `exo-0` is the live system dis
    ```
 8. **Mount `/var/mnt/ghost-data` on `ghost`**:
    ```bash
-   ssh jorge@192.168.1.102 "sudo mount -a"
+   ssh core@192.168.1.102 "sudo mount -a"
    ```
 9. **Restore from backup**:
    Pull the backed-up directories back with precise attributes using root-elevated rsync:
    ```bash
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" core@192.168.1.170:/var/mnt/exo0-data/ghost-backup-temp/ /var/mnt/ghost-data/"
+   ssh core@192.168.1.102 "sudo rsync -aHAXxv --numeric-ids --rsync-path=\"sudo rsync\" core@192.168.1.170:/var/mnt/exo0-data/ghost-backup-temp/ /var/mnt/ghost-data/"
    ```
 10. **Resume services**:
     Restart the K3s engine and scale up your workloads:
     ```bash
-    ssh jorge@192.168.1.102 "sudo systemctl start k3s"
+    ssh core@192.168.1.102 "sudo systemctl start k3s"
     kubectl scale deployment registry -n local-registry --replicas=1
     kubectl scale deployment zot-cache -n local-registry --replicas=1
     ```
@@ -624,24 +624,24 @@ Use `rsync` with `--sparse`; do **not** use a naive `tar | ssh | tar` pipe that 
    STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 
    ssh core@192.168.1.170 "sudo mkdir -p /var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas /var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac"
-   ssh jorge@192.168.1.102 "sudo mkdir -p /var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas /var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac"
+   ssh core@192.168.1.102 "sudo mkdir -p /var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas /var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac"
    ```
 4. **Back up `storage-1` (ghost) onto exo-0's 4TB drive.**
    ```bash
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<cas-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas/"
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<ac-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac/"
+   ssh core@192.168.1.102 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<cas-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas/"
+   ssh core@192.168.1.102 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<ac-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac/"
    ```
 5. **Back up `storage-0` (exo-0) onto ghost.**
    ```bash
-   ssh core@192.168.1.170 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<cas-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas/"
-   ssh core@192.168.1.170 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<ac-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac/"
+   ssh core@192.168.1.170 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<cas-storage-0-pv-dir>/ core@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas/"
+   ssh core@192.168.1.170 "sudo rsync -aHAXSx --numeric-ids --info=progress2 -e 'ssh -c aes128-gcm@openssh.com' /var/mnt/ghost-data/local-path/<ac-storage-0-pv-dir>/ core@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac/"
    ```
 6. **Verify the copy before resuming traffic.**
    ```bash
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<cas-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas/"
-   ssh jorge@192.168.1.102 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<ac-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac/"
-   ssh core@192.168.1.170 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<cas-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas/"
-   ssh core@192.168.1.170 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<ac-storage-0-pv-dir>/ jorge@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac/"
+   ssh core@192.168.1.102 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<cas-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/cas/"
+   ssh core@192.168.1.102 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<ac-storage-1-pv-dir>/ core@192.168.1.170:/var/mnt/exo0-data/buildbarn-backups/storage-1/${STAMP}/ac/"
+   ssh core@192.168.1.170 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<cas-storage-0-pv-dir>/ core@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/cas/"
+   ssh core@192.168.1.170 "sudo rsync -aHAXSxn --delete /var/mnt/ghost-data/local-path/<ac-storage-0-pv-dir>/ core@192.168.1.102:/var/mnt/ghost-data/buildbarn-backups/storage-0/${STAMP}/ac/"
    ```
    Then compare file lists and logical sizes on source vs. destination:
    ```bash

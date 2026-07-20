@@ -1,14 +1,14 @@
 # Lab Operations Guide
 
-> **Routine work? Load [`agent-cheatsheet.md`](agent-cheatsheet.md) first.** This guide is the expanded operations manual: more context, longer procedures, and explicit decision trees.
+> **Routine work? Load [`/docs/reference/agent-cheatsheet.md`](/docs/reference/agent-cheatsheet.md) first.** This guide is the expanded operations manual: more context, longer procedures, and explicit decision trees.
 
 Pair with:
-- [`agent-cheatsheet.md`](agent-cheatsheet.md) — canonical command reference
+- [`/docs/reference/agent-cheatsheet.md`](/docs/reference/agent-cheatsheet.md) — canonical command reference
 - [`../AGENTS.md`](/agents.md) — policy + architecture
 - [`../RUNBOOK.md`](/docs/ops/RUNBOOK.md) — timeless architecture + failure modes
 - [`../WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
-- [`dogtail-testing.md`](dogtail-testing.md) — GUI test authoring
-- [`vanguard-report-template.md`](vanguard-report-template.md) — PR verification report
+- [`/docs/skills/test-authoring/dogtail-patterns.md`](/docs/skills/test-authoring/dogtail-patterns.md) — GUI test authoring
+
 
 > [!WARNING]
 > **Use the CLI-first hierarchy for cluster operations:** `just` for routine
@@ -235,7 +235,7 @@ Answer three questions in order:
 ## 8. SSH key rotation
 
 The key rotation flow is still valid because it manages the **in-cluster** test-access secret, not workstation SSH.
-Use the exact command block in [/docs/reference/agent-cheatsheet.md](agent-cheatsheet.md) §6.
+Use the exact command block in [`/docs/reference/agent-cheatsheet.md`](/docs/reference/agent-cheatsheet.md) §6.
 
 After rotation:
 1. Update `manifests/bluefin-test-ssh-pubkey.yaml` with the new base64-encoded public key and push to main.
@@ -248,24 +248,24 @@ After rotation:
 
 1. Run the minimum required lab loop (`just run-tests-tag testing`; use `just run-tests-matrix` for high-risk work).
 2. Collect workflow names, behave summaries, and log excerpts via MCP.
-3. Post [`vanguard-report-template.md`](vanguard-report-template.md) as a PR comment with real evidence.
+3. Keep PR comments minimal: report what ran, pass/fail, and blockers only. Do not duplicate GitHub UI state.
 4. Only then label / approve / queue.
 
 ---
 
 ## 10. Turning k8s on/off
 
-The **only** legitimate reason to SSH from a workstation to ghost is to start or stop the `k3s` service. The API server cannot shut itself down — SSH is required.
+The **only** legitimate reason to SSH from a workstation to the control plane is to start or stop the `k3s` service. The API server cannot shut itself down — SSH is required.
 
 ```bash
 # Stop all of Kubernetes (API, etcd, all pods go down)
-ssh jorge@192.168.1.102 "sudo systemctl stop k3s"
+ssh core@<control-plane-ip> "sudo systemctl stop k3s"
 
 # Start it back up
-ssh jorge@192.168.1.102 "sudo systemctl start k3s"
+ssh core@<control-plane-ip> "sudo systemctl start k3s"
 
 # Verify
-ssh jorge@192.168.1.102 "sudo systemctl is-active k3s"
+ssh core@<control-plane-ip> "sudo systemctl is-active k3s"
 ```
 
 Everything else — pod management, workflow control, ConfigMaps, scaling — goes through MCP. No other workstation SSH to ghost is permitted.

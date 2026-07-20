@@ -19,19 +19,21 @@ Bluefin and Dakota image-poll workflows are now container-only. KubeVirt remains
 
 ## Cluster topology
 
-| Host | Role | IP | Notes |
-|---|---|---|---|
-| ghost | k3s control-plane + KubeVirt compute | 192.168.1.102 | Runs VM workloads and Argo control-plane services |
-| exo-1 | k3s worker | 192.168.1.239 | Workflow pods only |
-| Argo UI | external entrypoint | http://192.168.1.102:32746 | Host-local service also exposed on port 2746 |
-| Loki | log aggregation | http://192.168.1.102:30100 | Captures workflow pod logs |
-| ArgoCD | GitOps controller | https://192.168.1.102 | Reconciles this repo into the cluster |
+Replace the placeholders with your own deployment details.
+
+| Node | Role | Notes |
+|---|---|---|
+| `<control-plane>` | k3s control-plane + KubeVirt compute | Runs VM workloads and Argo control-plane services |
+| `<worker>` | k3s worker | Workflow pods only |
+| Argo UI | external entrypoint | NodePort or ingress to the Argo Server |
+| Loki | log aggregation | Cluster-local log collector |
+| ArgoCD | GitOps controller | Reconciles this repo into the cluster |
 
 ArgoCD intentionally scales `argocd-applicationset-controller`, `argocd-dex-server`, and
 `argocd-notifications-controller` to zero in this homelab. K8sGPT may flag those Services as
 no-endpoint findings; that is expected, not drift.
 
-HostDisk VMs (Flatcar, Knuckle, GnomeOS) must pin to ghost — their disk files live on ghost's local storage. Bluefin and Dakota image-poll QA no longer create containerDisk VMs; only the explicitly VM-backed workflows still schedule KubeVirt guests.
+HostDisk VMs (Flatcar, Knuckle, GnomeOS) must pin to a control-plane node that has local storage for golden disks. Bluefin and Dakota image-poll QA no longer create containerDisk VMs; only the explicitly VM-backed workflows still schedule KubeVirt guests.
 
 ## GitOps ownership
 

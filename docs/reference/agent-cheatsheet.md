@@ -4,14 +4,14 @@
 > Designed to be the **single file a weak-capability agent needs to load** for routine cluster operations.
 >
 > If your task is not in this file, escalate to:
-> - [`/docs/ops/lab-operations.md`](lab-operations.md) — long-form procedures
+> - [`/docs/ops/lab-operations.md`](/docs/ops/lab-operations.md) — long-form procedures
 > - [`/docs/reference/WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
 > - [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) — architecture + failure-mode index
-> - [`/docs/skills/test-authoring/dogtail-patterns.md`](dogtail-testing.md) — writing GUI tests
+> - [`/docs/skills/test-authoring/dogtail-patterns.md`](/docs/skills/test-authoring/dogtail-patterns.md) — writing GUI tests
 > - [`/agents.md`](/agents.md) — hard policy and tenets
 
 > [!NOTE]
-> **CLI-first.** Tool hierarchy: `just` (lifecycle recipes) → `argo`/`kubectl` (cluster ops) → `ssh jorge@ghost` (OS-level only).
+> **CLI-first.** Tool hierarchy: `just` (lifecycle recipes) → `argo`/`kubectl` (cluster ops) → `ssh core@<control-plane>` (OS-level only).
 > MCP tools are optional — never block on them. One bash call beats a tool search + MCP roundtrip every time.
 
 ---
@@ -73,13 +73,13 @@ Run `just logs` first. Then match a row. **Bluefin and Dakota image-poll QA are 
 | `results.json not found` or summary reports `Execution failed` | `just logs | grep -n "results.json not found\|Execution failed"` → identify the failing `run-container-tests` lane, then rerun after fixing the image or suite issue. |
 | Expected image-poll rerun never starts after a new publish | `kubectl get configmap image-polling-digests -n argo -o yaml` — compare the stored digest with the workflow log; stale state means the previous run already claimed that digest. |
 | VMI `NotFound` 1 second after VM creation | Same as above — KubeVirt refused to start VM due to missing accessCredentials secret; VM status will be `Stopped` |
-| `TypeError: ... requireResult` | Fix the step per [`/docs/skills/test-authoring/dogtail-patterns.md`](dogtail-testing.md) §6.2 (`findChildren(...)` / `retry=False`) |
+| `TypeError: ... requireResult` | Fix the step per [`/docs/skills/test-authoring/dogtail-patterns.md`](/docs/skills/test-authoring/dogtail-patterns.md) §6.2 (`findChildren(...)` / `retry=False`) |
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |
 | `outputs.result` is `Waiting...` or other debug text | Send debug output to `>&2`; keep stdout for the result only |
 | VM stuck `Terminating` | `kubectl delete pod -n bluefin-test $(kubectl get pod -n bluefin-test -l kubevirt.io/vm=<name> -o name)` |
 | `qemu-img: command not found` (Flatcar prep) | Use `quay.io/fedora/fedora:latest` for the Flatcar prep image |
-| exo-0 not on expected 7.1 kernel | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` then verify Nebraska packages: `curl -s http://192.168.1.102:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages \| jq '.[-5:]'` |
+| exo-0 not on expected 7.1 kernel | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` then verify Nebraska packages: `curl -s http://<control-plane-ip>:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages \| jq '.[-5:]'` |
 | Kernel poller keeps retriggering wrong versions | Check state: `kubectl get configmap flatcar-kernel-polling-state -n argo -o yaml` and verify CronWorkflow policy is `Forbid`: `kubectl get cronworkflow flatcar-kernel-poller -n argo -o jsonpath='{.spec.concurrencyPolicy}{"\n"}'` |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
 | Workflow stuck `Pending` | Run §3 |
@@ -287,7 +287,7 @@ Mandatory gate for `knuckle`, `dakota`, and this repo's PRs.
    - Log output → `argo logs -n argo <name>`
    - Pod state → `kubectl get pods -n argo`
    - VMI state only for VM-backed lanes → `kubectl get vmi -A`
-3. Post a report on the PR using the template at [`docs/vanguard-report-template.md`](vanguard-report-template.md).
+3. Keep the PR comment minimal: what ran, pass/fail, and blockers only.
 4. Only then apply `agent-tested` and approve / queue.
 
 Hard exit checklist:
@@ -472,11 +472,11 @@ kubectl -n llm-d scale deploy/llm-d-modelserver --replicas=0
 **If k3s is down** (kubectl returns "connection refused"):
 k3s can stop after host sleep/resume. Recovery:
 ```bash
-ssh jorge@ghost "sudo systemctl start k3s"
+ssh core@<control-plane> "sudo systemctl start k3s"
 ```
 After restart, delete the `amdgpu-device-plugin` pod so it re-registers with the new kubelet socket.
 
-**kubelet device-plugin socket path:** `/var/lib/kubelet/device-plugins/kubelet.sock` (standard path — NOT the rancher/k3s path). Verify with: `ssh jorge@ghost "sudo ss -lx | grep kubelet"`.
+**kubelet device-plugin socket path:** `/var/lib/kubelet/device-plugins/kubelet.sock` (standard path — NOT the rancher/k3s path). Verify with: `ssh core@<control-plane> "sudo ss -lx | grep kubelet"`.
 
 **If pod is CrashLoopBackOff:** Check init container logs first — it downloads the GGUF on first start:
 ```bash
@@ -502,7 +502,7 @@ script must be told to use this path or it fails on a fresh system.
 ### Get the join token (run from ghost or this workstation)
 
 ```bash
-ssh jorge@192.168.1.102 "sudo cat /var/lib/rancher/k3s/server/node-token"
+ssh core@<control-plane-ip> "sudo cat /var/lib/rancher/k3s/server/node-token"
 ```
 
 ### Bootstrap a new worker node (run ON the new node, with sudo)
@@ -513,7 +513,7 @@ sudo mkdir -p /var/usrlocal/bin
 
 # 2. Install k3s agent — joins the cluster immediately
 curl -sfL https://get.k3s.io | \
-  K3S_URL="https://192.168.1.102:6443" \
+  K3S_URL="https://<control-plane-ip>:6443" \
   K3S_TOKEN="<token from above>" \
   INSTALL_K3S_BIN_DIR="/var/usrlocal/bin" \
   sh -s -
@@ -605,6 +605,6 @@ sudo /var/usrlocal/bin/k3s-agent-uninstall.sh
 
 - **Binary path:** `/var/usrlocal/bin/k3s` — always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`
 - **Flannel backend:** `host-gw` — pure L2 routes, no VXLAN/WireGuard kernel modules needed
-- **All nodes must be on 192.168.1.0/24** for host-gw to work
+- **All nodes must be on <lab-subnet>/24** for host-gw to work
 - **Upgrades:** handled by system-upgrade-controller via `manifests/k3s-upgrade-plans.yaml` — ArgoCD manages it
 - **Version skew rule:** agents must never be newer than the server (ghost)

@@ -3,7 +3,7 @@
 Authoritative reference for writing, submitting, and debugging dogtail/qecore/behave tests in
 this repo. Read this before adding a scenario, a step, or a new suite. Pair it with
 [`/agents.md`](/agents.md), [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md), and the example suites under
-[`tests/`](../tests/).
+[`tests/`](/tests/).
 
 > **TL;DR for agents:** Tests run inside a real GNOME Wayland session on a KubeVirt VM. The
 > Argo runner SSHs in, sets up `qecore-headless`, and executes `behave` (+ optional `pytest`)
@@ -722,11 +722,11 @@ shape for new suites.
 - **Shell.Eval API surface** (GJS): `Main.overview`, `Main.panel.statusArea.*.menu`,
   `Main.panel.statusArea.quickSettings`, `Main.panel.statusArea.dateMenu`.
 - **In-repo source of truth**:
-  - [`tests/smoke/features/`](../tests/smoke/features/) — canonical GNOME shell patterns.
-  - [`tests/developer/features/`](../tests/developer/features/) — canonical app-window
+  - [`tests/smoke/features/`](/tests/smoke/features/) — canonical GNOME shell patterns.
+  - [`tests/developer/features/`](/tests/developer/features/) — canonical app-window
     patterns (Ptyxis, Podman Desktop Flatpak).
-  - [`tests/shared/wait_for_shell.py`](../tests/shared/wait_for_shell.py) — readiness probe.
-  - [`argo/workflow-templates/run-gnome-tests.yaml`](../argo/workflow-templates/run-gnome-tests.yaml)
+  - [`tests/shared/wait_for_shell.py`](/tests/shared/wait_for_shell.py) — readiness probe.
+  - [`argo/workflow-templates/run-gnome-tests.yaml`](/argo/workflow-templates/run-gnome-tests.yaml)
     — exact runner contract.
 - **Operational reference**: [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md), [`/agents.md`](/agents.md).
 

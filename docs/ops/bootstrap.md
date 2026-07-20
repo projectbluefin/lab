@@ -165,13 +165,13 @@ leave at any time (useful for laptops and gaming machines).
 **Full onboarding steps: `/docs/reference/agent-cheatsheet.md` section 14.**
 
 Quick summary:
-1. Get join token: `ssh jorge@192.168.1.102 "sudo cat /var/lib/rancher/k3s/server/node-token"`
+1. Get join token: `ssh core@<control-plane-ip> "sudo cat /var/lib/rancher/k3s/server/node-token"`
 2. On the new node: `sudo mkdir -p /var/usrlocal/bin` then run the k3s install script with `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`
 3. Disable auto-start: `sudo systemctl disable k3s-agent`
 4. Install `~/Justfile` with `just k8s-on/off/status` commands
 5. Label from workstation: `kubectl label node <name> node-role.kubernetes.io/worker=true`
 
-**Flannel backend is `host-gw`** — requires all nodes on 192.168.1.0/24 flat L2.
+**Flannel backend is `host-gw`** — requires all nodes on `<lab-subnet>/24` flat L2.
 
 ---
 

@@ -7,6 +7,8 @@ Quick pointers for agents and contributors.
 - **Operational runbook** → [`docs/ops/RUNBOOK.md`](ops/RUNBOOK.md)
 - **Command cheat sheet** → [`docs/reference/agent-cheatsheet.md`](reference/agent-cheatsheet.md)
 - **Workflow contracts** → [`docs/reference/WORKFLOWS.md`](reference/WORKFLOWS.md)
+- **Full workflow reference** → [`docs/reference/workflow-reference.md`](reference/workflow-reference.md)
+- **Canonical terms** → [`docs/reference/ubiquitous-language.md`](reference/ubiquitous-language.md)
 - **Architecture decisions** → [`docs/adr/README.md`](adr/README.md)
 - **Dashboard/data contracts** → [`docs/reference/page-contracts.md`](reference/page-contracts.md)
 

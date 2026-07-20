@@ -8,6 +8,31 @@
   --site-accent: #7dd3fc;
   --site-accent-2: #a78bfa;
   --site-shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
+
+  /* Semantic status colors */
+  --status-passed: #4ade80;
+  --status-failed: #fb7185;
+  --status-pending: #fbbf24;
+  --status-unavailable: #94a3b8;
+}
+
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 16px;
+  background: var(--site-accent);
+  color: #060914;
+  padding: 8px 16px;
+  z-index: 100;
+  transition: top 0.2s ease;
+  font-weight: 700;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 0;
+  outline: 2px solid var(--site-accent);
+  outline-offset: 2px;
 }
 
 * { box-sizing: border-box; }
@@ -124,19 +149,9 @@ code {
   margin-top: 0;
 }
 
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
 .status-card {
   border-radius: 24px;
   padding: 22px;
-}
-
-.status-card--muted {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(15, 23, 42, 0.62));
 }
 
 .status-card__meta {
@@ -185,6 +200,13 @@ code {
 
 .detail-grid--hero {
   grid-template-columns: 1.35fr 1fr;
+}
+
+/* Wide data tables need the full content width: a 6-7 column table squeezed
+   into a half-width grid cell crushes columns and forces awkward wrapping.
+   Any card that hosts a scrollable table spans the full grid row instead. */
+.detail-grid > article:has(.table-scroll) {
+  grid-column: 1 / -1;
 }
 
 .chart-grid {
@@ -258,12 +280,22 @@ code {
 
 .table-scroll {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .data-table {
   width: 100%;
+  /* Floor the table width so columns stay aligned and readable; when the
+     container is narrower (mobile/tablet) the .table-scroll wrapper scrolls
+     horizontally instead of crushing the columns. */
+  min-width: 48rem;
   border-collapse: collapse;
   margin-top: 8px;
+}
+
+.data-table thead th {
+  white-space: nowrap;
 }
 
 .data-table th,
@@ -306,17 +338,31 @@ code {
 }
 
 .pill--pending,
-.pill--unavailable,
+.pill--not-ready {
+  background: rgba(251, 191, 36, 0.16);
+  color: var(--status-pending);
+}
+
+.pill--ready {
+  background: rgba(34, 197, 94, 0.16);
+  color: var(--status-passed);
+}
+
+.pill--unavailable {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--status-unavailable);
+}
+
 .pill--failed {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
+  background: rgba(251, 113, 133, 0.16);
+  color: var(--status-failed);
 }
 
 .pill--completed,
 .pill--passed,
 .pill--available {
   background: rgba(34, 197, 94, 0.16);
-  color: #4ade80;
+  color: var(--status-passed);
 }
 
 .signal-stack {
@@ -406,17 +452,17 @@ code {
 
 .upstream-pill.good {
   border-color: rgba(74, 222, 128, 0.34);
-  color: #4ade80;
+  color: var(--status-passed);
 }
 
 .upstream-pill.warn {
   border-color: rgba(251, 191, 36, 0.34);
-  color: #fbbf24;
+  color: var(--status-pending);
 }
 
 .upstream-pill.bad {
   border-color: rgba(251, 113, 133, 0.34);
-  color: #fb7185;
+  color: var(--status-failed);
 }
 
 .upstream-pill.muted {
@@ -740,7 +786,6 @@ code {
     align-items: start;
   }
 
-  .status-grid,
   .summary-grid,
   .metric-grid,
   .detail-grid,
@@ -782,4 +827,153 @@ code {
   .upstream-summary-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ── Progress bar indicator ────────────────────────────── */
+.progress-bar-container {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 0.65rem;
+}
+.progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.progress-bar-container--small {
+  height: 4px;
+  margin-top: 0.25rem;
+  max-width: 120px;
+}
+.rate-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ── Screenshot visual evidence gallery ─────────────────── */
+.screenshot-gallery {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.screenshot-gallery h4 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.75rem 0;
+}
+.screenshot-card {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 520px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.5);
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.screenshot-card:hover {
+  border-color: rgba(56, 189, 248, 0.35);
+}
+.screenshot-link {
+  position: relative;
+  display: block;
+  text-decoration: none;
+}
+.screenshot-img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  object-position: top center;
+}
+.screenshot-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(248, 250, 252, 0);
+  transition: all 0.2s;
+}
+.screenshot-link:hover .screenshot-overlay {
+  background: rgba(15, 23, 42, 0.55);
+  color: #f8fafc;
+}
+.screenshot-caption {
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+/* ── Educational 16:9 Screenshot Placeholder ── */
+.screenshot-placeholder {
+  width: 100%;
+  max-width: 520px;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+  box-sizing: border-box;
+  transition: all 0.2s ease-in-out;
+}
+.screenshot-placeholder:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.9) 100%);
+}
+.screenshot-placeholder__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+.placeholder-icon {
+  color: #64748b;
+  margin-bottom: 0.25rem;
+}
+.screenshot-placeholder h5 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+.screenshot-placeholder p {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.5;
+  max-width: 420px;
+}
+.placeholder-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: #475569;
+  margin-top: 0.5rem;
+}
+.placeholder-meta code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  color: #38bdf8;
 }

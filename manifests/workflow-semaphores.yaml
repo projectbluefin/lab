@@ -1,0 +1,25 @@
+# Cluster-wide Argo workflow queuing.
+#
+# Template-level semaphores are the only lock type that binds across ALL
+# callers, including workflow-of-workflows invocations via templateRef.
+#
+# Keys:
+#   bst-build          — Dakota/Cosmic BuildStream build lanes.
+#                        Keep two lanes admitted so bluefin + bluefin-nvidia
+#                        can run concurrently and both buildbarn workers remain
+#                        busy on the two-node fleet.
+#   bst-build-manual   — Dedicated recovery lane for manual Dakota submissions
+#                        so poller-triggered jobs cannot starve operator runs.
+#   migration-containerdisk-build — Serializes the migration workflow while it
+#                        refreshes and consumes its temporary VM source disk.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: workflow-semaphores
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+data:
+  bst-build: "2"
+  bst-build-manual: "2"
+  migration-containerdisk-build: "1"

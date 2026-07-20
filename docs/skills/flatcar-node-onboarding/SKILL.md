@@ -1,0 +1,275 @@
+---
+name: flatcar-node-onboarding
+description: >
+  Add a Flatcar Linux node to the k3s cluster and connect it to the Nebraska
+  kernel update pipeline. Use when onboarding a new Flatcar node (e.g. exo-0,
+  exo-2), joining it to k3s, or pointing update_engine at the local Nebraska
+  server. Covers k3s sysext install, DaemonSet auto-configuration, and
+  validating the update pipeline end-to-end.
+metadata:
+  context7-sources:
+    - /websites/flatcar
+    - /argoproj/argo-workflows
+    - /kubernetes/website
+    - /bootc-dev/bootc
+---
+
+# Flatcar Node Onboarding — lab Skill
+
+## When to Use
+
+- Adding a new Flatcar Linux node to the k3s homelab cluster
+- Flatcar node not appearing in `kubectl get nodes`
+- update_engine on a Flatcar node not checking in to Nebraska
+- Validating a new node's kernel update pipeline end-to-end
+
+## When NOT to Use
+
+- Non-Flatcar nodes (Bluefin, Bazzite, Ubuntu) → `k3s-cluster-ops.md`
+- KubeVirt VM provisioning → `kubevirt-vms.md`
+- Kernel build pipeline authoring → `argo-workflows.md`
+
+---
+
+## Core Process
+
+### 1. Join the Flatcar node to k3s
+
+Flatcar uses immutable `/usr` — install k3s via the official sysext approach:
+
+```bash
+# On the Flatcar node (SSH in as core):
+# 1. Download the k3s sysext installer
+curl -fsSL https://raw.githubusercontent.com/flatcar/sysext-bakery/main/create_sysext.sh \
+  -o /tmp/create_sysext.sh
+
+# 2. Or use the k3s installer with INSTALL_K3S_SKIP_START=true first, then:
+# The canonical approach for Flatcar is the k3s-sysext image
+# See: https://github.com/flatcar/sysext-bakery
+
+# Simplest path — k3s provides a sysext-aware installer:
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_TYPE="agent" \
+  INSTALL_K3S_EXEC="agent --server https://<lab-ip>:6443 --token <TOKEN>" \
+  sh -
+```
+
+**Get the join token from ghost:**
+```bash
+kubectl get secret k3s-token -n kube-system \
+  -o jsonpath='{.data.token}' | base64 -d
+# Or read from ghost directly:
+# cat /var/lib/rancher/k3s/server/node-token
+```
+
+**Verify join:**
+```bash
+kubectl get nodes -o wide | grep -i flatcar
+```
+
+### 2. update_engine auto-configures via DaemonSet
+
+Once the node is in the cluster, the `flatcar-update-configurator` DaemonSet
+automatically writes `/etc/flatcar/update.conf` pointing at Nebraska:
+
+```
+GROUP=stable
+SERVER=http://<lab-ip>:30802/v1/update/
+```
+
+**Check it worked:**
+```bash
+# Find the configurator pod on the new node
+kubectl get pods -n flatcar-update -l app=flatcar-update-configurator \
+  -o wide | grep <node-name>
+
+# Verify update.conf was written
+kubectl exec -n flatcar-update <pod-name> -- \
+  nsenter --target 1 --mount -- cat /etc/flatcar/update.conf
+```
+
+**Expected output:**
+```
+GROUP=stable
+SERVER=http://<lab-ip>:30802/v1/update/
+```
+
+### 3. Verify Nebraska receives first check-in
+
+Within 5-10 minutes of `update.conf` being written, update_engine polls Nebraska.
+Check Nebraska logs for the node's first contact:
+
+```bash
+kubectl logs -n flatcar-update -l app=nebraska --tail=20 | grep "processEvent\|RegisterEvent"
+```
+
+**Expected:** `processEvent` log with appID `e96281a6-d1af-4bde-9a0a-97b76e56dc57`.
+`RegisterEvent - could not get instance, maybe it is a first contact` is normal on first ping.
+
+### 4. Wait for kernel build to register a package
+
+Once `flatcar-kernel-build` workflow completes and registers a package with Nebraska,
+update_engine will receive it on the next poll cycle (default 1h, or trigger manually).
+
+**Check Nebraska packages:**
+```bash
+curl -s "http://<lab-ip>:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages" \
+  | python3 -m json.tool
+```
+
+### 4a. Kernel run status and failure triage (June 2026)
+
+Current state: no successful `flatcar-kernel-build` completion over the recent 4-day window.
+Most runs fail in `build-kernel` (timeout/termination) or are manually terminated while stuck.
+
+Fast operator checks:
+```bash
+argo list -n argo | rg "flatcar-kernel-build" | head -n 20
+argo get -n argo <latest-flatcar-kernel-build-name>
+argo logs -n argo <latest-flatcar-kernel-build-name> -c main | tail -n 120
+```
+
+Known high-signal failure modes seen in this streak:
+- `Pod was active on the node longer than the specified deadline` during `build-kernel`:
+  workflow timeout was too short for full SDK compile+image.
+- Manual `Terminated` runs while `build-kernel` was still progressing.
+- Flatcar 4593.2.3 ships Docker 28 natively, and `run_sdk_container` expects to use it inside the VM.
+- The VM can spend several minutes just bringing `dockerd` to `active`; do not treat a quiet `docker pull` as a dead build unless the pull stops advancing.
+- Keep the SDK data-root on the build PVC and use a cache-first pull with a bounded timeout plus upstream fallback when the local mirror stalls.
+- If the SDK pull is moving, inspect `/var/tmp/build/docker` growth before restarting or deleting the workflow.
+
+Current baseline for workflow timeout:
+- `argo/workflow-templates/flatcar-kernel-build.yaml` uses `activeDeadlineSeconds: 21600` (6h).
+- Avoid adding tighter per-step `activeDeadlineSeconds` unless measured compile time supports it.
+
+---
+
+## Known Flatcar Constraints
+
+### `/etc` is overlayfs — direct writes fail
+
+Flatcar mounts `/etc` as overlayfs over a read-only base. `hostPath` mounts of
+`/etc` appear writable but writes fail:
+
+```
+/bin/sh: can't create /host/etc/flatcar/update.conf: Permission denied
+```
+
+**Fix:** Enter the host mount namespace via `nsenter`:
+```bash
+nsenter --target 1 --mount -- sh -c "mkdir -p /etc/flatcar && cat > /etc/flatcar/update.conf << EOF
+GROUP=stable
+SERVER=http://<lab-ip>:30802/v1/update/
+EOF"
+```
+
+**Requirements for nsenter to work in a pod:**
+- `hostPID: true` on the pod spec
+- `privileged: true` in the container securityContext
+- `seccompProfile: { type: Unconfined }` — Chainguard wolfi-base's default seccomp blocks `nsenter`
+
+### Correct DaemonSet image: `ghcr.io/projectbluefin/lab-runner:latest` or `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795`
+
+- `ghcr.io/projectbluefin/lab-runner:latest` — preferred, organization-owned FSDK container; has `kubectl`, `oras`, `skopeo`, `curl`, `jq`, `util-linux` (nsenter), and full shell capabilities prebuilt. ✅
+- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` — has `util-linux` (nsenter), `apk`, full tooling; can be used as a fallback if needed. ✅
+- `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795-dev` — **DOES NOT EXIST** (tag not published) ❌
+- `cgr.dev/chainguard/busybox` — no nsenter, restricted seccomp blocks namespace entry ❌
+
+### update_engine does NOT need restart after update.conf change
+
+Send `SIGHUP` to reload config without restart:
+```bash
+UPDATE_ENGINE_PID=$(nsenter --target 1 --mount -- pgrep update_engine)
+kill -HUP "$UPDATE_ENGINE_PID"
+```
+
+The DaemonSet does this automatically.
+
+### Flatcar Docker is built-in — no sysext needed for SDK builds
+
+Flatcar 4593.2.3+ ships Docker 28.0.4 natively. The Flatcar SDK's
+`run_sdk_container` auto-detects and uses it. No sysext installation needed.
+
+---
+
+## Flatcar Image Download
+
+**Current domain (2026):** `stable.release.flatcar-linux.net`
+**Old domain (NXDOMAIN):** `stable.release.flatcar-container.net` — do not use
+
+Images ship as **bzip2-compressed qcow2** (`.img.bz2`), not bare `.img`:
+
+```bash
+VERSION=4593.2.3
+URL="https://stable.release.flatcar-linux.net/amd64-usr/${VERSION}/flatcar_production_qemu_image.img.bz2"
+curl -L --fail --retry 3 -o flatcar.img.bz2 "${URL}"
+bzip2 -d flatcar.img.bz2
+qemu-img convert -f qcow2 -O raw flatcar.img flatcar.raw
+```
+
+---
+
+## Nebraska Quick Reference
+
+| Item | Value |
+|---|---|
+| NodePort | 30802 |
+| Flatcar app UUID | `e96281a6-d1af-4bde-9a0a-97b76e56dc57` |
+| Update URL (in update.conf) | `http://<lab-ip>:30802/v1/update/` |
+| Auth mode | `noop` |
+| Binary path in image | `/nebraska/nebraska` (no default ENTRYPOINT — must set `command:`) |
+| Package version scheme | `9999.MAJOR.MINOR` (always > any stock Flatcar for semver precedence) |
+
+**Nebraska package registration shape:**
+```json
+{
+  "filename": "flatcar_production_update-kernel7.1.1.gz",
+  "url": "http://<lab-ip>:30802/flatcar/",
+  "version": "9999.7.1",
+  "hash": "<SHA1 as base64>",
+  "hash256": "<SHA256 hex>",
+  "size": "<bytes as string>",
+  "type": 1,
+  "arch": 1,
+  "flatcar_action": { "sha256": "<SHA256 hex>" }
+}
+```
+
+**Critical:** `url` is the BASE PATH only. Nebraska constructs the full download URL
+as `url + filename`. `flatcar_action.sha256` is required — update_engine rejects Omaha
+responses without it.
+
+---
+
+## Kernel Lifecycle, Bare-Metal Builds, and Recovery
+
+- [Flatcar kernel lifecycle and bare-metal builds](flatcar-kernel.md)
+- [Host/service recovery backdoor](flatcar-recovery.md)
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "I can write update.conf directly via hostPath mount." | Flatcar /etc is overlayfs — writes fail silently or with Permission denied. Always use nsenter. |
+| "wolfi-base:latest-dev has more tools." | That tag does not exist. wolfi-base:latest already has apk and util-linux. |
+| "cgr.dev/chainguard/busybox can run nsenter." | It cannot — restricted seccomp blocks namespace entry even with privileged: true. |
+| "Flatcar images are at stable.release.flatcar-container.net." | That domain is NXDOMAIN. Use stable.release.flatcar-linux.net. |
+| "The image URL ends in .img." | Images are now .img.bz2. You must decompress before qemu-img convert. |
+
+## Red Flags
+
+- `flatcar-update-configurator` pod in `ErrImagePull` — likely wrong wolfi-base tag
+- `nsenter: can't open /proc/1/ns/ipc` — pod is missing `seccompProfile: Unconfined`; use `--mount` only, not `--ipc`
+- `nsenter: can't open /proc/1/ns/mnt: Permission denied` — pod predates a DaemonSet rollout with seccompProfile fix; delete the pod to respawn
+- Nebraska logs show no `processEvent` after 15 min — check update.conf was actually written
+- Flatcar image download returning `curl: (6) Could not resolve host` — domain changed, use flatcar-linux.net
+- `bzip2: (stdin) is not a bzip2 file` — file was uncompressed qcow2 from old URL pattern
+
+## Verification
+
+- [ ] `kubectl get pods -n flatcar-update -o wide` shows 1 Running pod per node
+- [ ] `kubectl exec <pod> -- nsenter --target 1 --mount -- cat /etc/flatcar/update.conf` shows Nebraska URL
+- [ ] Nebraska logs contain `processEvent` with `appID=e96281a6-d1af-4bde-9a0a-97b76e56dc57` for the new node
+- [ ] `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}'` reports `7.1.x` after promotion
+- [ ] `kubectl get nodes` shows node as Ready
+- [ ] No pods in ErrImagePull, CrashLoopBackOff in `flatcar-update` namespace

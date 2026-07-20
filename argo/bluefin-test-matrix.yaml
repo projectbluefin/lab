@@ -6,135 +6,47 @@ metadata:
 spec:
   entrypoint: matrix
   serviceAccountName: argo
-  onExit: cleanup
   ttlStrategy:
     secondsAfterCompletion: 3600
     secondsAfterSuccess: 3600
     secondsAfterFailure: 7200
-
   arguments:
     parameters:
       - name: branch
         value: "main"
-
   templates:
     - name: matrix
-      steps:
-        # Phase 0a: build containerDisk for testing (serialized — both need loop devices)
-        - - name: build-cd-testing
+      dag:
+        tasks:
+          - name: test-bluefin
             templateRef:
-              name: build-containerdisk
-              template: build-containerdisk
+              name: run-container-tests
+              template: run-container-tests
             arguments:
               parameters:
                 - name: image
                   value: "ghcr.io/projectbluefin/bluefin"
                 - name: image-tag
                   value: "testing"
-                - name: disk-size
-                  value: "25G"
-                - name: containerdisk-tag
-                  value: "testing"
-
-        # Phase 0b: build containerDisk for lts-testing
-        - - name: build-cd-lts
+                - name: suite
+                  value: "smoke"
+                - name: variant
+                  value: "bluefin"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+          - name: test-bluefin-lts
             templateRef:
-              name: build-containerdisk
-              template: build-containerdisk
+              name: run-container-tests
+              template: run-container-tests
             arguments:
               parameters:
                 - name: image
                   value: "ghcr.io/projectbluefin/bluefin-lts"
                 - name: image-tag
                   value: "testing"
-                - name: disk-size
-                  value: "25G"
-                - name: containerdisk-tag
-                  value: "lts-testing"
-
-        # Phase 1: provision both VMs in parallel
-        - - name: bluefin-testing
-            templateRef:
-              name: provision-bluefin-vm
-              template: provision-vm
-            arguments:
-              parameters:
-                - name: image-tag
-                  value: "testing"
-                - name: vm-name
-                  value: "bluefin-testing-{{workflow.uid}}"
-                - name: namespace
-                  value: "bluefin-test"
-
-          - name: bluefin-lts
-            templateRef:
-              name: provision-bluefin-vm
-              template: provision-vm
-            arguments:
-              parameters:
-                - name: image-tag
-                  value: "lts-testing"
-                - name: vm-name
-                  value: "bluefin-lts-{{workflow.uid}}"
-                - name: namespace
-                  value: "bluefin-lts-test"
-
-        # Phase 2: run smoke tests against both VMs in parallel
-        - - name: test-testing
-            templateRef:
-              name: run-gnome-tests
-              template: run-gnome-tests
-            arguments:
-              parameters:
-                - name: vm-ip
-                  value: "{{steps.bluefin-testing.outputs.parameters.vm-ip}}"
                 - name: suite
                   value: "smoke"
                 - name: variant
-                  value: "bluefin"
+                  value: "bluefin-lts"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
-                - name: containerdisk-tag
-                  value: "testing"
-
-          - name: test-lts
-            templateRef:
-              name: run-gnome-tests
-              template: run-gnome-tests
-            arguments:
-              parameters:
-                - name: vm-ip
-                  value: "{{steps.bluefin-lts.outputs.parameters.vm-ip}}"
-                - name: suite
-                  value: "smoke"
-                - name: variant
-                  value: "bluefin"
-                - name: branch
-                  value: "{{workflow.parameters.branch}}"
-                - name: containerdisk-tag
-                  value: "lts-testing"
-
-    # onExit: teardown both VMs regardless of outcome
-    - name: cleanup
-      steps:
-        - - name: teardown-testing
-            templateRef:
-              name: teardown-bluefin-vm
-              template: teardown-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "bluefin-testing-{{workflow.uid}}"
-                - name: namespace
-                  value: "bluefin-test"
-
-          - name: teardown-lts
-            templateRef:
-              name: teardown-bluefin-vm
-              template: teardown-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "bluefin-lts-{{workflow.uid}}"
-                - name: namespace
-                  value: "bluefin-lts-test"

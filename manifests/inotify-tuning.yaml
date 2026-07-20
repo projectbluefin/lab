@@ -37,7 +37,7 @@ spec:
           effect: NoSchedule
       initContainers:
         - name: set-inotify
-          image: cgr.dev/chainguard/wolfi-base:latest
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           securityContext:
             privileged: true
           command:
@@ -63,5 +63,5 @@ spec:
               memory: 4Mi
             limits:
               cpu: 10m
-              memory: 16Mi
+              memory: 32Mi
       terminationGracePeriodSeconds: 5

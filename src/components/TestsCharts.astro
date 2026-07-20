@@ -1,4 +1,5 @@
 ---
+import { serializeJsonScript } from '../lib/json-script';
 import testsChartsScript from '../scripts/tests-charts.js?url';
 
 interface ChartHistoryPoint {
@@ -17,13 +18,42 @@ interface ChartRowDetails {
 interface ChartRow {
   id: string;
   variant: string;
+  branch: string;
   suite: string;
+  role: string;
   pass_rate: number | null;
   scenarios_total: number;
   scenarios_failed: number;
   state: string;
   state_reason: string | null;
+  enrollment_issue_url: string | null;
+  flake_flips: number;
+  runs_recorded: number;
   details: ChartRowDetails | null;
+}
+
+interface TestRun {
+  recorded_at: string;
+  variant: string;
+  branch: string;
+  suite: string;
+  role: string;
+  workflow_name: string;
+  status: 'passed' | 'failed';
+  scenarios_total: number;
+  scenarios_failed: number;
+  failed_scenarios: string[];
+  digest: string | null;
+}
+
+interface ReleaseVerdictHistoryPoint {
+  recorded_at: string;
+  lane: string;
+  digest: string | null;
+  verdict: string;
+  build: string;
+  qa: string;
+  signature: string;
 }
 
 interface ChartPayload {
@@ -32,6 +62,8 @@ interface ChartPayload {
   suites: string[];
   variants: string[];
   rows: ChartRow[];
+  testRuns: TestRun[];
+  releaseVerdictHistory: ReleaseVerdictHistoryPoint[];
 }
 
 interface Props {
@@ -39,58 +71,168 @@ interface Props {
 }
 
 const { payload } = Astro.props;
-const payloadJson = JSON.stringify(payload).replace(/</g, '\\u003c');
+const payloadJson = serializeJsonScript(payload);
 ---
 
 <section class="status-card chart-card">
+  <style>
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .chart-grid--wide-first {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .chart-panel--wide {
+      grid-column: 1 / -1;
+    }
+    @media (max-width: 900px) {
+      .chart-grid--wide-first {
+        grid-template-columns: 1fr;
+      }
+      .chart-panel--wide {
+        grid-column: 1 / -1;
+      }
+    }
+    @media (max-width: 640px) {
+      .chart-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .chart-panel {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      min-width: 0; /* Let ECharts shrink on resize */
+    }
+    .chart-panel:hover {
+      border-color: rgba(56, 189, 248, 0.2);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+    }
+    .chart-panel__header {
+      margin-bottom: 1.25rem;
+    }
+    .chart-panel__header h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 0.25rem 0 0.15rem 0;
+    }
+    .chart-panel__header p {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .chart-panel__plot {
+      width: 100%;
+      height: 340px;
+      min-height: 340px;
+    }
+    :global(.chart-panel__empty) {
+      display: flex !important;
+      align-items: center;
+      justify-content: center;
+      height: 340px;
+      min-height: 340px;
+      border: 1px dashed rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      color: #64748b;
+      font-size: 0.875rem;
+      text-align: center;
+      background: rgba(30, 41, 59, 0.15);
+      padding: 1.5rem;
+    }
+    #tests-chart-flakes {
+      min-height: 120px;
+    }
+    :global(.flake-panel__empty) {
+      color: #64748b;
+      font-size: 0.875rem;
+      padding: 1rem 0;
+    }
+    :global(.flake-grid) {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+    :global(.flake-item) {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+    }
+    :global(.flake-item__header) {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    :global(.flake-item__title) {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+    :global(.flake-item__meta) {
+      font-size: 0.7rem;
+      color: #64748b;
+    }
+    :global(.flake-sparkline) {
+      width: 100%;
+      height: 40px;
+    }
+  </style>
+
   <div class="section-heading">
     <div>
-      <p class="status-card__eyebrow">Charts</p>
-      <h2>Reliability trends, failure concentration, and suite/variant views</h2>
+      <p class="status-card__eyebrow">Trends</p>
+      <h2>Run history and current state</h2>
       <p>
-        Apache ECharts renders from published matrix rows plus linked result JSON. Unavailable cells stay gray and visible instead of dropping out.
+        Pass-rate history per lane-suite, a current-state heatmap, and a compact flake panel. Gray cells are unavailable or not enrolled.
       </p>
     </div>
   </div>
 
-  <div class="chart-grid" data-tests-charts>
-    <article class="chart-panel">
+  <div class="chart-grid chart-grid--wide-first" data-tests-charts>
+    <article class="chart-panel chart-panel--wide">
       <div class="chart-panel__header">
-        <p class="status-card__eyebrow">Trend</p>
-        <h3>Reliability trends</h3>
-        <p>Published history for rows that already have completed runs.</p>
+        <p class="status-card__eyebrow">History</p>
+        <h3>Pass-rate trends per lane-suite</h3>
+        <p>Historical pass rate and scenario failures from git-tracked test-runs.ndjson.</p>
       </div>
-      <div class="chart-panel__plot" id="tests-chart-trends" role="img" aria-label="Reliability trend chart"></div>
-    </article>
-
-    <article class="chart-panel">
-      <div class="chart-panel__header">
-        <p class="status-card__eyebrow">Failure shape</p>
-        <h3>Failure concentration</h3>
-        <p>Treemap of the latest failed scenarios by suite/variant row when scenario names are published.</p>
-      </div>
-      <div class="chart-panel__plot" id="tests-chart-failures" role="img" aria-label="Failure concentration chart"></div>
+      <div class="chart-panel__plot" id="tests-chart-trends" role="img" aria-label="Pass rate trend chart"></div>
     </article>
 
     <article class="chart-panel">
       <div class="chart-panel__header">
         <p class="status-card__eyebrow">Coverage</p>
-        <h3>Suite/variant view</h3>
-        <p>Heatmap of latest pass rate by published suite and variant, with explicit unavailable cells.</p>
+        <h3>Suite/variant heatmap</h3>
+        <p>Current result status by variant and suite. Green pass, red fail, grey unavailable.</p>
       </div>
       <div class="chart-panel__plot" id="tests-chart-heatmap" role="img" aria-label="Suite variant heatmap"></div>
     </article>
 
-    <article class="chart-panel">
+    <article class="chart-panel chart-panel--wide">
       <div class="chart-panel__header">
-        <p class="status-card__eyebrow">Load</p>
-        <h3>Scenario volume and failures</h3>
-        <p>Latest published scenario counts, failed scenarios, and pass rate for rows with completed runs.</p>
+        <p class="status-card__eyebrow">Flakes</p>
+        <h3>Flaky rows and run history sparklines</h3>
+        <p>Rows with at least one pass/fail flip across their recorded history.</p>
       </div>
-      <div class="chart-panel__plot" id="tests-chart-volume" role="img" aria-label="Scenario volume and failures chart"></div>
+      <div id="tests-chart-flakes" role="img" aria-label="Flaky rows panel"></div>
     </article>
   </div>
 
   <script type="application/json" id="tests-chart-data" set:html={payloadJson}></script>
-  <script type="module" src={testsChartsScript} data-cfasync="false"></script>
+  <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
+  <script is:inline src={testsChartsScript} defer data-cfasync="false"></script>
 </section>

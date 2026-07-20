@@ -7,7 +7,7 @@ metadata:
   name: flatcar-kernel-state-patcher
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 rules:
   - apiGroups: [""]
     resources: [configmaps]
@@ -22,7 +22,7 @@ metadata:
   name: flatcar-kernel-state-patcher
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 subjects:
   - kind: ServiceAccount
     name: argo
@@ -38,7 +38,7 @@ metadata:
   name: flatcar-kernel-gate-reader
   namespace: flatcar-update
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 rules:
   - apiGroups: [""]
     resources: [pods]
@@ -50,7 +50,7 @@ metadata:
   name: flatcar-kernel-gate-reader
   namespace: flatcar-update
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 subjects:
   - kind: ServiceAccount
     name: argo
@@ -65,7 +65,7 @@ kind: ClusterRole
 metadata:
   name: flatcar-kernel-gate-node-reader
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 rules:
   - apiGroups: [""]
     resources: [nodes]
@@ -76,7 +76,7 @@ kind: ClusterRoleBinding
 metadata:
   name: flatcar-kernel-gate-node-reader
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 subjects:
   - kind: ServiceAccount
     name: argo

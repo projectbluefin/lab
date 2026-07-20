@@ -1,4 +1,4 @@
-# CronWorkflow: polls ghcr.io/projectbluefin/dakota:latest hourly.
+# CronWorkflow: polls ghcr.io/projectbluefin/dakota:testing every 10 minutes.
 # Triggers dakota-qa-pipeline only when OCI digest changes vs ConfigMap state.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -6,12 +6,15 @@ metadata:
   name: image-poll-dakota
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
-  suspend: true  # dakota composefs image ships no UKI; bootc install to-disk always fails. Do not un-suspend until upstream fixes this.
+  # Active: Dakota now runs through the container-only dakota-qa-pipeline path,
+  # so the digest poller can dispatch suite runs without any containerDisk or
+  # VM provisioning arguments.
+  suspend: false
   schedules:
-    - "2 */3 * * *"
+    - "8/10 * * * *"
   timezone: "UTC"
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
@@ -22,6 +25,20 @@ spec:
     ttlStrategy:
       secondsAfterSuccess: 3600
       secondsAfterFailure: 86400
+    arguments:
+      parameters:
+        - name: image
+          value: "ghcr.io/projectbluefin/dakota"
+        - name: image-tag
+          value: "testing"
+        - name: state-key
+          value: "digest-dakota-testing"
+        - name: suites
+          value: "smoke"
+        - name: variant
+          value: "dakota"
+        - name: branch
+          value: "main"
     entrypoint: check-and-trigger
     templates:
       - name: check-and-trigger
@@ -34,11 +51,11 @@ spec:
               arguments:
                 parameters:
                   - name: image
-                    value: "ghcr.io/projectbluefin/dakota"
+                    value: "{{workflow.parameters.image}}"
                   - name: image-tag
-                    value: "latest"
+                    value: "{{workflow.parameters.image-tag}}"
                   - name: state-key
-                    value: "digest-dakota-latest"
+                    value: "{{workflow.parameters.state-key}}"
             - name: run-pipeline
               depends: "check-digest.Succeeded"
               when: "{{tasks.check-digest.outputs.parameters.changed}} == true"
@@ -48,14 +65,12 @@ spec:
               arguments:
                 parameters:
                   - name: image
-                    value: "ghcr.io/projectbluefin/dakota"
+                    value: "{{workflow.parameters.image}}"
                   - name: image-tag
-                    value: "latest"
-                  - name: containerdisk-tag
-                    value: "dakota-latest"
-                  - name: namespace
-                    value: "bluefin-test"
+                    value: "{{workflow.parameters.image-tag}}"
                   - name: suites
-                    value: "smoke,common,developer,software,system"
+                    value: "{{workflow.parameters.suites}}"
                   - name: variant
-                    value: "dakota"
+                    value: "{{workflow.parameters.variant}}"
+                  - name: branch
+                    value: "{{workflow.parameters.branch}}"

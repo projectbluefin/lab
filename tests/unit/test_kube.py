@@ -1,7 +1,6 @@
 import pytest
 import json
 from unittest.mock import MagicMock, patch
-import subprocess
 
 from tests.service_catalog.shared.kube import (
     run_kubectl,

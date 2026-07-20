@@ -1,0 +1,400 @@
+---
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import SiteLayout from '../layouts/SiteLayout.astro';
+import testsMatrix from '../../docs/data/tests-matrix.json';
+import testSurface from '../../docs/data/test-surface.json';
+import factoryStats from '../../docs/data/factory-stats.json';
+
+const baseUrl = import.meta.env.BASE_URL;
+
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC'
+    : 'Never';
+
+// Visual screenshots available in testSurface
+const screenshotRows = testSurface.surface.filter((s: { screenshot_path: string | null }) => s.screenshot_path);
+
+// Failures list from results
+const failedRecentCount = factoryStats.recent_runs ? factoryStats.recent_runs.filter((r: { overall: string }) => r.overall === 'fail').length : 0;
+const totalRecentCount = factoryStats.recent_runs ? factoryStats.recent_runs.length : 0;
+const totalFailedScenariosFromStats = factoryStats.test_coverage?.scenarios_failed ?? 0;
+const totalScenarios = factoryStats.test_coverage?.scenarios_total ?? 0;
+const openBugsCount = Array.isArray(factoryStats.open_bugs) ? factoryStats.open_bugs.length : 0;
+const generatedAt = testsMatrix._meta?.generated_at ?? factoryStats._meta?.refreshed_at ?? new Date().toISOString();
+---
+
+<SiteLayout
+  title="Evidence Ledger"
+  description="Diagnostic evidence, failure triage scatter plots, and GNOME Shell AT-SPI coordinates maps."
+  current="evidence"
+>
+  <style>
+    /* Dashboard header style */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    /* Section titles */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    /* Workbench grid and cards */
+    .workbench-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    @media (max-width: 1024px) {
+      .workbench-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .workbench-card {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .workbench-card:hover {
+      border-color: rgba(56, 189, 248, 0.25);
+      transform: translateY(-2px);
+    }
+    .workbench-card h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #f8fafc;
+      margin: 0 0 0.5rem 0;
+    }
+    .workbench-card p {
+      font-size: 0.88rem;
+      color: #94a3b8;
+      line-height: 1.6;
+      margin: 0 0 1.25rem 0;
+    }
+    .workbench-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .workbench-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .workbench-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    .workbench-link {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #38bdf8;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .workbench-link:hover {
+      color: #7dd3fc;
+      text-decoration: underline;
+    }
+    .workbench-desc {
+      font-size: 0.78rem;
+      color: #64748b;
+    }
+
+    /* Double chart container */
+    .evidence-chart-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    @media (max-width: 900px) {
+      .evidence-chart-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .evidence-chart-panel {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      min-width: 0;
+    }
+    .evidence-chart-panel:hover {
+      border-color: rgba(56, 189, 248, 0.2);
+    }
+    .evidence-chart-header {
+      margin-bottom: 1.25rem;
+    }
+    .evidence-chart-header h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 0.25rem 0 0.15rem 0;
+    }
+    .evidence-chart-header p {
+      font-size: 0.82rem;
+      color: #64748b;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .evidence-chart-plot {
+      width: 100%;
+      height: 360px;
+      min-height: 360px;
+    }
+    .evidence-caption {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding-top: 0.75rem;
+      line-height: 1.5;
+    }
+
+    /* Code instruction block */
+    .code-block {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      overflow-x: auto;
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Integrity panel styles */
+    .integrity-panel {
+      background: rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .integrity-panel h4 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin: 0 0 0.75rem 0;
+    }
+    .integrity-list {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #64748b;
+      font-size: 0.85rem;
+      line-height: 1.7;
+    }
+    .integrity-list li + li { margin-top: 0.25rem; }
+    .integrity-list strong { color: #cbd5e1; }
+
+    .stat-dl {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-dl-item {
+      background: rgba(30,41,59,0.3);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 0.85rem 1rem;
+    }
+    .stat-dl-item dt { font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-dl-item dd { font-size: 1.35rem; font-weight: 800; color: #f8fafc; margin: 0.2rem 0 0 0; }
+  </style>
+
+  <!-- Header -->
+  <div class="dashboard-header">
+    <h1>Evidence Ledger</h1>
+    <div class="meta-bar">
+      <span>Updated {formatUtc(generatedAt)}</span>
+      <span>Source: projectbluefin test results & homelab telemetry</span>
+      <a href={`${baseUrl}data/test-surface.json`}>Raw surface JSON ↗</a>
+      <a href={`${baseUrl}data/factory-stats.json`}>Raw stats JSON ↗</a>
+    </div>
+  </div>
+
+  <!-- KPI DL -->
+  <h2 class="section-title">Diagnostic Telemetry Metrics</h2>
+  <div class="stat-dl">
+    <div class="stat-dl-item">
+      <dt>Failed Recent Runs</dt>
+      <dd>{failedRecentCount} / {totalRecentCount}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Failed Scenarios</dt>
+      <dd>{totalFailedScenariosFromStats} / {totalScenarios}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Screenshots Stored</dt>
+      <dd>{screenshotRows.length}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Open Bugs</dt>
+      <dd>{openBugsCount}</dd>
+    </div>
+  </div>
+
+  <!-- Diagnostic Charts -->
+  <h2 class="section-title">Visual Evidence Workbench</h2>
+  <div class="evidence-chart-grid">
+    <article class="evidence-chart-panel">
+      <div class="evidence-chart-header">
+        <p class="status-card__eyebrow">Triage matrix</p>
+        <h3>Failure Triage Scatter Plot</h3>
+      </div>
+      <div class="evidence-chart-plot" style="display:flex;align-items:center;justify-content:center;color:#64748b;font-size:0.9rem;border:1px dashed rgba(255,255,255,0.08);border-radius:14px;background:rgba(30,41,59,0.15);">
+        Unavailable — failure-mode triage map is not emitted by a collector. See RUNBOOK.md and factory-stats.json for incident history.
+      </div>
+    </article>
+
+    <article class="evidence-chart-panel">
+      <div class="evidence-chart-header">
+        <p class="status-card__eyebrow">Visual coordinates</p>
+        <h3>AT-SPI Coordinate Map Overlay</h3>
+      </div>
+      <div class="evidence-chart-plot" style="display:flex;align-items:center;justify-content:center;color:#64748b;font-size:0.9rem;border:1px dashed rgba(255,255,255,0.08);border-radius:14px;background:rgba(30,41,59,0.15);">
+        Unavailable — AT-SPI coordinate overlay is not emitted by a collector. See test-surface.json for current UI failure records.
+      </div>
+    </article>
+  </div>
+
+  <!-- Diagnostic Workbench Grid -->
+  <h2 class="section-title">Diagnostic Workbench</h2>
+  <div class="workbench-grid">
+
+    <!-- Card 1: Test Screenshots & Visual Evidence -->
+    <div class="workbench-card">
+      <h3>Visual Evidence Gallery</h3>
+      <p>Direct frame buffers extracted from test VMs on click failures. Golden-state screenshots are archived in the homelab storage volume.</p>
+      <ul class="workbench-list">
+        {screenshotRows.map((row: { variant: string, branch: string, suite: string, screenshot_path: string | null }) => {
+          const name = `${row.variant} (${row.suite})`;
+          const href = `${baseUrl}${row.screenshot_path}`;
+          return (
+            <li class="workbench-item">
+              <a href={href} class="workbench-link" target="_blank" rel="noopener noreferrer">
+                {name} Screenshot
+              </a>
+              <span class="workbench-desc">Staged from {row.screenshot_path} on physical host ghost.</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+
+    <!-- Card 2: AT-SPI Tree Exports -->
+    <div class="workbench-card">
+      <h3>AT-SPI Tree Exports</h3>
+      <p>Traversing accessibility nodes dynamically over AT-SPI registry daemon. Use the session bridge to inspect Wayland-level coordinates.</p>
+      <ul class="workbench-list">
+        <li class="workbench-item">
+          <span class="workbench-link">gnome-ponytail-daemon Dump</span>
+          <span class="workbench-desc">Coordinates translated to screen pixels: activities (50, 15), show-apps (150, 15), quick-settings (1200, 15).</span>
+        </li>
+        <li class="workbench-item">
+          <span class="workbench-link">GDBus Session Evaluation</span>
+          <span class="workbench-desc">Run interactive JS queries against the top-bar using the raw DBus interface:</span>
+          <div class="code-block">
+            gdbus call --session --dest org.gnome.Shell --method org.gnome.Shell.Eval "imports.ui.main.quickSettings.menu.actor.get_text()"
+          </div>
+        </li>
+        <li class="workbench-item">
+          <span class="workbench-link">Dogtail Hierarchy Trace</span>
+          <span class="workbench-desc">Extract complete accessibility tree layout using python3-dogtail traversal libraries.</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Card 3: SRE Failure Runbooks -->
+    <div class="workbench-card">
+      <h3>Failure Runbooks</h3>
+      <p>Standard operating procedures for manual diagnostic reproduction and physical hardware link re-establishment in the homelab.</p>
+      <ul class="workbench-list">
+        <li class="workbench-item">
+          <a href="https://github.com/projectbluefin/lab/blob/main/RUNBOOK.md" class="workbench-link" target="_blank" rel="noopener noreferrer">
+            Homelab Common Failure Runbook
+          </a>
+          <span class="workbench-desc">Includes detailed recovery procedures for Framework EC PD controller hangs, NVMe timeouts, and host PID signal leaks.</span>
+        </li>
+        <li class="workbench-item">
+          <span class="workbench-link">Local Test Execution</span>
+          <span class="workbench-desc">Reproduce top-bar and clock failures using behave within an ephemeral container environment:</span>
+          <div class="code-block">
+            just run-smoke-tests
+          </div>
+        </li>
+        <li class="workbench-item">
+          <a href="https://github.com/projectbluefin/lab/blob/main/docs/skills/test-authoring.md" class="workbench-link" target="_blank" rel="noopener noreferrer">
+            Test Authoring & dogtail reference
+          </a>
+          <span class="workbench-desc">Guidelines for writing safe behave features without introducing requireResult regression bugs.</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <p style="font-size: 0.85rem; color: #64748b; margin-top: 2rem;">
+    Provenance: run metrics from docs/data/factory-stats.json, screenshots from docs/data/test-surface.json.
+    Updated {formatUtc(generatedAt)}.
+    <a href={`${baseUrl}data/factory-stats.json`} style="color: #38bdf8; text-decoration: none; margin-left: 0.5rem;">Raw dataset</a>
+  </p>
+
+</SiteLayout>

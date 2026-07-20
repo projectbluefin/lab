@@ -3,7 +3,7 @@ kind: WorkflowTemplate
 metadata:
   annotations:
     argocd.argoproj.io/tracking-id: 
-      testing-lab:argoproj.io/WorkflowTemplate:argo/bluefin-migration-test
+      lab:argoproj.io/WorkflowTemplate:argo/bluefin-migration-test
     description: 'Tests two-way bootc switch migration between legacy-rechunk ublue-os/bluefin
 
       and chunkah projectbluefin/bluefin, including experimental unified storage
@@ -48,9 +48,39 @@ spec:
   entrypoint: migration-test
   onExit: teardown
   serviceAccountName: argo
+  activeDeadlineSeconds: 86400
+  volumeClaimGC:
+    strategy: OnWorkflowCompletion
+  volumeClaimTemplates:
+  - metadata:
+      name: staging
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 100Gi
   templates:
   - name: migration-test
+    synchronization:
+      semaphores:
+      - configMapKeyRef:
+          name: workflow-semaphores
+          key: migration-containerdisk-build
     steps:
+    - - arguments:
+          parameters:
+          - name: image
+            value: '{{workflow.parameters.legacy-image}}'
+          - name: image-tag
+            value: '{{workflow.parameters.image-tag}}'
+          - name: containerdisk-tag
+            value: '{{workflow.parameters.image-tag}}'
+          - name: force
+            value: 'true'
+        name: build-migration-source
+        templateRef:
+          name: build-bluefin-migration-containerdisk
+          template: build-containerdisk
     - - arguments:
           parameters:
           - name: image-tag
@@ -65,7 +95,7 @@ spec:
             value: '{{workflow.parameters.test-root}}'
         name: provision
         templateRef:
-          name: provision-bluefin-vm
+          name: provision-containerdisk-vm
           template: provision-vm
     - - arguments:
           parameters:
@@ -336,7 +366,7 @@ spec:
     script:
       command:
       - bash
-      image: quay.io/skopeo/stable:latest
+      image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
       resources:
         limits:
           cpu: 500m
@@ -411,8 +441,8 @@ spec:
     name: prepare-storage-backend
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base:latest
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: '1'
@@ -421,7 +451,6 @@ spec:
           cpu: 250m
           memory: 256Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -558,8 +587,8 @@ spec:
     name: run-bootc-switch
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base:latest
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: '1'
@@ -568,7 +597,6 @@ spec:
           cpu: 250m
           memory: 256Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -708,8 +736,8 @@ spec:
     name: reboot-and-wait
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base:latest
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: 500m
@@ -718,7 +746,6 @@ spec:
           cpu: 100m
           memory: 128Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -789,8 +816,8 @@ spec:
     name: collect-evidence
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base:latest
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: '1'
@@ -799,7 +826,6 @@ spec:
           cpu: 250m
           memory: 256Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -1015,8 +1041,8 @@ spec:
     name: verify-state
     script:
       command:
-      - sh
-      image: cgr.dev/chainguard/wolfi-base:latest
+      - bash
+      image: ghcr.io/projectbluefin/lab-runner:latest
       resources:
         limits:
           cpu: 500m
@@ -1025,7 +1051,6 @@ spec:
           cpu: 100m
           memory: 128Mi
       source: |
-        apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
         exec bash <<'SCRIPT_EOF'
         set -euo pipefail
         if ! command -v ssh >/dev/null 2>&1; then
@@ -1114,6 +1139,5 @@ spec:
             value: '{{workflow.parameters.test-root}}'
         name: teardown-vm
         templateRef:
-          name: teardown-bluefin-vm
+          name: teardown-vm
           template: teardown-vm
-

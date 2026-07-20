@@ -1,0 +1,24 @@
+---
+interface Props {
+  headers: string[];
+  rowHeaderLabel?: string;
+  class?: string;
+}
+
+const { headers, rowHeaderLabel = "Variant", class: className = "" } = Astro.props;
+---
+<div class="table-scroll">
+  <table class:list={["matrix-table", className]}>
+    <thead>
+      <tr>
+        <th scope="col">{rowHeaderLabel}</th>
+        {headers.map((header) => (
+          <th scope="col">{header}</th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      <slot />
+    </tbody>
+  </table>
+</div>

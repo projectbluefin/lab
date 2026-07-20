@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildstream-remote-cache
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+    app.kubernetes.io/component: buildstream
+
+data:
+  # Dakota's coordinator fetches four artifacts/sources concurrently. Two
+  # BuildBarn workers each expose one action slot, so admit two remote builds
+  # and permit eight jobs within each action (the runner CPU limit).
+  dakota-buildstream.conf: |
+    scheduler:
+      network-retries: 8
+      fetchers: 4
+      builders: 2
+      pushers: 2
+    build:
+      max-jobs: 8
+ 
+    artifacts:
+      override-project-caches: false
+      servers:
+      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        push: true
+      - url: https://gbm.gnome.org:11003
+        push: false
+      - url: https://cache.freedesktop-sdk.io:11001
+        push: false
+      - url: https://cache.projectbluefin.io:11001
+        push: false
+    source-caches:
+      override-project-caches: false
+      servers:
+      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        type: storage
+        push: true
+      - url: https://gbm.gnome.org:11003
+        push: false
+      - url: https://cache.freedesktop-sdk.io:11001
+        push: false
+      - url: https://cache.projectbluefin.io:11001
+        push: false
+  # Per-project remote-execution snippet body. Pipelines append this under
+  # projects.<name> (indented) when distributed builds are enabled.
+  remote-execution.conf: |
+    remote-execution:
+      execution-service:
+        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        connection-config:
+          keepalive-time: 60
+          retry-limit: 8
+          retry-delay: 1000
+          request-timeout: 1800
+      storage-service:
+        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        connection-config:
+          keepalive-time: 60
+          retry-limit: 8
+          retry-delay: 1000
+          request-timeout: 1800
+      action-cache-service:
+        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        connection-config:
+          keepalive-time: 60
+          retry-limit: 8
+          retry-delay: 1000
+          request-timeout: 1800

@@ -1,0 +1,359 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-container-tests
+  namespace: argo
+  annotations:
+    description: |
+      Runs Bluefin BDD suites (smoke, common, developer, software, system)
+      inside a nested, systemd-booted target OCI container. The privileged
+      Podman host remains Kubernetes-native and bypasses KubeVirt
+      virtualization; qecore-headless runs against the nested GDM session.
+  labels:
+    app.kubernetes.io/component: test-runner
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  templates:
+  - name: run-container-tests
+    activeDeadlineSeconds: 3600
+    inputs:
+      parameters:
+      - name: image
+        value: "ghcr.io/projectbluefin/bluefin"
+      - name: image-tag
+        value: "testing"
+      - name: suite
+        value: "smoke"
+      - name: variant
+        value: "bluefin"
+      - name: branch
+        value: "main"
+        # testsuite-repo: canonical test repo. Override only for forks.
+      - name: testsuite-repo
+        value: "https://github.com/projectbluefin/testsuite"
+        # testsuite-branch: branch to clone from projectbluefin/testsuite.
+        # Use 'main' for nightly runs; set to a PR branch for end-to-end PR testing.
+      - name: testsuite-branch
+        value: "main"
+      - name: behave-tags
+        value: ""
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/results/result-summary.txt
+          default: "No results generated"
+    initContainers:
+    - name: git-sync
+      image: cgr.dev/chainguard/git:latest
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      volumeMounts:
+      - mountPath: /workspace
+        name: workspace
+      command: [sh, -c]
+      args:
+      - |
+        set -euo pipefail
+        # Clone the requested testsuite revision. A missing PR branch must fail so
+        # the workflow never reports a result from unrelated test code.
+        TSREPO="{{inputs.parameters.testsuite-repo}}"
+        TSBRANCH="{{inputs.parameters.testsuite-branch}}"
+        git clone --depth 1 --branch "${TSBRANCH}" "${TSREPO}" /workspace/testsuite
+        echo "Cloned testsuite @ ${TSBRANCH}"
+    script:
+      image: quay.io/podman/stable:latest
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        # Podman needs a writable cgroup hierarchy to boot the nested systemd host.
+        privileged: true
+        runAsUser: 0
+        allowPrivilegeEscalation: true
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+          ephemeral-storage: 12Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          ephemeral-storage: 24Gi
+      env:
+      - name: IMAGE
+        value: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"
+      - name: SUITE
+        value: "{{inputs.parameters.suite}}"
+      - name: VARIANT
+        value: "{{inputs.parameters.variant}}"
+      - name: BEHAVE_TAGS
+        value: "{{inputs.parameters.behave-tags}}"
+      - name: IMAGE_TAG
+        value: "{{inputs.parameters.image-tag}}"
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: github-token
+            key: token
+            optional: true
+      volumeMounts:
+      - mountPath: /workspace
+        name: workspace
+      - mountPath: /tmp/results
+        name: results
+      - mountPath: /var/lib/containers
+        name: containers-storage
+      - mountPath: /run/containers
+        name: containers-runroot
+      - mountPath: /run/udev
+        name: udev
+      command: [bash]
+      source: |
+        set -euo pipefail
+        # Build slug used to identify QA evidence in the lab repo.
+        IMG_SLUG="${VARIANT}-${IMAGE_TAG}"
+
+        # Resolve the digest of the target OCI image for digest-pinned QA evidence.
+        if ! command -v skopeo >/dev/null 2>&1; then
+          echo "skopeo not found; installing for digest resolution..." >&2
+          dnf install -y skopeo >/dev/null 2>&1 || true
+        fi
+        DIGEST=""
+        if command -v skopeo >/dev/null 2>&1; then
+          SKOPEO_ARGS=()
+          if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            SKOPEO_ARGS+=(--creds "_token:${GITHUB_TOKEN}")
+          fi
+          DIGEST=$(skopeo inspect "${SKOPEO_ARGS[@]}" --no-tags --format '{{.Digest}}' "docker://${IMAGE}" 2>/dev/null || true)
+        fi
+        if [[ -z "${DIGEST:-}" ]]; then
+          echo "Warning: could not resolve digest for ${IMAGE}; result will still be published but may fall back to tag-based matching." >&2
+        else
+          echo "Resolved digest ${DIGEST} for ${IMAGE}" >&2
+        fi
+        TARGET_NAME="bluefin-qa-target"
+        STORAGE_CONF=/tmp/storage.conf
+        cat >"${STORAGE_CONF}" <<'EOF'
+        [storage]
+        driver = "overlay"
+        graphroot = "/var/lib/containers/storage"
+        runroot = "/run/containers/storage"
+        EOF
+        export CONTAINERS_STORAGE_CONF="${STORAGE_CONF}"
+        trap 'podman rm --force "${TARGET_NAME}" >/dev/null 2>&1 || true' EXIT
+
+        command -v podman >/dev/null || {
+          echo "Podman is required for nested systemd QA" >&2
+          exit 1
+        }
+        mkdir -p /tmp/results
+        podman run --detach --systemd=always --network host --privileged \
+          --cgroupns=host \
+          --security-opt seccomp=unconfined \
+          --tmpfs /run:rw,nosuid,nodev,mode=755,size=256m \
+          --name "${TARGET_NAME}" \
+          --mount type=bind,source=/sys,destination=/sys,ro,bind-propagation=rprivate \
+          --mount type=bind,source=/run/udev,destination=/run/udev,ro,bind-propagation=rprivate \
+          --volume /workspace:/workspace:ro \
+          --volume /tmp/results:/tmp/results \
+          --volume /etc/resolv.conf:/etc/resolv.conf:ro \
+          "${IMAGE}" >/dev/null
+
+        ready=false
+        for _ in $(seq 1 60); do
+          state=$(podman exec "${TARGET_NAME}" systemctl is-system-running 2>/dev/null || true)
+          if [[ "${state}" == "running" || "${state}" == "degraded" ]] \
+            && podman exec "${TARGET_NAME}" systemctl is-active dbus systemd-logind >/dev/null \
+            && podman exec "${TARGET_NAME}" loginctl show-seat seat0 --property=CanGraphical 2>/dev/null | grep -q yes; then
+            ready=true
+            break
+          fi
+          sleep 2
+        done
+        if [[ "${ready}" != true ]]; then
+          echo "Nested systemd host did not reach a usable session state" >&2
+          podman exec "${TARGET_NAME}" journalctl --no-pager || true
+          exit 1
+        fi
+
+        echo "Installing test-only Python dependencies in nested target..." >&2
+        podman exec "${TARGET_NAME}" bash -c '
+          set -euo pipefail
+
+          # Stop GDM and clear any display state left over from the degraded boot.
+          systemctl stop gdm || true
+          rm -rf /run/gdm /var/log/gdm
+          mkdir -p /run/gdm /var/log/gdm
+
+          # Make sure groups exist so the test user can access DRI/input devices.
+          groupadd -f video
+          groupadd -f render
+          groupadd -f input
+
+          # Create / update the test user with device groups.
+          if ! id bluefin-test >/dev/null 2>&1; then
+            useradd -m -u 1000 -G video,render,input bluefin-test
+          else
+            usermod -aG video,render,input bluefin-test
+          fi
+
+          # Configure sudo and auto-login before GDM starts.
+          mkdir -p /etc/sudoers.d
+          echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
+          chmod 0440 /etc/sudoers.d/bluefin-test
+
+          mkdir -p /etc/gdm
+          printf "%s\n" \
+            "[daemon]" \
+            "AutomaticLoginEnable=True" \
+            "AutomaticLogin=bluefin-test" \
+            "InitialSetupEnable=False" >/etc/gdm/custom.conf
+
+          mkdir -p /home/bluefin-test/run /tmp/results
+          chown -R 1000:1000 /home/bluefin-test /tmp/results
+          chmod 700 /home/bluefin-test/run
+
+          # Install test-only Python dependencies.
+          if ! python3 -m pip --version >/dev/null 2>&1; then
+            python3 -m ensurepip --default-pip
+          fi
+          python3 -m pip install --quiet qecore dogtail behave
+
+          systemctl start gdm
+        '
+        for _ in $(seq 1 60); do
+          if podman exec "${TARGET_NAME}" pgrep -u 1000 -f gnome-session >/dev/null; then
+            break
+          fi
+          sleep 2
+        done
+        podman exec "${TARGET_NAME}" pgrep -u 1000 -f gnome-session >/dev/null || {
+          echo "GDM did not start a GNOME session for bluefin-test" >&2
+          podman exec "${TARGET_NAME}" journalctl --no-pager -u gdm || true
+          exit 1
+        }
+
+        cat >/workspace/run-behave.sh <<'EOF'
+        #!/bin/bash
+        set -euo pipefail
+        # testsuite uses its own PYTHONPATH root so 'tests.shared.*' imports resolve.
+        export PYTHONPATH="/workspace/testsuite"
+        SUITE="@@SUITE@@"
+        BEHAVE_TAGS="@@BEHAVE_TAGS@@"
+
+        case "${SUITE}" in
+          smoke|common|developer|software|system) ;;
+          *)
+            echo "Unsupported container suite: ${SUITE}" >&2
+            exit 2
+            ;;
+        esac
+
+        echo "Waiting for GNOME Shell AT-SPI to start..." >&2
+        python3 /workspace/testsuite/tests/shared/wait_for_shell.py
+
+        echo "Starting ponytail daemon..." >&2
+        /usr/libexec/gnome-ponytail-daemon &
+        sleep 2
+
+        echo "Executing behave suite..." >&2
+        TAGS_ARG="--tags ~@wip"
+        if [[ -n "${BEHAVE_TAGS}" ]]; then
+          TAGS_ARG="${BEHAVE_TAGS}"
+        fi
+
+        BEHAVE_RC=0
+        python3 -m behave /workspace/testsuite/tests/${SUITE}/features/ \
+          --format json.pretty \
+          --outfile /tmp/results/results.json \
+          --no-capture ${TAGS_ARG} || BEHAVE_RC=$?
+
+        echo "${BEHAVE_RC}" > /tmp/results/behave-rc.txt
+        EOF
+        # qecore-headless does not preserve runner env vars for the script, so bake them in.
+        sed -i \
+          -e "s#@@SUITE@@#${SUITE}#g" \
+          -e "s#@@BEHAVE_TAGS@@#${BEHAVE_TAGS}#g" \
+          /workspace/run-behave.sh
+        chmod +x /workspace/run-behave.sh
+
+        echo "Running qecore against the nested systemd/GDM host..." >&2
+        QECORE_RC=0
+        podman exec \
+          --user 1000:1000 \
+          --env SUITE \
+          --env BEHAVE_TAGS \
+          --env HOME=/home/bluefin-test \
+          --env XDG_RUNTIME_DIR=/home/bluefin-test/run \
+          --env DBUS_SESSION_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+          --env AT_SPI_BUS_ADDRESS=unix:path=/home/bluefin-test/run/bus \
+          --env XDG_SESSION_TYPE=wayland \
+          --env XDG_SESSION_DESKTOP=gnome \
+          --env LIBGL_ALWAYS_SOFTWARE=1 \
+          --env GALLIUM_DRIVER=llvmpipe \
+          "${TARGET_NAME}" \
+          qecore-headless \
+          --session-type wayland \
+          --session-desktop gnome \
+          /workspace/run-behave.sh || QECORE_RC=$?
+
+        BEHAVE_RC=$(cat /tmp/results/behave-rc.txt 2>/dev/null || printf '%s' "${QECORE_RC}")
+
+        if [[ -f /tmp/results/results.json ]]; then
+          python3 - <<'PY'
+        import json
+
+        with open("/tmp/results/results.json", encoding="utf-8") as result_file:
+            data = json.load(result_file)
+        failed = sum(
+            1 for feature in data for scenario in feature.get("elements", [])
+            if scenario.get("status") == "failed"
+        )
+        total = sum(len(feature.get("elements", [])) for feature in data)
+        summary = f"{total - failed}/{total} scenarios passed"
+        with open("/tmp/results/result-summary.txt", "w", encoding="utf-8") as summary_file:
+            summary_file.write(summary)
+        print(summary)
+        PY
+        else
+          printf 'Execution failed' >/tmp/results/result-summary.txt
+        fi
+
+
+        # Publish digest-pinned test results back to the lab repo.
+        if [[ -n "${GITHUB_TOKEN:-}" && -f /tmp/results/results.json ]]; then
+          if ! command -v git >/dev/null 2>&1; then
+            echo "git not found; installing git-core before result publication..." >&2
+            dnf install -y git-core >/dev/null 2>&1 || true
+          fi
+          PUBLISH_RC=0
+          {
+            rm -rf /tmp/lab-code
+            git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+            python3 /tmp/lab-code/scripts/publish_test_results.py /tmp/results/results.json "${IMG_SLUG}" "${SUITE}" "{{workflow.name}}" "${GITHUB_TOKEN}" "${DIGEST}"
+          } || PUBLISH_RC=$?
+          if [[ "${PUBLISH_RC}" -ne 0 ]]; then
+            echo "Warning: failed to publish test results (rc=${PUBLISH_RC})" >&2
+          fi
+        elif [[ -z "${GITHUB_TOKEN:-}" ]]; then
+          echo "No GITHUB_TOKEN - skipping test results publication" >&2
+        else
+          echo "Skipping publication: /tmp/results/results.json not found" >&2
+        fi
+
+        exit "${BEHAVE_RC}"
+    volumes:
+    - name: workspace
+      emptyDir: {}
+    - name: results
+      emptyDir: {}
+    - name: containers-storage
+      emptyDir: {}
+    - name: containers-runroot
+      emptyDir: {}
+    - name: udev
+      emptyDir: {}

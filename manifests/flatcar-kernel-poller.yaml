@@ -6,12 +6,13 @@ metadata:
   name: flatcar-kernel-poller
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
+  # Suspend automatic kernel builds; submit flatcar-kernel-build manually when needed.
+  suspend: true
   schedules:
     - "*/10 * * * *"
   timezone: "UTC"
-  suspend: true
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
   workflowSpec:
@@ -23,23 +24,31 @@ spec:
     templates:
       - name: poll-and-trigger
         script:
-          image: cgr.dev/chainguard/wolfi-base:latest
-          command: [sh]
+          image: ghcr.io/projectbluefin/lab-runner:latest
+          command: [bash]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
           source: |
-            apk add --no-cache bash curl jq kubectl git python3 >/dev/null 2>&1
-            exec bash <<'SCRIPT_EOF'
             set -euo pipefail
+
+            # Bootstrap kubectl if not in PATH
+            if ! command -v kubectl >/dev/null 2>&1; then
+              KUBECTL=/tmp/kubectl
+              if [ ! -f "${KUBECTL}" ]; then
+                curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+                chmod +x "${KUBECTL}"
+              fi
+              kubectl() { "${KUBECTL}" "$@"; }
+            fi
 
             # Fetch latest stable kernel version from kernel.org
             LATEST=$(curl -sf https://www.kernel.org/releases.json \
-              | python3 -c "
-            import sys, json
-            data = json.load(sys.stdin)
-            for r in data['releases']:
-                if r['moniker'] == 'stable':
-                    print(r['version'])
-                    break
-            ")
+              | jq -r '.releases[] | select(.moniker == "stable") | .version' | head -n 1)
             echo "Latest kernel.org stable: ${LATEST}"
 
             # Read last-seen version from ConfigMap
@@ -72,7 +81,6 @@ spec:
             kubectl patch configmap flatcar-kernel-polling-state \
               -n argo --type=merge \
               -p "{\"data\":{\"kernel-stable\":\"${LATEST}\"}}"
-            SCRIPT_EOF
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -80,12 +88,13 @@ metadata:
   name: flatcar-kernel-gate
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
+  # Suspend automatic gate runs with the build poller.
+  suspend: true
   schedules:
     - "*/30 * * * *"
   timezone: "UTC"
-  suspend: true
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 300
   workflowSpec:

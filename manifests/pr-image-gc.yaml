@@ -8,14 +8,14 @@
 # Prerequisite: github-token secret must exist in argo namespace with key "token".
 # Create: kubectl create secret generic github-token --from-literal=token=<PAT> -n argo
 #
-# ArgoCD: testing-lab-infra syncs this
+# ArgoCD: lab-infra syncs this
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
   name: pr-image-gc
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     app.kubernetes.io/component: gc
 spec:
   schedules:
@@ -35,8 +35,15 @@ spec:
       nodeSelector:
         kubernetes.io/hostname: ghost
       script:
-        image: cgr.dev/chainguard/wolfi-base:latest
+        image: ghcr.io/projectbluefin/lab-runner:latest
         command: [sh]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         env:
         - name: GITHUB_TOKEN
           valueFrom:
@@ -51,9 +58,19 @@ spec:
         - name: MAX_AGE_DAYS
           value: "7"
         source: |
-          apk add --no-cache bash curl jq kubectl git openssh-client python3 >/dev/null 2>&1
           exec bash <<'SCRIPT_EOF'
           set -euo pipefail
+
+          # Bootstrap oras if not in PATH
+          if ! command -v oras >/dev/null 2>&1; then
+            echo "oras not found, bootstrapping on-demand..."
+            ORAS_DIR=/tmp/oras-bin
+            mkdir -p "${ORAS_DIR}"
+            if [ ! -f "${ORAS_DIR}/oras" ]; then
+              curl -sfL "https://github.com/oras-project/oras/releases/download/v1.2.3/oras_1.2.3_linux_amd64.tar.gz" | tar xz -C "${ORAS_DIR}" oras
+            fi
+            oras() { "${ORAS_DIR}/oras" "$@"; }
+          fi
 
           echo "=== PR image GC: ${REGISTRY}/${REPO} ==="
 

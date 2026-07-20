@@ -46,4 +46,4 @@ argo submit --from workflowtemplate/ghost-kernel-args -n argo --wait --log
 
 ## Full setup sequence
 
-See [docs/bootstrap.md](../../docs/bootstrap.md) for the complete ordered guide.
+See [/docs/ops/bootstrap.md](/docs/ops/bootstrap.md) for the complete ordered guide.

@@ -1,0 +1,154 @@
+---
+name: cluster-tooling
+description: "Cluster management tools for the lab: kubectl, k3s, zot, external-secrets, and K8sGPT. Use when managing cluster state, installing cluster add-ons, configuring the OCI registry, or running cluster analysis through MCP."
+metadata:
+  type: reference
+  context7-sources:
+    - /helm/helm
+    - /k3s-io/k3s
+    - /project-zot/zot
+    - /external-secrets/external-secrets
+    - /k8sgpt-ai/k8sgpt
+    - /apache/buildstream
+    - /kubernetes/website
+---
+
+# Cluster Tooling — lab
+
+## When to Use
+
+- Managing cluster state, infra add-ons, registry/cache services, or k8s ops runbooks.
+- Debugging BuildStream cache behavior for Dakota/Cosmic/BST workflow lanes.
+
+## When NOT to Use
+
+- Argo WorkflowTemplate authoring details → [`argo-workflows/SKILL.md`](../argo-workflows/SKILL.md).
+- KubeVirt VM provisioning/test authoring workflows → [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md) and [`test-authoring/SKILL.md`](../test-authoring/SKILL.md).
+
+## Core Process
+
+1. Resolve tool/library docs in Context7 first (kubectl/k3s/K8sGPT/BuildStream as needed).
+2. Prefer `just` recipes, then `kubectl`/`argo`, then host SSH only when k8s API cannot do it.
+3. For BST lanes, configure local and upstream cache fallback in workflow configs:
+   - never configure external cache credentials/keys in cluster workflows
+   - set `override-project-caches: false` to allow the project's own upstream caches (for example Freedesktop SDK and GNOME OS) to be used as read-only fallbacks, preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
+   - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`). Persist fetched sources through the paired BuildBarn Remote Asset index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) and frontend CAS (`type: storage`), both `push: true`; the external artifact/source cache URLs are read-only fallbacks.
+   - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
+   - when the checkout uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream remote caches instead of diverging on local patch-set differences.
+   - match BuildStream concurrency to live BuildBarn capacity. Dakota uses four
+     coordinator fetchers, two builders/pushers for its two one-slot workers,
+     and eight jobs per action for the runner CPU limit. Do not serialize a
+     healthy distributed build or call cache traffic distributed execution.
+4. Validate workflow YAML with `just lint` before push.
+5. Confirm live behavior from workflow logs/config output, not assumptions.
+6. Never use a root filesystem for persistent workload data or a `hostPath` build
+   cache. `manifests/local-path-config.yaml` is the GitOps source for explicit
+   node-to-data-mount mappings. It intentionally has no default mapping, so
+   PVC provisioning fails on an unconfigured node instead of falling back to
+   that node's root disk.
+
+## Deep-dive topics
+
+- [BuildStream distributed builds and Buildbarn](buildstream.md)
+- [Node storage maintenance and migration](storage.md)
+- [Node recovery without SSH](node-recovery.md)
+
+## Mandatory first step
+
+Before any kubectl, k3s, or K8sGPT operation, look up the current API via Context7:
+
+```
+resolve-library-id "/k3s-io/k3s" → get-library-docs
+resolve-library-id "/k8sgpt-ai/k8sgpt" → get-library-docs
+```
+
+Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exposes `analyze`, `cluster-info`, `list-resources`, `get-resource`, `list-namespaces`, `get-logs`, `list-events`, `list-filters`, `add-filters`, `remove-filters`, `list-integrations`, and `config`; verify the current docs before wiring it into a client.
+
+## Tool roles
+
+| Tool | Role |
+|------|------|
+| `k3s` | Lightweight Kubernetes — cluster runtime |
+| `kubectl` | Direct cluster inspection and apply |
+| `zot` | OCI registry for test artifacts |
+| `external-secrets` | Pulls secrets from vault into k8s Secrets |
+| `k8sgpt` | Cluster analysis / MCP troubleshooting bridge |
+
+## Common Rationalizations
+
+- "Ghost has 64 GiB, so the build pod will fit."  
+  Fitting is not the same as surviving. VM pods use a higher PriorityClass and
+  will preempt a `bst-build` pod for memory. The pod gets deleted, the workflow
+  retries, and the build never finishes.
+
+- "I will just retry the workflow again."  
+  Retries do not change the resource envelope. Fix the requests, limits, and
+  concurrency budget, then retry; do not pin the pod to a preferred node.
+
+- "Two variants should build in parallel to save time."  
+  Parallel high-memory pods force one onto ghost where it is preempted. The
+  wall-clock savings are lost to retries and partial work. Serialize first;
+  parallelize only after the cluster has enough dedicated memory capacity.
+
+- "The semaphore already limits concurrency."  
+  The `bst-build` semaphore was set to 3, allowing multiple BST lanes to run
+  at once. On a two-node lab where each pod requests 14 GiB, that causes
+  collisions and preemptions. Set it to 1 and let the scheduler choose among
+  nodes that can satisfy the declared requests.
+
+## Red Flags
+
+- `argo get` shows `pod deleted` for a BST build step.
+- `kubectl get events --field-selector reason=Preempted` shows BST pods
+  displaced by VM pods on `ghost`.
+- Two BST build pods are `Running` at the same time with 14 GiB requests each.
+- Builds repeatedly fail fast (seconds to a few minutes) without a build error
+  in the container logs.
+
+## Verification
+
+- [ ] `just lint` passes after any WorkflowTemplate change.
+- [ ] ArgoCD reports `Synced` for `testing-lab` after the push.
+- [ ] The submitted build pod is scheduler-admitted without a node selector:
+      `kubectl get pod -n argo <pod> -o jsonpath='{.spec.nodeName}'` returns
+      a Ready node with adequate allocatable resources.
+- [ ] `kubectl get configmap -n argo workflow-semaphores` shows
+      `bst-build: "1"`.
+- [ ] No `Preempted` events appear for the build pod after 10 minutes.
+- [ ] The build progresses past source fetches into artifact pulls/builds.
+- [ ] Workflow reaches `Succeeded`, or if it fails, the failure is a real build
+      error (not `pod deleted`).
+
+## Key references
+
+- Cluster topology: `/agents.md`
+- Bootstrap procedure: `/docs/ops/bootstrap.md`
+- Recovery: `docs/skills/k3s-cluster-ops` (user skill, load before any cluster recovery)
+- K8sGPT MCP config: `~/.copilot/mcp-config.json` on this machine, with `k8sgpt serve --mcp` or `--mcp --mcp-http` as the client target
+
+## K8sGPT usage notes
+
+- Use `k8sgpt analyze --explain` for broad triage.
+- Narrow with `--filter=Pod`, `--filter=Deployment`, or `--namespace=<ns>`.
+- For assistant integration, prefer the MCP server mode (`k8sgpt serve --mcp`) and register it in Copilot/Claude-style MCP configs.
+- For this repo's `k8sgpt-on-demand` Argo template, keep intentionally-idle services in `ignored-services` (for example `llm-d/llm-d-modelserver` while `replicas: 0`) to avoid known false-positive "Service has no endpoints" noise during stabilization.
+- Verified source: `/k8sgpt-ai/k8sgpt`
+
+## Common Rationalizations
+
+- "It only touches cache config, no lint needed." → Wrong; run `just lint` for every workflow YAML change.
+- "Project defaults are fine." → Wrong for this lab; project-defined remotes can re-enable external cache push paths.
+- "Port 443 refused means cache host down." → Wrong; validate actual BST ports (`11001`/`11002`) and latency behavior.
+
+## Red Flags
+
+- BuildStream configs setting `override-project-caches: true` for pipelines that depend on upstream bootstrap artifacts (like Freedesktop SDK and GNOME OS meta), causing extremely slow and completely cold builds of the entire OS.
+- Any BST lane includes external cache host URLs in generated config.
+- Docs describe local-first but YAML still allows project cache remotes.
+
+## Verification
+
+- [ ] Workflow templates align `override-project-caches` to `false` for base fallback coverage.
+- [ ] No external cache host appears in relevant workflow YAML/scripts.
+- [ ] `just lint` passes after edits.
+- [ ] Skill content reflects the current shared Buildbarn cache policy.

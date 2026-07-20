@@ -6,9 +6,10 @@ metadata:
   name: image-poll-fedora-bootc-rawhide
   namespace: argo
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     bluefin.io/trigger: digest-poll
 spec:
+  suspend: false
   schedules:
     - "42 */3 * * *"
   timezone: "UTC"
@@ -31,13 +32,7 @@ spec:
           value: "rawhide"
         - name: state-key
           value: "digest-fedora-bootc-rawhide"
-        - name: namespace
-          value: "bluefin-test"
         - name: suites
           value: "smoke,common,developer,software,system"
-        - name: vm-memory
-          value: "8Gi"
         - name: variant
           value: "bluefin"
-        - name: containerdisk-tag
-          value: "fedora-bootc-rawhide"

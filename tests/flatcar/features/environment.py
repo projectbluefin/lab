@@ -14,9 +14,3 @@ def before_all(context) -> None:
     context.ssh_user = os.environ.get("SSH_USER", "core")
 
 
-def before_scenario(context, scenario) -> None:
-    pass
-
-
-def after_scenario(context, scenario) -> None:
-    pass

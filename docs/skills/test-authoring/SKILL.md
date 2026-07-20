@@ -171,6 +171,8 @@ Before diagnosing a PR, confirm the runner reached test execution. If a containe
 
 If the failure instead contains NVMe I/O errors, `pthread_create failed`, or resource-exhaustion messages on `exo-0`, stop retries for that lane and investigate node/storage health before resubmitting. A Ready node can still have degraded local storage.
 
+When nested target setup reports `useradd: group '<name>' does not exist` immediately after `groupadd -f`, treat it as a group-database/NSS mismatch in the bootc image. Resolve the group IDs with `getent group` and pass numeric IDs to `useradd`/`usermod`; do not revert the udev mount or blindly retry.
+
 Tests run inside `run-gnome-tests` — a Fedora pod SSHing into the VM. Artifacts land in `/tmp/results/` inside the pod.
 
 ```bash

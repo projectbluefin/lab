@@ -1,0 +1,47 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/validate-docs.py"
+      - ".github/workflows/docs.yml"
+      - "*.md"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/validate-docs.py"
+      - ".github/workflows/docs.yml"
+      - "*.md"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docs structure and links
+        uses: docker://cgr.dev/chainguard/python:latest
+        with:
+          args: scripts/validate-docs.py
+
+      - name: Check for stale skill references
+        shell: bash
+        run: |
+          set +e
+          found=0
+          # Look for old flat skill filenames that should no longer exist
+          for pattern in "docs/skills/[^/]+\.md"; do
+            matches=$(grep -R -n -E "$pattern" --include="*.md" . || true)
+            if [ -n "$matches" ]; then
+              echo "$matches"
+              found=1
+            fi
+          done
+          if [ "$found" -ne 0 ]; then
+            echo "Found stale docs/skills/*.md references. Use docs/skills/<name>/SKILL.md."
+            exit 1
+          fi

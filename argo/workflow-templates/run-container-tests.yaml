@@ -152,6 +152,9 @@ spec:
         }
         mkdir -p /tmp/results
         podman run --detach --systemd=always --network host --privileged \
+          --cgroupns=host \
+          --security-opt seccomp=unconfined \
+          --tmpfs /run:rw,nosuid,nodev,mode=755,size=256m \
           --name "${TARGET_NAME}" \
           --mount type=bind,source=/sys,destination=/sys,ro,bind-propagation=rprivate \
           --mount type=bind,source=/run/udev,destination=/run/udev,ro,bind-propagation=rprivate \

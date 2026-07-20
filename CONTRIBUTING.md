@@ -15,9 +15,11 @@ Most contributors should work in `projectbluefin/testsuite`. Use this repo when 
 ## Development workflow
 - Read `/agents.md` and `/docs/reference/agent-cheatsheet.md` first
 - Make infra changes in `argo/workflow-templates/`, `manifests/`, or `argocd/`
-- Validate Argo manifests locally with:
+- Validate locally with:
 ```bash
 just lint
+python3 scripts/validate-docs.py
+actionlint .github/workflows/*.yml .github/workflows/*.yaml
 ```
 - Push Git-tracked changes; ArgoCD reconciles them from `main`
 

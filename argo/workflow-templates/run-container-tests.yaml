@@ -194,14 +194,14 @@ spec:
           mkdir -p /run/gdm /var/log/gdm
 
           # Make sure groups exist so the test user can access DRI/input devices.
-          # Some target images return success from `groupadd -f` without
-          # creating a missing system group; verify and create explicitly.
+          # Some target images expose groups through NSS without writing
+          # /etc/group, while useradd only accepts local group entries.
           for group in video render input; do
-            if ! getent group "${group}" >/dev/null 2>&1; then
-              groupadd --system "${group}"
+            if ! grep -q "^${group}:" /etc/group; then
+              groupadd -r "${group}"
             fi
-            getent group "${group}" >/dev/null 2>&1 || {
-              echo "Failed to create required group ${group}" >&2
+            grep -q "^${group}:" /etc/group || {
+              echo "Failed to create required local group ${group}" >&2
               exit 1
             }
           done

@@ -1,0 +1,459 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: bluefin-server-boot-test
+  namespace: argo
+  annotations:
+    description: |
+      End-to-end boot test for the Bluefin Server DDI installer.
+
+      - Pulls the published installer OCI from the lab Zot registry.
+      - Decompresses the installer raw disk into a PVC.
+      - Boots a KubeVirt VM from the installer disk with a blank target disk.
+      - Waits for the unattended installer (systemd-sysinstall) to power off.
+      - Re-boots the VM from the installed target disk only.
+      - Verifies from the serial log that the installed OS reaches a systemd
+        target without panic/FATAL markers.
+
+      This is intentionally a serial-log assertion pipeline; SSH smoke tests
+      can be layered on once credential injection into the target rootfs is
+      wired up.
+  labels:
+    app.kubernetes.io/component: qa-pipeline
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  entrypoint: pipeline
+  onExit: teardown
+
+  arguments:
+    parameters:
+      - name: installer-image
+        value: "192.168.1.102:30500/bluefin-server-installer:latest"
+      - name: target-disk-size
+        value: "20G"
+
+  volumeClaimTemplates:
+    - metadata:
+        name: installer-disk
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi
+    - metadata:
+        name: target-rootdisk
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 30Gi
+
+  templates:
+    - name: pipeline
+      dag:
+        tasks:
+          - name: prepare-installer
+            template: prepare-installer
+          - name: run-installer
+            depends: prepare-installer.Succeeded
+            template: run-installer
+          - name: boot-installed
+            depends: run-installer.Succeeded
+            template: boot-installed
+
+    - name: prepare-installer
+      activeDeadlineSeconds: 1800
+      inputs:
+        parameters:
+          - name: installer-image
+            value: "{{workflow.parameters.installer-image}}"
+      script:
+        image: ghcr.io/projectbluefin/lab-runner:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        volumeMounts:
+          - name: installer-disk
+            mountPath: /mnt/installer
+          - name: target-rootdisk
+            mountPath: /mnt/target
+        source: |
+          set -euo pipefail
+          dnf install -y -q zstd podman 2>&1 | tail -5 || true
+          mkdir -p /mnt/installer /mnt/target
+          rm -rf /mnt/installer/stage
+          mkdir -p /mnt/installer/stage
+
+          echo "Pulling installer image: {{inputs.parameters.installer-image}}"
+          podman pull --tls-verify=false "{{inputs.parameters.installer-image}}"
+          CTR=$(podman create "{{inputs.parameters.installer-image}}")
+          # Scratch images have no shell; copy all contents out and locate the raw.zst.
+          # OCI images produced here are FROM scratch with no shell, so export
+          # the rootfs tarball and extract it instead of using podman cp globs.
+          podman export "${CTR}" | tar -C /mnt/installer/stage -xf -
+          podman rm "${CTR}" >/dev/null
+
+          RAWZST=$(find /mnt/installer/stage -maxdepth 2 -name 'bluefin-server-installer-*.raw.zst' | head -n1)
+          if [[ -z "${RAWZST}" ]]; then
+            echo "ERROR: could not locate bluefin-server-installer-*.raw.zst"
+            find /mnt/installer/stage -type f -maxdepth 3 >&2
+            exit 1
+          fi
+          echo "Found installer archive: ${RAWZST}"
+          # KubeVirt expects a filesystem-backed PVC to contain the disk image
+          # as /disk.img at the volume root.
+          zstd -d --rm "${RAWZST}" -o /mnt/installer/disk.img
+          rm -rf /mnt/installer/stage
+          ls -lh /mnt/installer/disk.img
+
+          echo "Creating blank target disk ({{workflow.parameters.target-disk-size}})"
+          truncate -s "{{workflow.parameters.target-disk-size}}" /mnt/target/disk.img
+          echo "Disks ready"
+
+    - name: run-installer
+      inputs:
+        parameters:
+          - name: vm-name
+            value: "bluefin-server-boot-test-{{workflow.uid}}"
+      activeDeadlineSeconds: 1800
+      script:
+        image: ghcr.io/projectbluefin/lab-runner:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: "250m"
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+          - name: target-rootdisk
+            mountPath: /mnt/target
+        source: |
+          set -euo pipefail
+          VM="{{inputs.parameters.vm-name}}"
+          NS="argo"
+
+          KUBECTL=/tmp/kubectl
+          VIRTCTL=/tmp/virtctl
+          curl -fsSL -o "${KUBECTL}" https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && chmod +x "${KUBECTL}"
+          kubectl() { "${KUBECTL}" "$@"; }
+          curl -fsSL -o "${VIRTCTL}" https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64 && chmod +x "${VIRTCTL}"
+
+          INSTALLER_PVC="{{workflow.name}}-installer-disk"
+          TARGET_PVC="{{workflow.name}}-target-rootdisk"
+
+          echo "Creating installer VM ${VM}"
+          kubectl apply -f - <<EOF
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: ${VM}
+            namespace: ${NS}
+            labels:
+              app: bluefin-server-boot-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Manual
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: ${VM}
+              spec:
+                priorityClassName: lab-test-vm
+                domain:
+                  firmware:
+                    bootloader:
+                      efi:
+                        secureBoot: false
+                  cpu:
+                    cores: 2
+                  memory:
+                    guest: 4Gi
+                  devices:
+                    autoattachSerialConsole: true
+                    disks:
+                      - name: installer
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                      - name: target
+                        disk:
+                          bus: virtio
+                        bootOrder: 2
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                    machine:
+                      type: q35
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: installer
+                    persistentVolumeClaim:
+                      claimName: ${INSTALLER_PVC}
+                  - name: target
+                    persistentVolumeClaim:
+                      claimName: ${TARGET_PVC}
+          EOF
+
+          "${VIRTCTL}" -n "${NS}" start "${VM}"
+          echo "Installer VM started; waiting for it to exist..."
+
+          # Wait for the VMI object before attaching the console so virtctl
+          # can retry cleanly. Early boot output may be partial; that's OK for
+          # an install-success check driven by partition verification.
+          for i in $(seq 1 60); do
+            if kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          mkdir -p /mnt/target/logs
+          SERIAL_LOG=/mnt/target/logs/installer-serial.log
+          "${VIRTCTL}" -n "${NS}" console "${VM}" > "${SERIAL_LOG}" 2>&1 &
+          CONSOLE_PID=$!
+
+          # Wait up to 25 minutes for the installer to power the VM off.
+          POWERED_OFF=0
+          for i in $(seq 1 300); do
+            if ! kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
+              POWERED_OFF=1
+              break
+            fi
+            sleep 5
+          done
+
+          kill "${CONSOLE_PID}" 2>/dev/null || true
+          sleep 2
+
+          echo "----- installer serial tail -----"
+          tail -n 200 "${SERIAL_LOG}" >&2 || true
+
+          if [[ "${POWERED_OFF}" -ne 1 ]]; then
+            echo "ERROR: installer VM did not power off within timeout" >&2
+            exit 1
+          fi
+
+          # Verify the target disk now has a root partition labelled by repart.
+          LOOP=$(losetup -f --show -P /mnt/target/disk.img)
+          ROOT_LABEL=""
+          for _ in $(seq 1 10); do
+            ROOT_LABEL=$(lsblk -pno NAME,LABEL "${LOOP}" | awk '$2=="bluefin-server-root-a"{print $1}' || true)
+            [[ -n "${ROOT_LABEL}" ]] && break
+            sleep 1
+          done
+          losetup -d "${LOOP}" || true
+          if [[ -z "${ROOT_LABEL}" ]]; then
+            echo "ERROR: target disk missing bluefin-server-root-a partition" >&2
+            exit 1
+          fi
+          echo "Install verified: root partition labeled bluefin-server-root-a"
+
+    - name: boot-installed
+      inputs:
+        parameters:
+          - name: vm-name
+            value: "bluefin-server-boot-test-{{workflow.uid}}"
+      activeDeadlineSeconds: 900
+      script:
+        image: ghcr.io/projectbluefin/lab-runner:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: "250m"
+            memory: 256Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+          - name: target-rootdisk
+            mountPath: /mnt/target
+        source: |
+          set -euo pipefail
+          VM="{{inputs.parameters.vm-name}}"
+          NS="argo"
+
+          KUBECTL=/tmp/kubectl
+          VIRTCTL=/tmp/virtctl
+          curl -fsSL -o "${KUBECTL}" https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && chmod +x "${KUBECTL}"
+          kubectl() { "${KUBECTL}" "$@"; }
+          curl -fsSL -o "${VIRTCTL}" https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64 && chmod +x "${VIRTCTL}"
+
+          TARGET_PVC="{{workflow.name}}-target-rootdisk"
+
+          echo "Removing installer VM ${VM}"
+          "${VIRTCTL}" -n "${NS}" stop "${VM}" >/dev/null 2>&1 || true
+          kubectl delete vm -n "${NS}" "${VM}" --wait=false >/dev/null 2>&1 || true
+          # Wait for both the VMI and the VM object to be gone before re-creating
+          # with the same name.
+          for i in $(seq 1 60); do
+            if ! kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1 && \
+               ! kubectl get vm -n "${NS}" "${VM}" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+
+          echo "Creating installed-disk VM ${VM}"
+          kubectl apply -f - <<EOF
+          apiVersion: kubevirt.io/v1
+          kind: VirtualMachine
+          metadata:
+            name: ${VM}
+            namespace: ${NS}
+            labels:
+              app: bluefin-server-boot-test
+              argo-workflow: "{{workflow.name}}"
+          spec:
+            runStrategy: Manual
+            template:
+              metadata:
+                labels:
+                  kubevirt.io/vm: ${VM}
+              spec:
+                priorityClassName: lab-test-vm
+                domain:
+                  firmware:
+                    bootloader:
+                      efi:
+                        secureBoot: false
+                  cpu:
+                    cores: 2
+                  memory:
+                    guest: 4Gi
+                  devices:
+                    autoattachSerialConsole: true
+                    disks:
+                      - name: target
+                        disk:
+                          bus: virtio
+                        bootOrder: 1
+                    interfaces:
+                      - name: default
+                        masquerade: {}
+                    machine:
+                      type: q35
+                networks:
+                  - name: default
+                    pod: {}
+                volumes:
+                  - name: target
+                    persistentVolumeClaim:
+                      claimName: ${TARGET_PVC}
+          EOF
+
+          "${VIRTCTL}" -n "${NS}" start "${VM}"
+          echo "Installed VM started; waiting for it to exist..."
+
+          # Wait for the VMI object before attaching console.
+          for i in $(seq 1 60); do
+            if kubectl get vmi -n "${NS}" "${VM}" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+
+          mkdir -p /mnt/target/logs
+          SERIAL_LOG=/mnt/target/logs/boot-serial.log
+          "${VIRTCTL}" -n "${NS}" console "${VM}" > "${SERIAL_LOG}" 2>&1 &
+          CONSOLE_PID=$!
+
+          # Wait for boot to settle, looking for success/failure markers.
+          OK=0
+          for i in $(seq 1 60); do
+            sleep 5
+            if [[ -f "${SERIAL_LOG}" ]]; then
+              if grep -qiE 'panic|FATAL|dracut:.*FATAL|error: unable to boot|No supported file system' "${SERIAL_LOG}"; then
+                echo "ERROR: boot failure markers found" >&2
+                OK=0
+                break
+              fi
+              if grep -qE 'Reached target .*[Ss]ystem|Startup finished in' "${SERIAL_LOG}"; then
+                OK=1
+                break
+              fi
+            fi
+          done
+
+          kill "${CONSOLE_PID}" 2>/dev/null || true
+          sleep 1
+
+          echo "----- boot serial tail -----"
+          tail -n 200 "${SERIAL_LOG}" >&2 || true
+
+          if [[ "${OK}" -ne 1 ]]; then
+            echo "ERROR: installed OS did not reach a systemd target" >&2
+            exit 1
+          fi
+          echo "Installed Bluefin Server VM reached a systemd target successfully"
+
+    - name: teardown
+      dag:
+        tasks:
+          - name: delete-vm
+            template: delete-vm
+          - name: delete-installer-pvc
+            depends: delete-vm.Succeeded || delete-vm.Failed
+            template: delete-pvcs
+            arguments:
+              parameters:
+                - name: claim-suffix
+                  value: installer-disk
+          - name: delete-target-pvc
+            depends: delete-vm.Succeeded || delete-vm.Failed
+            template: delete-pvcs
+            arguments:
+              parameters:
+                - name: claim-suffix
+                  value: target-rootdisk
+
+    - name: delete-vm
+      inputs:
+        parameters:
+          - name: vm-name
+            value: "bluefin-server-boot-test-{{workflow.uid}}"
+      script:
+        image: ghcr.io/projectbluefin/lab-runner:latest
+        command: [bash]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: 128Mi
+        source: |
+          set -euo pipefail
+          VM="{{inputs.parameters.vm-name}}"
+          KUBECTL=/tmp/kubectl
+          curl -fsSL -o "${KUBECTL}" https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && chmod +x "${KUBECTL}"
+          kubectl() { "${KUBECTL}" "$@"; }
+          kubectl delete vm -n argo "${VM}" --wait=false >/dev/null 2>&1 || true
+          for _ in $(seq 1 60); do
+            if ! kubectl get vmi -n argo "${VM}" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+          echo "VM ${VM} removed"
+
+    - name: delete-pvcs
+      inputs:
+        parameters:
+          - name: claim-suffix
+      resource:
+        action: delete
+        manifest: |
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: "{{workflow.name}}-{{inputs.parameters.claim-suffix}}"
+            namespace: argo

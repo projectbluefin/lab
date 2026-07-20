@@ -633,6 +633,17 @@ Key rules:
   root-backed hostPath
 - Concurrent pipeline exits conflict on SHA → last writer wins; 409 = silent skip. Acceptable for metrics files.
 
+#### Container-only QA runner: publish digest-pinned results
+
+`run-container-tests` runs inside a privileged `quay.io/podman/stable:latest` container, which does not include `git` or `skopeo`. When publishing BDD evidence back to the lab repo:
+
+1. Install tooling if it is missing: `command -v skopeo >/dev/null || dnf install -y skopeo` and `command -v git >/dev/null || dnf install -y git-core`.
+2. Resolve the digest of `{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}` with `skopeo inspect --no-tags --format '{{.Digest}}' "docker://${IMAGE}"`. Treat a missing digest as a non-fatal warning.
+3. Compute the image slug as `IMG_SLUG="${VARIANT}-${IMAGE_TAG}"` so the result file name matches the contract used by `run-gnome-tests` (e.g. `bluefin-stable-smoke.json`).
+4. Perform the git push-back in a best-effort block: log a warning if `git clone` or `publish_test_results.py` fails, but do not let a publication error fail the test workflow.
+5. Pass the resolved digest as the optional sixth positional argument to `publish_test_results.py` so the collector can match QA evidence to the currently published image digest.
+
+
 **Why no inline Python or heredocs (root cause):** YAML `source: |` literal blocks use indentation to determine block extent. Any line at column 0 (including unindented `python3 -c "...\nimport json\n..."` continuation lines, or heredoc bodies like `<<'EOF'\nimport json\n`) terminates the block — YAML treats those lines as new top-level keys. The `yaml: could not find expected ':'` error is the symptom. Fix: use `jq` one-liners, keep everything on the same indented line, or `--rawfile` to read from a pre-staged file.
 
 **onExit dashboard update pattern (bluefin-qa-pipeline + dakota-qa-pipeline):**

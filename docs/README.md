@@ -5,6 +5,7 @@ Quick pointers for agents and contributors.
 - **Agent entry point** → [`agents.md`](../agents.md)
 - **Skill index** → [`docs/skills/README.md`](skills/README.md)
 - **Operational runbook** → [`docs/ops/RUNBOOK.md`](ops/RUNBOOK.md)
+- **Merge queue operations** → [`docs/ops/merge-queue.md`](ops/merge-queue.md)
 - **Command cheat sheet** → [`docs/reference/agent-cheatsheet.md`](reference/agent-cheatsheet.md)
 - **Workflow contracts** → [`docs/reference/WORKFLOWS.md`](reference/WORKFLOWS.md)
 - **Full workflow reference** → [`docs/reference/workflow-reference.md`](reference/workflow-reference.md)

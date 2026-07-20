@@ -14,5 +14,5 @@ Load the skill for the area you are touching, then stop.
 | [frontend-design](frontend-design/SKILL.md) | Designing Astro dashboard pages, CSS, charts, or visual components. |
 | [gitops-argocd](gitops-argocd/SKILL.md) | ArgoCD sync, GitOps rules, bootstrap vs managed, sync failures. |
 | [kubevirt-vms](kubevirt-vms/SKILL.md) | KubeVirt VM provisioning, lifecycle, or debugging boot failures. |
-| [skill-improvement](skill-improvement/SKILL.md) | End-of-session write-back loop and nightly failure triage. |
+| [meta-skill-improvement](meta-skill-improvement/SKILL.md) | Self-improvement loop, nightly failure triage, and adding new skills. |
 | [test-authoring](test-authoring/SKILL.md) | Writing or debugging behave/qecore/dogtail GNOME GUI tests. |

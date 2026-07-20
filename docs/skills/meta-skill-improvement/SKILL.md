@@ -1,5 +1,5 @@
 ---
-name: skill-improvement
+name: meta-skill-improvement
 description: >
   Self-learning and skill-maintenance loop for the lab. Run at the
   end of every session that produces non-trivial work, and at the **start**
@@ -147,12 +147,16 @@ All skill files live in `docs/skills/`:
 
 ```
 docs/skills/
-├── ci-tooling.md        GitHub Actions workflow patterns for dashboard/CI reliability
-├── argo-workflows.md     WorkflowTemplate authoring, lint, parameter passing
-├── gitops-argocd.md      ArgoCD sync model, managed vs bootstrap distinction
-├── kubevirt-vms.md       Ephemeral VM lifecycle, btrfs reflink, golden disk
-├── test-authoring.md     behave + qecore + dogtail patterns, bootc contract
-└── skill-improvement.md  This file — the self-learning loop
+├── _template/SKILL.md           Copy this to add a new skill
+├── argo-workflows/              WorkflowTemplate authoring and patterns
+├── ci-tooling/                  GitHub Actions and CI reliability
+├── cluster-tooling/             k3s, storage, BuildStream, node recovery
+├── flatcar-node-onboarding/     Flatcar nodes, Nebraska, custom kernels
+├── gitops-argocd/               ArgoCD sync, manifests, image policy
+├── kubevirt-vms/                Ephemeral VM lifecycle and troubleshooting
+├── meta-skill-improvement/      This file — the self-improvement loop
+├── test-authoring/              behave/qecore/dogtail and bootc contract tests
+└── README.md                    Skill index
 ```
 
 ---

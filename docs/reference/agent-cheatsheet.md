@@ -8,7 +8,7 @@
 > - [`/docs/reference/WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
 > - [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) — architecture + failure-mode index
 > - [`/docs/skills/test-authoring/dogtail-patterns.md`](/docs/skills/test-authoring/dogtail-patterns.md) — writing GUI tests
-> - [`/agents.md`](/agents.md) — hard policy and tenets
+> - [`/AGENTS.md`](/AGENTS.md) — hard policy and tenets
 
 > [!NOTE]
 > **CLI-first.** Tool hierarchy: `just` (lifecycle recipes) → `argo`/`kubectl` (cluster ops) → `ssh core@<control-plane>` (OS-level only).
@@ -79,6 +79,8 @@ Run `just logs` first. Then match a row. **Bluefin and Dakota image-poll QA are 
 | exo-0 not on expected 7.1 kernel | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` then verify Nebraska packages: `curl -s http://<control-plane-ip>:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages \| jq '.[-5:]'` |
 | Kernel poller keeps retriggering wrong versions | Check state: `kubectl get configmap flatcar-kernel-polling-state -n argo -o yaml` and verify CronWorkflow policy is `Forbid`: `kubectl get cronworkflow flatcar-kernel-poller -n argo -o jsonpath='{.spec.concurrencyPolicy}{"\n"}'` |
 | `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
+| Container-only smoke fails before tests with nested `systemd-resolved` reporting `/run: Read-only file system` | Classify as shared QA-runner infrastructure failure; do not edit or blindly rerun the PR. Record the workflow evidence, repair the runner/runtime, then rerun a fresh SHA. |
+| Container-only smoke fails on `exo-0` with NVMe I/O errors or `pthread_create failed` | Classify as `exo-0` storage/node infrastructure failure; inspect node and disk health, stop submitting retries to that lane, then rerun after remediation. |
 | Workflow stuck `Pending` | Run §3 |
 | Workflow stuck on a `NotReady` node / pod never progresses | `kubectl get nodes`; if the worker is `NotReady`, `argo stop -n argo <workflow>` and submit a fresh run so the scheduler can place it on a healthy node (often `ghost`) |
 | Template change did not take effect | Run §4 |
@@ -108,7 +110,7 @@ If no row matches:
 | Node has `DiskPressure` | Do not submit builds. Inspect PV node affinity and `kube-system/local-path-config`; every eligible node needs an explicit non-root data path and there must be no default root-disk fallback. |
 | Many `virt-launcher-*` pods with no corresponding live workflow | `argo submit -n argo --from workflowtemplate/orphan-vm-cleanup` |
 
-Per-template ceilings live in [`/agents.md`](/agents.md) under **Resource Limits**.
+Per-template ceilings live in [`/AGENTS.md`](/AGENTS.md) under **Resource Limits**.
 
 
 ## 4. ArgoCD — my template change did not take effect
@@ -476,7 +478,6 @@ On the new node, the `jorge-nopasswd` sudoers file must sort AFTER `wheel` and i
 sudo bash -c 'echo -e "Defaults:jorge !requiretty\njorge ALL=(ALL) NOPASSWD: ALL" \
   > /etc/sudoers.d/zzz-jorge && chmod 440 /etc/sudoers.d/zzz-jorge'
 ```
-
 ### Node offboarding — removing a worker
 
 ```bash
@@ -490,7 +491,6 @@ KUBECONFIG=~/.kube/bluespeed.yaml kubectl delete node <hostname>
 # 3. On the node itself (optional cleanup)
 sudo /var/usrlocal/bin/k3s-agent-uninstall.sh
 ```
-
 ### Key facts for image-based, atomic OS nodes
 
 - **Binary path:** `/var/usrlocal/bin/k3s` — always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`

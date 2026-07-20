@@ -190,15 +190,27 @@ spec:
           mkdir -p /run/gdm /var/log/gdm
 
           # Make sure groups exist so the test user can access DRI/input devices.
+          # Use numeric gids below: rechunked bootc images can expose groups via
+          # NSS while useradd still fails to resolve their names locally.
           groupadd -f video
           groupadd -f render
           groupadd -f input
+          # This script is itself embedded in a single-quoted bash -c string;
+          # avoid inner awk quoting so positional parameters are not expanded by
+          # the outer runner shell under `set -u`.
+          VIDEO_GID="$(getent group video | cut -d: -f3)"
+          RENDER_GID="$(getent group render | cut -d: -f3)"
+          INPUT_GID="$(getent group input | cut -d: -f3)"
+          if [[ -z "${VIDEO_GID}" || -z "${RENDER_GID}" || -z "${INPUT_GID}" ]]; then
+            echo "Required device groups are unavailable after group setup" >&2
+            exit 1
+          fi
 
           # Create / update the test user with device groups.
           if ! id bluefin-test >/dev/null 2>&1; then
-            useradd -m -u 1000 -G video,render,input bluefin-test
+            useradd -m -u 1000 -G "${VIDEO_GID},${RENDER_GID},${INPUT_GID}" bluefin-test
           else
-            usermod -aG video,render,input bluefin-test
+            usermod -aG "${VIDEO_GID},${RENDER_GID},${INPUT_GID}" bluefin-test
           fi
 
           # Configure sudo and auto-login before GDM starts.
@@ -356,4 +368,6 @@ spec:
     - name: containers-runroot
       emptyDir: {}
     - name: udev
-      emptyDir: {}
+      hostPath:
+        path: /run/udev
+        type: Directory

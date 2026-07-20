@@ -18,11 +18,13 @@ spec:
           #   bluefin-smoke-latest-<workflow-id>  or  bluefin-developer-lts-<id>
         bluefin.io/suite: "{{inputs.parameters.suite}}"
       annotations:
-        bluefin.io/vm-ip: "{{inputs.parameters.vm-ip}}"
+        bluefin.io/vm-name: "{{inputs.parameters.vm-name}}"
         bluefin.io/issue: "{{inputs.parameters.issue-title}}"
     inputs:
       parameters:
-      - name: vm-ip
+      - name: vm-name
+      - name: vm-namespace
+        value: "bluefin-test"
       - name: suite
             # smoke | developer | software | system
         value: "smoke"
@@ -114,8 +116,10 @@ spec:
           cpu: "2"
           memory: 2Gi
       env:
-      - name: VM_IP
-        value: "{{inputs.parameters.vm-ip}}"
+      - name: VM_NAME
+        value: "{{inputs.parameters.vm-name}}"
+      - name: VM_NAMESPACE
+        value: "{{inputs.parameters.vm-namespace}}"
       - name: VM_USER
         value: "{{inputs.parameters.ssh-user}}"
       - name: SUITE
@@ -153,12 +157,26 @@ spec:
 
 
 
-        SSH_OPTS="-i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR"
-        SSH="ssh ${SSH_OPTS} ${VM_USER}@${VM_IP}"
-        SCP="scp ${SSH_OPTS} -r"
-        # Root SSH: used for VM readiness check and bluefin-test key bootstrap.
-        # Root pubkey auth is set up by bootc --root-ssh-authorized-keys.
-        ROOT_SSH="ssh ${SSH_OPTS} root@${VM_IP}"
+        # Route all VM traffic through the Kubernetes API. This avoids relying on
+        # KubeVirt masquerade networking between the runner pod and VMI pod.
+        VIRTCTL=/tmp/virtctl
+        curl -fsSL -o "${VIRTCTL}" \
+          https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64
+        chmod 0755 "${VIRTCTL}"
+        VM_IP="${VM_NAME}" # compatibility for the existing test-suite environment
+        printf '%s\n' '#!/bin/sh' \
+          "exec ssh -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR -o ProxyCommand=\"${VIRTCTL} -n ${VM_NAMESPACE} port-forward --stdio=true vm/${VM_NAME} 22\" \"${VM_USER}@${VM_NAME}\" \"\$@\"" \
+          > /tmp/ssh-vm
+        printf '%s\n' '#!/bin/sh' \
+          "exec ssh -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR -o ProxyCommand=\"${VIRTCTL} -n ${VM_NAMESPACE} port-forward --stdio=true vm/${VM_NAME} 22\" \"root@${VM_NAME}\" \"\$@\"" \
+          > /tmp/ssh-root
+        printf '%s\n' '#!/bin/sh' \
+          "exec scp -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o LogLevel=ERROR -o ProxyCommand=\"${VIRTCTL} -n ${VM_NAMESPACE} port-forward --stdio=true vm/${VM_NAME} 22\" -r \"\$@\"" \
+          > /tmp/scp-vm
+        chmod 0755 /tmp/ssh-vm /tmp/ssh-root /tmp/scp-vm
+        SSH=/tmp/ssh-vm
+        SCP=/tmp/scp-vm
+        ROOT_SSH=/tmp/ssh-root
 
         # ── Wait for VM SSH to become ready (prefer bluefin-test; fallback root) ──
         BLUEFIN_READY=0
@@ -175,14 +193,11 @@ spec:
         if [[ "${BLUEFIN_READY}" -eq 0 ]]; then
           echo "Waiting for SSH on ${VM_IP} (root fallback, up to 10 min)..." >&2
           # Verbose first attempt to capture the exact auth failure for root.
-          ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=15 -o LogLevel=DEBUG3 \
-            root@${VM_IP} 'echo root-ssh-diag-ready' 2>&1 < /dev/null || true
+          ${ROOT_SSH} 'echo root-ssh-diag-ready' 2>&1 < /dev/null || true
           echo "--- root SSH diagnostic complete; starting retry loop ---" >&2
           # Wait for root SSH — bootc-native mechanism means this is reliable.
           timeout 600 bash -c "
-            until ssh -i '${SSH_KEY}' -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-                    -o ConnectTimeout=10 -o LogLevel=ERROR root@'${VM_IP}' 'echo ready' 2>/dev/null; do
+            until ${ROOT_SSH} 'echo ready' 2>/dev/null; do
               sleep 10
             done
           "
@@ -242,11 +257,7 @@ spec:
           # Wait for bluefin-test SSH (KubeVirt injects key; give it a moment).
           echo "Verifying bluefin-test SSH..." >&2
           # One verbose probe to capture exact server refusal before silent retry loop.
-          ssh -v -i "${SSH_KEY}" \
-            -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            -o ConnectTimeout=10 -o PasswordAuthentication=no \
-            ${VM_USER}@${VM_IP} 'echo ok' 2>&1 | \
-            grep -iE 'debug1|debug2.*key|denied|accept|authentications|offer|refused|pubkey' | head -20 || true
+          ${SSH} 'echo ok' 2>&1 || true
           # Show authorized_keys and sshd -T for bluefin-test (diagnosis only).
           ${ROOT_SSH} "
             echo '=== authorized_keys:'; cat /var/home/bluefin-test/.ssh/authorized_keys 2>/dev/null | wc -c || echo missing
@@ -295,6 +306,11 @@ spec:
             sudo modprobe uinput 2>/dev/null || true
             sudo chmod 0666 /dev/uinput 2>/dev/null || true
             sudo chcon -t uinput_device_t /dev/uinput 2>/dev/null || true
+            if [[ ! -c /dev/uinput || ! -w /dev/uinput ]]; then
+              echo "FATAL: /dev/uinput is unavailable or not writable; cannot run uinput-based GUI tests" >&2
+              ls -lZ /dev/uinput 2>&1 || true
+              exit 1
+            fi
           fi
         "
         echo "Dependencies ready." >&2

@@ -119,27 +119,17 @@ spec:
           - name: namespace
             value: "{{workflow.parameters.namespace}}"
 
-      - name: discover-ip
-        depends: "transition-to-installed.Succeeded"
-        template: discover-installed-ip
-        arguments:
-          parameters:
-          - name: vm-name
-            value: "knuckle-test-{{workflow.uid}}"
-          - name: namespace
-            value: "{{workflow.parameters.namespace}}"
-          - name: ssh-key-secret
-            value: "{{workflow.parameters.ssh-key-secret}}"
-
       - name: run-smoke-tests
-        depends: "discover-ip.Succeeded"
+        depends: "transition-to-installed.Succeeded"
         templateRef:
           name: run-gnome-tests
           template: run-gnome-tests
         arguments:
           parameters:
-          - name: vm-ip
-            value: "{{tasks.discover-ip.outputs.parameters.vm-ip}}"
+          - name: vm-name
+            value: "knuckle-test-{{workflow.uid}}"
+          - name: vm-namespace
+            value: "{{workflow.parameters.namespace}}"
           - name: suite
             value: "{{workflow.parameters.suite}}"
           - name: variant

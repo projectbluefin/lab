@@ -3,19 +3,19 @@
   "_meta": {
     "page": "compliance",
     "description": "GitOps and running cluster compliance scorecard.",
-    "generated_at": "2026-07-20T04:49:46Z",
+    "generated_at": "2026-07-20T05:34:28Z",
     "live_snapshot_ok": false,
-    "git_manifests_scanned": 107,
+    "git_manifests_scanned": 110,
     "live_pods_scanned": 0
   },
-  "score": 82.7,
+  "score": 81.5,
   "rules": [
     {
       "id": "registry_allowlist_git",
       "name": "Git Manifest Registry Allowlist",
       "description": "All container images in git-tracked manifests must reside on allowed registries.",
       "status": "failed",
-      "total_checked": 101,
+      "total_checked": 102,
       "violations_count": 4,
       "violations": [
         {
@@ -50,8 +50,8 @@
       "name": "No Root Disk Storage Allocations",
       "description": "No hard hostPath volume mounts on root disks (must use PVCs or approved storage).",
       "status": "failed",
-      "total_checked": 15,
-      "violations_count": 11,
+      "total_checked": 16,
+      "violations_count": 12,
       "violations": [
         {
           "source": "git:manifests/registry-mirror-config.yaml",
@@ -68,6 +68,10 @@
         {
           "source": "git:manifests/system-upgrade-controller.yaml",
           "detail": "Potentially unauthorized hostPath allocation on root disk: '/etc/ca-certificates'"
+        },
+        {
+          "source": "git:manifests/bst-cache-proxy.yaml",
+          "detail": "Potentially unauthorized hostPath allocation on root disk: '/var/tmp/bst-http-cache'"
         },
         {
           "source": "git:argo/workflow-templates/build-bluefin-migration-containerdisk.yaml",
@@ -104,8 +108,8 @@
       "name": "No Hard Node Selectors in Git",
       "description": "Workloads must not use hard nodeName or hostname nodeSelectors to bypass scheduler placement.",
       "status": "failed",
-      "total_checked": 11,
-      "violations_count": 7,
+      "total_checked": 12,
+      "violations_count": 8,
       "violations": [
         {
           "source": "git:manifests/orphan-pod-gc.yaml",
@@ -113,6 +117,10 @@
         },
         {
           "source": "git:manifests/golden-disk-gc.yaml",
+          "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
+        },
+        {
+          "source": "git:manifests/bst-cache-proxy.yaml",
           "detail": "Hard node hostname selector pin found: 'kubernetes.io/hostname: ghost'"
         },
         {

@@ -252,7 +252,7 @@ manifests/                     ← ArgoCD (lab-infra App) syncs these
   image-poll-bluefin-stable.yaml  CronWorkflow: poll bluefin:stable digest
   image-poll-lts-testing.yaml     CronWorkflow: poll bluefin-lts:testing digest
   image-poll-lts-stable.yaml      CronWorkflow: poll bluefin-lts:stable digest
-  image-poll-dakota.yaml          CronWorkflow: poll dakota:latest digest
+  image-poll-dakota.yaml          CronWorkflow: poll dakota:testing digest
   pr-label-poller.yaml            CronWorkflow: poll PRs for test-me label
   lab-test-vm-priorityclass.yaml  PriorityClass for test VM pods
   homelab-access-auth.yaml        homelab access auth config

@@ -1,4 +1,4 @@
-# CronWorkflow: polls ghcr.io/projectbluefin/dakota:latest every 10 minutes.
+# CronWorkflow: polls ghcr.io/projectbluefin/dakota:testing every 10 minutes.
 # Triggers dakota-qa-pipeline only when OCI digest changes vs ConfigMap state.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
@@ -30,9 +30,9 @@ spec:
         - name: image
           value: "ghcr.io/projectbluefin/dakota"
         - name: image-tag
-          value: "latest"
+          value: "testing"
         - name: state-key
-          value: "digest-dakota-latest"
+          value: "digest-dakota-testing"
         - name: suites
           value: "smoke"
         - name: variant

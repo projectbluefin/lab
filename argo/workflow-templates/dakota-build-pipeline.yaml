@@ -432,6 +432,8 @@ spec:
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \
               --no-interactive \
+              --max-jobs 16 \
+              --fetchers 16 \
               build "${ELEMENT}"
 
           echo "=== Exporting ${ELEMENT} ==="
@@ -439,6 +441,8 @@ spec:
           mkdir -p "${EXPORT_DIR}"
           bst --config "${BST_CONF}" \
               --no-interactive \
+              --max-jobs 16 \
+              --fetchers 16 \
               -o x86_64_v3 true \
               artifact checkout "${ELEMENT}" \
               --directory "${EXPORT_DIR}"

@@ -7,11 +7,6 @@ spec:
   entrypoint: flatcar-test-pipeline
   serviceAccountName: argo
   onExit: cleanup
-  synchronization:
-    semaphores:
-      - configMapKeyRef:
-          name: semaphore-config
-          key: max-hostdisk-vms
   activeDeadlineSeconds: 3600
   ttlStrategy:
     secondsAfterCompletion: 3600
@@ -59,7 +54,7 @@ spec:
       steps:
         - - name: teardown
             templateRef:
-              name: teardown-flatcar-vm
+              name: teardown-vm
               template: teardown-vm
             arguments:
               parameters:

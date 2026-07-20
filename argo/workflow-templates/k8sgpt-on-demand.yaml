@@ -1,0 +1,150 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: k8sgpt-on-demand
+  namespace: argo
+  annotations:
+    description: |
+      Runs an on-demand K8sGPT analysis against the cluster and writes the full
+      JSON output to an artifact. Default filters are repo-managed for
+      cluster triage; optional template parameters can narrow the namespace or
+      override filters for focused triage.
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  entrypoint: analyze
+  serviceAccountName: argo
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+    secondsAfterFailure: 604800
+  arguments:
+    parameters:
+      - name: namespace
+        value: ""
+      - name: filters
+        value: "Pod,Deployment,Service,Ingress,Node"
+      - name: ignored-services
+        value: "argocd/argocd-applicationset-controller,argocd/argocd-dex-server,argocd/argocd-notifications-controller-metrics,kubevirt/virt-exportproxy,llm-d/llm-d-modelserver"
+      - name: provider
+        value: "openai"
+      - name: model
+        value: "gpt-5-mini"
+      - name: api-key-secret-name
+        value: "k8sgpt-openai"
+      - name: api-key-secret-key
+        value: "api-key"
+  templates:
+    - name: analyze
+      activeDeadlineSeconds: 1800
+      script:
+        image: cgr.dev/chainguard/python:latest-dev
+        command: [python3]
+        env:
+          - name: K8SGPT_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: "{{workflow.parameters.api-key-secret-name}}"
+                key: "{{workflow.parameters.api-key-secret-key}}"
+                optional: true
+        source: |
+          import json
+          import os
+          import re
+          import shutil
+          import subprocess
+          import tarfile
+          import urllib.request
+          from pathlib import Path
+    
+          def normalize_results(data, ignored_services):
+            ignored = {item for item in ignored_services.split(",") if item}
+            results = data.get("results") or []
+            data["results"] = [
+              item for item in results
+              if item.get("kind") != "Service" or item.get("name") not in ignored
+            ]
+            return data
+
+
+          def main():
+            k8sgpt_version = "v0.4.24"
+            namespace = "{{workflow.parameters.namespace}}"
+            filters = "{{workflow.parameters.filters}}"
+            ignored_services = "{{workflow.parameters.ignored-services}}"
+            provider = "{{workflow.parameters.provider}}"
+            model = "{{workflow.parameters.model}}"
+            api_key = os.environ.get("K8SGPT_API_KEY", "")
+            results_dir = Path("/tmp/results")
+            bin_dir = Path("/tmp/bin")
+            home_dir = Path("/tmp/home")
+            config_dir = home_dir / ".config" / "k8sgpt"
+            results_dir.mkdir(parents=True, exist_ok=True)
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            home_dir.mkdir(parents=True, exist_ok=True)
+            config_dir.mkdir(parents=True, exist_ok=True)
+            os.environ["HOME"] = str(home_dir)
+            os.environ["XDG_CONFIG_HOME"] = str(home_dir / ".config")
+    
+            if namespace and not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", namespace):
+              raise SystemExit(f"invalid namespace parameter: {namespace}")
+            if filters and not re.fullmatch(r"[A-Za-z,]+", filters):
+              raise SystemExit(f"invalid filters parameter: {filters}")
+            if ignored_services and not re.fullmatch(r"[a-z0-9./,_-]+", ignored_services):
+              raise SystemExit(f"invalid ignored-services parameter: {ignored_services}")
+            if not api_key:
+              raise SystemExit("K8SGPT_API_KEY is not set; create the k8sgpt-openai secret or override api-key-secret-name/key")
+    
+            arch = os.uname().machine
+            if arch in {"x86_64", "amd64"}:
+              archive = "k8sgpt_Linux_x86_64.tar.gz"
+            elif arch in {"aarch64", "arm64"}:
+              archive = "k8sgpt_Linux_arm64.tar.gz"
+            else:
+              raise SystemExit(f"unsupported architecture: {arch}")
+    
+            archive_path = Path("/tmp/k8sgpt.tgz")
+            url = f"https://github.com/k8sgpt-ai/k8sgpt/releases/download/{k8sgpt_version}/{archive}"
+            with urllib.request.urlopen(url, timeout=60) as response, archive_path.open("wb") as fh:
+              shutil.copyfileobj(response, fh)
+    
+            with tarfile.open(archive_path, "r:gz") as tf:
+              member = tf.getmember("k8sgpt")
+              tf.extract(member, bin_dir)
+            k8sgpt = bin_dir / "k8sgpt"
+            k8sgpt.chmod(0o755)
+
+            print(f"configuring k8sgpt provider={provider} model={model}")
+            subprocess.run([str(k8sgpt), "auth", "add", "--backend", provider, "--model", model, "--password", api_key], check=True, capture_output=True, text=True)
+            subprocess.run([str(k8sgpt), "auth", "default", "-p", provider], check=True, capture_output=True, text=True)
+    
+            cmd = [str(k8sgpt), "analyze", "--output=json"]
+            if filters:
+              cmd += ["--filter", filters]
+            if namespace:
+              cmd += ["--namespace", namespace]
+    
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            data = normalize_results(json.loads(result.stdout), ignored_services)
+    
+            with (results_dir / "k8sgpt-results.json").open("w", encoding="utf-8") as fh:
+              json.dump(data, fh)
+    
+            print(f"k8sgpt findings: {len(data['results'])}")
+
+
+          if __name__ == "__main__":
+            main()
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      outputs:
+        parameters:
+          - name: k8sgpt-results-json
+            valueFrom:
+              path: /tmp/results/k8sgpt-results.json

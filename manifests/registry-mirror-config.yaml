@@ -3,13 +3,16 @@
 # containerd v2.0 (k3s v1.32+) hot-reloads these — no k3s restart needed.
 #
 # All 6 registries mirror through a single zot-cache instance (NodePort 30501).
-# Zot stores each upstream under a subpath via sync destination prefix mapping:
-#   ghcr.io                    → ghost:30501/ghcr
-#   docker.io                  → ghost:30501/docker
-#   quay.io                    → ghost:30501/quay
-#   registry.fedoraproject.org → ghost:30501/fedora
-#   registry.access.redhat.com → ghost:30501/redhat
-#   registry.k8s.io            → ghost:30501/k8s
+# Zot stores each upstream under a repo prefix via sync destination mapping:
+#   ghcr.io                    → ghcr/<repo>
+#   docker.io                  → docker/<repo>
+#   quay.io                    → quay/<repo>
+#   registry.fedoraproject.org → fedora/<repo>
+#   registry.k8s.io            → k8s/<repo>
+#   cgr.dev                    → cgr/<repo>
+#
+# containerd should talk to the mirror root and use override_path to point the
+# request at the registry-specific Zot namespace for each upstream.
 #
 # To update mirrors: edit ConfigMap below, then:
 #   kubectl rollout restart daemonset/registry-mirror-config -n local-registry
@@ -20,38 +23,55 @@ metadata:
   name: registry-mirror-hosts
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 data:
   ghcr.io.hosts.toml: |
     server = "https://ghcr.io"
 
-    [host."http://192.168.1.102:30501/ghcr"]
+    [host."http://192.168.1.102:30501/v2/ghcr"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   docker.io.hosts.toml: |
     server = "https://registry-1.docker.io"
 
-    [host."http://192.168.1.102:30501/docker"]
+    [host."http://192.168.1.102:30501/v2/docker"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   quay.io.hosts.toml: |
     server = "https://quay.io"
 
-    [host."http://192.168.1.102:30501/quay"]
+    [host."http://192.168.1.102:30501/v2/quay"]
       capabilities = ["pull", "resolve"]
+      override_path = true
   registry.fedoraproject.org.hosts.toml: |
     server = "https://registry.fedoraproject.org"
 
-    [host."http://192.168.1.102:30501/fedora"]
+    [host."http://192.168.1.102:30501/v2/fedora"]
       capabilities = ["pull", "resolve"]
-  registry.access.redhat.com.hosts.toml: |
-    server = "https://registry.access.redhat.com"
-
-    [host."http://192.168.1.102:30501/redhat"]
-      capabilities = ["pull", "resolve"]
+      override_path = true
   registry.k8s.io.hosts.toml: |
     server = "https://registry.k8s.io"
 
-    [host."http://192.168.1.102:30501/k8s"]
+    [host."http://192.168.1.102:30501/v2/k8s"]
       capabilities = ["pull", "resolve"]
+      override_path = true
+  cgr.dev.hosts.toml: |
+    server = "https://cgr.dev"
+
+    [host."http://192.168.1.102:30501/v2/cgr"]
+      capabilities = ["pull", "resolve"]
+      override_path = true
+  public.ecr.aws.hosts.toml: |
+    server = "https://public.ecr.aws"
+
+    [host."http://192.168.1.102:30501/v2/ecr"]
+      capabilities = ["pull", "resolve"]
+      override_path = true
+  local-zot.hosts.toml: |
+    server = "http://192.168.1.102:30500"
+
+    [host."http://192.168.1.102:30500"]
+      capabilities = ["pull", "resolve", "push"]
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -59,7 +79,7 @@ metadata:
   name: registry-mirror-config
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     app.kubernetes.io/component: registry-cache
 spec:
   selector:
@@ -69,11 +89,11 @@ spec:
     metadata:
       labels:
         app: registry-mirror-config
-        app.kubernetes.io/part-of: testing-lab
+        app.kubernetes.io/part-of: lab
     spec:
       initContainers:
         - name: write-hosts
-          image: registry.access.redhat.com/ubi9/ubi-micro:9.5
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           command:
             - sh
             - -c
@@ -83,14 +103,18 @@ spec:
                 /certs.d/docker.io \
                 /certs.d/quay.io \
                 /certs.d/registry.fedoraproject.org \
-                /certs.d/registry.access.redhat.com \
-                /certs.d/registry.k8s.io
+                /certs.d/registry.k8s.io \
+                /certs.d/cgr.dev \
+                /certs.d/public.ecr.aws \
+                "/certs.d/192.168.1.102:30500"
               cp /config/ghcr.io.hosts.toml                    /certs.d/ghcr.io/hosts.toml
               cp /config/docker.io.hosts.toml                  /certs.d/docker.io/hosts.toml
               cp /config/quay.io.hosts.toml                    /certs.d/quay.io/hosts.toml
               cp /config/registry.fedoraproject.org.hosts.toml /certs.d/registry.fedoraproject.org/hosts.toml
-              cp /config/registry.access.redhat.com.hosts.toml /certs.d/registry.access.redhat.com/hosts.toml
               cp /config/registry.k8s.io.hosts.toml            /certs.d/registry.k8s.io/hosts.toml
+              cp /config/cgr.dev.hosts.toml                    /certs.d/cgr.dev/hosts.toml
+              cp /config/public.ecr.aws.hosts.toml             /certs.d/public.ecr.aws/hosts.toml
+              cp /config/local-zot.hosts.toml                  "/certs.d/192.168.1.102:30500/hosts.toml"
               echo "Mirror hosts written."
           volumeMounts:
             - name: certs-d
@@ -101,11 +125,11 @@ spec:
         - name: pause
           # ponytail: sleep loop, this pod only exists to keep the DaemonSet alive
           # so that config is re-applied on pod restart / rollout restart
-          image: registry.access.redhat.com/ubi9/ubi-micro:9.5
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           command: ["sh", "-c", "while true; do sleep 3600; done"]
           resources:
             requests: { cpu: "1m", memory: "4Mi" }
-            limits: { cpu: "10m", memory: "16Mi" }
+            limits: { cpu: "10m", memory: "32Mi" }
       volumes:
         - name: certs-d
           hostPath:

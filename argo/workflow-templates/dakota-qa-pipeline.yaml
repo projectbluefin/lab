@@ -5,217 +5,101 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      End-to-end Dakota QA pipeline: assert containerDisk exists in Zot, then run
-      parallel test lanes (smoke, developer, system). Each lane provisions a
-      fresh KubeVirt VM, runs the behave/qecore suite via SSH, and tears down
-      the VM on completion. On PR runs, posts a GitHub commit status on exit.
-      The digest-watch CronWorkflow keeps the containerDisk current — this
-      pipeline fails fast if the disk is missing.
+      Container-only Dakota QA pipeline: fan out the selected smoke, common,
+      developer, software, and system suites directly to run-container-tests.
+      This path runs the same container runner for every selected suite without
+      KubeVirt or containerDisk inputs.
   labels:
     app.kubernetes.io/component: qa-pipeline
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  synchronization:
-    semaphores:
-      - configMapKeyRef:
-          name: semaphore-config
-          key: max-containerdisk-vms
+  parallelism: 2
   activeDeadlineSeconds: 3600
   entrypoint: pipeline
-  onExit: cleanup-and-report
-
   arguments:
     parameters:
-      - name: image
-        value: "ghcr.io/projectbluefin/dakota"
-      - name: image-tag
-        value: "latest"
-      - name: namespace
-        value: "bluefin-test"
-      - name: suites
-        value: "smoke,developer,system"
-      - name: variant
-        value: "dakota"
-      - name: ssh-key-secret
-        value: "bluefin-test-ssh-key"
-      - name: containerdisk-tag
-        value: "dakota-latest"
-      - name: branch
-        value: "main"
-      - name: pr-number
-        value: ""
-      - name: sha
-        value: ""
-      - name: repo
-        value: ""
-      - name: vm-memory
-        value: "8Gi"
-
+    - name: image
+      value: "ghcr.io/projectbluefin/dakota"
+    - name: image-tag
+      value: "testing"
+    - name: suites
+      value: "smoke,common,developer,software,system"
+    - name: variant
+      value: "dakota"
+    - name: branch
+      value: "main"
+    - name: pr-number
+      value: ""
+    - name: sha
+      value: ""
+    - name: repo
+      value: ""
+    - name: testsuite-branch
+      value: "main"
+    - name: testsuite-repo
+      value: "https://github.com/projectbluefin/testsuite"
   templates:
-
-    - name: pipeline
-      dag:
-        tasks:
-          # 1. Assert the containerDisk exists in local Zot registry — fails fast if not.
-          - name: assert-cd
-            template: assert-cd
-            arguments:
-              parameters:
-                - name: containerdisk-tag
-                  value: "{{workflow.parameters.containerdisk-tag}}"
-
-          # 2. Parallel test lanes — each lane provisions its own VM, runs one suite, tears down
-          - name: test-lane
-            depends: "assert-cd.Succeeded"
-            withItems:
-              - smoke
-              - developer
-              - system
-            when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
-            template: lane
-            arguments:
-              parameters:
-                - name: suite
-                  value: "{{item}}"
-                - name: vm-name
-                  value: "{{workflow.name}}-{{item}}"
-                - name: image-tag
-                  value: "{{workflow.parameters.image-tag}}"
-                - name: containerdisk-tag
-                  value: "{{workflow.parameters.containerdisk-tag}}"
-                - name: namespace
-                  value: "{{workflow.parameters.namespace}}"
-                - name: variant
-                  value: "{{workflow.parameters.variant}}"
-                - name: ssh-key-secret
-                  value: "{{workflow.parameters.ssh-key-secret}}"
-                - name: branch
-                  value: "{{workflow.parameters.branch}}"
-                - name: vm-memory
-                  value: "{{workflow.parameters.vm-memory}}"
-
-    # ── assert-cd: fail fast if containerDisk is missing from Zot ───────────
-    - name: assert-cd
-      inputs:
-        parameters:
-          - name: containerdisk-tag
-      script:
-        image: quay.io/skopeo/stable:latest
-        command: [bash]
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 512Mi
-        source: |
-          set -euo pipefail
-          TAG="{{inputs.parameters.containerdisk-tag}}"
-          CD_IMAGE="192.168.1.102:30500/bluefin-containerdisk:${TAG}"
-          DIGEST=$(skopeo inspect --tls-verify=false --format '{{.Digest}}' \
-            "docker://${CD_IMAGE}" 2>/dev/null || echo "")
-          if [[ -n "${DIGEST}" ]]; then
-            echo "containerdisk ${CD_IMAGE} ready: ${DIGEST}"
-          else
-            echo "ERROR: containerdisk ${CD_IMAGE} not found in Zot" >&2
-            echo "The digest-watch CronWorkflow builds it when GHCR changes." >&2
-            echo "Check: argo list -n argo --field-selector metadata.name=~build-cd-sync" >&2
-            exit 1
-          fi
-
-    # ── lane: provision VM → run suite → teardown (per-suite) ────────────────
-    - name: lane
-      inputs:
-        parameters:
-          - name: suite
-          - name: vm-name
+  - name: pipeline
+    dag:
+      tasks:
+      - name: validate-suites
+        template: validate-suites
+        arguments:
+          parameters:
+          - name: suites
+            value: "{{workflow.parameters.suites}}"
+      - name: test-lane
+        depends: "validate-suites.Succeeded"
+        withItems: [smoke, common, developer, software, system]
+        when: "'{{workflow.parameters.suites}}' =~ '{{item}}'"
+        templateRef:
+          name: run-container-tests
+          template: run-container-tests
+        arguments:
+          parameters:
+          - name: image
+            value: "{{workflow.parameters.image}}"
           - name: image-tag
-          - name: containerdisk-tag
-          - name: namespace
+            value: "{{workflow.parameters.image-tag}}"
+          - name: suite
+            value: "{{item}}"
           - name: variant
-          - name: ssh-key-secret
+            value: "{{workflow.parameters.variant}}"
           - name: branch
-          - name: vm-memory
-      steps:
-        - - name: provision
-            templateRef:
-              name: provision-bluefin-vm
-              template: provision-vm
-            arguments:
-              parameters:
-                - name: image-tag
-                  value: "{{inputs.parameters.containerdisk-tag}}"
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-                - name: vm-memory
-                  value: "{{inputs.parameters.vm-memory}}"
-        - - name: run-tests
-            templateRef:
-              name: run-gnome-tests
-              template: run-gnome-tests
-            arguments:
-              parameters:
-                - name: vm-ip
-                  value: "{{steps.provision.outputs.parameters.vm-ip}}"
-                - name: suite
-                  value: "{{inputs.parameters.suite}}"
-                - name: variant
-                  value: "{{inputs.parameters.variant}}"
-                - name: ssh-key-secret
-                  value: "{{inputs.parameters.ssh-key-secret}}"
-                - name: branch
-                  value: "{{inputs.parameters.branch}}"
-                - name: containerdisk-tag
-                  value: "{{inputs.parameters.containerdisk-tag}}"
-        - - name: teardown
-            templateRef:
-              name: teardown-bluefin-vm
-              template: teardown-vm
-            arguments:
-              parameters:
-                - name: vm-name
-                  value: "{{inputs.parameters.vm-name}}"
-                - name: namespace
-                  value: "{{inputs.parameters.namespace}}"
-            continueOn:
-              failed: true
-
-    # ── onExit handler: optional GitHub commit status post ───────────────────
-    - name: cleanup-and-report
-      dag:
-        tasks:
-          - name: post-status
-            template: post-github-status
-            when: "'{{workflow.parameters.sha}}' != ''"
-
-    # ── post-github-status ────────────────────────────────────────────────────
-    - name: post-github-status
-      script:
-        image: quay.io/fedora/fedora:latest
-        command: [bash]
-        env:
-          - name: GITHUB_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: github-token
-                key: token
-        source: |
-          STATE=$([ "{{workflow.status}}" = "Succeeded" ] && echo success || echo failure)
-          PAYLOAD=$(jq -n \
-            --arg state "$STATE" \
-            --arg ctx  "ghost-lab" \
-            --arg desc "Dakota lab test $STATE" \
-            --arg url  "http://192.168.1.102:32746/workflows/argo/{{workflow.name}}" \
-            '{state:$state,context:$ctx,description:$desc,target_url:$url}')
-          curl -sf -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "Content-Type: application/json" \
-            "https://api.github.com/repos/{{workflow.parameters.repo}}/statuses/{{workflow.parameters.sha}}" \
-            -d "$PAYLOAD" \
-          && echo "Posted $STATE to {{workflow.parameters.repo}}@{{workflow.parameters.sha}}" \
-          || echo "WARNING: failed to post commit status (non-fatal)"
+            value: "{{workflow.parameters.branch}}"
+          - name: testsuite-branch
+            value: "{{workflow.parameters.testsuite-branch}}"
+          - name: testsuite-repo
+            value: "{{workflow.parameters.testsuite-repo}}"
+          - name: behave-tags
+            value: ""
+  - name: validate-suites
+    inputs:
+      parameters:
+      - name: suites
+    script:
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      command: [bash]
+      env:
+      - name: SUITES
+        value: "{{inputs.parameters.suites}}"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |
+        set -euo pipefail
+        IFS=',' read -r -a raw_suites <<< "$SUITES"
+        for suite in "${raw_suites[@]}"; do
+          case "${suite}" in
+            smoke|common|developer|software|system) ;;
+            *)
+              echo "Unsupported suites value: ${suite}" >&2
+              exit 1
+              ;;
+          esac
+        done

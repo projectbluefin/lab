@@ -15,10 +15,8 @@ spec:
         labels:
           app.kubernetes.io/part-of: bluefin-test-suite
           bluefin.io/step: pr-poller
-      nodeSelector:
-        kubernetes.io/hostname: ghost
       script:
-        image: quay.io/fedora/fedora:latest
+        image: ghcr.io/projectbluefin/lab-runner:latest
         command: [bash]
         resources:
           requests:
@@ -35,13 +33,22 @@ spec:
                 key: token
         source: |
           set -euo pipefail
-          dnf install -y --quiet jq curl 2>/dev/null | tail -1 >&2
-          KVER=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
-          curl -fsSL "https://dl.k8s.io/release/${KVER}/bin/linux/amd64/kubectl" \
-            -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
-          CONTEXT="ghost-lab"
+          # Bootstrap kubectl if not in PATH
+          if ! command -v kubectl >/dev/null 2>&1; then
+            KUBECTL=/tmp/kubectl
+            if [ ! -f "${KUBECTL}" ]; then
+              curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+              chmod +x "${KUBECTL}"
+            fi
+            kubectl() { "${KUBECTL}" "$@"; }
+          fi
+
           API="https://api.github.com"
+          # Max new dispatches per run — prevents burst storms when many PRs are in
+          # failure state after a cluster outage.
+          MAX_DISPATCH=8
+          DISPATCHED=0
 
           # Repos tested on every PR — no label required.
           AUTO_REPOS=(
@@ -50,86 +57,133 @@ spec:
            "projectbluefin/bluefin-lts"
            "projectbluefin/dakota"
            "projectbluefin/knuckle"
+           "projectbluefin/testsuite"
           )
 
           dispatch_pr() {
            local PR="$1"
-           local REPO SHA PR_NUM BRANCH EXISTING TMPL TITLE TITLE_SLUG VM_MEM
+           local REPO SHA PR_NUM HEAD_BRANCH BRANCH TESTSUITE_BRANCH EXISTING TMPL TITLE TITLE_SLUG
+
+           # Rate-limit: stop dispatching once we hit MAX_DISPATCH this run
+           if [[ "$DISPATCHED" -ge "$MAX_DISPATCH" ]]; then
+             REPO=$(echo "$PR" | jq -r '.base.repo.full_name')
+             PR_NUM=$(echo "$PR" | jq -r '.number')
+             echo "PR #${PR_NUM} ${REPO}: dispatch cap (${MAX_DISPATCH}) reached, deferring to next run" >&2
+             return
+           fi
 
            REPO=$(echo "$PR" | jq -r '.base.repo.full_name')
            SHA=$(echo "$PR"  | jq -r '.head.sha')
            PR_NUM=$(echo "$PR" | jq -r '.number')
-           BRANCH=$(echo "$PR" | jq -r '.head.ref')
-           REPO_SLUG=$(echo "$REPO" | sed 's|.*/||; s/bluefin-lts/lts/; s/bluefin/blu/; s/dakota/dak/; s/knuckle/knu/')
-           TITLE=$(echo "$PR" | jq -r '.title')
-           # Slugify title: lowercase, non-alnum to dash, truncate to 30 chars
-           TITLE_SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' \
-             | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//' \
-             | cut -c1-30 | sed 's/-$//')
-           # Deps PRs (renovate/chore(deps)/fix(deps)) use 4Gi VMs — fit more concurrently
-           if echo "$TITLE" | grep -qiE '^(chore|fix)(\(deps\)|: deps)|^renovate'; then
-             VM_MEM="4Gi"
-           else
-             VM_MEM="8Gi"
-           fi
 
-           # Idempotency: skip if ghost-lab status already posted for this SHA
-           EXISTING=$(curl -sf \
-             -H "Authorization: token ${GITHUB_TOKEN}" \
-             -H "Accept: application/vnd.github+json" \
-             "${API}/repos/${REPO}/statuses/${SHA}" \
-             | jq -r --arg ctx "$CONTEXT" \
-               '.[] | select(.context == $ctx) | .state' | head -1)
-
-           # Skip only if already in-flight (pending) or passed (success).
-           # Re-test on error/failure so stale or failed runs get retried.
-           if [[ "$EXISTING" == "pending" || "$EXISTING" == "success" ]]; then
-             echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: status=${EXISTING}, skip" >&2
+           # Dedup: one workflow per PR head SHA — ever. Without this the
+           # poller re-dispatched every open PR on every cycle, flooding the
+           # cluster with duplicate runs. To force a re-test of the same SHA,
+           # delete the old workflow (kubectl delete wf -n argo -l
+           # bluefin.io/pr-sha=<sha12>) or push a new commit.
+           SHA12="${SHA:0:12}"
+           EXISTING=$(kubectl get workflows -n argo \
+             -l "bluefin.io/pr-number=${PR_NUM},bluefin.io/pr-sha=${SHA12}" \
+             --no-headers 2>/dev/null | wc -l)
+           if [[ "$EXISTING" -gt 0 ]]; then
+             echo "PR #${PR_NUM} ${REPO}: workflow for ${SHA12} already exists (${EXISTING}), skipping" >&2
              return
            fi
 
-           # Lock: post pending before dispatching to prevent duplicate runs
-           curl -sf -X POST \
-             -H "Authorization: token ${GITHUB_TOKEN}" \
-             -H "Accept: application/vnd.github+json" \
-             -H "Content-Type: application/json" \
-             "${API}/repos/${REPO}/statuses/${SHA}" \
-             -d "$(jq -n --arg ctx "$CONTEXT" \
-               '{state:"pending",context:$ctx,description:"Ghost lab queued"}')" \
-             > /dev/null
-           echo "PR #${PR_NUM} ${REPO}@${SHA:0:12}: locked + dispatching" >&2
+           HEAD_BRANCH=$(echo "$PR" | jq -r '.head.ref')
+           HEAD_REPO=$(echo "$PR" | jq -r '.head.repo.clone_url')
+           # Testsuite PRs run their exact head repository and branch. Other
+           # repositories use the canonical testsuite main branch.
+           if [[ "$REPO" == "projectbluefin/testsuite" ]]; then
+            TESTSUITE_BRANCH="$HEAD_BRANCH"
+            TESTSUITE_REPO="$HEAD_REPO"
+           else
+            TESTSUITE_BRANCH="main"
+            TESTSUITE_REPO="https://github.com/projectbluefin/testsuite"
+           fi
+           BRANCH="$TESTSUITE_BRANCH"
+           REPO_SLUG=$(echo "$REPO" | sed 's|.*/||; s/bluefin-lts/lts/; s/bluefin/blu/; s/dakota/dak/; s/knuckle/knu/; s/bazzite/baz/; s/aurora/aur/')
+           TITLE=$(echo "$PR" | jq -r '.title')
+           # Slugify title: lowercase, non-alnum to dash, truncate to 30 chars
+           TITLE_SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' \
+            | sed 's/[^a-z0-9]/-/g; s/--*/-/g; s/^-//; s/-$//' \
+            | cut -c1-30 | sed 's/-$//')
 
-          # Route to matching WorkflowTemplate + derive per-repo params
+           # Route to matching WorkflowTemplate + derive per-repo params
            case "$REPO" in
-             */dakota)       TMPL="dakota-qa-pipeline"
-                             EXTRA_PARAMS="" ;;
-             */knuckle)      TMPL="knuckle-qa-pipeline"
-                             EXTRA_PARAMS="" ;;
-             */bluefin-lts)  TMPL="bluefin-qa-pipeline"
-                             EXTRA_PARAMS="
+            */dakota)       TMPL="dakota-qa-pipeline"
+                            EXTRA_PARAMS="
+               - name: testsuite-branch
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
+            */knuckle)      TMPL="knuckle-qa-pipeline"
+                            EXTRA_PARAMS="" ;;
+            */bazzite)      TMPL="bluefin-qa-pipeline"
+                            EXTRA_PARAMS="
+               - name: image
+                 value: ghcr.io/ublue-os/bazzite
+               - name: image-tag
+                 value: testing
+               - name: suites
+                 value: system
+               - name: variant
+                 value: bazzite
+               - name: testsuite-branch
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
+            */aurora)       TMPL="bluefin-qa-pipeline"
+                            EXTRA_PARAMS="
+               - name: image
+                 value: ghcr.io/ublue-os/aurora
+               - name: image-tag
+                 value: testing
+               - name: suites
+                 value: system
+               - name: variant
+                 value: aurora
+               - name: testsuite-branch
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
+            */bluefin-lts)  TMPL="bluefin-qa-pipeline"
+                            EXTRA_PARAMS="
                - name: image
                  value: ghcr.io/projectbluefin/bluefin-lts
                - name: image-tag
                  value: testing
-               - name: containerdisk-tag
-                 value: lts-testing
-               - name: namespace
-                 value: bluefin-lts-test
                - name: suites
                  value: smoke
-               - name: vm-memory
-                 value: ${VM_MEM}" ;;
-             *)              TMPL="bluefin-qa-pipeline"
-                             # bluefin/common: smoke only to limit VM count
+               - name: variant
+                 value: bluefin-lts
+               - name: testsuite-branch
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
+            */testsuite)    TMPL="bluefin-qa-pipeline"
+                             # Run smoke + common against bluefin:testing using
+                             # the PR branch so the new/changed scenarios are exercised.
                              EXTRA_PARAMS="
                - name: image-tag
                  value: testing
-               - name: containerdisk-tag
+               - name: suites
+                 value: smoke,common
+               - name: testsuite-branch
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
+            *)              TMPL="bluefin-qa-pipeline"
+                            # bluefin/common: smoke only to limit workload size
+                            EXTRA_PARAMS="
+               - name: image-tag
                  value: testing
                - name: suites
                  value: smoke
-               - name: vm-memory
-                 value: ${VM_MEM}" ;;
+               - name: testsuite-branch
+                 value: ${TESTSUITE_BRANCH}
+               - name: testsuite-repo
+                 value: ${TESTSUITE_REPO}" ;;
            esac
 
            kubectl create -f - <<EOF
@@ -141,6 +195,7 @@ spec:
            labels:
              bluefin.io/trigger: pr-auto
              bluefin.io/pr-number: "${PR_NUM}"
+             bluefin.io/pr-sha: "${SHA12}"
           spec:
            workflowTemplateRef:
              name: ${TMPL}
@@ -156,6 +211,7 @@ spec:
                  value: "${PR_NUM}"${EXTRA_PARAMS}
           EOF
            echo "PR #${PR_NUM} ${REPO}: dispatched ${TMPL}" >&2
+           (( DISPATCHED++ )) || true
           }
 
           # --- Pass 1: every open PR in auto-test repos ---
@@ -184,7 +240,7 @@ spec:
            done
           done
 
-          # --- Pass 2: label-based catch-all for other repos (dakota, knuckle, etc.) ---
+          # --- Pass 2: label-based catch-all for projectbluefin repos ---
           LABEL_QUERY=$(jq -rn --arg q "org:projectbluefin is:pr is:open label:test-on-lab" '$q|@uri')
           LABEL_RESULTS=$(curl -sf \
            -H "Authorization: token ${GITHUB_TOKEN}" \

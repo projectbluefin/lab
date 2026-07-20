@@ -1,0 +1,69 @@
+# k3s cluster upgrade Plans for system-upgrade-controller
+#
+# Upgrade order enforced: server (ghost) first, then agents.
+# Agent plan waits for server-plan to complete before starting.
+#
+# All nodes use /var/usrlocal/bin — the writable overlay path on ostree/immutable
+# Linux (Bluefin, Dakota, Bazzite). /usr/local/bin -> /var/usrlocal/bin via symlink.
+# INSTALL_K3S_BIN_DIR must be set or the install script fails on a missing directory.
+#
+# To trigger an upgrade: push a change to this file (e.g. bump channel or pin version).
+# ArgoCD applies it; system-upgrade-controller executes the plans.
+#
+# Channel "stable" tracks the latest stable k3s release automatically.
+# To pin a specific version instead:
+#   version: v1.35.5+k3s1
+# and remove the channel field.
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: server-plan
+  namespace: system-upgrade
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: ServerSideApply=false
+spec:
+  concurrency: 1
+  cordon: false
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: In
+        values:
+          - "true"
+  serviceAccountName: system-upgrade
+  channel: https://update.k3s.io/v1-release/channels/stable
+  upgrade:
+    image: rancher/k3s-upgrade
+    envs:
+      - name: INSTALL_K3S_BIN_DIR
+        value: /var/usrlocal/bin
+---
+apiVersion: upgrade.cattle.io/v1
+kind: Plan
+metadata:
+  name: agent-plan
+  namespace: system-upgrade
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-options: ServerSideApply=false
+spec:
+  concurrency: 1
+  cordon: false
+  nodeSelector:
+    matchExpressions:
+      - key: node-role.kubernetes.io/control-plane
+        operator: DoesNotExist
+  serviceAccountName: system-upgrade
+  channel: https://update.k3s.io/v1-release/channels/stable
+  prepare:
+    image: rancher/k3s-upgrade
+    args:
+      - prepare
+      - server-plan
+  upgrade:
+    image: rancher/k3s-upgrade
+    envs:
+      - name: INSTALL_K3S_BIN_DIR
+        value: /var/usrlocal/bin

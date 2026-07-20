@@ -1,0 +1,38 @@
+# CronWorkflow: polls quay.io/fedora/fedora-bootc:rawhide every 3 hours.
+# Triggers bluefin-qa-pipeline only when OCI digest changes vs ConfigMap state.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-fedora-bootc-rawhide
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+    bluefin.io/trigger: digest-poll
+spec:
+  suspend: false
+  schedules:
+    - "42 */3 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    workflowTemplateRef:
+      name: image-poller
+    arguments:
+      parameters:
+        - name: image
+          value: "quay.io/fedora/fedora-bootc"
+        - name: image-tag
+          value: "rawhide"
+        - name: state-key
+          value: "digest-fedora-bootc-rawhide"
+        - name: suites
+          value: "smoke,common,developer,software,system"
+        - name: variant
+          value: "bluefin"

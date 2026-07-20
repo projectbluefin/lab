@@ -1,0 +1,40 @@
+# CronWorkflow: polls ghcr.io/ublue-os/aurora:testing every 3 hours.
+# Triggers bluefin-qa-pipeline (system + smoke + developer + software suites)
+# only when OCI digest changes vs ConfigMap state.
+# Replaces nightly-aurora (time-based) with digest-triggered polling.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-aurora-testing
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+    bluefin.io/trigger: digest-poll
+spec:
+  suspend: false
+  schedules:
+    - "20 */3 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    workflowTemplateRef:
+      name: image-poller
+    arguments:
+      parameters:
+        - name: image
+          value: "ghcr.io/ublue-os/aurora"
+        - name: image-tag
+          value: "testing"
+        - name: state-key
+          value: "digest-aurora-testing"
+        - name: suites
+          value: "smoke,developer,software,system"
+        - name: variant
+          value: "aurora"

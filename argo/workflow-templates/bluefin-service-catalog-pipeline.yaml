@@ -37,8 +37,8 @@ spec:
           - name: run-tests
             dependencies: [deploy-fixture]
             templateRef:
-              name: run-service-tests
-              template: run-service-tests
+              name: run-incluster-tests
+              template: run-pytest
             arguments:
               parameters:
                 - name: namespace
@@ -47,6 +47,10 @@ spec:
                   value: "service_catalog/{{workflow.parameters.lane}}"
                 - name: lane
                   value: "{{workflow.parameters.lane}}"
+                - name: app-label
+                  value: "app=service-catalog-workload"
+                - name: service-name
+                  value: "service-catalog"
                 - name: branch
                   value: "{{workflow.parameters.branch}}"
 
@@ -73,6 +77,13 @@ spec:
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
         command: [bash, -c]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         source: |
           set -euo pipefail
           NS="{{inputs.parameters.namespace}}"
@@ -114,11 +125,9 @@ spec:
                   app.kubernetes.io/part-of: bluefin-test-suite
                   bluefin.io/lane: "${LANE}"
               spec:
-                nodeSelector:
-                  kubernetes.io/hostname: ghost
                 containers:
                   - name: busybox-httpd
-                    image: docker.io/library/busybox:1.36.1
+                    image: docker.io/library/busybox:1.36.1 # registry-lint-ignore
                     command:
                       - sh
                       - -c
@@ -161,6 +170,13 @@ spec:
       script:
         image: cgr.dev/chainguard/kubectl:latest-dev
         command: [bash, -c]
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
         source: |
           set -euo pipefail
           NS="service-catalog-{{workflow.uid}}"

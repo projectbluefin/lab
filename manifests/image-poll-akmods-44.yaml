@@ -1,0 +1,131 @@
+# CronWorkflow: polls ghcr.io/ublue-os/akmods:main-44 (aurora kernel modules) hourly.
+# When the akmods image digest changes, resets digest-aurora-testing to "" so the next
+# image-poll-aurora-testing run detects a "change" and queues a QA pipeline run.
+# Aurora kernel modules are built from akmods:main-44 — an akmods update means aurora:testing
+# will be rebuilt with new kernel modules.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: image-poll-akmods-44
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+    bluefin.io/trigger: digest-poll
+    bluefin.io/role: base-image-watcher
+spec:
+  schedules:
+    - "25 */3 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 3600
+      secondsAfterFailure: 86400
+    entrypoint: watch-base
+    templates:
+      - name: watch-base
+        metadata:
+          labels:
+            app.kubernetes.io/part-of: lab
+        dag:
+          tasks:
+            - name: fetch
+              template: fetch-remote
+            - name: update
+              depends: "fetch.Succeeded"
+              template: update-local
+              arguments:
+                parameters:
+                  - name: remote-digest
+                    value: "{{tasks.fetch.outputs.parameters.digest}}"
+
+      - name: fetch-remote
+        outputs:
+          parameters:
+            - name: digest
+              valueFrom:
+                path: /tmp/digest
+        script:
+          image: quay.io/skopeo/stable@sha256:c7d3c512612f52805023cd38351081dad7e2729fc13d14b701e47c7c8bdd6615
+          command: [sh]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          env:
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-token
+                  key: token
+          source: |
+            set -eu
+            IMAGE_REF="ghcr.io/ublue-os/akmods:main-44"
+            REMOTE=""
+            for i in 1 2 3; do
+              REMOTE=$(skopeo inspect \
+                --no-tags \
+                --format json \
+                --creds "_token:${GITHUB_TOKEN}" \
+                "docker://${IMAGE_REF}" 2>/dev/null | jq -r .Digest || true)
+              [ -n "${REMOTE}" ] && [ "${REMOTE}" != "null" ] && break
+              echo "skopeo attempt ${i}/3 failed for ${IMAGE_REF}; retrying in $(( i * 15 ))s" >&2
+              sleep $(( i * 15 ))
+            done
+            
+            if [ -z "${REMOTE}" ] || [ "${REMOTE}" = "null" ]; then
+              echo "Failed to resolve digest" >&2
+              echo "none" > /tmp/digest
+            else
+              echo "${REMOTE}" > /tmp/digest
+            fi
+
+      - name: update-local
+        inputs:
+          parameters:
+            - name: remote-digest
+        script:
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          command: [bash]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          source: |
+            set -euo pipefail
+            STATE_KEY="digest-akmods-main-44"
+            DERIVED_KEY="digest-aurora-testing"
+            REMOTE="{{inputs.parameters.remote-digest}}"
+
+            if [[ "${REMOTE}" == "none" ]]; then
+              echo "No remote digest fetched. Skipping." >&2
+              exit 0
+            fi
+
+            STORED=$(kubectl get configmap image-polling-digests -n argo \
+              -o jsonpath="{.data.${STATE_KEY}}" 2>/dev/null || true)
+
+            echo "Remote:  ${REMOTE}" >&2
+            echo "Stored:  ${STORED:-<none>}" >&2
+
+            if [[ "${REMOTE}" == "${STORED}" ]]; then
+              echo "No change in akmods:main-44 — skipping" >&2
+              exit 0
+            fi
+
+            echo "akmods:main-44 changed — updating state and resetting aurora-testing state" >&2
+            kubectl patch configmap image-polling-digests -n argo --type merge \
+              -p "{\"data\":{\"${STATE_KEY}\":\"${REMOTE}\",\"${DERIVED_KEY}\":\"\"}}" \
+              || kubectl create configmap image-polling-digests -n argo \
+                   --from-literal="${STATE_KEY}=${REMOTE}" --from-literal="${DERIVED_KEY}="
+            echo "Reset ${DERIVED_KEY} to empty — image-poll-aurora-testing will trigger on next run" >&2

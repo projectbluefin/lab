@@ -1,54 +1,63 @@
-# CNCF Homelab Reference: bootc Image Testing Lab
+# Self Hosted Cloud Native Operating System Factory
+### Introducing the first "Agentic OS Factory" that isn't made up bullshit!
+
+#### [Factory Dashboard](https://factory.projectbluefin.io)
 
 > A production-quality, fully GitOps-driven QA pipeline for testing
 > [bootc](https://containers.github.io/bootc/) (image-based Linux) deployments,
 > built entirely on CNCF projects running on a single homelab node.
 > This instance is deployed as the CI infrastructure for [Project Bluefin](https://projectbluefin.io).
-> The productized form of this pattern ships as [Bluefin Server](https://projectbluefin.io).
+> The productized form of this will ships as [Bluefin Server](https://projectbluefin.io/server) someday. Welcome.
+>
 
 ---
 
 ## What This Is
 
 This repo is a reference implementation of a CNCF-native homelab designed for bootc
-image testing. Boot a real VM from a real OCI image, run GUI acceptance tests, tear it
-down, repeat. Everything is declared in git, reconciled by ArgoCD, and orchestrated by
-Argo Workflows.
+image testing. For the Bluefin and Dakota image-poll lanes, the lab now runs
+GUI and contract suites directly inside the published OCI images as Kubernetes
+pods. VM-backed boot and install validation remain only for workflows that still
+explicitly need KubeVirt (Flatcar, Knuckle, migration, and similar lanes).
+Everything is declared in git, reconciled by ArgoCD, and orchestrated by Argo
+Workflows. GitOps.
 
 This instance runs as the CI infrastructure for Project Bluefin — every image
-publication triggers a fully automated test run with zero human intervention, from
-digest detection to screenshot in the release notes. The productized form of this
-pattern ships as Bluefin Server.
+publication triggers a fully automated test run with zero human intervention:
+image-poller checks the digest, compares it with stored state, fans out
+`run-container-tests`, publishes per-suite results back into this repo, and only
+then records the new digest. This is Bluefin Server's first usecase.
 
-**No persistent VMs. No manual `kubectl`. No SSH to the cluster host.**
+See [/docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) for the full
+image-poll → container test → result publication pipeline.
 
-See [docs/bluefin-integration.md](docs/bluefin-integration.md) for the full
-image-poll → test → screenshot → release pipeline.
+> The C and C Music Factory is mastery and full of jams that has to be
+>
+> -- Freedom Williams
 
 ---
 
-## Bluefin Integration
+## Continuous Image Integration & Testing
 
-Three images are under continuous test:
+The lab continuously validates the core operating system family across multiple hardware-profile targets and variants:
 
-| Image | Tag | Schedule |
-|---|---|---|
-| `ghcr.io/projectbluefin/bluefin` | `testing` | Nightly 02:00 UTC + on every new digest |
-| `ghcr.io/projectbluefin/bluefin-lts` | `testing` | Nightly 02:30 UTC + on every new digest |
-| `ghcr.io/projectbluefin/dakota` | latest | Nightly 03:00 UTC + on every BST build |
+| Image | Tag | Schedule / Trigger | Purpose / Suite |
+|---|---|---|---|
+| `ghcr.io/projectbluefin/bluefin` | `testing`, `stable` | Nightly 02:00 UTC + on every OCI digest change | Primary standard GNOME image (full suite) |
+| `ghcr.io/projectbluefin/bluefin-lts` | `testing`, `stable` | Nightly 02:30 UTC + on every OCI digest change | Long-term support GNOME enterprise target |
+| `ghcr.io/ublue-os/aurora` | `testing`, `stable` | Hourly OCI digest poll on upstream change | KDE variant validation (system suite) |
+| `ghcr.io/frostyard/snow` | `latest` | Every 3 hours + on every OCI digest change | Snosi GNOME desktop profile (smoke/developer/system suites) |
+| `ghcr.io/projectbluefin/dakota` | `latest` | Nightly 03:00 UTC + on every BST build trigger | BuildStream (BST) flatcar-substrate variant; USB4-gated BuildBarn remote execution is mandatory |
 
-**Image-poll trigger:** hourly CronWorkflows check the ghcr.io digest against a stored
-ConfigMap state. When the digest changes, a full `bluefin-qa-pipeline` run fires
-automatically — no human needed.
+**Image-poll trigger:** hourly CronWorkflows check the OCI registry digest against
+`image-polling-digests`. When the digest changes, `image-poller` fans out
+`run-container-tests` and only persists the new digest after QA succeeds.
 
-**Screenshot pipeline:** `run-gnome-tests` captures desktop PNGs, SCPs them to the
-workflow pod, and pushes to `ghcr.io/projectbluefin/testsuite/desktop-screenshot:<slug>-<suite>-latest`
-via oras. `publish-to-pages.yml` in projectbluefin/testsuite pulls every 2h to GitHub
-Pages. `reusable-release.yml` in projectbluefin/actions reads
-`https://projectbluefin.github.io/testsuite/screenshots/<slug>-smoke-latest.png`
-and embeds it in the GitHub Release automatically.
+**Result publication:** each selected `run-container-tests` lane writes
+`results.json`, then runs `scripts/publish_test_results.py` to push structured
+per-suite results back into this repo for dashboard consumers.
 
-See [docs/bluefin-integration.md](docs/bluefin-integration.md) for full details.
+See [/docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) for full details.
 
 ---
 
@@ -66,28 +75,26 @@ See [docs/bluefin-integration.md](docs/bluefin-integration.md) for full details.
 > All pipelines run on commodity x86_64 hardware (single Ryzen AI node, 64GB RAM).
 > The architecture scales horizontally — add worker nodes and the workflows follow.
 
+<img width="926" height="988" alt="image" src="https://github.com/user-attachments/assets/718ee70c-aa7d-470e-ab9f-e526ee7c39ea" />
+
+
 ---
 
 ## Architecture
 
 ```
-Git push / manual submit
+image-poller CronWorkflow
         │
         ▼
-  Argo Workflow (argo namespace)
+  digest comparison (`image-polling-digests`)
         │
-        ├─ build-containerdisk ─────► containerDisk in local Zot registry
-        │   (bootc install-to-disk)     192.168.1.102:30500/bluefin-containerdisk:<tag>
-        │                               digest-checked; skips if already current
+        ├─ unchanged ───────────────► exit cleanly
         │
-        ├─ provision-bluefin-vm ────► KubeVirt VM booting from containerDisk
-        │   (VMI + wait for SSH)        ~2 min from submit to SSH-ready
-        │
-        ├─ run-gnome-tests ─────────► runner pod (Fedora + qecore-headless)
-        │   (behave + AT-SPI)           SSH → VM → behave + Dogtail
-        │
-        └─ teardown (onExit) ───────► delete VM
-            (always runs)               guaranteed cleanup on success or failure
+        └─ changed ─────────────────► `run-container-tests` fan-out
+                                      │
+                                      ├─ qecore + behave inside the bootc OCI image
+                                      ├─ publish per-suite results back to this repo
+                                      └─ update stored digest only after QA succeeds
 ```
 
 **GitOps loop:**
@@ -107,37 +114,31 @@ ArgoCD polls (or webhook)
 ## Repository Layout
 
 ```
-testing-lab/
+lab/
 ├── README.md                         # This file
-├── RUNBOOK.md                        # Timeless architecture + failure modes
-├── AGENTS.md                         # Agent policy, scope rules, cluster topology
-├── WORKFLOWS.md                      # WorkflowTemplate agent contract (submit interface)
+├── agents.md                         # Agent entry point
+├── docs/ops/RUNBOOK.md               # Timeless architecture + failure modes
+├── docs/reference/WORKFLOWS.md       # WorkflowTemplate agent contract
 ├── Justfile                          # Operator convenience wrappers
 │
 ├── argo/
-│   ├── workflow-templates/           # ← ArgoCD (testing-lab App) auto-syncs these
-│   │   ├── build-containerdisk.yaml      build containerDisk from bootc image → Zot registry
-│   │   ├── bluefin-qa-pipeline.yaml      full pipeline: containerDisk + VM + tests
+│   ├── workflow-templates/           # ← ArgoCD (lab App) auto-syncs these
+│   │   ├── bluefin-qa-pipeline.yaml      container-only Bluefin suite fan-out
 │   │   ├── bluefin-migration-test.yaml   bootc switch migration validation
 │   │   ├── bluefin-service-catalog-pipeline.yaml  service catalog smoke lanes
-│   │   ├── provision-bluefin-vm.yaml     boot containerDisk KubeVirt VM
-│   │   ├── run-gnome-tests.yaml          behave + qecore + Dogtail GNOME tests
+│   │   ├── run-container-tests.yaml      behave + qecore inside the bootc OCI image
+│   │   ├── run-gnome-tests.yaml          VM-backed behave + qecore + Dogtail tests
 │   │   ├── run-incluster-tests.yaml      in-cluster (kubectl-based) tests
-│   │   ├── run-service-tests.yaml        service endpoint + health-check tests
 │   │   ├── run-flatcar-tests.yaml        Flatcar OS test runner
 │   │   ├── provision-flatcar-vm.yaml     provision Flatcar test VM (hostDisk)
 │   │   ├── provision-gnomeos-vm.yaml     provision GNOME OS test VM
-│   │   ├── teardown-bluefin-vm.yaml      delete Bluefin containerDisk VM
-│   │   ├── teardown-flatcar-vm.yaml      delete Flatcar VM + hostDisk
-│   │   ├── teardown-gnomeos-vm.yaml      delete GNOME OS VM
+│   │   ├── teardown-vm.yaml          delete explicit VM-backed test guests
 │   │   ├── collect-vm-logs.yaml          gather VM journal logs post-test
-│   │   ├── bst-build.yaml               BuildStream (BST) build + zot push
-│   │   ├── bst-cache-warm.yaml          warm BST cache on ghost
-│   │   ├── dakota-bst.yaml              Dakota BST validate / build pipeline
-│   │   ├── dakota-iso-pr-test.yaml      Dakota ISO PR end-to-end pipeline
-│   │   ├── dakota-qa-pipeline.yaml      Full Dakota QA: BST → VM → tests
+│   │   ├── dakota-build-pipeline.yaml   Dakota BST build pipeline (bluefin + nvidia)
+│   │   ├── dakota-commit-poller.yaml    Poll dakota:testing commits and trigger BST builds
+│   │   ├── dakota-qa-pipeline.yaml      container-only Dakota suite fan-out
 │   │   ├── knuckle-qa-pipeline.yaml     Knuckle installer QA pipeline
-│   │   ├── image-poller.yaml            Digest-polling trigger for image-poll CronWorkflows
+│   │   ├── image-poller.yaml            Digest poller: compare → run-container-tests → publish → persist
 │   │   ├── pr-poller.yaml               PR label poller for CI gate
 │   │   ├── ghost-cleanup.yaml           Clear stale podman lock files on ghost
 │   │   └── ghost-kernel-args.yaml       Set Strix Halo performance kernel args
@@ -158,7 +159,7 @@ testing-lab/
 │   ├── gnomeos-access-spike.yaml     submit: GNOME OS accessibility spike
 │   └── one-shot-delete-golden-disks.yaml  emergency: delete all golden disks to reclaim space
 │
-├── manifests/                        # ← ArgoCD (testing-lab-infra App) auto-syncs these
+├── manifests/                        # ← ArgoCD (lab-infra App) auto-syncs these
 │   ├── nightly-smoke.yaml                CronWorkflow: nightly latest @ 02:00 UTC
 │   ├── nightly-smoke-lts.yaml            CronWorkflow: nightly lts @ 02:30 UTC
 │   ├── nightly-dakota.yaml               CronWorkflow: nightly dakota @ 03:00 UTC
@@ -171,8 +172,8 @@ testing-lab/
 │   ├── image-poll-bluefin-stable.yaml    CronWorkflow: poll bluefin:stable digest
 │   ├── image-poll-lts-testing.yaml       CronWorkflow: poll bluefin-lts:testing digest
 │   ├── image-poll-lts-stable.yaml        CronWorkflow: poll bluefin-lts:stable digest
+│   ├── image-poll-snosi-latest.yaml      CronWorkflow: poll snosi snow:latest digest
 │   ├── image-poll-common.yaml            CronWorkflow: poll common image digest
-│   ├── image-polling-state.yaml          ConfigMap: last-seen digest state for pollers
 │   ├── pr-label-poller.yaml              CronWorkflow: poll PR labels for CI gate
 │   ├── workflow-controller-configmap.yaml TTL patch (7d success, 30d failure)
 │   ├── argo-default-sa-rbac.yaml         Argo executor RBAC
@@ -212,8 +213,8 @@ testing-lab/
     ├── agent-cheatsheet.md           canonical command reference
     ├── lab-operations.md             long-form operator procedures
     ├── dogtail-testing.md            GUI test authoring + debugging
-    ├── bluefin-integration.md        image-poll → test → screenshot pipeline
-    └── WORKFLOWS.md                  full WorkflowTemplate reference (resource profiles, disk paths)
+    ├── bluefin-integration.md        image-poll → container test → result publication pipeline
+    └── /docs/reference/WORKFLOWS.md                  full WorkflowTemplate reference (resource profiles, runtime paths)
 ```
 
 ---
@@ -239,8 +240,8 @@ with two ArgoCD Applications that own distinct resource classes:
 
 | Application | Syncs path | Namespace | prune | selfHeal |
 |---|---|---|---|---|
-| `testing-lab` | `argo/workflow-templates/` | argo | ✅ | ✅ |
-| `testing-lab-infra` | `manifests/` | argo (+ others) | ✅ | ✅ |
+| `lab` | `argo/workflow-templates/` | argo | ✅ | ✅ |
+| `lab-infra` | `manifests/` | argo (+ others) | ✅ | ✅ |
 
 **Rules:**
 1. Edit files in `argo/workflow-templates/` or `manifests/` → push to `main` → ArgoCD reconciles within ~3 minutes.
@@ -252,13 +253,13 @@ with two ArgoCD Applications that own distinct resource classes:
 
 ## Getting Started
 
-See **[docs/bootstrap.md](docs/bootstrap.md)** for the complete lab setup guide.
+See **[/docs/ops/bootstrap.md](/docs/ops/bootstrap.md)** for the complete lab setup guide.
 
 **TL;DR for an existing k3s + KubeVirt cluster:**
 
 ```bash
-git clone https://github.com/castrojo/testing-lab
-cd testing-lab
+git clone https://github.com/projectbluefin/lab
+cd lab
 
 # 1. Bootstrap ArgoCD Applications (once)
 just setup-argocd
@@ -281,7 +282,6 @@ just run-tests
 |---|---|---|
 | ghost | k3s control-plane + KubeVirt compute | Ryzen AI MAX+ 395, 16c/32t, 64GB RAM |
 | exo-1 | k3s worker (workflow pods only) | — |
-| bazzite | k3s worker | Gaming machine — fully schedulable (no taint); k3s-agent enabled at boot |
 
 **Namespaces:**
 
@@ -293,7 +293,7 @@ just run-tests
 | `bluefin-lts-test` | `lts` test VMs |
 | `flatcar-test` | Flatcar test VMs |
 | `gnomeos-test` | GNOME OS test VMs |
-| `llm-d` | Qwen3.6-35B-A3B on ROCm (hive swarm node) |
+| `llm-d` | Local inference namespace (disabled by default; scale deployment up only when needed) |
 | `local-registry` | Zot writable registry (30500) + pull-through cache (30501) |
 | `arc-systems` | ARC controller + listener pods |
 | `arc-runners` | ARC ephemeral runner pods (empty when no jobs queued) |
@@ -328,9 +328,9 @@ This lets ArgoCD own the template lifecycle while keeping submission flexible.
 1. Add a `.feature` file under `tests/<suite>/features/`.
 2. Add step definitions in `tests/<suite>/features/steps/`.
 3. Tag new scenarios `@wip` until stable.
-4. Submit a run: `just run-tests` (smoke) or `just run-tests-tag lts`.
+4. Submit a run: `just run-tests` (smoke) or `just run-tests-tag lts-testing`.
 
-See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring.
+See [/docs/skills/test-authoring/dogtail-patterns.md](/docs/skills/test-authoring/dogtail-patterns.md) for AT-SPI test authoring.
 
 ---
 
@@ -339,15 +339,15 @@ See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring
 | Doc | Purpose |
 |---|---|
 | [README.md](README.md) | Architecture overview (this file) |
-| [WORKFLOWS.md](WORKFLOWS.md) | WorkflowTemplate agent contract — submit interface, parameter reference |
-| [docs/WORKFLOWS.md](docs/WORKFLOWS.md) | Full WorkflowTemplate reference — resource profiles, disk paths, pipeline details |
-| [docs/bluefin-integration.md](docs/bluefin-integration.md) | Image-poll → test → screenshot → release pipeline |
-| [docs/bootstrap.md](docs/bootstrap.md) | How to replicate this lab from scratch |
-| [RUNBOOK.md](RUNBOOK.md) | Timeless architecture + failure-mode reference |
-| [AGENTS.md](AGENTS.md) | Agent policy, cluster topology, issue filing rules |
-| [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md) | Canonical command reference |
-| [docs/lab-operations.md](docs/lab-operations.md) | Long-form operator procedures |
-| [docs/dogtail-testing.md](docs/dogtail-testing.md) | GUI test authoring + debugging |
+| [agents.md](agents.md) | Agent entry point |
+| [docs/reference/WORKFLOWS.md](/docs/reference/WORKFLOWS.md) | WorkflowTemplate submit interface / agent contract |
+| [docs/reference/workflow-reference.md](/docs/reference/workflow-reference.md) | Full WorkflowTemplate reference |
+| [docs/reference/bluefin-integration.md](/docs/reference/bluefin-integration.md) | Image-poll → container test → result publication pipeline |
+| [docs/ops/bootstrap.md](/docs/ops/bootstrap.md) | How to replicate this lab from scratch |
+| [docs/ops/RUNBOOK.md](/docs/ops/RUNBOOK.md) | Timeless architecture + failure-mode reference |
+| [docs/reference/agent-cheatsheet.md](/docs/reference/agent-cheatsheet.md) | Canonical command reference |
+| [docs/ops/lab-operations.md](/docs/ops/lab-operations.md) | Long-form operator procedures |
+| [docs/skills/test-authoring/dogtail-patterns.md](/docs/skills/test-authoring/dogtail-patterns.md) | GUI test authoring + debugging |
 
 ---
 
@@ -356,8 +356,8 @@ See [docs/dogtail-testing.md](docs/dogtail-testing.md) for AT-SPI test authoring
 - [Project Bluefin](https://projectbluefin.io) — primary subject under test; this lab validates every image publish
 - [ublue-os/bluefin](https://github.com/ublue-os/bluefin) — upstream Bluefin image builds
 - [Project Dakota](https://github.com/projectbluefin/dakota) — BST-built Bluefin variant; Dakota PRs trigger `dakota-qa-pipeline`
-- [projectbluefin/testsuite](https://github.com/projectbluefin/testsuite) — screenshot hosting + GitHub Pages publishing
-- [projectbluefin/actions](https://github.com/projectbluefin/actions) — `reusable-release.yml` embeds lab screenshots in GitHub Releases
+- [projectbluefin/testsuite](https://github.com/projectbluefin/testsuite) — shared behave suites and container QA inputs
+- [projectbluefin/actions](https://github.com/projectbluefin/actions) — shared GitHub Actions workflows around the release pipeline
 - [bootc](https://containers.github.io/bootc/) — image-based Linux standard
 - [KubeVirt](https://kubevirt.io) — CNCF Incubating, VM workloads on Kubernetes
 - [Argo Workflows](https://argoproj.github.io/argo-workflows/) — CNCF Graduated

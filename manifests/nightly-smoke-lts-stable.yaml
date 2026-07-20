@@ -1,0 +1,41 @@
+# CronWorkflow: nightly Bluefin LTS stable smoke suite at 03:30 UTC.
+# Runs the container-only bluefin-qa-pipeline against the published :stable LTS image.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: nightly-smoke-lts-stable
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  suspend: false
+  schedules:
+    - "30 3 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowMetadata:
+    labels:
+      app.kubernetes.io/part-of: bluefin-test-suite
+      bluefin.io/trigger: nightly
+      bluefin.io/suite: smoke
+      bluefin.io/variant: bluefin-lts
+  workflowSpec:
+    serviceAccountName: argo
+    podGC:
+      strategy: OnWorkflowCompletion
+    ttlStrategy:
+      secondsAfterSuccess: 86400
+      secondsAfterFailure: 604800
+    workflowTemplateRef:
+      name: bluefin-qa-pipeline
+    arguments:
+      parameters:
+        - name: image
+          value: "ghcr.io/projectbluefin/bluefin-lts"
+        - name: image-tag
+          value: "stable"
+        - name: suites
+          value: "smoke"
+        - name: variant
+          value: "bluefin-lts"

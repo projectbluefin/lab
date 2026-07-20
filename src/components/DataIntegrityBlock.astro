@@ -1,0 +1,28 @@
+---
+interface Props {
+  generatedAt: string;
+  status: string;
+  datasetUrl: string;
+  title?: string;
+  class?: string;
+}
+
+const { generatedAt, status, datasetUrl, title = "Collector-derived contract · v1", class: className = "" } = Astro.props;
+---
+<div class:list={["integrity-panel", className]}>
+  <h4>{title}</h4>
+  <div class="stat-dl" style="margin-bottom: 1rem;">
+    <div class="stat-dl-item">
+      <dt>Generated at</dt>
+      <dd style="font-size: 0.9rem;">{generatedAt}</dd>
+    </div>
+    <div class="stat-dl-item">
+      <dt>Status</dt>
+      <dd style="font-size: 0.9rem; color: #fbbf24;">{status}</dd>
+    </div>
+  </div>
+  <ul class="integrity-list">
+    <slot />
+  </ul>
+  <a href={datasetUrl} style="margin-top: 1rem; display: inline-block; font-size: 0.85rem; color: #38bdf8;">Open raw dataset ↗</a>
+</div>

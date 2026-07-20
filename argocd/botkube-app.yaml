@@ -1,0 +1,101 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: botkube
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  project: default
+  source:
+    repoURL: https://charts.botkube.io
+    chart: botkube
+    targetRevision: v1.14.0
+    helm:
+      # ponytail: inline valuesObject keeps values co-located with the Application,
+      # avoids multi-source ArgoCD config (requires ArgoCD >= 2.6).
+      # Secret values injected via secretKeyRef — never in plaintext here.
+      valuesObject:
+        communications:
+          default-group:
+            discord:
+              enabled: true
+              token:
+                valueFrom:
+                  secretKeyRef:
+                    name: botkube-discord
+                    key: token
+              botID: "1519228970032169050"
+              channels:
+                default:
+                  id: "1519233261438631936"  # #factory channel
+                  bindings:
+                    executors:
+                      - github-dispatch
+                    sources:
+                      - k8s-err-with-logs
+        settings:
+          clusterName: "bluefin-factory"
+          prefix: "!"
+          aliases:
+            release-bluefin:
+              command: github run-workflow projectbluefin/bluefin execute-release.yml
+              displayName: "Release Bluefin"
+            release-lts:
+              command: github run-workflow projectbluefin/bluefin-lts execute-release.yml
+              displayName: "Release Bluefin LTS"
+            release-dakota:
+              command: github run-workflow projectbluefin/dakota execute-release.yml
+              displayName: "Release Dakota"
+            release-common:
+              command: github run-workflow projectbluefin/common release.yml
+              displayName: "Release Common"
+        rbac:
+          groups: []
+        executors:
+          github-dispatch:
+            botkube/github:
+              enabled: true
+              config:
+                github:
+                  auth:
+                    appID:
+                      valueFrom:
+                        secretKeyRef:
+                          name: botkube-github-app
+                          key: appID
+                    installationID:
+                      valueFrom:
+                        secretKeyRef:
+                          name: botkube-github-app
+                          key: installationID
+                    privateKey:
+                      valueFrom:
+                        secretKeyRef:
+                          name: botkube-github-app
+                          key: privateKey
+        sources:
+          k8s-err-with-logs:
+            botkube/kubernetes:
+              enabled: true
+              config:
+                event:
+                  types: ["error"]
+                resources:
+                  - type: v1/pods
+                  - type: batch/jobs
+                  - type: argoproj.io/v1alpha1/Workflows
+        plugins:
+          repositories:
+            botkube:
+              url: https://github.com/kubeshop/botkube-plugins/releases/download/v1.14.0/plugins-index.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: botkube
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

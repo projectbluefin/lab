@@ -1,0 +1,102 @@
+# CronWorkflow: polls kernel.org for the latest stable kernel every 10 minutes.
+# When the version changes vs ConfigMap state, triggers flatcar-kernel-build.
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: flatcar-kernel-poller
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  # Suspend automatic kernel builds; submit flatcar-kernel-build manually when needed.
+  suspend: true
+  schedules:
+    - "*/10 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    serviceAccountName: argo
+    ttlStrategy:
+      secondsAfterSuccess: 86400
+      secondsAfterFailure: 604800
+    entrypoint: poll-and-trigger
+    templates:
+      - name: poll-and-trigger
+        script:
+          image: ghcr.io/projectbluefin/lab-runner:latest
+          command: [bash]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          source: |
+            set -euo pipefail
+
+            # Bootstrap kubectl if not in PATH
+            if ! command -v kubectl >/dev/null 2>&1; then
+              KUBECTL=/tmp/kubectl
+              if [ ! -f "${KUBECTL}" ]; then
+                curl -sfL "https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl" -o "${KUBECTL}"
+                chmod +x "${KUBECTL}"
+              fi
+              kubectl() { "${KUBECTL}" "$@"; }
+            fi
+
+            # Fetch latest stable kernel version from kernel.org
+            LATEST=$(curl -sf https://www.kernel.org/releases.json \
+              | jq -r '.releases[] | select(.moniker == "stable") | .version' | head -n 1)
+            echo "Latest kernel.org stable: ${LATEST}"
+
+            # Read last-seen version from ConfigMap
+            SEEN=$(kubectl get configmap flatcar-kernel-polling-state \
+              -n argo -o jsonpath='{.data.kernel-stable}' 2>/dev/null || echo "")
+            echo "Last built: ${SEEN}"
+
+            if [ "${LATEST}" = "${SEEN}" ]; then
+              echo "No change — skipping build"
+              exit 0
+            fi
+
+            echo "New kernel detected: ${LATEST} — triggering build"
+            kubectl create -f - <<MANIFEST_EOF
+            apiVersion: argoproj.io/v1alpha1
+            kind: Workflow
+            metadata:
+              generateName: flatcar-kernel-build-
+              namespace: argo
+            spec:
+              workflowTemplateRef:
+                name: flatcar-kernel-build
+              arguments:
+                parameters:
+                  - name: kernel-version
+                    value: "${LATEST}"
+            MANIFEST_EOF
+
+            # Update state so we don't re-trigger on next poll
+            kubectl patch configmap flatcar-kernel-polling-state \
+              -n argo --type=merge \
+              -p "{\"data\":{\"kernel-stable\":\"${LATEST}\"}}"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: flatcar-kernel-gate
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  # Suspend automatic gate runs with the build poller.
+  suspend: true
+  schedules:
+    - "*/30 * * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowSpec:
+    workflowTemplateRef:
+      name: flatcar-kernel-gate

@@ -1,12 +1,29 @@
 name: Update test results
 
+concurrency:
+  group: update-test-results
+  cancel-in-progress: true
+
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/5 * * * *'
   push:
     branches: [main]
     paths:
+      - '.github/workflows/update-test-results.yml'
+      - 'astro.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/generate_page_datasets.py'
+      - 'docs/data/page-contracts.md'
+      - 'docs/data/test-surface.json'
+      - 'docs/data/variant-publishers.json'
+      - 'src/**'
+      - 'tests/astro-foundation.test.mjs'
+      - 'tests/applications-page.test.mjs'
       - 'docs/results/**'
+      - 'argo/workflow-templates/provision-gnomeos-vm.yaml'
+      - 'manifests/image-poll-fedora-bootc-*.yaml'
   workflow_dispatch:
 
 jobs:
@@ -15,6 +32,7 @@ jobs:
     permissions:
       contents: write
       packages: read
+      issues: read
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
@@ -32,15 +50,14 @@ jobs:
         run: |
           echo "$GH_TOKEN" | oras login ghcr.io -u github-actions --password-stdin
           mkdir -p docs/screenshots
-          SLUGS="bluefin-testing bluefin-lts-testing dakota-testing"
-          SUITES="smoke developer system"
+          SLUGS="bluefin-testing bluefin-lts-testing bluefin-bazzite-testing bluefin-aurora-testing dakota-testing"
+          SUITES="smoke developer software system"
           for slug in $SLUGS; do
             for suite in $SUITES; do
               tag="${slug}-${suite}-latest"
               img="ghcr.io/projectbluefin/testsuite/desktop-screenshot:${tag}"
               dest="docs/screenshots/${tag}.png"
               if oras pull "${img}" --output docs/screenshots/ 2>/dev/null; then
-                # oras names the file after the artifact basename used during push
                 pulled="docs/screenshots/desktop-screenshot.png"
                 if [[ -f "${pulled}" ]]; then
                   mv "${pulled}" "${dest}"
@@ -52,16 +69,59 @@ jobs:
             done
           done
 
+      - name: Refresh factory-stats.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch open bug issues
+          gh issue list \
+            --repo projectbluefin/lab \
+            --label bug \
+            --state open \
+            --limit 50 \
+            --json number,title,url,labels,createdAt \
+            > /tmp/bugs-raw.json
+
+          # Fetch issue + PR counts
+          ISSUE_COUNT=$(gh issue list --repo projectbluefin/lab --state open --limit 200 --json number | jq length)
+          PR_COUNT=$(gh pr list --repo projectbluefin/lab --state open --limit 200 --json number | jq length)
+          MERGED_7D=$(gh pr list --repo projectbluefin/lab --state merged --limit 200 \
+            --json mergedAt | jq "[.[] | select(.mergedAt > \"$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)\")] | length")
+
+          # Compute aggregate stats from result files + live cluster snapshots when reachable
+          python3 scripts/refresh_factory_stats.py "$ISSUE_COUNT" "$PR_COUNT" "$MERGED_7D"
+
+      - name: Refresh bst cache utilization (live cluster snapshot when reachable)
+        run: python3 scripts/collect_bst_cache.py
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Refresh release verdict (ADR 0002)
+        run: python3 scripts/collect_release_verdict.py
+
+      - name: Refresh page-owned datasets
+        run: python3 scripts/generate_page_datasets.py --root .
+
+      - name: Build multipage dashboard
+        run: |
+          npm ci
+          npm run build
+
+      - name: Verify multipage dashboard
+        run: npm test
+
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots/
+          git add -A docs/
           if git diff --cached --quiet; then
-            echo "No screenshot changes to commit"
+            echo "No changes to commit"
           else
             git commit \
-              -m 'chore: update test screenshots from GHCR' \
+              -m 'chore: refresh dashboard data (screenshots, bugs, stats)' \
               -m 'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>'
+            git pull --rebase -X ours origin main
             git push origin HEAD:main
           fi

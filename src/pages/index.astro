@@ -1,0 +1,1240 @@
+---
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { serializeJsonScript } from '../lib/json-script';
+
+// Build-time static JSON loads
+import copy from '../../docs/data/factory-copy.json';
+import stats from '../../docs/data/factory-stats.json';
+import telemetry from '../../docs/data/factory-telemetry.json';
+import upstreamStatus from '../../docs/data/upstream-status.json';
+import bstCache from '../../docs/data/bst-cache.json';
+import testsMatrix from '../../docs/data/tests-matrix.json';
+import releaseVerdict from '../../docs/data/release-verdict.json';
+
+const baseUrl = import.meta.env.BASE_URL;
+
+// Parse data
+const runs = Array.isArray(stats?.recent_runs) ? stats.recent_runs : [];
+const openBugs = Array.isArray(stats?.open_bugs) ? stats.open_bugs : [];
+const clusterNodes = stats?.factory?.cluster?.nodes || [];
+const images = stats?.factory?.images || {};
+const testCoverageTotal = stats?.test_coverage?.scenarios_total || 0;
+const testCoverageFailed = stats?.test_coverage?.scenarios_failed || 0;
+// Canonical image-status contract: upstream-status.json drives ALL image cards
+const upstreamRows = Array.isArray(upstreamStatus?.rows) ? upstreamStatus.rows : [];
+const testsRows = Array.isArray(testsMatrix?.rows) ? testsMatrix.rows : [];
+
+// Human-readable display names per variant slug
+const variantDisplayNames: Record<string, string> = {
+  'bluefin':      'Bluefin',
+  'bluefin-lts':  'Bluefin LTS',
+  'aurora':       'Aurora',
+  'bazzite':      'Bazzite',
+  'dakota':       'Dakota',
+  'cosmic':       'COSMIC',
+  'gnomeos':      'GNOME OS',
+  'fedora-bootc': 'Fedora bootc',
+};
+
+// Group rows by variant; preserve insertion order from JSON for stable card ordering
+const variantMap = new Map<string, typeof upstreamRows>();
+for (const row of upstreamRows) {
+  if (!row?.variant) continue;
+  if (!variantMap.has(row.variant)) variantMap.set(row.variant, []);
+  variantMap.get(row.variant)!.push(row);
+}
+
+// Build one card per variant from the canonical upstream-status rows
+const imageCards = Array.from(variantMap.entries()).map(([variant, rows]) => {
+  const firstRow = rows[0];
+  const repo = firstRow?.publisher_repo ?? (images as Record<string, { repo?: string }>)[variant]?.repo ?? null;
+  const displayName = variantDisplayNames[variant] ?? variant;
+  const branches = rows.map((row) => {
+    const branch = row.branch as string;
+    const suites = testsRows
+      .filter((tr) => tr.variant === variant && tr.branch === branch)
+      .map((tr) => ({
+        id: tr.id,
+        suite: tr.suite,
+        result_status: tr.result_status,
+        pass_rate: tr.pass_rate,
+      }));
+    return {
+      branch,
+      state:       row.state as string,
+      stateReason: (row.state_reason as string | null) ?? null,
+      age:         (row.freshness_age_days as number | null) ?? null,
+      seenAt:      (row.published_at as string | null) ?? null,
+      sourceUrl:   (row.source_url as string | null) ?? null,
+      suites,
+    };
+  });
+  return { variant, displayName, repo, branches };
+});
+
+const fabric = copy?.fabric || {};
+const fabricLinks = Array.isArray(fabric?.links) ? fabric.links.filter((link) => link?.from && link?.to) : [];
+const nodeLinksByName = new Map();
+for (const link of fabricLinks) {
+  const from = String(link.from);
+  const to = String(link.to);
+  const speed = link.speed_gbps ? `${link.speed_gbps}G` : 'link';
+  const status = link.status || 'unknown';
+  const sourceUrl = link.source_url || null;
+  if (!nodeLinksByName.has(from)) nodeLinksByName.set(from, []);
+  if (!nodeLinksByName.has(to)) nodeLinksByName.set(to, []);
+  nodeLinksByName.get(from).push({ peer: to, speed, status, sourceUrl });
+  nodeLinksByName.get(to).push({ peer: from, speed, status, sourceUrl });
+}
+
+const telemetrySnapshot = telemetry?.snapshot || {};
+
+const getNodeStatusTone = (status) => (status === 'ready' ? 'ready' : 'not-ready');
+const formatNodeStatus = (status) => (status === 'ready' ? 'Ready' : 'Not ready');
+
+// Calculate summary metrics
+const totalRunsCount = runs.length;
+const passedRunsCount = runs.filter((r) => r.overall === 'passed').length;
+const runningRunsCount = runs.filter((r) => r.overall === 'running').length;
+const failedRunsCount = runs.filter((r) => r.overall === 'fail').length;
+
+// Helpers
+const formatUtc = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'UTC',
+      }) + ' UTC'
+    : 'Never';
+
+const getAgeTone = (days: number | null, limit: number) => {
+  if (days === null) return 'pending';
+  return days > limit ? 'failed' : 'passed';
+};
+
+const nodeSpecs: Record<string, { cpu: string; gpu: string; ip: string; details: string }> = {
+  ghost: {
+    cpu: "Ryzen AI MAX+ 395 (16c/32t)",
+    gpu: "RDNA 3.5 (gfx1151) · ROCm AMDGPU enabled",
+    ip: "192.168.1.102",
+    details: "Control-plane + KubeVirt compute host. Pinned for local Qwen3.6 LLM inference and ARC runners."
+  },
+  'exo-0': {
+    cpu: "Dedicated worker host (16c/32t)",
+    gpu: "Headless console",
+    ip: "192.168.1.170",
+    details: "Always-on dedicated worker node. Schedules KubeVirt virt-launcher test VMs and system-upgrade controllers."
+  },
+  'exo-1': {
+    cpu: "Dakota Laptop (22c worker)",
+    gpu: "Integrated GPU",
+    ip: "192.168.1.239",
+    details: "Opt-in development laptop worker. Joined/left via home Justfile controls."
+  },
+  'exo-2': {
+    cpu: "Flatcar Sysext Node",
+    gpu: "Headless console",
+    ip: "192.168.1.171",
+    details: "Dedicated worker running Flatcar Container Linux with k3s via systemd-sysext. Auto kernel updates via Nebraska."
+  },
+  hamilton: {
+    cpu: "Ryzen Workstation (16c/32t)",
+    gpu: "Integrated GPU",
+    ip: "192.168.1.225",
+    details: "Opt-in Bluefin workstation worker. Sleep-inhibitor systemd service prevents suspend while connected."
+  },
+  bazzite: {
+    cpu: "Gaming Desktop Node",
+    gpu: "Dedicated GPU",
+    ip: "192.168.1.223",
+    details: "Offline worker. Reconnects as gaming machine permits."
+  }
+};
+
+// ── Release verdict (ADR 0002) ─────────────────────────────────
+const verdictRows = Array.isArray(releaseVerdict?.rows) ? releaseVerdict.rows : [];
+const verdictGeneratedAt = releaseVerdict?._meta?.generated_at || null;
+const verdictToneMap: Record<string, string> = { good: 'passed', bad: 'failed', pending: 'pending' };
+const inputToneMap: Record<string, string> = { passed: 'passed', failed: 'failed', pending: 'pending', unavailable: 'pending' };
+
+// ── Build duration / pass-fail sparklines from real GHA run history ──
+const laneSparkKeys = [
+  ['bluefin-stable', 'bluefin:stable'],
+  ['bluefin-testing', 'bluefin:testing'],
+  ['bluefin-lts-stable', 'bluefin-lts:stable'],
+  ['bluefin-lts-testing', 'bluefin-lts:testing'],
+  ['dakota', 'dakota'],
+] as const;
+const imageBuilds = (stats?.image_builds || {}) as Record<string, Array<{ overall?: string; started_at?: string; duration_min?: number; run_url?: string }>>;
+const laneSparks = laneSparkKeys.map(([key, label]) => {
+  const runs = (imageBuilds[key] || []).filter((r) => r.started_at).slice(-20);
+  return {
+    key,
+    label,
+    points: runs.map((r) => ({
+      t: r.started_at,
+      duration: r.duration_min ?? null,
+      passed: r.overall === 'passed',
+      url: r.run_url || null,
+    })),
+  };
+}).filter((s) => s.points.length > 0);
+
+// ── "What's degrading" — computed from real inputs only ─────────
+const degrading: Array<{ label: string; detail: string; tone: string; href: string | null }> = [];
+for (const row of verdictRows) {
+  if (row.verdict === 'bad') {
+    const failedInputs = ['build', 'qa', 'signature']
+      .filter((k) => row[k]?.status === 'failed')
+      .map((k) => `${k}: ${row[k]?.reason || 'failed'}`);
+    degrading.push({
+      label: `${row.lane} release is bad`,
+      detail: failedInputs.join(' · ') || 'one or more verdict inputs failed',
+      tone: 'failed',
+      href: row.build?.run_url || row.source_url || null,
+    });
+  }
+  if (row.qa?.status === 'pending' && row.qa?.reason) {
+    degrading.push({
+      label: `${row.lane} QA evidence stale`,
+      detail: row.qa.reason,
+      tone: 'pending',
+      href: null,
+    });
+  }
+}
+for (const spark of laneSparks) {
+  const pts = spark.points;
+  if (pts.length >= 6) {
+    const half = Math.floor(pts.length / 2);
+    const avg = (arr: typeof pts) => arr.reduce((s, p) => s + (p.duration || 0), 0) / (arr.length || 1);
+    const older = avg(pts.slice(0, half));
+    const recent = avg(pts.slice(half));
+    if (older > 0 && recent > older * 1.3) {
+      degrading.push({
+        label: `${spark.label} build duration trending up`,
+        detail: `recent runs average ${recent.toFixed(0)}m vs ${older.toFixed(0)}m before (+${Math.round(100 * (recent - older) / older)}%)`,
+        tone: 'pending',
+        href: null,
+      });
+    }
+  }
+  const lastThree = pts.slice(-3);
+  const failStreak = lastThree.length >= 2 && lastThree.every((p) => !p.passed);
+  if (failStreak) {
+    degrading.push({
+      label: `${spark.label} publishing builds failing`,
+      detail: `last ${lastThree.length} runs failed`,
+      tone: 'failed',
+      href: lastThree[lastThree.length - 1].url,
+    });
+  }
+}
+for (const row of upstreamRows) {
+  const ageLimit = (row.branch === 'testing' || row.branch === 'nightly') ? 7 : 14;
+  if (row.state === 'available' && typeof row.freshness_age_days === 'number' && row.freshness_age_days > ageLimit && row.group === 'projectbluefin') {
+    degrading.push({
+      label: `${row.variant}:${row.branch} release freshness`,
+      detail: `${row.freshness_age_days}d since last published release (threshold ${ageLimit}d)`,
+      tone: 'pending',
+      href: (row.source_url as string) || null,
+    });
+  }
+}
+
+const triageSparkPayload = { lanes: laneSparks };
+const serializedTriageSparkData = serializeJsonScript(triageSparkPayload);
+
+// BuildStream / remote-execution cache usage across both cache drives
+const bstCacheRows = Array.isArray(bstCache?.rows) ? bstCache.rows : [];
+const bstCacheGeneratedAt = bstCache?._meta?.generated_at || null;
+const bstDrives = ['ghost', 'exo-0'];
+const bstCells = bstDrives.map((node) => ['bazel-remote:cas', 'buildbarn:cas', 'buildbarn:ac'].map((key) => {
+  const [backend, storageType] = key.split(':');
+  const row = bstCacheRows.find((r) => r.node === node && r.cache_backend === backend && r.storage_type === storageType);
+  return row || { node, cache_backend: backend, storage_type: storageType, state: 'unavailable', state_reason: 'no cache instance scheduled on this node', percent: null, used_bytes: null, capacity_bytes: null };
+}));
+const bstChartPayload = {
+  drives: bstDrives,
+  caches: ['bazel-remote CAS', 'Buildbarn CAS', 'Buildbarn AC'],
+  cells: bstCells,
+};
+const serializedBstChartData = serializeJsonScript(bstChartPayload);
+---
+
+<SiteLayout
+  title="Factory Overview Dashboard"
+  description="Statically prerendered overview dashboard showing live contributor clusters, image release freshness, test coverage, and telemetry pipeline lineage."
+  current="overview"
+  includeDashboardAssets={false}
+>
+  <style>
+    /* ── Dashboard Header ─────────────────────────────────────── */
+    .dashboard-header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 1.5rem;
+    }
+    .dashboard-header h1 {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin: 0 0 0.5rem 0;
+      background: linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .meta-bar {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .meta-bar a { color: #38bdf8; text-decoration: none; }
+    .meta-bar a:hover { text-decoration: underline; }
+
+    /* ── SRE Triage ─────────────────────────────────────────── */
+    .verdict-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .verdict-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+    .verdict-card--good { border-color: rgba(16, 185, 129, 0.35); }
+    .verdict-card--bad { border-color: rgba(244, 63, 94, 0.45); background: linear-gradient(135deg, rgba(244, 63, 94, 0.08) 0%, rgba(15, 23, 42, 0.65) 100%); }
+    .verdict-card--pending { border-color: rgba(245, 158, 11, 0.3); }
+    .verdict-inputs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .verdict-input {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #94a3b8;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 999px;
+      padding: 0.18rem 0.55rem;
+    }
+    .verdict-input__dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; }
+    .verdict-input--passed .verdict-input__dot { background: #4ade80; }
+    .verdict-input--failed .verdict-input__dot { background: #f43f5e; }
+    .verdict-input--pending .verdict-input__dot { background: #fbbf24; }
+    .verdict-meta { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.72rem; color: #64748b; }
+    .verdict-meta .mono { font-family: ui-monospace, monospace; }
+    .verdict-note { font-size: 0.7rem; color: #fbbf24; line-height: 1.45; }
+    .spark-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .spark-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 0.9rem 1rem 0.5rem 1rem;
+    }
+    .degrading-panel {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.35) 0%, rgba(15, 23, 42, 0.55) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 16px;
+      padding: 0.75rem 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Section Titles ──────────────────────────────────────── */
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin: 2.5rem 0 1rem 0;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 3px solid #38bdf8;
+      padding-left: 10px;
+    }
+
+    /* ── KPI Grid ───────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .kpi-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 130px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .kpi-card:hover {
+      border-color: rgba(56, 189, 248, 0.3);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+    .kpi-card--success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(16, 185, 129, 0.25);
+    }
+    .kpi-card--success:hover { border-color: rgba(16, 185, 129, 0.45); }
+    .kpi-card--warning {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(15, 23, 42, 0.65) 100%);
+      border-color: rgba(245, 158, 11, 0.2);
+    }
+    .kpi-card--warning:hover { border-color: rgba(245, 158, 11, 0.4); }
+
+    .kpi-card__title {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card__value {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #f8fafc;
+      letter-spacing: -0.04em;
+      margin: 0.5rem 0 0.2rem 0;
+    }
+    .kpi-card__sub {
+      font-size: 0.72rem;
+      color: #64748b;
+    }
+
+    /* ── Node/Cluster Panel ─────────────────────────────────── */
+    .nodes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.6rem;
+      margin-bottom: 2.5rem;
+      padding: 0.35rem 0.25rem;
+    }
+    .node-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: all 0.3s ease;
+    }
+    .node-card:hover {
+      border-color: rgba(56, 189, 248, 0.25);
+      transform: translateY(-2px);
+    }
+    .node-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .node-card h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .node-role {
+      font-size: 0.8rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .node-gauge-row {
+      display: grid;
+      grid-template-columns: 4rem 1fr 3.5rem;
+      gap: 10px;
+      align-items: center;
+      font-size: 0.82rem;
+    }
+    .node-gauge-bar {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+    .node-gauge-bar > span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #38bdf8, #a78bfa);
+    }
+    .node-meta {
+      font-size: 0.78rem;
+      color: #64748b;
+      margin-top: 0.35rem;
+    }
+
+    /* ── Image Status Grid ──────────────────────────────────── */
+    .image-status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2.5rem;
+    }
+    .image-status-card {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 18px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .image-status-card h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .pulse-stats {
+      display: flex;
+      gap: 1.5rem;
+    }
+    .pulse-stat {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .pulse-stat-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+    }
+    .pulse-stat-value.tone-good { color: #4ade80; }
+    .pulse-stat-value.tone-warn { color: #fbbf24; }
+    .pulse-stat-value.tone-bad  { color: #fb7185; }
+    .pulse-stat-value.tone-passed { color: #4ade80; }
+    .pulse-stat-value.tone-failed { color: #fb7185; }
+    .pulse-stat-value.tone-pending { color: #fbbf24; }
+    .pulse-stat-name {
+      font-size: 0.7rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .pulse-stat-detail {
+      font-size: 0.68rem;
+      color: #94a3b8;
+      line-height: 1.25;
+      max-width: 12rem;
+    }
+    
+    /* Mini BDD test pills on homepage image cards */
+    .mini-test-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: #94a3b8;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .mini-test-pill:hover {
+      background: rgba(30, 41, 59, 0.75);
+      border-color: rgba(56, 189, 248, 0.3);
+      color: #f1f5f9;
+      transform: translateY(-0.5px);
+    }
+    .suite-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .mini-test-pill.status--passed .suite-status-dot {
+      background-color: #10b981;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+    }
+    .mini-test-pill.status--failed .suite-status-dot {
+      background-color: #f43f5e;
+      box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
+    }
+    .mini-test-pill.status--unavailable .suite-status-dot {
+      background-color: #64748b;
+    }
+    .node-links {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+    .node-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      padding: 0.2rem 0.55rem;
+      font-size: 0.72rem;
+      color: #cbd5e1;
+      text-decoration: none;
+    }
+    .node-link--up {
+      border-color: rgba(34, 197, 94, 0.5);
+      color: #86efac;
+    }
+    .node-link--warn {
+      border-color: rgba(245, 158, 11, 0.45);
+      color: #fcd34d;
+    }
+
+    /* ── Fabric SVG overlay ─────────────────────────────────── */
+    #cluster-canvas-wrap {
+      position: relative;
+      padding-top: 2.5rem;
+    }
+    #fabric-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: visible;
+      z-index: 10;
+    }
+
+    /* ── Dense Lists ────────────────────────────────────────── */
+    .lists-split {
+      display: grid;
+      grid-template-columns: 1.3fr 0.7fr;
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    @media (max-width: 900px) {
+      .lists-split {
+        grid-template-columns: 1fr;
+      }
+    }
+    .dense-panel {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+    }
+    .dense-panel h2 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #cbd5e1;
+      margin: 0 0 1rem 0;
+    }
+    .dense-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dense-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: rgba(30, 41, 59, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      font-size: 0.88rem;
+    }
+    .dense-row:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .dense-row a {
+      color: #38bdf8;
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .dense-row a:hover {
+      text-decoration: underline;
+    }
+    .bug-meta {
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    /* ── Shell element keeps matching tests ─────────────────── */
+    #factory-dashboard {
+      display: block;
+    }
+
+    @keyframes sizzle {
+      0% { filter: brightness(1.0); box-shadow: 0 0 2px rgba(244, 63, 94, 0.4); }
+      50% { filter: brightness(1.2); box-shadow: 0 0 8px rgba(249, 115, 22, 0.6); }
+      100% { filter: brightness(1.0); box-shadow: 0 0 2px rgba(244, 63, 94, 0.4); }
+    }
+    .heat-bar-container {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 999px;
+      width: 100px;
+      height: 6px;
+      margin-top: 0.25rem;
+      overflow: hidden;
+    }
+    .heat-glowing-bar {
+      border-radius: 999px;
+      height: 100%;
+      animation: sizzle 2.5s ease-in-out infinite;
+    }
+    .heat-col-layout {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .chart-panel-custom {
+      background: rgba(15, 23, 42, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 1.5rem;
+      margin-top: 1rem;
+    }
+    .chart-box-custom {
+      width: 100%;
+      height: 280px;
+      min-height: 280px;
+    }
+    .registry-flex-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 1.8fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 960px) {
+      .registry-flex-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* TB4 Dash animations */
+    @keyframes tb4-dash-fwd { to { stroke-dashoffset: -28; } }
+    @keyframes tb4-dash-rev { to { stroke-dashoffset: 28; } }
+  </style>
+
+  <div id="factory-dashboard">
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  HEADER                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <header class="dashboard-header">
+      <h1>{copy.brand.title}</h1>
+      <div class="meta-bar">
+        <span>Updated {formatUtc(stats?._meta?.generated)}</span>
+        <span>Source: projectbluefin core metrics & feeds</span>
+        <span>Snapshot: <span style={`color: ${telemetrySnapshot.state === 'fresh' ? '#4ade80' : '#fbbf24'};`}>{telemetrySnapshot.state || 'unknown'}</span></span>
+        <a href={`${baseUrl}data/factory-stats.json`}>Raw dataset ↗</a>
+      </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  SRE TRIAGE — is the factory healthy? is the last release   -->
+    <!--  good? what's degrading? (ADR 0002)                          -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Is the last release good?</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Per-lane verdict under <a href="https://github.com/projectbluefin/lab/blob/main/docs/adr/0002-release-verdict-definition.md" style="color:#38bdf8; text-decoration:none;">ADR 0002</a>:
+      publishing build + lab QA on the exact digest + cosign signature. Security regression shown alongside, never gating.
+      {verdictGeneratedAt && <span> Collected {formatUtc(verdictGeneratedAt)}.</span>}
+    </p>
+    <div class="verdict-grid">
+      {verdictRows.map((row) => (
+        <article class={`verdict-card verdict-card--${row.verdict}`}>
+          <header style="display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="margin:0; font-size:1rem; color:#f1f5f9;">{row.lane}</h3>
+            <span class={`pill pill--${verdictToneMap[row.verdict] === 'passed' ? 'completed' : verdictToneMap[row.verdict]}`} style="text-transform:uppercase; font-weight:700;">
+              {row.verdict}
+            </span>
+          </header>
+          <div class="verdict-inputs">
+            {(['build', 'qa', 'signature'] as const).map((k) => {
+              const input = row[k] || {};
+              const tone = inputToneMap[input.status] || 'pending';
+              const title = input.reason || (k === 'qa' ? 'lab-sourced evidence' : input.status);
+              return (
+                <span class={`verdict-input verdict-input--${tone}`} title={title}>
+                  <span class="verdict-input__dot"></span>
+                  {k === 'qa' ? 'QA (lab)' : k}: {input.status}
+                </span>
+              );
+            })}
+            <span class="verdict-input verdict-input--pending" title={row.security_regression?.reason || 'unavailable'}>
+              <span class="verdict-input__dot"></span>
+              CVE regression: {row.security_regression?.status || 'unavailable'}
+            </span>
+          </div>
+          <div class="verdict-meta">
+            {row.digest ? (
+              <span class="mono" title={row.digest}>{row.digest.slice(0, 19)}…</span>
+            ) : (
+              <span style="color:#fbbf24;">{row.state_reason || 'digest unavailable'}</span>
+            )}
+            {row.build?.run_url && (
+              <a href={row.build.run_url} target="_blank" rel="noreferrer" style="color:#38bdf8; text-decoration:none;">build run ↗</a>
+            )}
+          </div>
+          {row.qa?.status === 'pending' && row.qa?.reason && (
+            <div class="verdict-note">{row.qa.reason}</div>
+          )}
+        </article>
+      ))}
+      {verdictRows.length === 0 && (
+        <div style="color:#fbbf24; font-size:0.85rem;">Release verdict dataset unavailable — collector has not published docs/data/release-verdict.json yet.</div>
+      )}
+    </div>
+
+    <h2 class="section-title">Is the factory healthy?</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Publishing build duration and pass/fail per lane — last {laneSparks.length ? Math.max(...laneSparks.map((s) => s.points.length)) : 0} GitHub Actions runs per lane, from factory-stats.json.
+    </p>
+    <div class="spark-grid">
+      {laneSparks.map((spark) => (
+        <article class="spark-card">
+          <header style="display:flex; justify-content:space-between; align-items:baseline;">
+            <h3 style="margin:0; font-size:0.85rem; color:#cbd5e1; font-family:ui-monospace,monospace;">{spark.label}</h3>
+            <span style={`font-size:0.72rem; font-weight:700; color:${spark.points[spark.points.length - 1].passed ? '#4ade80' : '#f87171'};`}>
+              {spark.points[spark.points.length - 1].passed ? 'last run passed' : 'last run failed'}
+            </span>
+          </header>
+          <div class="triage-spark" data-lane={spark.key} style="height: 84px;" role="img" aria-label={`Build duration trend for ${spark.label}`}></div>
+        </article>
+      ))}
+      {laneSparks.length === 0 && (
+        <div style="color:#fbbf24; font-size:0.85rem;">No publishing run history available in factory-stats.json.</div>
+      )}
+    </div>
+
+    <h2 class="section-title">What's degrading?</h2>
+    <div class="degrading-panel">
+      {degrading.length === 0 ? (
+        <div style="color:#4ade80; font-size:0.9rem; padding: 0.75rem 0;">No degradation signals from tracked inputs — verdicts, build trends, and release freshness are all inside thresholds.</div>
+      ) : (
+        <div class="dense-list">
+          {degrading.map((item) => (
+            <div class="dense-row" style="align-items:start;">
+              <div style="display:flex; align-items:baseline; gap:10px;">
+                <span class={`pill pill--${item.tone === 'failed' ? 'failed' : 'pending'}`} style="padding: 0.2rem 0.5rem; font-size: 0.72rem;">
+                  {item.tone === 'failed' ? 'failing' : 'degrading'}
+                </span>
+                <span style="font-weight:600;">{item.label}</span>
+              </div>
+              <div style="font-size:0.78rem; color:#94a3b8; text-align:right; max-width: 46ch;">
+                {item.href ? <a href={item.href} target="_blank" rel="noreferrer" style="color:#94a3b8;">{item.detail}</a> : item.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  IMAGE STATUS                                               -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Image status</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Days since latest published release in each lane, sourced from each repo's GitHub Releases feed.
+    </p>
+    <div class="image-status-grid">
+      {imageCards.map((card) => {
+        const releasesUrl = card.repo ? `https://github.com/${card.repo}/releases` : '';
+
+        return (
+          <article class="image-status-card">
+            <header style="display: flex; justify-content: space-between; align-items: center;">
+              <h3>{card.displayName}</h3>
+              {releasesUrl && (
+                <a href={releasesUrl} target="_blank" rel="noreferrer" style="font-size: 0.8rem; color: #38bdf8; text-decoration: none;">
+                  Releases &rarr;
+                </a>
+              )}
+            </header>
+            <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+              {card.branches.map((b, i) => {
+                const isAvailable = b.state === 'available';
+                const ageLimit = (b.branch === 'testing' || b.branch === 'nightly') ? 7 : 14;
+                const tone = isAvailable ? getAgeTone(b.age, ageLimit) : 'bad';
+                return (
+                  <div style={`display: flex; flex-direction: column; gap: 3px;${i > 0 ? ' border-top: 1px solid rgba(255,255,255,0.04); padding-top: 0.6rem;' : ''}`}>
+                    <div style="display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap;">
+                      <span class={`pulse-stat-value tone-${tone}`} style="font-size: 1.35rem;">
+                        {isAvailable && b.age !== null ? `${b.age}d` : '—'}
+                      </span>
+                      <span class="pulse-stat-name">{b.branch}</span>
+                      {!isAvailable && (
+                        <span style="font-size: 0.62rem; color: #fbbf24; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                          Awaiting Evidence
+                        </span>
+                      )}
+                    </div>
+                    <div class="pulse-stat-detail">
+                      {isAvailable && b.seenAt ? (
+                        b.sourceUrl ? (
+                          <a href={b.sourceUrl} target="_blank" rel="noreferrer" style="color: #64748b; text-decoration: none;">{`Published ${formatUtc(b.seenAt)}`}</a>
+                        ) : `Published ${formatUtc(b.seenAt)}`
+                      ) : (
+                        b.stateReason || 'No release timestamp'
+                      )}
+                    </div>
+                    {b.suites && b.suites.length > 0 && (
+                      <div class="branch-tests-row" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;">
+                        <span style="font-size: 0.65rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; margin-right: 2px;">Tests:</span>
+                        {b.suites.map((s) => {
+                          const suiteAbbr = { smoke: 'smoke', developer: 'dev', software: 'soft', system: 'sys', common: 'common', flatcar: 'flatcar' }[s.suite] || s.suite;
+                          return (
+                            <a
+                              href={`${baseUrl}tests/#${s.id}`}
+                              class={`mini-test-pill status--${s.result_status}`}
+                              title={`${s.suite} suite: ${s.result_status}${s.pass_rate !== null ? ` (${s.pass_rate}% passing)` : ''}`}
+                            >
+                              <span>{suiteAbbr}</span>
+                              <span class="suite-status-dot"></span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  CONTRIBUTOR CLUSTERS (NODES)                               -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">Contributor Clusters</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Who's donating cycles to test Bluefin right now — each card is a real machine running real tests.
+    </p>
+    <div id="cluster-canvas-wrap">
+    <div class="nodes-grid">
+      {clusterNodes.map((node) => (
+        <article class="node-card" data-node-name={node.name}>
+          <header>
+            <h3>{node.name}</h3>
+            <span class={`pill pill--${getNodeStatusTone(node.status)}`}>
+              {formatNodeStatus(node.status)}
+            </span>
+          </header>
+          <div class="node-role">{node.role}</div>
+          <div class="node-role" style="margin-top: 0.1rem; color: #64748b;">{node.os_image || 'Cluster snapshot'}</div>
+
+          <div class="node-gauge-row" style="margin-top: 0.5rem;">
+            <span>Mem use</span>
+            <div class="node-gauge-bar">
+              <span style={`width: ${node.mem_usage_pct != null ? Math.min(100, node.mem_usage_pct) : 0}%`}></span>
+            </div>
+            <span>{node.mem_usage_pct != null ? `${node.mem_usage_pct}%` : 'n/a'}</span>
+          </div>
+
+          <div class="node-gauge-row">
+            <span>CPU use</span>
+            <div class="node-gauge-bar">
+              <span style={`width: ${node.cpu_usage_pct != null ? Math.min(100, node.cpu_usage_pct) : 0}%`}></span>
+            </div>
+            <span>{node.cpu_usage_pct != null ? `${node.cpu_usage_pct}%` : 'n/a'}</span>
+          </div>
+          <div class="node-meta">
+            Capacity: {node.cpu_threads || 0} threads · {node.ram_gb || 0} GiB
+          </div>
+
+          <div class="node-specs-block" style="margin-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem; font-size: 0.78rem; color: #94a3b8; display: flex; flex-direction: column; gap: 0.25rem;">
+            {nodeSpecs[node.name] ? (
+              <>
+                <div><strong>Specs:</strong> {nodeSpecs[node.name].cpu} · {nodeSpecs[node.name].gpu}</div>
+                <div><strong>IP:</strong> {nodeSpecs[node.name].ip}</div>
+                <div style="font-size: 0.72rem; color: #64748b; line-height: 1.4; margin-top: 0.15rem;">
+                  {nodeSpecs[node.name].details}
+                </div>
+              </>
+            ) : (
+              <div style="color: #64748b; font-style: italic;">No static hardware specifications mapped for this host.</div>
+            )}
+          </div>
+
+          {nodeLinksByName.get(node.name)?.length > 0 && (
+            <div class="node-links">
+              {nodeLinksByName.get(node.name).map((link) =>
+                link.sourceUrl ? (
+                  <a
+                    href={link.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    class={`node-link ${link.status === 'up' ? 'node-link--up' : 'node-link--warn'}`}
+                  >
+                    <span>{link.peer}</span>
+                    <span>{link.speed}</span>
+                  </a>
+                ) : (
+                  <span class={`node-link ${link.status === 'up' ? 'node-link--up' : 'node-link--warn'}`}>
+                    <span>{link.peer}</span>
+                    <span>{link.speed}</span>
+                  </span>
+                ),
+              )}
+            </div>
+          )}
+        </article>
+      ))}
+    </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  BST CACHE UTILIZATION ACROSS BOTH DRIVES                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <h2 class="section-title">BuildStream Cache Utilization</h2>
+    <p class="section-sub" style="margin-top: -0.5rem; margin-bottom: 1.5rem; color: #64748b; font-size: 0.9rem;">
+      Remote-execution cache fill across both cache drives: ghost (bazel-remote + Buildbarn shard) and exo-0 (Buildbarn shard).
+    </p>
+    <div class="nodes-grid">
+      <article class="node-card" style="grid-column: 1 / -1; background: linear-gradient(180deg, rgba(30, 41, 59, 0.45) 0%, rgba(15, 23, 42, 0.6) 100%);">
+        <header style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <h3>bst Cache Heat Map</h3>
+            <span class="pill pill--completed" style="background: rgba(34,197,94,.15); color: #4ade80; padding: 0.15rem 0.5rem; font-size: 0.72rem;">live</span>
+          </div>
+          <span style="font-size: 0.75rem; color: #64748b;">Collected: {bstCacheGeneratedAt ? formatUtc(bstCacheGeneratedAt) : 'unavailable'}</span>
+        </header>
+        <p style="font-size: 0.85rem; color: #94a3b8; line-height: 1.6; margin: 0 0 1rem 0;">
+          bazel-remote is nodeSelector-pinned to ghost; Buildbarn's 2-shard CAS/AC is scheduled across ghost and exo-0 via podAntiAffinity.
+          Buildbarn's block-device-backed storage is preallocated on disk, so its cell values are a derived estimate of logical fill (allocator counters × known block size), not raw disk bytes.
+        </p>
+        <div id="bst-cache-chart" class="chart-box-custom" style="height: 220px; min-height: 220px;" role="img" aria-label="bst cache utilization heat map across ghost and exo-0"></div>
+      </article>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  DENSE RECENT RUNS & OPEN BUGS LISTS                         -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div class="lists-split">
+      <!-- Recent Runs Changelog -->
+      <section class="dense-panel">
+        <h2>Recent Runs & Builds</h2>
+        <div class="dense-list">
+          {runs.slice(0, 12).map((run) => (
+            <div class="dense-row">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class={`pill pill--${run.overall === 'passed' ? 'completed' : run.overall === 'running' ? 'pending' : 'failed'}`} style="padding: 0.2rem 0.5rem; font-size: 0.72rem;">
+                  {run.overall}
+                </span>
+                <span style="font-weight: 600;">{run.label || run.id}</span>
+              </div>
+              <div class="mono" style="text-align: right;">
+                <div>{run.started_at ? formatUtc(run.started_at) : '—'}</div>
+                <div style="font-size: 0.75rem; color: #64748b;">
+                  Duration: {run.duration_min !== null ? `${run.duration_min}m` : '—'} · Trigger: {run.trigger || 'manual'}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <!-- Open Bugs -->
+      <section class="dense-panel">
+        <h2>Open Bugs ({openBugs.length})</h2>
+        <div class="dense-list">
+          {openBugs.map((bug) => (
+            <div class="dense-row" style="flex-direction: column; align-items: start; gap: 6px;">
+              <a href={bug.url} target="_blank" rel="noreferrer">
+                #{bug.number}: {bug.title}
+              </a>
+              <div class="bug-meta">
+                Created: {formatUtc(bug.created_at)}
+              </div>
+            </div>
+          ))}
+          {openBugs.length === 0 && (
+            <div style="color: #64748b; font-size: 0.88rem; padding: 10px;">
+              No open bugs found in telemetry dataset!
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!--  DATA INTEGRITY DISCLOSURE                                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <p style="font-size: 0.85rem; color: #64748b; margin-top: 2rem;">
+      Data source: <a href={`${baseUrl}data/factory-stats.json`} style="color: #38bdf8; text-decoration: none;">factory-stats.json</a>
+      {stats?._meta?.generated && <span> · updated {formatUtc(stats._meta.generated)}</span>}
+    </p>
+  </div>
+  <script is:inline src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js" defer data-cfasync="false"></script>
+  <script id="triage-spark-payload" type="application/json" set:html={serializedTriageSparkData}></script>
+  <script id="bst-cache-chart-payload" type="application/json" set:html={serializedBstChartData}></script>
+  <script is:inline data-cfasync="false">
+    (function() {
+      const charts = [];
+
+      function bootTriageSparks(echarts) {
+        const payloadNode = document.getElementById('triage-spark-payload');
+        if (!payloadNode) return;
+        const data = JSON.parse(payloadNode.textContent || '{}');
+        if (!data.lanes) return;
+        data.lanes.forEach(function(lane) {
+          const el = document.querySelector('.triage-spark[data-lane="' + lane.key + '"]');
+          if (!el || !lane.points || !lane.points.length) return;
+          const chart = echarts.init(el);
+          charts.push(chart);
+          chart.setOption({
+            animation: false,
+            grid: { left: 34, right: 6, top: 8, bottom: 16 },
+            tooltip: {
+              trigger: 'axis',
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+              textStyle: { color: '#cbd5e1', fontSize: 11 },
+              formatter: function(params) {
+                const p = lane.points[params[0].dataIndex];
+                return (p.t || '') + '<br/>' +
+                  (p.duration !== null ? p.duration + ' min' : 'duration unavailable') +
+                  ' · ' + (p.passed ? 'passed' : 'failed');
+              }
+            },
+            xAxis: {
+              type: 'category',
+              data: lane.points.map(function(p) { return (p.t || '').slice(5, 10); }),
+              axisLabel: { color: '#64748b', fontSize: 8, interval: Math.max(1, Math.floor(lane.points.length / 5)) },
+              axisTick: { show: false },
+              axisLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+            },
+            yAxis: {
+              type: 'value',
+              axisLabel: { color: '#64748b', fontSize: 8, formatter: '{value}m' },
+              splitLine: { lineStyle: { color: 'rgba(255,255,255,0.04)' } }
+            },
+            series: [{
+              type: 'line',
+              data: lane.points.map(function(p) { return p.duration; }),
+              smooth: true,
+              showSymbol: true,
+              symbolSize: 5,
+              lineStyle: { color: '#38bdf8', width: 1.5 },
+              itemStyle: {
+                color: function(params) {
+                  return lane.points[params.dataIndex].passed ? '#4ade80' : '#f43f5e';
+                }
+              },
+              areaStyle: { color: 'rgba(56, 189, 248, 0.08)' }
+            }]
+          });
+        });
+      }
+
+      function bootBstCacheChart(echarts) {
+        const payloadNode = document.getElementById('bst-cache-chart-payload');
+        if (!payloadNode) return;
+        const data = JSON.parse(payloadNode.textContent || '{}');
+        const chartEl = document.getElementById('bst-cache-chart');
+        if (!chartEl || !data.cells) return;
+
+        const heatData = [];
+        data.drives.forEach(function(drive, driveIdx) {
+          data.caches.forEach(function(cacheLabel, cacheIdx) {
+            const cell = data.cells[driveIdx][cacheIdx];
+            heatData.push([driveIdx, cacheIdx, cell.state === 'available' ? cell.percent : null, cell]);
+          });
+        });
+
+        const chart = echarts.init(chartEl);
+        charts.push(chart);
+        chart.setOption({
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            textStyle: { color: '#cbd5e1' },
+            formatter: function(params) {
+              const cell = params.data[3];
+              if (cell.state !== 'available') {
+                return data.caches[params.data[1]] + ' on ' + data.drives[params.data[0]] + '<br/>unavailable: ' + (cell.state_reason || 'no data');
+              }
+              const usedMb = cell.used_bytes != null ? (cell.used_bytes / (1024 * 1024)).toFixed(2) : '?';
+              const capMb = cell.capacity_bytes != null ? (cell.capacity_bytes / (1024 * 1024)).toFixed(0) : '?';
+              return data.caches[params.data[1]] + ' on ' + data.drives[params.data[0]] + '<br/>' + cell.percent + '% used (' + usedMb + ' MB / ' + capMb + ' MB)';
+            }
+          },
+          grid: { left: 90, right: 20, top: 20, bottom: 30 },
+          xAxis: {
+            type: 'category',
+            data: data.drives,
+            splitArea: { show: true },
+            axisLabel: { color: '#94a3b8', fontSize: 10, fontWeight: 'bold' }
+          },
+          yAxis: {
+            type: 'category',
+            data: data.caches,
+            splitArea: { show: true },
+            axisLabel: { color: '#94a3b8', fontSize: 10 }
+          },
+          visualMap: {
+            min: 0,
+            max: 100,
+            show: true,
+            orient: 'horizontal',
+            left: 'center',
+            bottom: -5,
+            textStyle: { color: '#94a3b8', fontSize: 9 },
+            inRange: { color: ['#1e293b', '#38bdf8', '#eab308', '#f97316', '#f43f5e'] }
+          },
+          series: [{
+            name: 'Cache utilization',
+            type: 'heatmap',
+            data: heatData,
+            label: {
+              show: true,
+              color: '#f1f5f9',
+              fontSize: 10,
+              fontWeight: 'bold',
+              formatter: function(params) {
+                const cell = params.data[3];
+                return cell.state === 'available' ? cell.percent + '%' : 'N/A';
+              }
+            },
+            itemStyle: {
+              borderColor: 'rgba(15, 23, 42, 0.8)',
+              borderWidth: 2
+            }
+          }]
+        });
+      }
+
+      function waitForCharts(attempt) {
+        if (attempt === undefined) attempt = 0;
+        if (window.echarts) {
+          bootTriageSparks(window.echarts);
+          bootBstCacheChart(window.echarts);
+          return;
+        }
+        if (attempt > 40) return;
+        window.setTimeout(function() { waitForCharts(attempt + 1); }, 125);
+      }
+
+      window.addEventListener('resize', function() {
+        charts.forEach(function(chart) { chart.resize(); });
+      });
+
+      waitForCharts();
+    })();
+  </script>
+</SiteLayout>

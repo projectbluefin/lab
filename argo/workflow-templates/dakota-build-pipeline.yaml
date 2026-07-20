@@ -1,0 +1,419 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: dakota-build-pipeline
+  namespace: argo
+  annotations:
+    description: |
+      Additive dakota BST build pipeline. Builds the bluefin and bluefin-nvidia OCI
+      variants in parallel using the shared Buildbarn frontend as the single
+      source of truth for artifacts and source caches. BuildStream driver pods use
+      emptyDir scratch so they can float freely across ghost/exo-0; required
+      podAntiAffinity keeps the two variant drivers on different nodes. Triggered
+      by push to dakota:testing via dakota-commit-poller CronWorkflow. On success,
+      exports to local Zot (:30500) as dakota:testing and dakota-nvidia:testing.
+      Uses bst-build PriorityClass.
+  labels:
+    app.kubernetes.io/component: dakota-build
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  # BST build concurrency is handled by the scheduler via pod resource requests.
+  # Cold bootstrap + source fetch + package compilation can exceed the prior 6h
+  # per-pod deadline, so allow a full 12h per build pod and a 24h workflow
+  # ceiling to cover one complete build/export path without killing it mid-run.
+  activeDeadlineSeconds: 86400
+
+  arguments:
+    parameters:
+      - name: repo
+        value: "https://github.com/projectbluefin/dakota.git"
+      - name: ref
+        value: "testing"
+      - name: commit-sha
+        value: ""
+      - name: registry
+        value: "192.168.1.102:30500"
+      - name: build-mode
+        value: "re"
+      - name: lock-key
+        value: "bst-build"
+
+  entrypoint: build
+
+  templates:
+
+    - name: build
+      inputs:
+        parameters:
+          - name: ref
+            value: "{{workflow.parameters.ref}}"
+          - name: commit-sha
+            value: "{{workflow.parameters.commit-sha}}"
+          - name: repo
+            value: "{{workflow.parameters.repo}}"
+          - name: registry
+            value: "{{workflow.parameters.registry}}"
+          - name: build-mode
+            value: "re"
+          - name: lock-key
+            value: "{{workflow.parameters.lock-key}}"
+      dag:
+        tasks:
+          - name: detect-build-mode
+            template: detect-build-mode
+            arguments:
+              parameters:
+                - name: build-mode
+                  value: "{{inputs.parameters.build-mode}}"
+          - name: build-bluefin
+            template: run-bst-step
+            depends: detect-build-mode
+            arguments:
+              parameters:
+                - name: element
+                  value: "oci/bluefin.bst"
+                - name: tag
+                  value: "dakota"
+                - name: ref
+                  value: "{{inputs.parameters.ref}}"
+                - name: commit-sha
+                  value: "{{inputs.parameters.commit-sha}}"
+                - name: repo
+                  value: "{{inputs.parameters.repo}}"
+                - name: registry
+                  value: "{{inputs.parameters.registry}}"
+                - name: mode
+                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
+                - name: lock-key
+                  value: "{{inputs.parameters.lock-key}}"
+          - name: build-bluefin-nvidia
+            template: run-bst-step
+            depends: detect-build-mode
+            arguments:
+              parameters:
+                - name: element
+                  value: "oci/bluefin-nvidia.bst"
+                - name: tag
+                  value: "dakota-nvidia"
+                - name: ref
+                  value: "{{inputs.parameters.ref}}"
+                - name: commit-sha
+                  value: "{{inputs.parameters.commit-sha}}"
+                - name: repo
+                  value: "{{inputs.parameters.repo}}"
+                - name: registry
+                  value: "{{inputs.parameters.registry}}"
+                - name: mode
+                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
+                - name: lock-key
+                  value: "{{inputs.parameters.lock-key}}"
+
+    # Dakota builds are distributed-only. Non-RE modes are rejected to prevent
+    # local/serial bypasses that write large build state to node root disks.
+    - name: detect-build-mode
+      inputs:
+        parameters:
+          - name: build-mode
+      outputs:
+        parameters:
+          - name: mode
+            valueFrom:
+              path: /tmp/mode
+      script:
+        image: cgr.dev/chainguard/kubectl:latest-dev
+        command: [bash]
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        source: |
+          set -euo pipefail
+          REQUESTED="{{inputs.parameters.build-mode}}"
+          if [[ "${REQUESTED}" != "re" ]]; then
+            echo "Dakota build-mode '${REQUESTED}' is forbidden; only distributed mode ('re') is permitted" >&2
+            exit 1
+          fi
+
+          MAX_AGE_SECONDS=60
+          NOW="$(date -u +%s)"
+          for NODE in ghost exo-0; do
+            LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}')"
+            OBSERVED_AT="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link-observed-at}')"
+            READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
+
+            if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
+              echo "USB4 BuildBarn gate rejected ${NODE}: link=${LINK:-missing} observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
+              exit 1
+            fi
+            if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
+              echo "USB4 BuildBarn gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
+              exit 1
+            fi
+          done
+
+          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|"}{.status.containerStatuses[*].ready}{"\n"}{end}')"
+          for NODE in ghost exo-0; do
+            if ! grep -Eq "^${NODE}\|Running\|true true$" <<<"${WORKERS}"; then
+              echo "USB4 BuildBarn gate rejected: no Ready worker on ${NODE}" >&2
+              exit 1
+            fi
+          done
+
+          echo "USB4-backed BuildBarn remote execution admitted"
+          printf '%s' re > /tmp/mode
+
+    - name: run-bst-step
+      inputs:
+        parameters:
+          - name: element
+          - name: tag
+          - name: ref
+          - name: commit-sha
+          - name: repo
+          - name: registry
+          - name: mode
+          - name: lock-key
+      dag:
+        tasks:
+          - name: bst-re
+            template: bst-build-re
+            when: "'{{inputs.parameters.mode}}' == 're'"
+            arguments:
+              parameters:
+                - name: element
+                  value: "{{inputs.parameters.element}}"
+                - name: tag
+                  value: "{{inputs.parameters.tag}}"
+                - name: ref
+                  value: "{{inputs.parameters.ref}}"
+                - name: commit-sha
+                  value: "{{inputs.parameters.commit-sha}}"
+                - name: repo
+                  value: "{{inputs.parameters.repo}}"
+                - name: registry
+                  value: "{{inputs.parameters.registry}}"
+                - name: mode
+                  value: "{{inputs.parameters.mode}}"
+                - name: lock-key
+                  value: "{{inputs.parameters.lock-key}}"
+
+    - name: bst-build-re
+      synchronization:
+        semaphores:
+        - configMapKeyRef:
+            name: workflow-semaphores
+            key: "{{inputs.parameters.lock-key}}"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: workflows.argoproj.io/workflow
+                    operator: In
+                    values:
+                      - "{{workflow.name}}"
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: bst-build
+      activeDeadlineSeconds: 43200
+      retryStrategy:
+        limit: "2"
+        retryPolicy: "Always"
+      inputs:
+        parameters:
+          - name: element
+          - name: tag
+          - name: ref
+          - name: commit-sha
+          - name: repo
+          - name: registry
+          - name: mode
+          - name: lock-key
+      volumes:
+        - name: fuse
+          hostPath:
+            path: /dev/fuse
+        - name: bst-cache
+          emptyDir:
+            sizeLimit: 200Gi
+        - name: buildstream-config
+          configMap:
+            name: buildstream-remote-cache
+            items:
+              - key: dakota-buildstream.conf
+                path: buildstream.conf
+              - key: remote-execution.conf
+                path: remote-execution.conf
+      script:
+        image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
+        command: [bash]
+        securityContext:
+          privileged: true
+          seLinuxOptions:
+            type: spc_t
+        env:
+          - name: GRPC_POLL_STRATEGY
+            value: poll
+          - name: GRPC_ENABLE_FORK_SUPPORT
+            value: "1"
+          - name: XDG_CACHE_HOME
+            value: "/root/.cache/{{inputs.parameters.tag}}"
+        resources:
+          requests:
+            cpu: "8"
+            memory: 16Gi
+            ephemeral-storage: 100Gi
+          limits:
+            cpu: "16"
+            memory: 32Gi
+            ephemeral-storage: 200Gi
+        volumeMounts:
+          - name: fuse
+            mountPath: /dev/fuse
+          - name: bst-cache
+            mountPath: /root/.cache
+          - name: buildstream-config
+            mountPath: /etc/buildstream
+            readOnly: true
+        source: |
+          set -euo pipefail
+
+          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
+          BST_CONF=/tmp/buildstream-cluster.conf
+          ELEMENT="{{inputs.parameters.element}}"
+          TAG="{{inputs.parameters.tag}}"
+          REF="{{inputs.parameters.ref}}"
+          REPO="{{inputs.parameters.repo}}"
+          mkdir -p "${XDG_CACHE_HOME}"
+          # Retries can leave stale dulwich lock files; clear them before fetch.
+          find "${XDG_CACHE_HOME}/buildstream/sources/git_repo" -type f -name '*.lock' -delete 2>/dev/null || true
+          echo "=== Cloning dakota @ ${REF} ==="
+          rm -rf /src
+          git clone --depth=1 "${REPO}" /src
+          cd /src
+          COMMIT_SHA="{{inputs.parameters.commit-sha}}"
+          if [[ -n "${COMMIT_SHA}" ]]; then
+            echo "=== Checking out exact GitHub commit ${COMMIT_SHA} ==="
+            git fetch --depth=1 origin "${COMMIT_SHA}"
+            git checkout --detach "${COMMIT_SHA}"
+          else
+            echo "=== Checking out ref ${REF} ==="
+            git fetch --depth=1 origin "${REF}"
+            git checkout --detach FETCH_HEAD
+          fi
+
+          echo "=== Rewriting gnome-build-meta source URL to GitHub mirror ==="
+          if [[ -f /src/elements/gnome-build-meta.bst ]]; then
+            sed -i 's#https://gitlab.gnome.org/GNOME/gnome-build-meta.git#https://github.com/GNOME/gnome-build-meta.git#g' /src/elements/gnome-build-meta.bst
+          fi
+
+          echo "=== Synchronizing upstream patch queues for cache reuse ==="
+          rm -rf /tmp/upstream-patches
+          mkdir -p /tmp/upstream-patches
+
+          if git clone --depth=1 https://github.com/GNOME/gnome-build-meta.git /tmp/upstream-patches/gnome-build-meta; then
+            (
+              cd /tmp/upstream-patches/gnome-build-meta
+              GNOME_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/gnome-build-meta.bst | tr -d '\r')
+              GNOME_COMMIT="${GNOME_REF##*-g}"
+              if git fetch --depth=1 origin "${GNOME_COMMIT}"; then
+                git checkout --detach FETCH_HEAD
+                if [[ -d patches/gnome-build-meta ]]; then
+                  rm -rf /src/patches/gnome-build-meta
+                  cp -a patches/gnome-build-meta /src/patches/gnome-build-meta
+                fi
+              else
+                echo "WARN: unable to fetch gnome-build-meta commit ${GNOME_COMMIT}; continuing without patch sync"
+              fi
+            )
+          else
+            echo "WARN: unable to clone gnome-build-meta upstream patch repo; continuing without patch sync"
+          fi
+
+          if git clone --depth=1 https://gitlab.com/freedesktop-sdk/freedesktop-sdk.git /tmp/upstream-patches/freedesktop-sdk; then
+            (
+              cd /tmp/upstream-patches/freedesktop-sdk
+              FDS_REF=$(awk -F': ' '/^  ref:/{print $2; exit}' /src/elements/freedesktop-sdk.bst | tr -d '\r')
+              FDS_COMMIT="${FDS_REF##*-g}"
+              if git fetch --depth=1 origin "${FDS_COMMIT}"; then
+                git checkout --detach FETCH_HEAD
+                if [[ -d patches/freedesktop-sdk ]]; then
+                  rm -rf /src/patches/freedesktop-sdk
+                  cp -a patches/freedesktop-sdk /src/patches/freedesktop-sdk
+                fi
+              else
+                echo "WARN: unable to fetch freedesktop-sdk commit ${FDS_COMMIT}; continuing without patch sync"
+              fi
+            )
+          else
+            echo "WARN: unable to clone freedesktop-sdk upstream patch repo; continuing without patch sync"
+          fi
+
+          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
+          cat >> /tmp/buildstream-cluster.conf <<EOF
+          projects:
+            ${PROJECT_NAME}:
+              artifacts:
+                override-project-caches: false
+                servers:
+                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  push: true
+                - url: http://bst-cache-proxy.argo.svc.cluster.local:8080/gbm
+                  push: false
+                - url: http://bst-cache-proxy.argo.svc.cluster.local:8080/fds
+                  push: false
+                - url: http://bst-cache-proxy.argo.svc.cluster.local:8080/pb
+                  push: false
+              source-caches:
+                override-project-caches: false
+                servers:
+                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  type: storage
+                  push: true
+                - url: http://bst-cache-proxy.argo.svc.cluster.local:8080/gbm
+                  push: false
+                - url: http://bst-cache-proxy.argo.svc.cluster.local:8080/fds
+                  push: false
+                - url: http://bst-cache-proxy.argo.svc.cluster.local:8080/pb
+                  push: false
+          EOF
+
+          echo "=== Distributed build: remote execution enabled ==="
+          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
+          if ! grep -q '^    remote-execution:$' /tmp/buildstream-cluster.conf; then
+            echo "BuildStream remote execution configuration is missing" >&2
+            exit 1
+          fi
+          echo "=== Verified BuildStream remote execution configuration ==="
+
+          echo "=== Building ${ELEMENT} ==="
+          bst --config "${BST_CONF}" \
+              --no-interactive \
+              --max-jobs 16 \
+              --fetchers 16 \
+              build "${ELEMENT}"
+
+          echo "=== Exporting ${ELEMENT} ==="
+          EXPORT_DIR="/tmp/export-$(basename ${ELEMENT} .bst)"
+          mkdir -p "${EXPORT_DIR}"
+          bst --config "${BST_CONF}" \
+              --no-interactive \
+              --max-jobs 16 \
+              --fetchers 16 \
+              -o x86_64_v3 true \
+              artifact checkout "${ELEMENT}" \
+              --directory "${EXPORT_DIR}"
+
+          echo "=== Pushing to local Zot ==="
+          if command -v skopeo >/dev/null 2>&1; then
+            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:testing"
+          else
+            IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
+            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:testing" --tls-verify=false
+            podman rmi "${IMAGE_ID}" 2>/dev/null || true
+          fi
+
+          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:testing ==="

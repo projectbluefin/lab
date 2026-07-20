@@ -1,0 +1,23 @@
+---
+interface Link {
+  href: string;
+  label: string;
+  external?: boolean;
+}
+
+interface Props {
+  links: Link[];
+  class?: string;
+}
+
+const { links, class: className = "" } = Astro.props;
+---
+<ul class:list={["evidence-list", className]}>
+  {links.map((link) => (
+    <li>
+      <a href={link.href} target={link.external ? "_blank" : undefined} rel={link.external ? "noreferrer" : undefined}>
+        {link.label}
+      </a>
+    </li>
+  ))}
+</ul>

@@ -1,5 +1,5 @@
 # Patch workflow-controller-configmap with workflow retention defaults and
-# anti-spam limits. ServerSideApply (configured in testing-lab-infra Application)
+# anti-spam limits. ServerSideApply (configured in lab-infra Application)
 # merges only the keys defined here — Helm-owned keys are left intact.
 #
 # Anti-spam rationale (added 2026-06-22, updated 2026-06-23):
@@ -9,8 +9,8 @@
 #
 #   parallelism / namespaceParallelism — soft ceiling, set high so Argo is not
 #     the bottleneck. Real backpressure comes from Kubernetes pod scheduling:
-#     each VM pod requests 8 Gi RAM; ghost (64 GB) + bazzite (30 GB) = ~94 GB,
-#     so the scheduler naturally queues pods beyond ~11 concurrent VM runs.
+#     each VM pod requests 8 Gi RAM; with ghost as primary compute plus any
+#     online workers, the scheduler naturally queues pods once node RAM fills.
 #     The Argo cap is a last-resort anti-spam guard against runaway agents, not
 #     a capacity knob. 50 is unreachable in practice given node RAM limits.
 #
@@ -61,12 +61,10 @@ data:
         secondsAfterCompletion: 604800
         secondsAfterSuccess: 604800
         secondsAfterFailure: 2592000
-      # OnPodCompletion cleans each pod as it finishes rather than waiting for
-      # the whole workflow. Flattens scheduler load during long multi-lane
-      # pipelines.
+      # OnWorkflowCompletion keeps all pods until the workflow finishes,
+      # preserving logs for debugging failed steps.
       podGC:
-        strategy: OnPodCompletion
-
+        strategy: OnWorkflowSuccess
   # ── argoexec sidecar resource cap ─────────────────────────────────────────
   # argoexec runs in every workflow pod. Without limits it inherits node
   # allocatable, inflating scheduler resource accounting. Generous limits —
@@ -78,7 +76,7 @@ data:
         memory: 64Mi
       limits:
         cpu: 500m
-        memory: 256Mi
+        memory: 1Gi
 
   # ── metrics TTL — evict stale label sets from prometheus registry ──────────
   metricsConfig: |

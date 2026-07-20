@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factory.projectbluefin.io/schemas/v2/variant-publishers.schema.json",
+  "title": "Variant -> publisher repository map",
+  "description": "Single source of truth for which GitHub repository owns the release artifacts (SBOM, CVE attestations, in-toto provenance) for each Bluefin image variant. Multi-org by design: projectbluefin/* and ublue-os/*. Read by SBOM/CVE ingest collectors.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "variants"],
+  "properties": {
+    "schema_version": { "const": "v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "variants": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bluefin": { "$ref": "#/$defs/variant" },
+        "bluefin-lts": { "$ref": "#/$defs/variant" },
+        "aurora": { "$ref": "#/$defs/variant" },
+        "bazzite": { "$ref": "#/$defs/variant" },
+        "dakota": { "$ref": "#/$defs/variant" },
+        "flatcar": { "$ref": "#/$defs/variant" }
+      },
+      "required": ["bluefin", "bluefin-lts", "aurora", "bazzite", "dakota", "flatcar"]
+    }
+  },
+  "$defs": {
+    "variant": {
+      "type": "object",
+      "required": ["publisher_repo", "org", "branches", "build_system"],
+      "properties": {
+        "publisher_repo": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+          "description": "owner/repo. null when no publisher repo has been identified; variant is gated."
+        },
+        "org": {
+          "type": ["string", "null"],
+          "enum": ["projectbluefin", "ublue-os", null]
+        },
+        "branches": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["testing", "stable", "latest"] },
+          "minItems": 1
+        },
+        "build_system": {
+          "type": "string",
+          "enum": ["bluebuild-bootc", "bst-bootc", "flatcar-native", "unknown"]
+        },
+        "emits_sbom": { "type": "boolean", "default": false },
+        "emits_cve_scan": { "type": "boolean", "default": false },
+        "emits_cosign_attestation": { "type": "boolean", "default": false },
+        "notes": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

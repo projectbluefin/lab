@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flatcar-update
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/projectbluefin/lab
+    targetRevision: main
+    path: manifests
+    directory:
+      include: "flatcar-update-*.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: flatcar-update
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -9,66 +9,68 @@ metadata:
   annotations:
     bluefin.io/description: |
       Clears stale podman containers-storage lock files left behind by killed
-      BIB build workflows. These locks block subsequent podman/BIB runs with
+      workflow pods. These locks block subsequent podman runs with
       "acquiring lock N for container ...: file exists". Safe to run when no
-      BIB workflows are actively executing (ghost-heavy-compute mutex is free).
+      containerdisk build workflows are actively executing (ghost-heavy-compute mutex is free).
 spec:
   entrypoint: clear-locks
   serviceAccountName: argo
   arguments:
     parameters:
-      - name: storage-root
-        value: /var/lib/containers/storage
+    - name: storage-root
+      value: /var/lib/containers/storage
 
   volumes:
-    - name: ghost-storage
-      hostPath:
-        path: /var/lib/containers/storage
-        type: Directory
+  - name: ghost-storage
+    hostPath:
+      path: /var/lib/containers/storage
+      type: Directory
 
   templates:
-    - name: clear-locks
-      nodeSelector:
-        kubernetes.io/hostname: ghost
-      metadata:
-        labels:
-          app.kubernetes.io/part-of: bluefin-test-suite
-          bluefin.io/step: ghost-cleanup
-      script:
-        image: registry.fedoraproject.org/fedora:latest
-        command: [bash, -c]
-        securityContext:
-          runAsUser: 0
-        volumeMounts:
-          - name: ghost-storage
-            mountPath: /var/lib/containers/storage
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
-            memory: 256Mi
-        source: |
-          set -euo pipefail
-          STORAGE="/var/lib/containers/storage"
+  - name: clear-locks
+    nodeSelector:
+      kubernetes.io/hostname: ghost
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: bluefin-test-suite
+        bluefin.io/step: ghost-cleanup
+    script:
+      image: ghcr.io/projectbluefin/lab-runner:latest
+      command: [sh, -c]
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+      - name: ghost-storage
+        mountPath: /var/lib/containers/storage
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      source: |
+        exec bash <<'SCRIPT_EOF'
+        set -euo pipefail
+        STORAGE="/var/lib/containers/storage"
 
-          echo "=== Clearing stale lock files under ${STORAGE} ==="
-          # Exclude overlay diff dirs — those contain app content (e.g. meson.lock)
-          # that lives on read-only overlay layers and must not be deleted.
-          mapfile -t locks < <(find "${STORAGE}" -name "*.lock" \
-            -not -path "*/overlay/*/diff/*" \
-            -not -path "*/overlay-images/*/diff/*")
-          count="${#locks[@]}"
-          echo "Found ${count} lock files"
+        echo "=== Clearing stale lock files under ${STORAGE} ==="
+        # Exclude overlay diff dirs — those contain app content (e.g. meson.lock)
+        # that lives on read-only overlay layers and must not be deleted.
+        mapfile -t locks < <(find "${STORAGE}" -name "*.lock" \
+          -not -path "*/overlay/*/diff/*" \
+          -not -path "*/overlay-images/*/diff/*")
+        count="${#locks[@]}"
+        echo "Found ${count} lock files"
 
-          if [[ "${count}" -eq 0 ]]; then
-            echo "No stale locks. Nothing to do."
-            exit 0
-          fi
+        if [[ "${count}" -eq 0 ]]; then
+          echo "No stale locks. Nothing to do."
+          exit 0
+        fi
 
-          for f in "${locks[@]}"; do
-            echo "Removing: ${f}"
-            rm -f "${f}"
-          done
-          echo "=== Cleared ${count} lock files ==="
+        for f in "${locks[@]}"; do
+          echo "Removing: ${f}"
+          rm -f "${f}"
+        done
+        echo "=== Cleared ${count} lock files ==="
+        SCRIPT_EOF

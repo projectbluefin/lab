@@ -1,17 +1,24 @@
-# Zot pull-through cache — single instance proxying all 6 upstream registries
+# Zot pull-through cache — single instance proxying all 7 upstream registries
 # Zot sync destination prefix mapping stores each registry under a separate subpath:
 #   ghcr.io                    → /ghcr   (pull via http://192.168.1.102:30501/ghcr/...)
 #   docker.io                  → /docker (pull via http://192.168.1.102:30501/docker/...)
 #   quay.io                    → /quay   (pull via http://192.168.1.102:30501/quay/...)
 #   registry.fedoraproject.org → /fedora (pull via http://192.168.1.102:30501/fedora/...)
-#   registry.access.redhat.com → /redhat (pull via http://192.168.1.102:30501/redhat/...)
 #   registry.k8s.io            → /k8s    (pull via http://192.168.1.102:30501/k8s/...)
+#   cgr.dev                    → /cgr    (pull via http://192.168.1.102:30501/cgr/...)
+#   public.ecr.aws             → /ecr    (pull via http://192.168.1.102:30501/ecr/...)
 #
+# Sync content filters are intentionally omitted so Zot mirrors whatever the
+# nodes request; the earlier prefix filtering was preventing on-demand pulls.
 # containerd on each node routes pulls through this via
 # manifests/registry-mirror-config.yaml (hosts.toml DaemonSet, no k3s restart needed)
 #
+# Zot acts as a pull-through cache. Containerd sends requests to the mirror
+# namespace and Zot fetches from the upstream registry on-demand on the first
+# pull, then serves the cached copy for later pulls.
+#
 # Storage: hostPath on ghost at /var/mnt/ghost-data/zot-cache/
-# ArgoCD: testing-lab-infra syncs this
+# ArgoCD: lab-infra syncs this
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -19,7 +26,7 @@ metadata:
   name: zot-cache-config
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 data:
   config.json: |
     {
@@ -41,37 +48,57 @@ data:
               "urls": ["https://ghcr.io"],
               "onDemand": true,
               "tlsVerify": true,
+              "maxRetries": 3,
+              "retryDelay": "2m",
               "content": [{ "prefix": "**", "destination": "/ghcr" }]
             },
             {
               "urls": ["https://registry-1.docker.io"],
               "onDemand": true,
               "tlsVerify": true,
+              "maxRetries": 3,
+              "retryDelay": "2m",
               "content": [{ "prefix": "**", "destination": "/docker" }]
             },
             {
               "urls": ["https://quay.io"],
               "onDemand": true,
               "tlsVerify": true,
+              "maxRetries": 3,
+              "retryDelay": "2m",
               "content": [{ "prefix": "**", "destination": "/quay" }]
             },
             {
               "urls": ["https://registry.fedoraproject.org"],
               "onDemand": true,
               "tlsVerify": true,
+              "maxRetries": 3,
+              "retryDelay": "2m",
               "content": [{ "prefix": "**", "destination": "/fedora" }]
-            },
-            {
-              "urls": ["https://registry.access.redhat.com"],
-              "onDemand": true,
-              "tlsVerify": true,
-              "content": [{ "prefix": "**", "destination": "/redhat" }]
             },
             {
               "urls": ["https://registry.k8s.io"],
               "onDemand": true,
               "tlsVerify": true,
+              "maxRetries": 3,
+              "retryDelay": "2m",
               "content": [{ "prefix": "**", "destination": "/k8s" }]
+            },
+            {
+              "urls": ["https://cgr.dev"],
+              "onDemand": true,
+              "tlsVerify": true,
+              "maxRetries": 3,
+              "retryDelay": "2m",
+              "content": [{ "prefix": "**", "destination": "/cgr" }]
+            },
+            {
+              "urls": ["https://public.ecr.aws"],
+              "onDemand": true,
+              "tlsVerify": true,
+              "maxRetries": 3,
+              "retryDelay": "2m",
+              "content": [{ "prefix": "**", "destination": "/ecr" }]
             }
           ]
         }
@@ -79,15 +106,14 @@ data:
     }
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: zot-cache
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
     app.kubernetes.io/component: registry-cache
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: zot-cache
@@ -95,10 +121,10 @@ spec:
     metadata:
       labels:
         app: zot-cache
-        app.kubernetes.io/part-of: testing-lab
+        app.kubernetes.io/part-of: lab
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: ghost
+      automountServiceAccountToken: false
+      priorityClassName: system-cluster-critical
       containers:
         - name: zot
           image: ghcr.io/project-zot/zot-linux-amd64:v2.1.1
@@ -126,6 +152,10 @@ spec:
             name: zot-cache-config
         - name: data
           hostPath:
+            # Moved back onto the XFS ghost-data disk 2026-07-03: the prior
+            # node-local btrfs path (/var/mnt/framework-cache, fb9866d0) grew
+            # to 286G and pushed the root disk to 88% full. Root disk stability
+            # takes priority over the marginal local-btrfs throughput gain.
             path: /var/mnt/ghost-data/zot-cache
             type: DirectoryOrCreate
 ---
@@ -135,7 +165,7 @@ metadata:
   name: zot-cache
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   selector:
     app: zot-cache
@@ -149,9 +179,10 @@ metadata:
   name: zot-cache-nodeport
   namespace: local-registry
   labels:
-    app.kubernetes.io/part-of: testing-lab
+    app.kubernetes.io/part-of: lab
 spec:
   type: NodePort
+  externalTrafficPolicy: Local
   selector:
     app: zot-cache
   ports:

@@ -1,15 +1,16 @@
 # bluefin-test-suite Justfile
 # GitOps policy:
 #   - WorkflowTemplate changes go via git push to main; ArgoCD auto-syncs.
-#   - Do NOT kubectl apply templates directly. Do NOT SSH to ghost or exo-1.
-#   - Workflow submission and monitoring: use these just targets or Argo MCP tools.
-#   - These recipes are convenience wrappers for the repo owner on a workstation.
-#   - Agents and automated systems should use MCP instead of invoking local kubectl/argo.
+#   - Do NOT kubectl apply templates directly.
+#   - Workflow submission and monitoring: use these just targets (argo/kubectl CLI).
+#   - These recipes are the canonical interface for all routine lifecycle operations.
+#   - Agents use these recipes or call argo/kubectl directly. No MCP required.
+#   - ssh jorge@ghost is permitted for OS-level tasks only (k3s restart, systemd, brew).
 #   - No recipe SSHes to ghost; do NOT add workstation SSH hops.
 #   - Cluster bootstrap (setup-ssh-secret, setup-argocd) runs once from workstation.
 
-image     := env_var_or_default("BLUEFIN_IMAGE", "ghcr.io/ublue-os/bluefin:latest")
-image_tag := env_var_or_default("BLUEFIN_IMAGE_TAG", "latest")
+image     := env_var_or_default("BLUEFIN_IMAGE", "ghcr.io/projectbluefin/bluefin:testing")
+image_tag := env_var_or_default("BLUEFIN_IMAGE_TAG", "testing")
 argo_ns   := "argo"
 
 # List all available recipes
@@ -58,29 +59,6 @@ argocd-status:
     argocd app get testing-lab
     argocd app get testing-lab-infra
 
-# ── Disk image management ────────────────────────────────────────────────────
-
-# Pre-build golden disk for a given tag (idempotent — skips if disk already exists)
-# Pubkey is injected from the bluefin-test-ssh-key secret automatically.
-# Usage: just ensure-disk
-# Usage: just ensure-disk lts
-ensure-disk tag=image_tag:
-    argo submit --from workflowtemplate/bib-build-and-push \
-        -p image="ghcr.io/ublue-os/bluefin:{{ tag }}" \
-        -p image-tag="{{ tag }}" \
-        -n {{ argo_ns }} \
-        --watch
-
-# Patch an existing golden disk's SSH config (no SSH to node required)
-# Use after secret rotation or when SSH auth fails on an existing disk.
-# Usage: just patch-disk
-# Usage: just patch-disk lts
-patch-disk tag=image_tag:
-    argo submit --from workflowtemplate/patch-golden-disk \
-        -p image-tag="{{ tag }}" \
-        -n {{ argo_ns }} \
-        --watch
-
 # ── Test execution ───────────────────────────────────────────────────────────
 
 # Run smoke tests against latest (or BLUEFIN_IMAGE_TAG)
@@ -92,38 +70,40 @@ run-tests:
         --watch
 
 # Run smoke tests against a specific tag
-# Usage: just run-tests-tag lts
+# Usage: just run-tests-tag lts-testing
 run-tests-tag tag:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image="ghcr.io/projectbluefin/bluefin"
+    image_tag="{{ tag }}"
+    variant="bluefin"
+    if [[ "{{ tag }}" == lts-* ]]; then
+        image="ghcr.io/projectbluefin/bluefin-lts"
+        image_tag="${image_tag#lts-}"
+        variant="bluefin-lts"
+    fi
     argo submit argo/bluefin-smoke-test.yaml \
-        -p image="ghcr.io/ublue-os/bluefin:{{ tag }}" \
-        -p image-tag="{{ tag }}" \
+        -p image="${image}" \
+        -p image-tag="${image_tag}" \
+        -p variant="${variant}" \
         -n {{ argo_ns }} \
         --watch
 
-# Run matrix tests (latest + lts in parallel)
-# Optional: PR_TITLE and PR_NUMBER env vars for annotations
+# Run smoke tests for testing and lts-testing images in parallel.
 run-tests-matrix:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    PR_TITLE="${PR_TITLE:-}"
-    PR_NUMBER="${PR_NUMBER:-}"
     argo submit argo/bluefin-test-matrix.yaml \
-        -p pr-title="${PR_TITLE}" \
-        -p pr-number="${PR_NUMBER}" \
         -n {{ argo_ns }} \
         --watch
 
 # Run migration validation (bootc switch: ublue-os/bluefin → projectbluefin/bluefin)
 # Usage: just run-migration-test
-# Usage: just run-migration-test lts
 run-migration-test tag=image_tag:
     argo submit --from workflowtemplate/bluefin-migration-test \
         -p image-tag="{{ tag }}" \
         -n {{ argo_ns }} \
         --watch
 
-# One-time: write SSH banner on ghost warning agents to use the K8s MCP.
-# Runs as a WorkflowTemplate (not a manifest Job) to avoid ArgoCD reconcile loops.
+# One-time: write SSH banner on ghost.
 setup-ghost-ssh-banner:
     argo submit --from workflowtemplate/setup-ghost-ssh-banner \
         -n {{ argo_ns }} \
@@ -133,15 +113,7 @@ setup-ghost-ssh-banner:
 # —— [REMOVED] titan VM recipes ——
 # run-titan-smoke, run-titan-system, run-titan-developer, run-titan-software,
 # setup-titan-fixtures, run-titan-disk-cleanup
-# Titan persistent VMs are no longer GitOps-managed. See argo/deprecated/ for history.
-
-# PLACEHOLDER for removed recipes (kept to avoid recipe renaming surprises)
-_titan-removed:
-    @echo "Titan VM recipes removed. See argo/deprecated/README.md"
-
-# DEPRECATED placeholder — slot reserved
-setup-titan-fixtures:
-    @echo "Titan fixtures removed — titan VMs are no longer used"
+# Titan persistent VMs are no longer GitOps-managed.
 
 # Run Flatcar smoke tests
 run-flatcar-smoke:
@@ -150,7 +122,6 @@ run-flatcar-smoke:
         --watch
 
 # ── Observation ─────────────────────────────────────────────────────────────
-# Repo-owner convenience wrappers only; agents and automation should observe/clean up via MCP, never via SSH.
 
 # List all test workflows
 list-workflows:
@@ -200,6 +171,15 @@ run-homelab-access:
     argo submit --from workflowtemplate/homelab-access-probe \
       -n {{ argo_ns }} --wait --log
 
+# Run on-demand K8sGPT cluster analysis
+# Usage: just run-k8sgpt
+# Usage: just run-k8sgpt argo "Pod,Deployment"
+run-k8sgpt namespace="" filters="Pod,Deployment,Service,Ingress,Node":
+    argo submit --from workflowtemplate/k8sgpt-on-demand \
+      -p namespace="{{ namespace }}" \
+      -p filters="{{ filters }}" \
+      -n {{ argo_ns }} --wait --log
+
 # Run first PVC/local-path restore drill (#60 #74 #84)
 run-homelab-restore:
     argo submit --from workflowtemplate/homelab-restore-drill \
@@ -244,45 +224,51 @@ lab-report pr_number status workflow:
         --method POST \
         --field state="${STATE}" \
         --field description="${DESC}" \
-        --field context="ghost-lab / bst-build" \
+        --field context="testing-lab / bst-build" \
         --field target_url="http://192.168.1.102:2746/workflows/argo/{{ workflow }}"
     gh pr edit {{ pr_number }} --repo "${REPO}" \
         --add-label "${LABEL}" --remove-label "${REMOVE}" 2>/dev/null || true
 
-# Run a BST build for a variant and push to local zot registry
-# Usage: just run-bst-build dakota
-run-bst-build variant="dakota" tag="latest":
-    argo submit --from workflowtemplate/bst-build \
-        -p variant={{ variant }} \
-        -p image-tag={{ tag }} \
-        -n {{ argo_ns }} \
-        --watch
-
-# Validate dakota element graph (bst show, no build — fast)
-# ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA
-run-dakota-validate ref_type="branch" ref_value="main":
-    argo submit --from workflowtemplate/dakota-bst \
-      -p ref_type={{ ref_type }} \
-      -p ref_value={{ ref_value }} \
-      --entrypoint bst-validate \
+# Run Dakota BST pipeline (build bluefin + bluefin-nvidia variants in parallel)
+# Usage: just run-bst-build
+# Usage: just run-bst-build testing https://github.com/projectbluefin/dakota.git
+run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
+    argo submit --from workflowtemplate/dakota-build-pipeline \
+      -p ref={{ ref }} \
+      -p repo={{ repo }} \
+      -p build-mode=re \
       -n {{ argo_ns }} --watch
 
-# Build a dakota variant (default | nvidia | all) and lint the result
-# ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA
-run-dakota-build variant="default" ref_type="branch" ref_value="main":
-    argo submit --from workflowtemplate/dakota-bst \
-      -p variant={{ variant }} \
-      -p ref_type={{ ref_type }} \
-      -p ref_value={{ ref_value }} \
-      -n {{ argo_ns }} --watch
+# Compatibility alias for older docs/callers.
+run-dakota-validate ref="testing" repo="https://github.com/projectbluefin/dakota.git":
+    just run-bst-build {{ ref }} {{ repo }}
 
-# Full Dakota QA pipeline: BST build → BIB disk → VM → smoke tests
-# ref_type: branch | pr | sha   ref_value: branch name, PR number, or commit SHA
-run-dakota-qa variant="default" ref_type="branch" ref_value="main":
+# Compatibility alias for older docs/callers.
+run-dakota-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
+    just run-bst-build {{ ref }} {{ repo }}
+
+# Full Dakota QA pipeline: container-only suite fan-out against the published Dakota image.
+run-dakota-qa branch="main" variant="dakota":
     argo submit --from workflowtemplate/dakota-qa-pipeline \
       -p variant={{ variant }} \
-      -p ref_type={{ ref_type }} \
-      -p ref_value={{ ref_value }} \
+      -p branch={{ branch }} \
+      -n {{ argo_ns }} --watch
+
+# Legacy Dakota containerized smoke lane: run behave suites directly inside the OCI
+# image with explicit image/variant overrides.
+run-dakota-container-qa image-tag="testing" variant="dakota":
+    argo submit --from workflowtemplate/dakota-container-qa-pipeline \
+      -p image=192.168.1.102:30500/{{ variant }} \
+      -p image-tag={{ image-tag }} \
+      -p variant={{ variant }} \
+      -n {{ argo_ns }} --watch
+
+# Run the in-cluster BuildStream build pipeline for bluefin-server
+# Usage: just run-bluefin-server-build
+run-bluefin-server-build ref="main" repo="https://github.com/projectbluefin/server.git":
+    argo submit --from workflowtemplate/bluefin-server-build-pipeline \
+      -p ref={{ ref }} \
+      -p repo={{ repo }} \
       -n {{ argo_ns }} --watch
 
 # ── Validation ───────────────────────────────────────────────────────────────
@@ -294,7 +280,7 @@ apply-bootstrap:
 
 # Lint all Argo YAML manifests.
 # WorkflowTemplates are linted together (--offline) so cross-file templateRef
-# references (e.g. dakota-qa-pipeline → dakota-bst) resolve without needing
+# references (e.g. dakota-commit-poller → dakota-build-pipeline) resolve without needing
 # the Argo server to have the new templates already synced.
 # Standalone Workflow files (argo/*.yaml) reference server-side templates and
 # are linted individually against the live server.

@@ -24,7 +24,7 @@ spec:
       labels:
         app: worker
       annotations:
-        buildbarn-config-revision: "2026-07-12-2"
+        buildbarn-config-revision: "2026-07-20-1"
         prometheus.io/scrape: "true"
         prometheus.io/port: "9980"
     spec:
@@ -65,11 +65,14 @@ spec:
               containerPort: 9980
           resources:
             requests:
-              cpu: 200m
-              memory: 512Mi
+              cpu: 500m
+              memory: 1Gi
             limits:
-              cpu: "2"
-              memory: 2Gi
+              # bb_worker does all CAS input-root fetching; with 128-way
+              # download concurrency over the USB4 fabric it needs real CPU
+              # for checksumming and more memory for in-flight blobs.
+              cpu: "8"
+              memory: 8Gi
           volumeMounts:
             - mountPath: /config/
               name: configs
@@ -92,8 +95,11 @@ spec:
               cpu: "8"
               memory: 16Gi
             limits:
-              cpu: "8"
-              memory: 16Gi
+              # 32-core nodes with 4 concurrent action slots: allow bursts up
+              # to 24 cores so parallel compiles saturate the node instead of
+              # being throttled at 8.
+              cpu: "24"
+              memory: 48Gi
           volumeMounts:
             - mountPath: /config/
               name: configs

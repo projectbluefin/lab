@@ -92,6 +92,14 @@ spec:
         value: "{{inputs.parameters.variant}}"
       - name: BEHAVE_TAGS
         value: "{{inputs.parameters.behave-tags}}"
+      - name: IMAGE_TAG
+        value: "{{inputs.parameters.image-tag}}"
+      - name: GITHUB_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: github-token
+            key: token
+            optional: true
       volumeMounts:
       - mountPath: /workspace
         name: workspace
@@ -104,6 +112,27 @@ spec:
       command: [bash]
       source: |
         set -euo pipefail
+        # Build slug used to identify QA evidence in the lab repo.
+        IMG_SLUG="${VARIANT}-${IMAGE_TAG}"
+
+        # Resolve the digest of the target OCI image for digest-pinned QA evidence.
+        if ! command -v skopeo >/dev/null 2>&1; then
+          echo "skopeo not found; installing for digest resolution..." >&2
+          dnf install -y skopeo >/dev/null 2>&1 || true
+        fi
+        DIGEST=""
+        if command -v skopeo >/dev/null 2>&1; then
+          SKOPEO_ARGS=()
+          if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+            SKOPEO_ARGS+=(--creds "_token:${GITHUB_TOKEN}")
+          fi
+          DIGEST=$(skopeo inspect "${SKOPEO_ARGS[@]}" --no-tags --format '{{.Digest}}' "docker://${IMAGE}" 2>/dev/null || true)
+        fi
+        if [[ -z "${DIGEST:-}" ]]; then
+          echo "Warning: could not resolve digest for ${IMAGE}; result will still be published but may fall back to tag-based matching." >&2
+        else
+          echo "Resolved digest ${DIGEST} for ${IMAGE}" >&2
+        fi
         TARGET_NAME="bluefin-qa-target"
         STORAGE_CONF=/tmp/storage.conf
         cat >"${STORAGE_CONF}" <<'EOF'
@@ -269,6 +298,28 @@ spec:
         PY
         else
           printf 'Execution failed' >/tmp/results/result-summary.txt
+        fi
+
+
+        # Publish digest-pinned test results back to the lab repo.
+        if [[ -n "${GITHUB_TOKEN:-}" && -f /tmp/results/results.json ]]; then
+          if ! command -v git >/dev/null 2>&1; then
+            echo "git not found; installing git-core before result publication..." >&2
+            dnf install -y git-core >/dev/null 2>&1 || true
+          fi
+          PUBLISH_RC=0
+          {
+            rm -rf /tmp/lab-code
+            git clone --depth 1 "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" /tmp/lab-code
+            python3 /tmp/lab-code/scripts/publish_test_results.py /tmp/results/results.json "${IMG_SLUG}" "${SUITE}" "{{workflow.name}}" "${GITHUB_TOKEN}" "${DIGEST}"
+          } || PUBLISH_RC=$?
+          if [[ "${PUBLISH_RC}" -ne 0 ]]; then
+            echo "Warning: failed to publish test results (rc=${PUBLISH_RC})" >&2
+          fi
+        elif [[ -z "${GITHUB_TOKEN:-}" ]]; then
+          echo "No GITHUB_TOKEN - skipping test results publication" >&2
+        else
+          echo "Skipping publication: /tmp/results/results.json not found" >&2
         fi
 
         exit "${BEHAVE_RC}"

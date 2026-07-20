@@ -50,7 +50,7 @@ def test_dakota_requires_distributed_capacity_matched_execution():
     assert "pushers: 2" in config
     assert "max-jobs: 8" in config
     assert "nodeSelector:\n        kubernetes.io/hostname: ghost" not in pipeline
-    assert "build-bluefin.Succeeded" in pipeline
+    assert "depends: detect-build-mode" in pipeline
     assert "Verified BuildStream remote execution configuration" in pipeline
 
 
@@ -101,21 +101,15 @@ def test_dakota_persists_sources_in_buildbarn():
         encoding="utf-8"
     )
 
-    assert source_servers[:2] == [
-        {
-            "url": "grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984",
-            "type": "index",
-            "push": True,
-        },
+    assert source_servers[:1] == [
         {
             "url": "grpc://frontend.buildbarn.svc.cluster.local:8980",
             "type": "storage",
             "push": True,
         },
     ]
-    assert "url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984" in pipeline
-    assert "type: index" in pipeline
     assert "type: storage" in pipeline
+    assert "url: grpc://frontend.buildbarn.svc.cluster.local:8980" in pipeline
 
 
 def test_dakota_patch_sync_fetches_junction_commit_ids():
@@ -137,4 +131,6 @@ def test_dakota_nvidia_build_waits_for_its_bluefin_parent_artifact():
     )
 
     nvidia_task = pipeline.split("          - name: build-bluefin-nvidia", 1)[1]
-    assert "depends: build-bluefin.Succeeded" in nvidia_task
+    assert "depends: detect-build-mode" in nvidia_task
+    assert "oci/bluefin-nvidia.bst" in nvidia_task
+    assert "dakota-nvidia" in nvidia_task

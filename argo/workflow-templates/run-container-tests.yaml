@@ -190,6 +190,8 @@ spec:
         set -euo pipefail
         # testsuite uses its own PYTHONPATH root so 'tests.shared.*' imports resolve.
         export PYTHONPATH="/workspace/testsuite"
+        SUITE="@@SUITE@@"
+        BEHAVE_TAGS="@@BEHAVE_TAGS@@"
 
         case "${SUITE}" in
           smoke|common|developer|software|system) ;;
@@ -220,6 +222,11 @@ spec:
 
         echo "${BEHAVE_RC}" > /tmp/results/behave-rc.txt
         EOF
+        # qecore-headless does not preserve runner env vars for the script, so bake them in.
+        sed -i \
+          -e "s#@@SUITE@@#${SUITE}#g" \
+          -e "s#@@BEHAVE_TAGS@@#${BEHAVE_TAGS}#g" \
+          /workspace/run-behave.sh
         chmod +x /workspace/run-behave.sh
 
         echo "Running qecore against the nested systemd/GDM host..." >&2

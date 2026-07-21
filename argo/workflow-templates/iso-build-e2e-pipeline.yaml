@@ -48,8 +48,8 @@ spec:
       volumeMounts:
       - name: work
         mountPath: /work
-      - name: kvm
-        mountPath: /dev/kvm
+      - name: dev
+        mountPath: /dev
       source: |
         set -euo pipefail
 
@@ -111,7 +111,7 @@ spec:
     - name: work
       emptyDir:
         sizeLimit: 60Gi
-    - name: kvm
+    - name: dev
       hostPath:
-        path: /dev/kvm
-        type: CharDevice
+        path: /dev
+        type: Directory

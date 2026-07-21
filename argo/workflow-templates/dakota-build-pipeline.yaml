@@ -375,6 +375,9 @@ spec:
               source-caches:
                 override-project-caches: false
                 servers:
+                - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+                  type: index
+                  push: true
                 - url: grpc://frontend.buildbarn.svc.cluster.local:8980
                   type: storage
                   push: true
@@ -397,8 +400,8 @@ spec:
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \
               --no-interactive \
-              --max-jobs 16 \
-              --fetchers 16 \
+              --max-jobs 8 \
+              --fetchers 4 \
               build "${ELEMENT}"
 
           echo "=== Exporting ${ELEMENT} ==="

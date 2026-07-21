@@ -271,6 +271,11 @@ data:
             pod: std.extVar('POD_NAME'),
             node: std.extVar('NODE_NAME'),
           },
+          // BuildStream actions (meson compiler detection) and many Unix
+          // utilities expect /dev/null, /dev/zero, /dev/random, etc. inside
+          // the sandbox. The runner chroots into the input root, so install
+          // minimal character device nodes there before each action.
+          inputRootCharacterDeviceNodes: ['null', 'zero', 'random', 'urandom', 'tty'],
         }],
       }],
       // The USB4 link is effectively local-bus latency; deep pipelines are

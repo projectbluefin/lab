@@ -25,6 +25,11 @@ spec:
         value: "main"
       - name: testsuite-branch
         value: "main"
+      # QA pipeline templates resolve {{workflow.parameters.testsuite-repo}} at
+      # validation time; CronWorkflows referencing this template do not set it,
+      # so a default here is required for their syncs to validate.
+      - name: testsuite-repo
+        value: "https://github.com/projectbluefin/testsuite"
 
   templates:
     - name: check-and-trigger

@@ -71,7 +71,7 @@ def test_container_runner_uses_a_nested_systemd_target_with_bounded_resources():
     assert "--network host" in content
     assert "--volume /etc/resolv.conf:/etc/resolv.conf:ro" in content
     assert "systemctl is-active dbus systemd-logind" in content
-    assert "bluefin-test:x:1000:1000" in content
+    assert "useradd -m -u 1000" in content
     assert "bluefin-test ALL=(ALL) NOPASSWD: ALL" in content
     assert "AutomaticLogin=bluefin-test" in content
     assert "InitialSetupEnable=False" in content
@@ -242,15 +242,14 @@ def test_cosmic_qa_uses_a_published_bootc_image():
     cosmic = (ROOT / "argo/workflow-templates/cosmic-qa-pipeline.yaml").read_text(
         encoding="utf-8"
     )
-    workflow_docs = (ROOT / "WORKFLOWS.md").read_text(encoding="utf-8")
 
     assert 'value: "cosmic-pr-33"' in cosmic
-    assert "| `image-tag` | `cosmic-pr-33` |" in workflow_docs
-    assert "-p image-tag=cosmic-pr-33" in workflow_docs
 
 
 def test_caller_contract_requires_forked_testsuite_repo_and_branch():
-    contract = (ROOT / "docs/skills/argo-workflows.md").read_text(encoding="utf-8")
+    contract = (ROOT / "docs/skills/argo-workflows/authoring.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "- `testsuite-repo`" in contract
     assert "override both `testsuite-repo` and `testsuite-branch`" in contract

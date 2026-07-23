@@ -1,6 +1,6 @@
 # Bluefin QA Pipeline — Runbook
 
-> Timeless architecture and failure-mode reference. For commands see [docs/agent-cheatsheet.md](docs/agent-cheatsheet.md). For long-form operator procedures see [docs/lab-operations.md](docs/lab-operations.md).
+> Timeless architecture and failure-mode reference. For commands see [docs/reference/agent-cheatsheet.md](../reference/agent-cheatsheet.md). For long-form operator procedures see [docs/ops/lab-operations.md](lab-operations.md).
 
 ## Architecture summary
 
@@ -141,5 +141,6 @@ Argo Workflow (argo namespace)
 
 ## Historical notes
 
-Date-stamped iteration lessons live in [docs/archive/iteration-notes.md](docs/archive/iteration-notes.md).
+Date-stamped iteration lessons were removed in the ponytail audit (commit
+81f0cc6f); recover them from git history if needed.
 Keep this file timeless: architecture, topology, and durable failure modes only.

@@ -5,11 +5,12 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Parallel cosmic BST build pipeline. Builds cosmic and cosmic-nvidia OCI variants
-      in parallel against the shared Buildbarn frontend and cache service
+      COSMIC BST build pipeline. Builds the default cosmic OCI variant against the
+      shared Buildbarn frontend and cache service
       (frontend.buildbarn.svc.cluster.local:8980). Triggered by push to
       cosmic-build-meta:main via cosmic-commit-poller CronWorkflow. On success,
-      exports to local Zot (:30500).
+      exports to local Zot (:30500) as cosmic-cluster-testing. NVIDIA variants are
+      intentionally disabled for clean distributed builds.
       Uses bst-build PriorityClass — preemptable by lab-test-vm pods.
   labels:
     app.kubernetes.io/component: cosmic-build
@@ -85,24 +86,6 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: mode
                   value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-          - name: build-cosmic-nvidia
-            template: run-bst-step
-            depends: build-cosmic
-            arguments:
-              parameters:
-                - name: element
-                  value: "oci/cosmic-nvidia/image.bst"
-                - name: tag
-                  value: "cosmic-cluster-testing-nvidia"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-
     - name: detect-build-mode
       inputs:
         parameters:
@@ -292,6 +275,12 @@ spec:
               source-caches:
                 override-project-caches: false
                 servers:
+                - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+                  type: index
+                  push: true
+                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  type: storage
+                  push: true
                 - url: https://gbm.gnome.org:11003
                   push: false
                 - url: https://cache.projectbluefin.io:11001

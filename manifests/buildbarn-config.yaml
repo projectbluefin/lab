@@ -243,22 +243,19 @@ data:
         native: {
           buildDirectoryPath: '/worker/build',
           cacheDirectoryPath: '/worker/cache',
-          // Dakota/BST actions chroot into full OS rootfs input roots with
-          // hundreds of thousands of files. 20k entries caused permanent cache
-          // thrash: every action refetched nearly its whole input root from CAS
-          // file-by-file (observed 10h inputFetch phases). Size the cache to
-          // hold several complete sysroots.
+          // Keep enough native cache for several complete SDK roots. The
+          // virtual/FUSE experiment failed startup with operation not
+          // permitted, so production must remain on native directories.
           maximumCacheFileCount: 1000000,
           maximumCacheSizeBytes: 96 * 1024 * 1024 * 1024,
           cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
         },
         runners: [{
           endpoint: { address: 'unix:///worker/runner' },
-          // Both nodes have 32 cores / 64 GiB and a 40Gb/s USB4 link to the
-          // CAS shards; one slot per node left both nodes ~idle. Four slots
-          // per worker keeps within the 16Gi pod memory limit (large BST link
-          // steps peak ~4G) while actually using the fabric.
-          concurrency: 4,
+          // Temporary-directory symlinking below is documented by BuildBarn as
+          // safe only with one concurrent command. Keep this at one until the
+          // runner can provide isolated per-action temporary mounts.
+          concurrency: 1,
           // Match BuildStream REAPI action platform properties so workers
           // register into the same scheduler queue key.
           platform: {
@@ -281,6 +278,9 @@ data:
       // The USB4 link is effectively local-bus latency; deep pipelines are
       // free. Raise CAS transfer concurrency so input roots stream instead of
       // trickling file-by-file.
+      // Frontend and scheduler have been restarted with the current shard
+      // configuration; use the worker's high-concurrency native fetch path
+      // now that large CAS reads are healthy again.
       inputDownloadConcurrency: 128,
       outputUploadConcurrency: 64,
       directoryCache: {
@@ -302,5 +302,10 @@ data:
       // bb-remote-execution pkg/proto/configuration/bb_runner/bb_runner.proto.
       // Keep this config aligned with bb_runner ApplicationConfiguration fields.
       chrootIntoInputRoot: true,
-      setTmpdirEnvironmentVariable: true,
+      // Keep TMPDIR unset because its host-side build-directory path is outside
+      // the chroot. Instead replace the action root's /tmp and /var/tmp with
+      // bb_worker-managed per-action paths. This is safe with one runner
+      // command at a time and lets cargo/make use /tmp after chroot(2).
+      symlinkTemporaryDirectories: ['/tmp', '/var/tmp'],
+      runCommandsAs: { userId: 0, groupId: 0 },
     }

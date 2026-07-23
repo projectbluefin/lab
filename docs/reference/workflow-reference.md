@@ -50,18 +50,18 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
 
 ### dakota-build-pipeline
 - **Purpose:** The actual BuildStream compile step for Dakota — builds
-  `oci/bluefin.bst`, then its dependent `oci/bluefin-nvidia.bst`, and pushes both to
-  the local Zot registry. This is what populates/warms the Dakota build cache.
+  `oci/bluefin.bst` and pushes the default image to the local Zot registry. NVIDIA
+  variants are intentionally disabled for clean distributed builds.
 - **Distribution:** `build-mode=re` is mandatory. A fresh USB4 `up` observation
   and a Ready BuildBarn worker are required on both `ghost` and `exo-0` before
   admission. Cache-only, Ethernet-backed, automatic fallback, runner-local
   execution, and remote-cache-only execution are failures, not alternatives.
   Scheduler-driven placement selects the coordinator; no task pins it to a node.
 - **Capacity:** The coordinator uses four fetchers, two BuildStream builders and
-  pushers, and eight jobs per action. Two BuildBarn workers expose one action
-  slot each, so both workers can execute concurrently without oversubscribing a
-  runner. The workflow verifies its generated remote-execution configuration
-  before it invokes BuildStream.
+  pushers, and eight jobs per action. Each of the two BuildBarn workers exposes
+  one action slot. This capacity must not be increased until remote execution and
+  full SDK CAS materialization are healthy. The workflow verifies its generated
+  remote-execution configuration before it invokes BuildStream.
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.
 - **Who triggers it automatically:** `dakota-commit-poller` (see
@@ -70,9 +70,19 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
   BuildStream run, so the lab build checks out the same source revision that
   GitHub is building instead of drifting to a later branch tip.
 
+**Current distributed-gate status (2026-07-22):** Dakota's five full distributed
+  benchmark attempts all failed; the latest failures reached remote execution but
+  exposed runner temporary-directory/Rust execution errors, and subsequent direct
+  isolation identified full SDK input-root CAS materialization stalls and shard
+  inconsistency. The local BuildStream fallback and independent Dakota container E2E
+  are useful diagnostics only and do not satisfy the distributed gate. No green
+  distributed image publication or registry-digest validation may be claimed until
+  a fresh `build-mode=re` run completes and its pushed image is verified.
+
 ### cosmic-build-pipeline
-- **Purpose:** BuildStream compile pipeline for COSMIC variants
-  (`oci/cosmic/image.bst`, `oci/cosmic-nvidia/image.bst`) and push to local Zot.
+- **Purpose:** BuildStream compile pipeline for the default COSMIC image
+  (`oci/cosmic/image.bst`) and push it to local Zot. NVIDIA variants are
+  intentionally disabled for clean distributed builds.
 - **Safety guards (aligned with dakota):**
   `activeDeadlineSeconds: 14400` (workflow), `activeDeadlineSeconds: 5400` (step),
   `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
@@ -171,7 +181,10 @@ other BST lane.
 
 **`nightly-dakota` does not warm anything** — it's wired to `dakota-qa-pipeline`
 (test runner against pre-built images), not `dakota-build-pipeline` (the actual
-compile step). The real dakota cache-warming trigger is `dakota-commit-poller`.
+compile step). The real dakota cache-warming trigger is `dakota-commit-poller`. It must not be
+interpreted as proof of a green distributed build: the poller succeeds only when
+the remote BuildStream workflow, image export, registry push, and configured
+validation path succeed.
 
 All bluefin/lts image pollers plus `dakota-commit-poller`/
 `flatcar-kernel-poller`/`flatcar-kernel-gate` were briefly suspended (2026-06-28
@@ -214,7 +227,7 @@ Pod resource requests/limits used by workflow steps:
 | `run-container-tests` | 1 / 2 | 2Gi / 4Gi |
 | `wait-for-vm-ready` | 100m / 500m | 128Mi / 256Mi |
 | `run-gnome-tests` | 1 / 2 | 1Gi / 2Gi |
-| `dakota-build-pipeline/bst-build` | 2 / 4 | 14Gi / 28Gi |
+| `dakota-build-pipeline/bst-build` | 8 / 16 | 16Gi / 32Gi |
 | `cosmic-build-pipeline/bst-build` | 4 / 8 | 14Gi / 28Gi |
 | `bluefin-server-build-pipeline/bst-build` | 6 / 10 | 16Gi / 30Gi |
 | `knuckle build-installer` | 4 / 4 | 8Gi / 8Gi |

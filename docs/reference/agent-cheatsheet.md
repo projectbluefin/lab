@@ -29,7 +29,7 @@
 | Validate the Flatcar lane | `just run-flatcar-smoke` |
 | Run on-demand K8sGPT cluster triage | `just run-k8sgpt` |
 | Check exo-0 kernel canary status (7.1 target) | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` |
-| Submit Dakota BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
+| Submit Dakota BST build pipeline (default variant only) | `just run-bst-build [ref=testing]` |
 | Run Dakota containerized smoke QA (no VM, works for composefs-oci) | `just run-dakota-container-qa [image-tag=testing] [variant=dakota]` |
 | Trigger the Dakota PR batch workflow | `argo submit -n argo --from workflowtemplate/dakota-pr-batch-pipeline -p pr-numbers=<number> --wait` |
 | Tail the most recent workflow's logs | `just logs` |
@@ -261,7 +261,7 @@ without switching to the full container-only QA lane. It sits alongside the
 existing Dakota entry points:
 - `just run-bst-build` — the BuildStream artifact build lane.
 - `just run-dakota-qa` — the full Dakota container-only QA lane.
-- `just run-dakota-container-qa` — containerized QA that runs image-level smoke checks directly inside the OCI image. Use this for `dakota:testing` and `dakota-nvidia:testing` while the VM path is blocked (Dakota's composefs-oci backend declares systemd-boot but ships no UKI, so `bootc install to-disk` fails).
+- `just run-dakota-container-qa` — containerized QA that runs image-level smoke checks directly inside the OCI image. Use this for `dakota:testing` while the VM path is blocked; NVIDIA builds are disabled (Dakota's composefs-oci backend declares systemd-boot but ships no UKI, so `bootc install to-disk` fails).
 
 Trigger it with:
 

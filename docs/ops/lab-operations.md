@@ -46,7 +46,7 @@ For Bluefin and Dakota image-poll QA, **bootc OCI images are tested directly as 
 | Validate a bootc OCI image change | `just run-tests-tag <testing\|lts-testing\|stable\|lts-stable>` or `just run-tests-matrix` |
 | Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
 | Validate Flatcar | `just run-flatcar-smoke` |
-| Submit Dakota distributed BST build pipeline (bluefin + nvidia) | `just run-bst-build [ref=testing]` |
+| Submit Dakota distributed BST pipeline (default variant only) | `just run-bst-build [ref=testing]` |
 
 Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
 MCP is optional.
@@ -55,7 +55,15 @@ Every BST run requires `build-mode=re`, fresh USB4 `up` observations on both
 `ghost` and `exo-0`, two Ready BuildBarn workers, and observable worker actions.
 If any precondition or remote execution is unhealthy, fail, diagnose, and
 repair it. Do not select local, cache-only, Ethernet-backed, or automatic
-fallback.
+fallback. A successful local build/push or container E2E is diagnostic evidence
+only and does not satisfy this gate. Do not increase jobs, workers, or semaphore
+capacity while the full SDK input root or runner remains unhealthy.
+
+For the current Dakota incident, inspect runner logs for `rustc -vV`,
+`Permission denied`, invalid `TMPDIR`, and CAS materialization errors. Confirm
+the live ConfigMaps and pods match the checked-in manifests; a GitOps/config
+drift can leave the cluster running an obsolete virtual/FUSE or
+`setTmpdirEnvironmentVariable` configuration even when the repository is fixed.
 
 ---
 

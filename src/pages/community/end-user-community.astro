@@ -1,0 +1,501 @@
+---
+import SiteLayout from '../../layouts/SiteLayout.astro';
+
+interface GithubMember {
+  login: string;
+  avatar_url: string;
+  html_url: string;
+  name?: string | null;
+  bio?: string | null;
+  company?: string | null;
+  location?: string | null;
+  blog?: string | null;
+  group?: 'staff' | 'member' | 'advisor';
+  imageCredit?: string;
+}
+
+const staffMembers: GithubMember[] = [
+  {
+    login: 'jorge',
+    avatar_url: 'https://raw.githubusercontent.com/projectbluefin/website/main/public/img/wallpapers/wolves/people/jorge-bluefin.webp',
+    html_url: 'https://github.com/clubanderson',
+    name: 'Jorge Castro',
+    bio: 'Project Bluefin founder · making Linux feel like home.',
+    location: 'Ann Arbor, USA',
+    group: 'staff',
+    imageCredit: 'Project Bluefin website',
+  },
+  {
+    login: 'sri',
+    avatar_url: 'https://raw.githubusercontent.com/projectbluefin/website/main/public/img/wallpapers/wolves/people/sri_guadec_speaking.jpg',
+    html_url: 'https://github.com/sriharsha',
+    name: 'Sri Ramkrishna',
+    bio: 'GNOME community, desktop Linux, and the people who make it possible.',
+    location: 'Portland, USA',
+    group: 'staff',
+    imageCredit: 'Project Bluefin website',
+  },
+];
+
+const advisorMembers: GithubMember[] = [
+  {
+    login: 'bketelsen',
+    avatar_url: 'https://raw.githubusercontent.com/projectbluefin/website/main/public/img/wallpapers/wolves/people/bketelsen.webp',
+    html_url: 'https://github.com/bketelsen',
+    name: 'Brian Ketelsen',
+    bio: 'Open source builder and Bluefin advisor.',
+    group: 'advisor',
+    imageCredit: 'Project Bluefin website',
+  },
+  {
+    login: 'colinwalters',
+    avatar_url: 'https://raw.githubusercontent.com/projectbluefin/website/main/public/img/wallpapers/wolves/people/bootc%20creator%20Colin%20Walters.JPG',
+    html_url: 'https://github.com/colinwalters',
+    name: 'Colin Walters',
+    bio: 'bootc creator · atomic desktops and reliable foundations.',
+    group: 'advisor',
+    imageCredit: 'Project Bluefin website',
+  },
+  {
+    login: 'dustin',
+    avatar_url: 'https://raw.githubusercontent.com/projectbluefin/website/main/public/img/wallpapers/wolves/people/kirkland.webp',
+    html_url: 'https://github.com/dustinkirkland',
+    name: 'Dustin Kirkland',
+    bio: 'Bluefin advisor · infrastructure, Linux, and community.',
+    group: 'advisor',
+    imageCredit: 'Project Bluefin website',
+  },
+  {
+    login: 'stormy',
+    avatar_url: 'https://raw.githubusercontent.com/projectbluefin/website/main/public/img/wallpapers/wolves/people/stormy.faces23764.web_.webp',
+    html_url: 'https://github.com/stormy',
+    name: 'Stormy Peters',
+    bio: 'Open source advocate and Bluefin advisor.',
+    group: 'advisor',
+    imageCredit: 'Project Bluefin website',
+  },
+];
+
+const fallbackMembers: GithubMember[] = [
+  {
+    login: 'hanthor',
+    avatar_url: 'https://avatars.githubusercontent.com/u/5840441?v=4',
+    html_url: 'https://github.com/hanthor',
+    name: 'James Reilly',
+    bio: '@projectbluefin · Bluefin LTS',
+    location: 'India',
+    blog: 'reilly.asia',
+  },
+  {
+    login: 'p5',
+    avatar_url: 'https://avatars.githubusercontent.com/u/46304672?v=4',
+    html_url: 'https://github.com/p5',
+    name: 'Robert Sturla',
+    bio: 'Software Engineer @ Red Hat',
+    company: 'Red Hat',
+    location: 'United Kingdom',
+    blog: 'rsturla.com',
+  },
+  {
+    login: 'tulilirockz',
+    avatar_url: 'https://avatars.githubusercontent.com/u/120808662?v=4',
+    html_url: 'https://github.com/tulilirockz',
+    name: 'Tulip Blossom',
+    bio: 'Big Linux fan :)',
+    company: 'Chainguard',
+    location: 'Brazil',
+  },
+];
+
+let members = [...staffMembers, ...fallbackMembers, ...advisorMembers];
+let rosterIsLive = false;
+
+try {
+  const response = await fetch('https://api.github.com/orgs/projectbluefin/members?per_page=100', {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'projectbluefin-factory-community-page' },
+  });
+  if (response.ok) {
+    const publicMembers = (await response.json()) as Array<Pick<GithubMember, 'login' | 'avatar_url' | 'html_url'>>;
+    const profiles = await Promise.all(
+      publicMembers.map(async (member) => {
+        try {
+          const profileResponse = await fetch(`https://api.github.com/users/${member.login}`, {
+            headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'projectbluefin-factory-community-page' },
+          });
+          return profileResponse.ok ? (await profileResponse.json()) as GithubMember : member;
+        } catch {
+          return member;
+        }
+      }),
+    );
+    if (profiles.length) {
+      members = [...staffMembers, ...profiles, ...advisorMembers];
+      rosterIsLive = true;
+    }
+  }
+} catch {
+  // Keep the last-known public roster so an API hiccup never removes the page.
+}
+
+const groupOrder = { staff: 0, member: 1, advisor: 2 } as const;
+members = members.sort((a, b) => {
+  const groupDelta = (groupOrder[a.group || 'member'] ?? 1) - (groupOrder[b.group || 'member'] ?? 1);
+  return groupDelta || (a.name || a.login).localeCompare(b.name || b.login);
+});
+const updatedLabel = new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date());
+const memberCount = members.filter((member) => member.group !== 'advisor' && member.group !== 'staff').length;
+const staffCount = members.filter((member) => member.group === 'staff').length;
+const advisorCount = members.filter((member) => member.group === 'advisor').length;
+const baseUrl = import.meta.env.BASE_URL;
+
+function cleanBlog(blog?: string | null) {
+  if (!blog) return null;
+  return blog.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+function initials(member: GithubMember) {
+  return (member.name || member.login)
+    .split(/\s+/)
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+}
+---
+
+<SiteLayout
+  title="End User Community"
+  description="Meet the public Project Bluefin community members building, testing, and supporting the factory."
+  current="community"
+>
+  <div class="community-page">
+    <header class="community-header">
+      <div class="community-brand">
+        <span class="community-mark" aria-hidden="true">BF</span>
+        <div>
+          <p class="community-kicker">Project Bluefin / community</p>
+          <h1>End User Community</h1>
+        </div>
+      </div>
+      <div class="community-tools">
+        <a class="directory-link" href="https://github.com/orgs/projectbluefin/people" target="_blank" rel="noopener noreferrer">GitHub directory ↗</a>
+        <label class="search-label" for="member-search">Find a person</label>
+        <input id="member-search" class="member-search" type="search" placeholder="Name, handle, place…" autocomplete="off" />
+      </div>
+    </header>
+
+    <nav class="community-tabs" aria-label="Community sections">
+      <a href={`${baseUrl}about/`}>Factory</a>
+      <button class="is-current" type="button" data-view="people" aria-pressed="true">People</button>
+      <button type="button" data-view="architectures" aria-pressed="false">Architectures <span class="tab-count">6</span></button>
+      <a href="https://github.com/projectbluefin" target="_blank" rel="noopener noreferrer">Projects ↗</a>
+    </nav>
+
+    <section class="community-hero" aria-labelledby="community-title">
+      <div class="hero-copy">
+        <p class="hero-overline">The humans behind the test signal</p>
+        <h2 id="community-title">Built by people who use Linux every day.</h2>
+        <p class="hero-description">A living snapshot of the public members of the <strong>projectbluefin</strong> GitHub organization — the folks shaping the images, fixing the rough edges, and keeping the feedback loop honest.</p>
+      </div>
+      <div class="hero-stat" aria-label={`${members.length} public members`}>
+        <span class="stat-number">{members.length}</span>
+        <span class="stat-label">people in the<br />Bluefin orbit</span>
+      </div>
+    </section>
+
+    <div class="roster-meta">
+      <p><span class:list={["live-dot", rosterIsLive && 'is-live']}></span>{rosterIsLive ? 'Live from GitHub' : 'Last-known GitHub roster'} · checked {updatedLabel}</p>
+      <p class="roster-note">{staffCount} staff · {memberCount} public members · {advisorCount} advisors</p>
+    </div>
+
+    <section class="member-grid" aria-label="Project Bluefin community members" data-people-view>
+      {members.map((member, index) => {
+        const blog = cleanBlog(member.blog);
+        const displayName = member.name || member.login;
+        return (
+          <article class:list={["member-card", `member-card--${(index % 4) + 1}`]} data-member={`${displayName} ${member.login} ${member.company || ''} ${member.location || ''}`}>
+            <div class="portrait-wrap">
+              <img class="portrait" src={`${member.avatar_url}${member.avatar_url.includes('?') ? '&' : '?'}s=640`} alt={`${displayName}'s GitHub avatar`} loading={index < 2 ? 'eager' : 'lazy'} width="640" height="640" />
+              <span class="portrait-fallback" aria-hidden="true">{initials(member)}</span>
+              <span class="card-index">0{index + 1}</span>
+            </div>
+            <div class="member-info">
+              <div class="member-heading">
+                <div>
+                  <h3>{displayName}</h3>
+                  <p class="handle">@{member.login}</p>
+                </div>
+                {member.group && <span class:list={["group-badge", `group-badge--${member.group}`]}>{member.group}</span>}
+                <a class="profile-arrow" href={member.html_url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${displayName}'s GitHub profile`}>↗</a>
+              </div>
+              {member.bio && <p class="member-bio">{member.bio}</p>}
+              <div class="member-details">
+                {member.company && <span>⌂ {member.company.replace(/^@/, '')}</span>}
+                {member.location && <span>◌ {member.location}</span>}
+                {blog && <a href={member.blog!.startsWith('http') ? member.blog! : `https://${member.blog}`} target="_blank" rel="noopener noreferrer">↗ {blog}</a>}
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </section>
+
+    <section class="architecture-view" aria-labelledby="architecture-title" data-architecture-view hidden>
+      <div class="architecture-intro">
+        <p class="hero-overline">Field notes / real systems</p>
+        <h2 id="architecture-title">How the factory is put together.</h2>
+        <p>Reference cards built from this lab's actual GitOps manifests, workflows, and operating docs — not a generic cloud diagram.</p>
+      </div>
+      <div class="architecture-filters" aria-label="Filter reference architectures">
+        <button class="architecture-filter is-active" type="button" data-architecture-filter="all">All</button>
+        <button class="architecture-filter" type="button" data-architecture-filter="build">Build &amp; cache</button>
+        <button class="architecture-filter" type="button" data-architecture-filter="test">Test &amp; observe</button>
+        <button class="architecture-filter" type="button" data-architecture-filter="publish">Publish &amp; release</button>
+      </div>
+      <div class="architecture-grid">
+        <article class="architecture-card architecture-card--build" data-architecture-card="build">
+          <div class="architecture-card-top"><span class="architecture-number">01</span><span class="architecture-type">Build &amp; cache</span></div>
+          <h3>BuildStream → BuildBarn</h3>
+          <p>USB4-gated distributed builds move BuildStream actions to workers while BuildBarn owns the artifact, source, action, and CAS layers.</p>
+          <div class="architecture-flow"><span>Git ref</span><b>→</b><span>BuildStream</span><b>→</b><span>BuildBarn RE</span><b>→</b><span>OCI</span></div>
+          <div class="architecture-chips"><span>BuildStream</span><span>BuildBarn</span><span>Argo</span><span>USB4</span></div>
+          <a href={`${baseUrl}builds/`}>Inspect build telemetry ↗</a>
+        </article>
+        <article class="architecture-card architecture-card--test" data-architecture-card="test">
+          <div class="architecture-card-top"><span class="architecture-number">02</span><span class="architecture-type">Test &amp; observe</span></div>
+          <h3>Image → QA matrix</h3>
+          <p>Published Bluefin lanes are polled by digest, dispatched into suite-specific Argo workflows, and recorded as evidence instead of vibes.</p>
+          <div class="architecture-flow"><span>OCI digest</span><b>→</b><span>QA lanes</span><b>→</b><span>Results</span></div>
+          <div class="architecture-chips"><span>Argo Workflows</span><span>Behave</span><span>KubeVirt</span><span>Zot</span></div>
+          <a href={`${baseUrl}tests/`}>Inspect test matrix ↗</a>
+        </article>
+        <article class="architecture-card architecture-card--publish" data-architecture-card="publish">
+          <div class="architecture-card-top"><span class="architecture-number">03</span><span class="architecture-type">Publish &amp; release</span></div>
+          <h3>Digest → release verdict</h3>
+          <p>Factory signals join image freshness, build history, QA evidence, and security posture before a lane earns a useful verdict.</p>
+          <div class="architecture-flow"><span>Build</span><b>+</b><span>QA</span><b>+</b><span>Security</span><b>→</b><span>Verdict</span></div>
+          <div class="architecture-chips"><span>GitHub</span><span>GHCR</span><span>Grype</span><span>Evidence</span></div>
+          <a href={`${baseUrl}evidence/`}>Inspect release evidence ↗</a>
+        </article>
+        <article class="architecture-card architecture-card--build" data-architecture-card="build">
+          <div class="architecture-card-top"><span class="architecture-number">04</span><span class="architecture-type">Build &amp; cache</span></div>
+          <h3>Two-node lab fabric</h3>
+          <p>Ghost and exo-0 share a deliberately explicit topology: node-local XFS storage, sharded CAS, workers on both nodes, and no silent fallback.</p>
+          <div class="architecture-flow"><span>ghost</span><b>⇄</b><span>USB4</span><b>⇄</b><span>exo-0</span></div>
+          <div class="architecture-chips"><span>XFS</span><span>NVMe</span><span>local-path</span><span>Remote execution</span></div>
+          <a href={`${baseUrl}provisioning/`}>Inspect lab capacity ↗</a>
+        </article>
+        <article class="architecture-card architecture-card--test" data-architecture-card="test">
+          <div class="architecture-card-top"><span class="architecture-number">05</span><span class="architecture-type">Test &amp; observe</span></div>
+          <h3>GitOps control plane</h3>
+          <p>Tracked manifests reconcile through Argo CD; resource health, drift, policy checks, and rollout state stay visible to operators.</p>
+          <div class="architecture-flow"><span>Git</span><b>→</b><span>Argo CD</span><b>→</b><span>Cluster</span></div>
+          <div class="architecture-chips"><span>Argo CD</span><span>Kubernetes</span><span>Policy</span><span>Metrics</span></div>
+          <a href={`${baseUrl}applications/`}>Inspect GitOps state ↗</a>
+        </article>
+        <article class="architecture-card architecture-card--publish" data-architecture-card="publish">
+          <div class="architecture-card-top"><span class="architecture-number">06</span><span class="architecture-type">Publish &amp; release</span></div>
+          <h3>Local registry edge</h3>
+          <p>Zot stores the lab's writable image results while registry mirrors reduce repeated upstream pulls for test and build workloads.</p>
+          <div class="architecture-flow"><span>GHCR</span><b>→</b><span>Mirror</span><b>→</b><span>Zot</span><b>→</b><span>QA</span></div>
+          <div class="architecture-chips"><span>Zot</span><span>Registry mirror</span><span>OCI</span><span>Digest pinning</span></div>
+          <a href={`${baseUrl}images/`}>Inspect image lanes ↗</a>
+        </article>
+      </div>
+    </section>
+
+    <p id="empty-roster" class="empty-roster" hidden>No people match that search. Try a name, handle, or location.</p>
+
+    <footer class="community-footer">
+      <p>Roster source: <a href="https://api.github.com/orgs/projectbluefin/members?per_page=100" target="_blank" rel="noopener noreferrer">GitHub public organization members ↗</a></p>
+      <p>Know someone missing? <a href="https://github.com/projectbluefin/lab/issues" target="_blank" rel="noopener noreferrer">Open an issue ↗</a></p>
+    </footer>
+  </div>
+</SiteLayout>
+
+<style>
+  .community-page {
+    --ink: #f5f2eb;
+    --muted: #a8a49d;
+    --line: rgba(245, 242, 235, 0.16);
+    --acid: #d6f36a;
+    --coral: #ff806f;
+    --violet: #a993ff;
+    --blue: #86c9ff;
+    color: var(--ink);
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 10px 0 36px;
+  }
+
+  .community-header,
+  .community-brand,
+  .community-tools,
+  .member-heading,
+  .roster-meta,
+  .community-footer {
+    display: flex;
+    align-items: center;
+  }
+
+  .community-header { justify-content: space-between; gap: 24px; padding: 26px 0 22px; }
+  .community-brand { gap: 13px; }
+  .community-mark { display: grid; width: 42px; height: 42px; place-items: center; background: var(--acid); color: #161a0e; font-size: .8rem; font-weight: 900; letter-spacing: -.08em; transform: rotate(-7deg); }
+  .community-kicker, .hero-overline { margin: 0 0 5px; color: var(--acid); font-size: .7rem; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+  .community-header h1 { margin: 0; font-size: 1.25rem; letter-spacing: -.05em; }
+  .community-tools { gap: 18px; }
+  .directory-link { color: var(--muted); font-size: .78rem; text-decoration: none; }
+  .directory-link:hover { color: var(--ink); }
+  .search-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .member-search { width: 190px; border: 1px solid var(--line); border-radius: 0; background: rgba(255,255,255,.03); color: var(--ink); padding: 11px 13px; font: inherit; font-size: .78rem; outline: none; }
+  .member-search::placeholder { color: #77756f; }
+  .member-search:focus { border-color: var(--acid); box-shadow: 0 0 0 3px rgba(214,243,106,.15); }
+  .community-tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--line); }
+  .community-tabs a { padding: 11px 15px; color: var(--muted); font-size: .76rem; text-decoration: none; }
+  .community-tabs a:hover, .community-tabs a.is-current { color: var(--ink); }
+  .community-tabs a.is-current { border-bottom: 2px solid var(--acid); color: var(--acid); }
+  .community-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 11px 15px; background: none; color: var(--muted); cursor: pointer; font: inherit; font-size: .76rem; }
+  .community-tabs button:hover, .community-tabs button.is-current { color: var(--ink); }
+  .community-tabs button.is-current { border-bottom-color: var(--acid); color: var(--acid); }
+
+  .community-hero { display: grid; grid-template-columns: 1fr auto; gap: 35px; align-items: end; padding: clamp(58px, 10vw, 120px) 0 58px; border-bottom: 1px solid var(--line); }
+  .hero-copy { max-width: 760px; }
+  .hero-copy h2 { max-width: 760px; margin: 0; font-size: clamp(3.2rem, 8vw, 7.3rem); line-height: .86; letter-spacing: -.095em; font-weight: 800; }
+  .hero-description { max-width: 580px; margin: 30px 0 0; color: var(--muted); font-size: 1rem; line-height: 1.65; }
+  .hero-description strong { color: var(--ink); }
+  .hero-stat { display: grid; gap: 4px; min-width: 150px; padding: 17px 0 0 22px; border-left: 1px solid var(--acid); }
+  .stat-number { color: var(--acid); font-size: 5.4rem; font-weight: 800; line-height: .8; letter-spacing: -.1em; }
+  .stat-label { color: var(--muted); font-size: .72rem; line-height: 1.35; text-transform: uppercase; letter-spacing: .09em; }
+  .roster-meta { justify-content: space-between; gap: 20px; padding: 20px 0; color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+  .roster-meta p { margin: 0; }
+  .live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--coral); }
+  .live-dot.is-live { background: var(--acid); box-shadow: 0 0 0 4px rgba(214,243,106,.1); }
+  .member-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .architecture-view[hidden] { display: none; }
+  .architecture-intro { max-width: 720px; margin: 12px 0 30px; }
+  .architecture-intro h2 { margin: 0; font-size: clamp(2.5rem, 6vw, 5rem); line-height: .9; letter-spacing: -.08em; }
+  .architecture-intro p:last-child { max-width: 600px; margin: 20px 0 0; color: var(--muted); font-size: .95rem; line-height: 1.6; }
+  .architecture-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .architecture-filter { border: 1px solid var(--line); padding: 9px 12px; background: transparent; color: var(--muted); cursor: pointer; font: inherit; font-size: .72rem; }
+  .architecture-filter:hover, .architecture-filter.is-active { border-color: var(--acid); color: var(--acid); }
+  .architecture-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  .architecture-card { position: relative; overflow: hidden; min-height: 330px; border: 1px solid var(--line); padding: 23px; background: #131519; transition: transform .22s ease, border-color .22s ease; }
+  .architecture-card::before { position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: var(--card-color); content: ''; }
+  .architecture-card--build { --card-color: var(--acid); }
+  .architecture-card--test { --card-color: var(--blue); }
+  .architecture-card--publish { --card-color: var(--coral); }
+  .architecture-card:hover { transform: translateY(-4px); border-color: var(--card-color); }
+  .architecture-card-top { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font: .68rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: .1em; }
+  .architecture-number { color: var(--card-color); font-weight: 800; }
+  .architecture-card h3 { margin: 42px 0 13px; font-size: clamp(1.6rem, 3vw, 2.5rem); line-height: .95; letter-spacing: -.07em; }
+  .architecture-card p { min-height: 4.8em; margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.55; }
+  .architecture-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 24px 0 17px; color: var(--ink); font: .68rem ui-monospace, monospace; }
+  .architecture-flow span { border: 1px solid rgba(245,242,235,.18); padding: 6px 7px; }
+  .architecture-flow b { color: var(--card-color); font-weight: 800; }
+  .architecture-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .architecture-chips span { border: 1px solid rgba(245,242,235,.12); padding: 5px 7px; color: var(--muted); font-size: .66rem; }
+  .architecture-card > a { position: absolute; right: 23px; bottom: 22px; color: var(--card-color); font-size: .72rem; text-decoration: none; }
+  .architecture-card > a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .member-card { overflow: hidden; border: 1px solid var(--line); background: #121316; transition: transform .22s ease, border-color .22s ease; }
+  .member-card:hover { transform: translateY(-5px); border-color: rgba(214,243,106,.65); }
+  .portrait-wrap { position: relative; aspect-ratio: 1 / .96; overflow: hidden; background: #272a31; }
+  .member-card--1 .portrait-wrap { background: #303a26; }
+  .member-card--2 .portrait-wrap { background: #392a2c; }
+  .member-card--3 .portrait-wrap { background: #28253d; }
+  .member-card--4 .portrait-wrap { background: #263c46; }
+  .portrait { width: 100%; height: 100%; object-fit: cover; mix-blend-mode: luminosity; filter: contrast(1.08) saturate(.9); transition: transform .35s ease, filter .35s ease; }
+  .member-card:hover .portrait { transform: scale(1.045); filter: contrast(1.04) saturate(1.12); }
+  .portrait-fallback { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255,255,255,.7); font-size: 4rem; font-weight: 800; letter-spacing: -.08em; }
+  .portrait + .portrait-fallback { opacity: 0; }
+  .card-index { position: absolute; top: 13px; right: 14px; color: var(--ink); font: 700 .7rem ui-monospace, monospace; mix-blend-mode: difference; }
+  .member-info { padding: 19px 18px 21px; }
+  .member-heading { justify-content: space-between; gap: 12px; align-items: start; }
+  .member-heading h3 { margin: 0; font-size: 1.25rem; letter-spacing: -.055em; }
+  .handle { margin: 4px 0 0; color: var(--acid); font: .72rem ui-monospace, monospace; }
+  .group-badge { align-self: start; border: 1px solid var(--line); padding: 4px 6px; color: var(--muted); font: 700 .58rem ui-monospace, monospace; text-transform: uppercase; letter-spacing: .08em; }
+  .group-badge--staff { border-color: var(--acid); color: var(--acid); }
+  .group-badge--advisor { border-color: var(--violet); color: var(--violet); }
+  .profile-arrow { display: grid; width: 29px; height: 29px; place-items: center; border: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+  .profile-arrow:hover { background: var(--acid); border-color: var(--acid); color: #161a0e; }
+  .member-bio { min-height: 3.3em; margin: 18px 0 15px; color: #d0cdc6; font-size: .82rem; line-height: 1.45; }
+  .member-details { display: flex; flex-wrap: wrap; gap: 7px 12px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font-size: .7rem; }
+  .member-details a { color: var(--blue); text-decoration: none; }
+  .empty-roster { margin: 40px 0; color: var(--muted); }
+  .community-footer { justify-content: space-between; gap: 18px; margin-top: 52px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: .72rem; }
+  .community-footer p { margin: 0; }
+  .community-footer a { color: var(--ink); }
+
+  @media (max-width: 800px) {
+    .community-header { align-items: start; flex-direction: column; }
+    .community-tools { width: 100%; justify-content: space-between; }
+    .member-search { flex: 1; max-width: 260px; }
+    .community-hero { grid-template-columns: 1fr; padding-top: 72px; }
+    .hero-stat { grid-template-columns: auto 1fr; align-items: center; gap: 12px; border-top: 1px solid var(--acid); border-left: 0; padding: 18px 0 0; }
+    .stat-number { font-size: 4rem; }
+    .member-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .architecture-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 520px) {
+    .community-page { padding-top: 0; }
+    .community-tools { align-items: stretch; flex-direction: column-reverse; gap: 12px; }
+    .member-search { width: 100%; max-width: none; }
+    .community-tabs { overflow-x: auto; }
+    .community-tabs a { white-space: nowrap; }
+    .hero-copy h2 { font-size: clamp(3rem, 17vw, 5.2rem); }
+    .member-grid { grid-template-columns: 1fr; gap: 14px; }
+    .architecture-card { min-height: 350px; padding: 18px; }
+    .architecture-card > a { right: 18px; }
+    .portrait-wrap { aspect-ratio: 1 / .82; }
+    .community-footer { align-items: start; flex-direction: column; }
+    .roster-meta { align-items: start; flex-direction: column; gap: 8px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .member-card, .portrait { transition: none; }
+  }
+</style>
+
+<script>
+  const search = document.querySelector<HTMLInputElement>('#member-search');
+  const cards = [...document.querySelectorAll<HTMLElement>('[data-member]')];
+  const peopleView = document.querySelector<HTMLElement>('[data-people-view]');
+  const architectureView = document.querySelector<HTMLElement>('[data-architecture-view]');
+  const architectureCards = [...document.querySelectorAll<HTMLElement>('[data-architecture-card]')];
+  const empty = document.querySelector<HTMLElement>('#empty-roster');
+  const architectureFilters = [...document.querySelectorAll<HTMLButtonElement>('[data-architecture-filter]')];
+  const viewButtons = [...document.querySelectorAll<HTMLButtonElement>('[data-view]')];
+  const setView = (view: 'people' | 'architectures') => {
+    const architectures = view === 'architectures';
+    peopleView?.toggleAttribute('hidden', architectures);
+    architectureView?.toggleAttribute('hidden', !architectures);
+    viewButtons.forEach((button) => {
+      const active = button.dataset.view === view;
+      button.classList.toggle('is-current', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    if (search) search.placeholder = architectures ? 'Architecture, project, layer…' : 'Name, handle, place…';
+  };
+  viewButtons.forEach((button) => button.addEventListener('click', () => setView(button.dataset.view as 'people' | 'architectures')));
+  architectureFilters.forEach((filter) => filter.addEventListener('click', () => {
+    const kind = filter.dataset.architectureFilter || 'all';
+    architectureFilters.forEach((item) => item.classList.toggle('is-active', item === filter));
+    architectureCards.forEach((card) => { card.hidden = kind !== 'all' && card.dataset.architectureCard !== kind; });
+  }));
+  search?.addEventListener('input', () => {
+    const query = search.value.trim().toLowerCase();
+    if (!peopleView?.hasAttribute('hidden')) {
+      let visible = 0;
+      cards.forEach((card) => {
+        const matches = !query || card.dataset.member?.toLowerCase().includes(query);
+        card.hidden = !matches;
+        if (matches) visible += 1;
+      });
+      if (empty) empty.hidden = visible !== 0;
+    } else {
+      architectureCards.forEach((card) => {
+        card.hidden = Boolean(query) && !card.textContent?.toLowerCase().includes(query);
+      });
+    }
+  });
+</script>

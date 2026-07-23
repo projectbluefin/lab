@@ -196,13 +196,16 @@ hostDisk clone. Invoked as `onExit` from the pipeline templates.
 
 ### `dakota-bst`
 
-Drives dakota BuildStream builds on ghost via the existing `just` recipes.
-Mounts jorge's BST cache for warm builds (~2–5 min warm, ~60–90 min cold).
-No changes to the dakota repo — this is purely an orchestration wrapper.
+Drives the Dakota BuildStream workflow through the USB4-gated BuildBarn remote
+execution grid. The clean distributed target is `oci/bluefin.bst`; NVIDIA and
+all-variant modes are disabled. This is not a local-build wrapper, and a local
+cache fallback must never be used to claim the distributed gate is healthy.
+The workflow pins the observed Dakota Git SHA and requires resource requests and
+limits so graph validation is not rejected by admission/quota policy.
 
 | Parameter | Default | Notes |
 |---|---|---|
-| `variant` | `default` | `default`, `nvidia`, or `all` |
+| `variant` | `default` | default variant only; NVIDIA builds are disabled |
 | `branch` | `main` | dakota branch to clone |
 
 Pipeline: `bst-validate` (fast graph check) → `bst-build` (build + lint).
@@ -210,8 +213,7 @@ Pipeline: `bst-validate` (fast graph check) → `bst-build` (build + lint).
 ```
 just run-dakota-validate              # bst show only, ~5 min
 just run-dakota-build                 # default variant
-just run-dakota-build nvidia          # nvidia variant
-just run-dakota-build all             # both variants sequentially
+# NVIDIA and all-variant modes are disabled for clean builds.
 ```
 
 ---

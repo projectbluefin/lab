@@ -154,8 +154,16 @@ spec:
     # Proven local publish path. The distributed path above is retained for recovery,
     # but it has repeatedly failed after admission with BuildStream exit 255.
     - name: bst-build-local
-      nodeSelector:
-        kubernetes.io/hostname: exo-0
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - exo-0
       activeDeadlineSeconds: 43200
       inputs:
         parameters:
@@ -184,12 +192,12 @@ spec:
         resources:
           requests:
             cpu: "16"
-            memory: 32Gi
-            ephemeral-storage: 200Gi
+            memory: 16Gi
+            ephemeral-storage: 10Gi
           limits:
             cpu: "32"
-            memory: 48Gi
-            ephemeral-storage: 300Gi
+            memory: 32Gi
+            ephemeral-storage: 50Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse
@@ -245,9 +253,16 @@ spec:
           echo "=== DAKOTA PUBLISHED: ${REGISTRY}/dakota:testing ==="
 
     - name: bst-build-re
-      nodeSelector:
-        kubernetes.io/hostname: exo-0
       affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - exo-0
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
@@ -310,13 +325,13 @@ spec:
             value: "/tmp/{{workflow.name}}-buildstream-cache"
         resources:
           requests:
-            cpu: "8"
-            memory: 16Gi
-            ephemeral-storage: 100Gi
+            cpu: "2"
+            memory: 4Gi
+            ephemeral-storage: 10Gi
           limits:
-            cpu: "16"
-            memory: 32Gi
-            ephemeral-storage: 200Gi
+            cpu: "4"
+            memory: 8Gi
+            ephemeral-storage: 50Gi
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse

@@ -242,7 +242,7 @@ lab-report pr_number status workflow:
     gh pr edit {{ pr_number }} --repo "${REPO}" \
         --add-label "${LABEL}" --remove-label "${REMOVE}" 2>/dev/null || true
 
-# Run Dakota BST pipeline (build bluefin + bluefin-nvidia variants in parallel)
+# Run Dakota BST pipeline (default bluefin variant only; NVIDIA disabled)
 # Usage: just run-bst-build
 # Usage: just run-bst-build testing https://github.com/projectbluefin/dakota.git
 run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":

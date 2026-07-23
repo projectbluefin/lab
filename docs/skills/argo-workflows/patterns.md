@@ -325,12 +325,11 @@ blanket-stop all Dakota build-publish runs or suspend the active QA poller.
 
 ### 20a. Dakota BuildStream publish lane output tags
 
-`dakota-build-pipeline` exports the built `oci/bluefin.bst` and `oci/bluefin-nvidia.bst`
-artifacts to the local Zot registry. The published tags must match the projectbluefin/dakota
-image contract, not internal "cluster testing" names:
+`dakota-build-pipeline` exports the built `oci/bluefin.bst` artifact to the local Zot
+registry. NVIDIA variants are disabled in the distributed clean-build workflow. The published
+tag must match the projectbluefin/dakota image contract:
 
 - Base variant → `<lab-ip>:30500/dakota:testing`
-- NVIDIA variant → `<lab-ip>:30500/dakota-nvidia:testing`
 
 Do not publish these as `:latest` from the cluster lane; `:testing` is the testing-branch
 stream and `:stable` is promoted separately from `main`. Keeping the cluster lane on `:testing`
@@ -367,15 +366,7 @@ argo submit --from workflowtemplate/dakota-container-qa-pipeline \
   -n argo --watch
 ```
 
-For `dakota-nvidia:testing`, change only `image` and `variant`:
-
-```bash
-argo submit --from workflowtemplate/dakota-container-qa-pipeline \
-  -p image=<lab-ip>:30500/dakota-nvidia \
-  -p image-tag=testing \
-  -p variant=dakota-nvidia \
-  -n argo --watch
-```
+NVIDIA image builds are disabled for this clean distributed-build path.
 
 Keep the VM-based `dakota-qa-pipeline` suspended until a successful `build-containerdisk` run
 proves the VM-boot path works.

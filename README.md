@@ -134,7 +134,7 @@ lab/
 │   │   ├── provision-gnomeos-vm.yaml     provision GNOME OS test VM
 │   │   ├── teardown-vm.yaml          delete explicit VM-backed test guests
 │   │   ├── collect-vm-logs.yaml          gather VM journal logs post-test
-│   │   ├── dakota-build-pipeline.yaml   Dakota BST build pipeline (bluefin + nvidia)
+│   │   ├── dakota-build-pipeline.yaml   Dakota BST build pipeline (default variant only; NVIDIA disabled)
 │   │   ├── dakota-commit-poller.yaml    Poll dakota:testing commits and trigger BST builds
 │   │   ├── dakota-qa-pipeline.yaml      container-only Dakota suite fan-out
 │   │   ├── knuckle-qa-pipeline.yaml     Knuckle installer QA pipeline

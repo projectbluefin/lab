@@ -34,8 +34,9 @@ remote-cache-only run is not an acceptable substitute.
   distributed, verify its generated `projects.<name>.remote-execution`
   configuration, BuildStream RE startup, and current worker action activity.
   Dakota uses a two-slot `bst-build` semaphore and workflow-owned 200Gi
-  `local-path` cache PVCs. `oci/bluefin-nvidia.bst` waits for its Bluefin parent
-  artifact. The Dakota commit poller pins the checkout to the exact GitHub SHA
+  `local-path` cache PVCs. The distributed workflow builds only
+  `oci/bluefin.bst`; NVIDIA variants are disabled for clean builds. The Dakota
+  commit poller pins the checkout to the exact GitHub SHA
   it observed.
 - **Buildbarn RE sandbox device nodes**: `bb_runner` with
   `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
@@ -62,6 +63,32 @@ Kubernetes counts a pod's request against node capacity until the Job (and its
 pods) is deleted. Example: a finished `atspi-cacheonly` Job held a 14Gi request
 and blocked Buildbarn storage scheduling on `exo-0` until the Job was removed.
 
+## Lessons for future agents
+
+The 2026-07-22 Dakota investigation established the following decision tree:
+
+1. **Verify admission before debugging compilation.** Fresh USB4 timestamps, node
+   readiness, two Ready BuildBarn workers, and workflow resource requests/limits
+   are prerequisites. An initial graph-validation rejection was quota/admission
+   related because a step lacked resources; it was not a Dakota compiler result.
+2. **Prove runner correctness with a small action, then prove the full root.** A
+   tiny REAPI input root executing proves connectivity only. The gate remains red
+   until the full SDK root completes CAS materialization and an action executes
+   `rustc -vV` successfully.
+3. **Separate evidence classes.** Local BuildStream success, Podman/Zot push
+   success, and container E2E are useful diagnostics, but none substitutes for
+   a successful distributed `build-mode=re` build. Never report overall green
+   from those results alone.
+4. **Check live-vs-git configuration.** Before retrying, compare the live
+   `buildbarn-config` and worker/runner pods with the repository. Stale ConfigMaps
+   can preserve virtual/FUSE directories or `setTmpdirEnvironmentVariable` after
+   the source manifest has moved to native directories. Reconcile through GitOps
+   and wait for both worker pairs to restart before testing.
+5. **Do not tune capacity around a correctness failure.** Keep one action slot per
+   runner and current BuildStream/semaphore limits until full-root materialization
+   is reliable. Low utilization during a failed action is expected and is not a
+   reason to add workers or jobs.
+
 ## BST build scheduling: avoid preemption
 
 BST build pods use the `bst-build` PriorityClass. Long distributed builds lose all
@@ -85,11 +112,9 @@ owns the value. Raising it lets builds preempt polling VMs instead of the
 reverse.
 
 2. **Use verified parallel BST capacity.** Keep independent work concurrent when
-BuildBarn workers and node requests have safe headroom. Respect actual
-BuildStream graph dependencies: Dakota's NVIDIA image requires the Bluefin OCI
-artifact, so it must wait for that artifact rather than racing an empty remote
-cache. Reassess live worker and node capacity before raising or lowering the
-two-slot `bst-build` limit.
+BuildBarn workers and node requests have safe headroom. Respect actual BuildStream graph dependencies and reassess live worker and node
+capacity before raising or lowering the two-slot `bst-build` limit. NVIDIA
+variants are disabled in the distributed clean-build workflows.
 
 3. **Clear stale semaphore holders before reducing capacity.** The semaphore in
 `manifests/workflow-semaphores.yaml` gates all BST build lanes. Confirm terminal
@@ -146,7 +171,7 @@ two action slots, and observable current worker actions.
 - **Deployment**: Frontend, scheduler, storage shards, and workers are defined under `manifests/buildbarn-*.yaml` and run in the `buildbarn` namespace
 
 ### 2. BuildStream client config
-  The build pods should generate a deterministic `buildstream.conf` that keeps upstream project caches as read-only fallbacks and pushes artifacts to the shared Buildbarn frontend first. Dakota's concurrency matches its two one-slot BuildBarn workers, while fetches remain bounded by coordinator capacity:
+  The build pods should generate a deterministic `buildstream.conf` that keeps upstream source caches read-only and pushes artifacts to the shared Buildbarn frontend first. Dakota's coordinator remains bounded by its two one-slot BuildBarn workers; do not increase BuildStream jobs, worker count, or semaphore capacity while remote execution or CAS materialization is unhealthy:
  
 ```yaml
 scheduler:
@@ -167,23 +192,38 @@ artifacts:  override-project-caches: false
   - url: https://gbm.gnome.org:11003
     push: false
 source-caches:
-  override-project-caches: false
+  override-project-caches: true
   servers:
-  - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
-    type: index
-    push: true
-  - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-    type: storage
-    push: true
-  - url: https://cache.projectbluefin.io:11001
+  - url: https://gbm.gnome.org:11003
     push: false
   - url: https://cache.freedesktop-sdk.io:11001
-    push: false
-  - url: https://gbm.gnome.org:11003
     push: false
 ```
 
 Repeat the same override and server ordering at the project level so the primary project uses the same cache policy as the top-level config.
+
+**Dakota exception (verified 2026-07-22):** the lab's deployed `bb-remote-asset` image (`ghcr.io/buildbarn/bb-remote-asset:20241031T230517Z-4926e8e`) returns `FetchBlob ... UNIMPLEMENTED` for BuildStream source-key URNs. Until that endpoint is upgraded/configured for URNs, set `source-caches.override-project-caches: true` and list only the upstream read-only source caches. Leaving it `false` can inherit junction source-cache entries and cause a build to spend minutes retrying a source push before failing. Artifact/RE cache writes may still use the BuildBarn frontend.
+
+**Worker recovery note (verified 2026-07-22):** a failed virtual/FUSE BuildBarn experiment left stale `bb_worker` mounts on the node-local worker path, causing subsequent `volume-init` failures (`Transport endpoint is not connected`). Recovery was performed through a temporary privileged, host-PID recovery pod using `nsenter -t 1 -m -- umount -l /var/lib/buildbarn/worker/build`, followed by worker-pod recreation. The virtual/FUSE experiment also exposed `rustc -vV: Permission denied` in `gnomeos-deps/bootc.bst`. The runner was upgraded from the 2026-05-27 BuildBarn pair to the coordinated 2026-07-22 worker/installer pair, made privileged/root with `spc_t`, and configured with `/tmp` and `/var/tmp` per-action symlinks plus one action slot. Direct REAPI isolation proved the tiny input root reaches the runner, while the full SDK root stalls during CAS materialization before command execution. The frontend was restarted to load current shard configuration; a 31 MiB CAS blob then read through the frontend in 0.08s, but a fresh full-root action still timed out after 10 minutes. The sharded CAS is inconsistent for the full root: some blobs exist only on storage-0 while storage-1 reports NotFound, and worker failures report `Shard 0/1: context canceled` during input fetch. The distributed gate remains red until CAS replication/routing and full-root materialization are repaired. BuildStream's default config is merged with the supplied config; to force a cache-only local diagnostic, explicitly add a top-level `remote-execution: {}` rather than merely omitting the remote-execution snippet.
+
+**Controlled retry update (2026-07-23):** after reconciling native runner configuration and restarting both worker pods, the Dakota retry uploaded SDK input roots and reached remote command execution, demonstrating progress beyond the historical `rustc`/TMPDIR failure. However, both actions failed when the old workers disappeared during execution, and the retry was still in artifact pulls afterward. Do not call this green; worker continuity and the full build/publish/digest/E2E chain still require proof.
+
+**Local fallback verified 2026-07-22:** when the BuildBarn path fails in `gnomeos-deps/bootc.bst`, the same element and both OCI targets build successfully with the local BuildStream cache. The clean-build sequence is `just bst build --deps none oci/bluefin.bst`, then `just bst artifact checkout ...` and the repository's `just export default` logic. The distributed Dakota and COSMIC workflows intentionally skip NVIDIA variants until the BuildBarn path is stable; do not interpret a disabled NVIDIA branch as a default-image build failure.
+
+**Registry publication verified 2026-07-22:** the local Zot registry accepts anonymous pushes over its configured insecure HTTP endpoint. Publish with Podman (`podman push --tls-verify=false localhost/dakota:testing docker://192.168.1.102:30500/dakota:testing`) rather than rootful Skopeo, which may look at `/run/containers/storage` and fail for a rootless session. Verify the registry digest with `skopeo inspect --tls-verify=false` and pull the registry tag back before smoke testing.
+
+**GPU validation boundary (verified 2026-07-22):** the NVIDIA image contains `/usr/sbin/nvidia-smi`, but the lab's nodes advertise neither `nvidia.com/gpu` nor `amd.com/gpu`, and no NVIDIA device plugin is running. Docker's `--gpus all` fails because the host has no communicating NVIDIA driver; Podman CDI fails because `nvidia.com/gpu=all` is unresolvable. Install GPU hardware, drivers, NVIDIA Container Toolkit/CDI, and the Kubernetes device plugin before treating GPU runtime validation as actionable.
+
+### Verified CAS materialization findings (2026-07-22)
+
+Direct REAPI isolation separates the failure stages:
+
+- A tiny input root reaches the BuildBarn runner and executes immediately.
+- The full SDK input root stalls during native CAS materialization before the runner starts.
+- The target tree contains executable /usr/bin/rustc and /usr/bin/cargo entries.
+- Restarting stale frontend and scheduler pods made a 31 MiB frontend CAS read complete in 0.08s, but a fresh full-root action still exceeded ten minutes.
+- A correctly configured virtual/FUSE worker was tested and failed at startup with Failed to expose build directory mount: operation not permitted; production therefore remains native.
+- The current native configuration uses the large persistent hardlink cache and inputDownloadConcurrency: 128. The distributed gate remains red until a full SDK input root materializes reliably.
 
 ### 3. BuildStream parser constraints
 - **No top-level `source:` key**: `buildstream.conf` does not support a top-level `source:` block.

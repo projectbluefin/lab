@@ -26,7 +26,7 @@ spec:
       labels:
         app: worker
       annotations:
-        buildbarn-config-revision: "2026-07-20-2"
+        buildbarn-config-revision: "2026-07-23-1"
         prometheus.io/scrape: "true"
         prometheus.io/port: "9980"
     spec:
@@ -34,7 +34,7 @@ spec:
       priorityClassName: workflow-controller
       initContainers:
         - name: bb-runner-installer
-          image: ghcr.io/buildbarn/bb-runner-installer:20260527T162223Z-c48dcda
+          image: ghcr.io/buildbarn/bb-runner-installer:20260722T162832Z-236bcd9
           volumeMounts:
             - mountPath: /bb/
               name: bb-runner-bin
@@ -49,7 +49,7 @@ spec:
               name: worker
       containers:
         - name: worker
-          image: ghcr.io/buildbarn/bb-worker:20260527T162223Z-c48dcda
+          image: ghcr.io/buildbarn/bb-worker:20260722T162832Z-236bcd9
           command: [/app/bb_worker]
           args:
             - /config/worker.jsonnet
@@ -65,6 +65,13 @@ spec:
           ports:
             - name: metrics
               containerPort: 9980
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+            seLinuxOptions:
+              type: spc_t
+            seccompProfile:
+              type: Unconfined
           resources:
             requests:
               cpu: 500m
@@ -81,17 +88,28 @@ spec:
               readOnly: true
             - mountPath: /worker
               name: worker
+              mountPropagation: Bidirectional
+            - mountPath: /dev/fuse
+              name: fuse
             - mountPath: /bb
               name: bb-runner-bin
         - name: runner
           image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           command: [/bb/bb_runner, /config/runner.jsonnet]
+          # Native BuildBarn chroot actions need the runner to traverse and
+          # execute files from large SELinux-labeled input roots. Keep the
+          # worker itself unchanged; privilege is limited to this runner
+          # container, which already executes untrusted build actions as root
+          # inside the chroot.
           securityContext:
             runAsUser: 0
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: [ALL]
-              add: [SYS_CHROOT]
+            privileged: true
+            allowPrivilegeEscalation: true
+            seLinuxOptions:
+              type: spc_t
+            # Keep the host-backed worker build tree executable. The runner
+            # chroots into action input roots and invokes toolchains from them.
+            procMount: Default
           resources:
             requests:
               cpu: "8"
@@ -108,11 +126,18 @@ spec:
               readOnly: true
             - mountPath: /worker
               name: worker
+              mountPropagation: Bidirectional
+            - mountPath: /dev/fuse
+              name: fuse
             - mountPath: /bb
               name: bb-runner-bin
       volumes:
         - name: bb-runner-bin
           emptyDir: {}
+        - name: fuse
+          hostPath:
+            path: /dev/fuse
+            type: CharDevice
         - name: configs
           configMap:
             name: buildbarn-config

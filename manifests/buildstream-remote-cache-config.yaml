@@ -29,19 +29,16 @@ data:
         push: false
       - url: https://cache.freedesktop-sdk.io:11001
         push: false
-      - url: https://cache.projectbluefin.io:11001
-        push: false
     source-caches:
-      override-project-caches: false
+      # Do not inherit junction/project source-cache entries here: the
+      # deployed bb-remote-asset endpoint cannot FetchBlob BuildStream URNs.
+      # Explicit upstream fallbacks keep cold misses buildable without
+      # sending source pushes to the incompatible endpoint.
+      override-project-caches: true
       servers:
-      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-        type: storage
-        push: true
       - url: https://gbm.gnome.org:11003
         push: false
       - url: https://cache.freedesktop-sdk.io:11001
-        push: false
-      - url: https://cache.projectbluefin.io:11001
         push: false
   # Per-project remote-execution snippet body. Pipelines append this under
   # projects.<name> (indented) when distributed builds are enabled.
@@ -61,10 +58,7 @@ data:
           retry-limit: 8
           retry-delay: 1000
           request-timeout: 1800
-      action-cache-service:
-        url: grpc://frontend.buildbarn.svc.cluster.local:8980
-        connection-config:
-          keepalive-time: 60
-          retry-limit: 8
-          retry-delay: 1000
-          request-timeout: 1800
+      # Do not read the historical action cache while recovering the
+      # distributed gate. Earlier native-runner failures were cached under
+      # deterministic action digests; fresh executions must reach the repaired
+      # virtual worker.

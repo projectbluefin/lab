@@ -596,5 +596,14 @@ The clean, standard Kubernetes/Argo solution is to mount an `emptyDir: {}` volum
     volumes:
       - name: tmp
         emptyDir: {}
+
+### 27. BuildStream Pipeline Resource Right-Sizing and Scheduler-Driven Affinities
+
+When designing or updating BuildStream compilation pipelines (e.g. `dakota-build-pipeline` and `cosmic-build-pipeline`), right-size all step-level resource requests and limits to maximize cluster capacity and prevent scheduling bottlenecks:
+
+- **RE Coordinator/Driver Pods**: The remote execution build driver (e.g., `bst-build-re`) only orchestrates execution, downloads metadata, and transfers sparse artifact layers; its native CPU/memory usage is minimal (~47m CPU, ~926Mi memory). Keep its resource requests right-sized at `2 CPU` and `4Gi` memory (with limits at `4 CPU` and `8Gi` memory) to prevent massive node capacity stranding.
+- **Local/Serial Builder Pods**: Local compile templates (e.g. `bst-build-local`) can spike up to 15.9 CPU cores but rarely exceed ~9.6GiB of memory and ~0.36GiB of container-overlay filesystem storage (since the BuildStream artifact cache is mapped directly to a hostPath or PVC). Right-size requests to `16 CPU` and `16Gi` memory with a `10Gi` ephemeral storage request (limits: `32 CPU`, `32Gi` memory, `50Gi` ephemeral storage) to avoid stranding resources while leaving ample compiling headroom.
+- **Preferred Node Affinities**: Avoid hard node pinnings (like `nodeSelector: kubernetes.io/hostname: exo-0`) on build templates. Instead, utilize a `preferredDuringSchedulingIgnoredDuringExecution` preferred node affinity targeting the primary build node (e.g., `exo-0` with weight 100) to keep cache locality warm under normal conditions, while enabling the Kubernetes scheduler to gracefully schedule build pods onto other available nodes (such as `exo-1`) when the primary is overloaded or undergoing maintenance. This fully aligns with scheduler-driven placement policies.
+
 ```
 

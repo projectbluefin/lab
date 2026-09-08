@@ -21,7 +21,7 @@ def test_arc_runner_bakes_tools_and_a_python_wheelhouse():
     for package in ("podman", "skopeo", "git", "python3-pip"):
         assert package in containerfile
     assert "/opt/qa-wheels" in containerfile
-    for dependency in ('"setuptools<81"', "qecore", "dogtail", "behave"):
+    for dependency in ('"setuptools<81"', "qecore", "dogtail", "behave", "python-uinput"):
         assert dependency in containerfile
 
 
@@ -72,6 +72,7 @@ def test_target_python_dependencies_remain_target_installs_with_load_bearing_pin
         assert "qecore" in source
         assert "dogtail" in source
         assert "behave" in source
+        assert "python-uinput" in source
         assert '"setuptools<81"' in source
         assert "--find-links" in source
         assert "--no-index" in source
@@ -80,6 +81,19 @@ def test_target_python_dependencies_remain_target_installs_with_load_bearing_pin
 
     assert "Sandbox._attach_version_status_to_report()" in container_source
     assert "pkg_resources" in systemd_source
+
+
+def test_nested_target_installs_python_uinput_dependency():
+    container_source = _template(CONTAINER_RUNNER, "run-container-tests")["script"]["source"]
+    systemd_source = _template(SYSTEMD_RUNNER, "run-tests")["script"]["source"]
+
+    # python-uinput provides the C extension `uinput` module required by
+    # qecore.utility.check_uinput_availability() for synthetic input events.
+    # The PyPI distribution name is `python-uinput` (not bare `uinput`, which does
+    # not exist on PyPI). Ensure both runners declare python-uinput in qa_dependencies.
+    for source in (container_source, systemd_source):
+        assert "python-uinput" in source
+        assert 'qa_dependencies=("setuptools<81" qecore dogtail behave python-uinput)' in source
 
 
 def test_aggregate_publication_has_one_lab_clone_and_one_batch_push():

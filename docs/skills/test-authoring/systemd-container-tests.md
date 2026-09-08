@@ -177,6 +177,12 @@ desktop limitation, not as a regression in that provisioning.
     `RuntimeError: User 'bluefin-test' does not have write permissions for '/dev/uinput'`.
     Using `--user bluefin-test` ensures the runtime looks up the user and
     populates all supplementary groups.
+14. **Supply `python-uinput` to nested targets:** `qecore`'s
+    `check_uinput_availability()` checks `importlib.util.find_spec("uinput")`
+    before synthesizing key/mouse events via `/dev/uinput`. The Python module
+    is `uinput`, but the PyPI package distribution is `python-uinput` (bare
+    `uinput` does not exist on PyPI). Ensure `python-uinput` is declared in
+    `qa_dependencies` and in the runner's pre-baked `/opt/qa-wheels` wheelhouse.
 
 #### The `homebrew` lane
 

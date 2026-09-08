@@ -640,7 +640,7 @@ spec:
             pip_args+=(--break-system-packages)
           fi
           pip_args+=(--cache-dir "${PIP_CACHE_DIR}")
-          qa_dependencies=("setuptools<81" qecore dogtail behave)
+          qa_dependencies=("setuptools<81" qecore dogtail behave python-uinput)
           pip_ok=false
           for attempt in 1 2 3; do
             # setuptools is explicit and load-bearing, not incidental: qecore's
@@ -651,6 +651,8 @@ spec:
             # so without this pin every after_scenario hook raises
             # ModuleNotFoundError. Keep it pinned below 81 for as long as qecore
             # imports pkg_resources.
+            # python-uinput provides the C extension `uinput` module used by
+            # qecore.utility.check_uinput_availability() for synthetic input.
             if python3 -m pip install "${pip_args[@]}" \
                 --no-index --find-links /var/opt/qa-wheels --find-links /opt/qa-wheels \
                 "${qa_dependencies[@]}" >/tmp/pip-install.log 2>&1; then
@@ -669,7 +671,7 @@ spec:
             sleep 10
           done
           if [ "${pip_ok}" != true ]; then
-            echo "Failed to install test-only Python dependencies (setuptools qecore dogtail behave)" >&2
+            echo "Failed to install test-only Python dependencies (setuptools qecore dogtail behave python-uinput)" >&2
             echo "  python3: $(python3 --version 2>&1)" >&2
             echo "  pip:     $(python3 -m pip --version 2>&1)" >&2
             echo "  full pip log:" >&2

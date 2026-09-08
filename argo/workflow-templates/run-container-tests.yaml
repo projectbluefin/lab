@@ -407,7 +407,7 @@ spec:
           --mount type=bind,source=/run/udev,destination=/run/udev,ro,bind-propagation=rprivate \
           --volume /workspace:/workspace:ro \
           --volume /tmp/results:/tmp/results \
-          --volume /opt/qa-wheels:/opt/qa-wheels:ro \
+          --volume /opt/qa-wheels:/var/opt/qa-wheels:ro \
           --volume /var/cache/bluefin-qa-pip:/var/cache/bluefin-qa-pip:rw \
           --volume /etc/resolv.conf:/etc/resolv.conf:ro \
           "${TARGET_IMAGE}" /sbin/init >/dev/null
@@ -652,14 +652,14 @@ spec:
             # ModuleNotFoundError. Keep it pinned below 81 for as long as qecore
             # imports pkg_resources.
             if python3 -m pip install "${pip_args[@]}" \
-                --no-index --find-links /opt/qa-wheels \
+                --no-index --find-links /var/opt/qa-wheels --find-links /opt/qa-wheels \
                 "${qa_dependencies[@]}" >/tmp/pip-install.log 2>&1; then
               pip_ok=true
               break
             fi
             echo "Local QA wheelhouse did not satisfy this target interpreter; falling back to the configured package index." >&2
             if python3 -m pip install "${pip_args[@]}" \
-                --find-links /opt/qa-wheels \
+                --find-links /var/opt/qa-wheels --find-links /opt/qa-wheels \
                 "${qa_dependencies[@]}" >/tmp/pip-install.log 2>&1; then
               pip_ok=true
               break

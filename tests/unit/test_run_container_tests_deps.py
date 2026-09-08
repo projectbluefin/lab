@@ -25,6 +25,23 @@ def test_arc_runner_bakes_tools_and_a_python_wheelhouse():
         assert dependency in containerfile
 
 
+def test_arc_runner_pins_oras_release_without_api_rate_limits():
+    containerfile = CONTAINERFILE.read_text(encoding="utf-8")
+
+    assert "api.github.com" not in containerfile
+    assert "https://github.com/oras-project/oras/releases/download/v1.2.3/oras_1.2.3_linux_amd64.tar.gz" in containerfile
+
+
+def test_container_runner_preserves_nested_systemd_podman_requirement():
+    runner = _template(CONTAINER_RUNNER, "run-container-tests")
+    source = runner["script"]["source"]
+
+    assert "command -v podman" in source
+    assert "Podman is required for nested systemd QA" in source
+    assert "--privileged" in source
+    assert "--systemd=always" in source
+
+
 def test_container_runner_uses_baked_runner_tools_without_dnf_bootstrap():
     runner = _template(CONTAINER_RUNNER, "run-container-tests")
     source = runner["script"]["source"]

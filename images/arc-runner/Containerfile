@@ -50,7 +50,7 @@ RUN curl -sSfL \
 
 # oras (OCI registry push/pull for GGUF artifacts and PR images)
 RUN curl -sSfL \
-      https://github.com/oras-project/oras/releases/latest/download/oras_$(curl -sSf https://api.github.com/repos/oras-project/oras/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | tr -d v)_linux_amd64.tar.gz \
+      https://github.com/oras-project/oras/releases/download/v1.2.3/oras_1.2.3_linux_amd64.tar.gz \
     | tar xz -C /usr/local/bin oras
 
 # argo CLI (fire-and-forget workflow submission from ARC runner jobs)

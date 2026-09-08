@@ -49,10 +49,11 @@ def test_container_runner_uses_baked_runner_tools_without_dnf_bootstrap():
     assert runner["script"]["image"] == "ghcr.io/projectbluefin/arc-runner:latest"
     assert "dnf install -y skopeo" not in source
     assert "dnf install -y git-core" not in source
-    assert "--volume /opt/qa-wheels:/opt/qa-wheels:ro" in source
+    assert "--volume /opt/qa-wheels:/var/opt/qa-wheels:ro" in source
     assert "--cache-dir" in source
     assert "PIP_CACHE_DIR=/var/cache/bluefin-qa-pip" in source
-    assert "--no-index --find-links /opt/qa-wheels" in source
+    assert "--no-index --find-links /var/opt/qa-wheels" in source
+    assert "--find-links /opt/qa-wheels" in source
     assert "falling back to the configured package index" in source
     container_text = CONTAINER_RUNNER.read_text(encoding="utf-8")
     assert "kubernetes.io/hostname: ghost" in container_text
@@ -105,3 +106,18 @@ def test_systemd_target_preseeds_wheels_without_changing_target_image():
     assert "name: pip-cache" in target
     assert 'path: /var/cache/bluefin-qa-pip' in target
     assert 'image: "{{inputs.parameters.image}}:{{inputs.parameters.image-tag}}"' in target
+
+
+def test_container_runner_wheel_mount_targets_ostree_var_opt_hierarchy():
+    runner = _template(CONTAINER_RUNNER, "run-container-tests")
+    source = runner["script"]["source"]
+
+    # In ostree/bootc images (Bluefin), /opt is a symlink to var/opt or /var/opt,
+    # but /var/opt does not exist in the rootfs before boot/mounts.
+    # Mounting to destination /opt/qa-wheels causes crun openat2 to fail with ENOENT
+    # on 'opt'. Mounting to /var/opt/qa-wheels allows crun to create /var/opt
+    # under existing /var, which simultaneously satisfies the /opt symlink.
+    assert "--volume /opt/qa-wheels:/var/opt/qa-wheels:ro" in source
+    assert "--volume /opt/qa-wheels:/opt/qa-wheels:ro" not in source
+    assert "/var/opt/qa-wheels" in source
+

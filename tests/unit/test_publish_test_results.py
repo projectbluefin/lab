@@ -351,12 +351,16 @@ def test_parse_real_sample_results():
 
     assert updated["variant"] == "bluefin-testing"
     assert updated["suite"] == "smoke"
-    assert updated["status"] == "passed"
     assert updated["scenarios"] > 0
-    assert updated["failed"] == 0
+    fixture_failures = sum(
+        element.get("status") == "failed"
+        for feature in data
+        for element in feature.get("elements", [])
+        if element.get("type") == "scenario"
+    )
+    assert updated["status"] == ("failed" if fixture_failures else "passed")
+    assert updated["failed"] == fixture_failures
     assert updated["duration_seconds"] > 0.0
-    assert updated["failed_scenarios"] == []
-    assert updated["failed_scenarios_detailed"] == []
     assert len(updated["failed_scenarios"]) == updated["failed"]
     assert len(updated["failed_scenarios_detailed"]) == updated["failed"]
 
@@ -469,4 +473,3 @@ def test_parse_failed_scenarios_detailed():
     assert detail_2["scenario_name"] == "Failed Scenario 3 (no error message)"
     assert detail_2["failing_step"] == "Unnamed Step"
     assert detail_2["error_message"] == "No stack trace recorded."
-

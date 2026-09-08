@@ -821,10 +821,15 @@ spec:
 
         echo "Running qecore against the nested systemd/GDM host..." >&2
         QECORE_RC=0
+        # Use the test user's name rather than numeric UID:GID so that crun/runc
+        # calls initgroups() and preserves supplementary groups (video, render, input).
+        # Passing 1000:1000 strips supplementary groups, denying write access to
+        # /dev/uinput (mode 0660 root:input).
         podman exec \
-          --user 1000:1000 \
+          --user bluefin-test \
           --env SUITE \
           --env BEHAVE_TAGS \
+          --env USER=bluefin-test \
           --env HOME=/home/bluefin-test \
           --env XDG_RUNTIME_DIR=/run/user/1000 \
           --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \

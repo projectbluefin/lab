@@ -167,6 +167,16 @@ desktop limitation, not as a regression in that provisioning.
     drop-in before anything can start a user manager (`user@1000.service`),
     since a manager only reads unit files at start. `run-container-tests` and
     `run-systemd-container-tests` both carry it, verbatim.
+13. **Preserve test user supplementary groups:** invoke `podman exec` with
+    `--user bluefin-test` rather than numeric `--user 1000:1000`. In OCI
+    runtimes (crun/runc), passing numeric `UID:GID` configures the exec process
+    without calling `initgroups()`, discarding all supplementary groups
+    (`video`, `render`, `input`). Without the `input` group, the process cannot
+    write to `/dev/uinput` (mode 0660 `root:input`), which causes `qecore`'s
+    `check_uinput_availability()` to fail with:
+    `RuntimeError: User 'bluefin-test' does not have write permissions for '/dev/uinput'`.
+    Using `--user bluefin-test` ensures the runtime looks up the user and
+    populates all supplementary groups.
 
 #### The `homebrew` lane
 

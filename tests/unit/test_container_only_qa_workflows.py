@@ -420,12 +420,25 @@ def test_container_runner_uses_a_nested_systemd_target_with_bounded_resources():
     assert "AutomaticLogin=bluefin-test" in content
     assert "InitialSetupEnable=False" in content
     assert "pgrep -u 1000 -f gnome-session" in content
-    assert "--user 1000:1000" in content
+    assert "--user bluefin-test" in content
+    assert "--user 1000:1000" not in content
     assert "podman exec" in content
     assert "podman rm --force" in content
     assert "--shm-size" not in content
     assert "provision-containerdisk-vm" not in content
     assert "bootc install to-disk" not in content
+
+
+def test_container_runner_preserves_test_user_supplementary_groups():
+    content = (ROOT / "argo/workflow-templates/run-container-tests.yaml").read_text(
+        encoding="utf-8"
+    )
+    # podman exec with numeric UID:GID (--user 1000:1000) bypasses initgroups()
+    # and strips supplementary groups (video, render, input). Executing as
+    # --user bluefin-test ensures supplementary groups are populated so that
+    # /dev/uinput (mode 0660 root:input) is accessible to the test process.
+    assert "--user bluefin-test" in content
+    assert "--user 1000:1000" not in content
 
 
 def test_container_runner_exposes_optional_image_digest_parameter():

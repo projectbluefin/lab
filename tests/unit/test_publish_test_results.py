@@ -328,28 +328,124 @@ def test_publication_input_failures_are_nonzero():
 
 def test_parse_real_sample_results():
     import json
-    sample_path = Path(__file__).parent.parent.parent / "docs" / "screenshots" / "results" / "results.json"
+    sample_path = (
+        Path(__file__).parent.parent.parent
+        / "docs"
+        / "screenshots"
+        / "results"
+        / "results.json"
+    )
     assert sample_path.exists()
-    
+
     with open(sample_path, "r") as f:
         data = json.load(f)
-        
+
     updated = parse_results_and_build_update(
         data=data,
         existing_data=None,
         current_utc="2026-07-10T01:00:00Z",
         workflow_name="test-workflow",
         img_slug="bluefin-testing",
-        suite="smoke"
+        suite="smoke",
     )
-    
+
     assert updated["variant"] == "bluefin-testing"
+    assert updated["suite"] == "smoke"
+    assert updated["status"] == "passed"
     assert updated["scenarios"] > 0
-    assert updated["failed"] > 0
+    assert updated["failed"] == 0
     assert updated["duration_seconds"] > 0.0
+    assert updated["failed_scenarios"] == []
+    assert updated["failed_scenarios_detailed"] == []
     assert len(updated["failed_scenarios"]) == updated["failed"]
     assert len(updated["failed_scenarios_detailed"]) == updated["failed"]
-    
+
+
+def test_parse_failed_scenarios_detailed():
+    data = [
+        {
+            "keyword": "Feature",
+            "name": "Feature with failures",
+            "elements": [
+                {
+                    "type": "scenario",
+                    "status": "passed",
+                    "name": "Passed Scenario",
+                    "steps": [
+                        {
+                            "name": "Step 1",
+                            "result": {"status": "passed", "duration": 1.0},
+                        }
+                    ],
+                },
+                {
+                    "type": "scenario",
+                    "status": "failed",
+                    "name": "Failed Scenario 1",
+                    "steps": [
+                        {
+                            "name": "Step 1",
+                            "result": {"status": "passed", "duration": 0.5},
+                        },
+                        {
+                            "name": "Failing Step 1",
+                            "result": {
+                                "status": "failed",
+                                "duration": 2.0,
+                                "error_message": "Error details line 1\nline 2",
+                            },
+                        },
+                    ],
+                },
+                {
+                    "type": "scenario",
+                    "status": "failed",
+                    "name": "Failed Scenario 2",
+                    "steps": [
+                        {
+                            "name": "Failing Step 2",
+                            "result": {
+                                "status": "failed",
+                                "duration": 1.5,
+                                "error_message": ["Line 1", "Line 2"],
+                            },
+                        }
+                    ],
+                },
+                {
+                    "type": "scenario",
+                    "status": "failed",
+                    "name": "Failed Scenario 3 (no error message)",
+                    "steps": [
+                        {
+                            "result": {
+                                "status": "failed",
+                                "duration": 0.8,
+                            }
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    updated = parse_results_and_build_update(
+        data=data,
+        existing_data=None,
+        current_utc="2026-07-10T01:00:00Z",
+        workflow_name="test-workflow",
+        img_slug="bluefin-testing",
+        suite="smoke",
+    )
+
+    assert updated["variant"] == "bluefin-testing"
+    assert updated["status"] == "failed"
+    assert updated["scenarios"] == 4
+    assert updated["failed"] == 3
+    assert updated["duration_seconds"] == 5.8
+    assert len(updated["failed_scenarios"]) == 3
+    assert len(updated["failed_scenarios_detailed"]) == 3
+
     # Assert that detailed elements have the expected schema
     for item in updated["failed_scenarios_detailed"]:
         assert isinstance(item["scenario_name"], str)
@@ -358,3 +454,19 @@ def test_parse_real_sample_results():
         assert isinstance(item["error_message"], str)
         assert len(item["failing_step"]) > 0
         assert len(item["error_message"]) > 0
+
+    detail_0 = updated["failed_scenarios_detailed"][0]
+    assert detail_0["scenario_name"] == "Failed Scenario 1"
+    assert detail_0["failing_step"] == "Failing Step 1"
+    assert detail_0["error_message"] == "Error details line 1\nline 2"
+
+    detail_1 = updated["failed_scenarios_detailed"][1]
+    assert detail_1["scenario_name"] == "Failed Scenario 2"
+    assert detail_1["failing_step"] == "Failing Step 2"
+    assert detail_1["error_message"] == "Line 1\nLine 2"
+
+    detail_2 = updated["failed_scenarios_detailed"][2]
+    assert detail_2["scenario_name"] == "Failed Scenario 3 (no error message)"
+    assert detail_2["failing_step"] == "Unnamed Step"
+    assert detail_2["error_message"] == "No stack trace recorded."
+

@@ -292,7 +292,9 @@ spec:
         # Python 3.12+ no longer seeds it into fresh environments, so without
         # this pin every after_scenario hook raises ModuleNotFoundError. Keep it
         # pinned below 81 for as long as qecore imports pkg_resources.
-        qa_dependencies=("setuptools<81" qecore dogtail behave)
+        # python-uinput supplies the C extension `uinput` module required by
+        # qecore.utility.check_uinput_availability() for synthetic input steps.
+        qa_dependencies=("setuptools<81" qecore dogtail behave python-uinput)
         if ! python3 -m pip install --quiet "${pip_args[@]}" \
           --no-index --find-links /workspace/qa-wheels \
           "${qa_dependencies[@]}"; then

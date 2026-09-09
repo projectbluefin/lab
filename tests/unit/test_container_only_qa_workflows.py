@@ -1261,6 +1261,16 @@ def test_pr_poller_declares_parameters_used_by_inline_workflow():
         assert f"- name: {name}" in args_block
 
 
+def test_pr_poller_routes_aurora_to_aurora_qa_pipeline():
+    content = (ROOT / "argo/workflow-templates/pr-poller.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    aurora_block = content.split("*/aurora)", 1)[1].split(";;", 1)[0]
+    assert 'TMPL="aurora-qa-pipeline"' in aurora_block
+    assert 'EXTRA_PARAMS=""' in aurora_block
+
+
 def test_container_runner_never_falls_back_to_a_different_testsuite_revision():
     content = (ROOT / "argo/workflow-templates/run-container-tests.yaml").read_text(
         encoding="utf-8"

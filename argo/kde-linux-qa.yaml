@@ -11,13 +11,21 @@ spec:
   arguments:
     parameters:
     - name: image-url
-      value: "https://files.kde.org/kde-linux/kde-linux_202607281716.iso"
+      value: "https://files.kde.org/kde-linux/kde-linux_202609090254.iso"
     - name: image-sha256
-      value: "8554c25d098373a618a733656852ef25ad96c2b8ce59d57d9705e38eb95046bf"
+      value: "4acbcf524ae780f97a70f9234194b6dc6dc344cd02e7f7ba98828223cee1de42"
     - name: namespace
       value: "aurora-test"
     - name: branch
       value: "main"
+    # KDE Linux live image uses 'live' as the autologin user.
+    # The SSH key is injected via accessCredentials/qemuGuestAgent, not cloud-init.
+    - name: ssh-user
+      value: "live"
+    - name: ssh-pubkey-secret
+      value: "bluefin-test-ssh-pubkey"
+    - name: ssh-key-secret
+      value: "bluefin-test-ssh-key"
   templates:
   - name: pipeline
     dag:
@@ -36,6 +44,8 @@ spec:
             value: "{{workflow.parameters.image-url}}"
           - name: image-sha256
             value: "{{workflow.parameters.image-sha256}}"
+          - name: ssh-pubkey-secret
+            value: "{{workflow.parameters.ssh-pubkey-secret}}"
       - name: tests
         depends: provision.Succeeded
         templateRef:
@@ -49,6 +59,10 @@ spec:
             value: "{{workflow.parameters.namespace}}"
           - name: branch
             value: "{{workflow.parameters.branch}}"
+          - name: ssh-user
+            value: "{{workflow.parameters.ssh-user}}"
+          - name: ssh-key-secret
+            value: "{{workflow.parameters.ssh-key-secret}}"
   - name: cleanup
     steps:
     - - name: teardown

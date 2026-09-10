@@ -8,6 +8,9 @@ metadata:
       Downloads a published KDE Linux hybrid ISO, verifies its pinned SHA256,
       wraps it as a containerDisk, and boots it as an ephemeral OVMF/KubeVirt VM.
       KDE Linux publishes a GPT disk image and El Torito ISO in the same artifact.
+      SSH access uses KubeVirt accessCredentials (qemuGuestAgent) — the live image
+      does not process cloud-init. After the VMI is Ready, sshd is activated via
+      the QEMU guest agent and the SSH public key is injected into the live user.
 spec:
   templates:
   - name: provision-vm
@@ -17,9 +20,11 @@ spec:
       - name: namespace
         value: "aurora-test"
       - name: image-url
-        value: "https://files.kde.org/kde-linux/kde-linux_202607281716.iso"
+        value: "https://files.kde.org/kde-linux/kde-linux_202609090254.iso"
       - name: image-sha256
-        value: "8554c25d098373a618a733656852ef25ad96c2b8ce59d57d9705e38eb95046bf"
+        value: "4acbcf524ae780f97a70f9234194b6dc6dc344cd02e7f7ba98828223cee1de42"
+      - name: ssh-pubkey-secret
+        value: "bluefin-test-ssh-pubkey"
     outputs:
       parameters:
       - name: vm-ip
@@ -44,6 +49,8 @@ spec:
             value: "{{inputs.parameters.namespace}}"
           - name: containerdisk-digest
             value: "{{steps.prepare-disk.outputs.parameters.containerdisk-digest}}"
+          - name: ssh-pubkey-secret
+            value: "{{inputs.parameters.ssh-pubkey-secret}}"
     - - name: wait-for-vm
         template: wait-for-vm
         arguments:
@@ -124,6 +131,8 @@ spec:
       - name: vm-name
       - name: namespace
       - name: containerdisk-digest
+      - name: ssh-pubkey-secret
+        value: "bluefin-test-ssh-pubkey"
     resource:
       action: apply
       manifest: |
@@ -143,6 +152,20 @@ spec:
                 kubevirt.io/vm: "{{inputs.parameters.vm-name}}"
             spec:
               priorityClassName: lab-test-vm
+              # KDE Linux is a live image that does not process cloud-init.
+              # SSH key injection uses KubeVirt accessCredentials via the QEMU
+              # guest agent (qemu-guest-agent ships in the KDE Linux live image).
+              # The key is injected into the 'live' user — the image's autologin
+              # account. sshd is then activated via guest-exec in wait-for-vm.
+              accessCredentials:
+              - sshPublicKey:
+                  source:
+                    secret:
+                      secretName: "{{inputs.parameters.ssh-pubkey-secret}}"
+                  propagationMethod:
+                    qemuGuestAgent:
+                      users:
+                      - live
               domain:
                 firmware:
                   bootloader:
@@ -160,9 +183,6 @@ spec:
                     disk:
                       bus: virtio
                     bootOrder: 1
-                  - name: cloudinit
-                    disk:
-                      bus: virtio
                   interfaces:
                   - name: default
                     masquerade: {}
@@ -173,17 +193,6 @@ spec:
               - name: rootdisk
                 containerDisk:
                   image: 192.168.1.102:30500/kde-linux-containerdisk@{{inputs.parameters.containerdisk-digest}}
-              - name: cloudinit
-                cloudInitNoCloud:
-                  userData: |
-                    #cloud-config
-                    users:
-                    - name: bluefin-test
-                      groups: [wheel]
-                      sudo: ["ALL=(ALL) NOPASSWD:ALL"]
-                      shell: /bin/bash
-                      ssh_authorized_keys:
-                      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIkkCyAz7Z1Kk+nUx7K9gKLmeE1ns3jYQ7RMEJx/+PEg bluefin-test-suite@ghost
 
   - name: wait-for-vm
     inputs:
@@ -206,6 +215,37 @@ spec:
         exec 1>&2
         NS="{{inputs.parameters.namespace}}"
         VM="{{inputs.parameters.vm-name}}"
-        kubectl wait vmi -n "${NS}" "${VM}" --for=condition=Ready --timeout=900s >&2
-        kubectl get pod -n "${NS}" -l "kubevirt.io/vm=${VM}" \
-          -o jsonpath='{.items[0].status.podIP}' >&3
+
+        # Step 1: wait for the VMI to report Ready.
+        kubectl wait vmi -n "${NS}" "${VM}" --for=condition=Ready --timeout=900s
+
+        # Step 2: activate sshd in the KDE Linux live guest via the QEMU guest
+        # agent. KDE Linux (Arch-based) ships OpenSSH but does not start it at
+        # boot. The guest agent is confirmed present once the VMI is Ready.
+        VIRT_LAUNCHER=$(kubectl get pod -n "${NS}" \
+          -l "kubevirt.io/vm=${VM}" \
+          -o jsonpath='{.items[0].metadata.name}')
+
+        # Try sshd.service (Arch canonical); fall back to sshd.socket (Fedora).
+        # Both are best-effort — the SSH wait below is the definitive gate.
+        for _unit in sshd.service sshd.socket; do
+          kubectl exec -n "${NS}" "${VIRT_LAUNCHER}" -c compute -- \
+            virsh qemu-agent-command 1 \
+            "{\"execute\":\"guest-exec\",\"arguments\":{\"path\":\"systemctl\",\"arg\":[\"start\",\"${_unit}\"],\"capture-output\":false}}" \
+            >/dev/null 2>&1 || true
+        done
+
+        # Step 3: wait for KubeVirt to inject the SSH public key via the guest
+        # agent (AccessCredentialsSynchronized condition).
+        kubectl wait vmi -n "${NS}" "${VM}" \
+          --for=condition=AccessCredentialsSynchronized --timeout=120s
+
+        # Step 4: get pod IP and wait for TCP port 22 to accept connections.
+        POD_IP=$(kubectl get pod -n "${NS}" \
+          -l "kubevirt.io/vm=${VM}" \
+          -o jsonpath='{.items[0].status.podIP}')
+        timeout 300 bash -c \
+          "until bash -c 'echo >/dev/tcp/${POD_IP}/22' 2>/dev/null; do sleep 5; done"
+
+        # Emit the pod IP to stdout (captured as the output parameter).
+        printf '%s' "${POD_IP}" >&3

@@ -292,6 +292,12 @@ def test_aurora_qa_pipeline_exposes_safe_kde_sabotage_modes():
     assert "aurora-test" in runner
 
 
+def test_evaluate_kde_soak_targets_kde_smoke_results():
+    justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
+    assert "scripts/evaluate_kde_soak.py docs/results/aurora-testing-kde-smoke.json" in justfile
+    assert "scripts/evaluate_kde_soak.py docs/results/aurora-testing-smoke.json" not in justfile
+
+
 def test_bluefin_server_build_pipeline_builds_k0s_sysext():
     pipeline_path = ROOT / "argo/workflow-templates/bluefin-server-build-pipeline.yaml"
     assert pipeline_path.exists()

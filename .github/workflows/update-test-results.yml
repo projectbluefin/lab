@@ -40,9 +40,12 @@ jobs:
       - name: Install oras
         run: |
           ORAS_VER="1.2.3"
-          curl -sSfL \
-            "https://github.com/oras-project/oras/releases/download/v${ORAS_VER}/oras_${ORAS_VER}_linux_amd64.tar.gz" \
-            | tar xz -C /usr/local/bin oras
+          ORAS_SHA256="b4efc97a91f471f323f193ea4b4d63d8ff443ca3aab514151a30751330852827"
+          curl -sSfL -o oras.tar.gz \
+            "https://github.com/oras-project/oras/releases/download/v${ORAS_VER}/oras_${ORAS_VER}_linux_amd64.tar.gz"
+          echo "${ORAS_SHA256}  oras.tar.gz" | sha256sum -c -
+          tar xzf oras.tar.gz -C /usr/local/bin oras
+          rm -f oras.tar.gz
 
       - name: Pull screenshots from GHCR
         env:

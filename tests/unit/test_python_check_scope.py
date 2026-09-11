@@ -91,24 +91,25 @@ def test_every_tree_with_first_party_python_is_in_scope():
 
 
 def test_workflow_syntax_check_does_not_exceed_the_declared_scope():
-    """A workflow may check a subset of the scope, never a tree outside it.
-
-    lint.yaml still hardcodes `find tests/` today (rewiring it to read
-    .python-scope needs a token with `workflows` permission -- see #693). That
-    is safe only while the tree it names is inside the declared scope; this test
-    fails the moment the two diverge.
-    """
+    """lint.yaml must read .python-scope and never hardcode python trees."""
     lint_yaml = (ROOT / ".github/workflows/lint.yaml").read_text(encoding="utf-8")
-    trees = set(_scope_trees())
 
-    if ".python-scope" in lint_yaml:
-        return  # already reading the single source of truth
+    assert ".python-scope" in lint_yaml, "lint.yaml must read .python-scope"
 
     hardcoded = [t for t in ("tests", "scripts") if f"find {t}/ -name '*.py'" in lint_yaml]
-    outside = [t for t in hardcoded if t not in trees]
+    assert not hardcoded, (
+        "lint.yaml syntax-checks hardcoded tree(s) instead of reading .python-scope: "
+        + ", ".join(hardcoded)
+    )
 
-    assert not outside, (
-        "lint.yaml syntax-checks tree(s) not declared in .python-scope: " + ", ".join(outside)
+
+def test_workflow_ruff_check_uses_the_scope_file():
+    """ci.yml ruff check step must read .python-scope rather than hardcoding trees."""
+    ci_yml = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+    assert ".python-scope" in ci_yml, "ci.yml must read .python-scope"
+    assert "ruff check tests/" not in ci_yml, (
+        "ci.yml hardcodes 'ruff check tests/' instead of reading .python-scope"
     )
 
 

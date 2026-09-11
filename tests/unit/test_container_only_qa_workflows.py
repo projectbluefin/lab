@@ -1440,6 +1440,23 @@ def test_pr_poller_carries_image_digest_into_dakota_qa_workflow():
     assert "dakota-qa-pipeline" in dakota_block
 
 
+def test_pr_poller_carries_image_digest_into_bluefin_qa_workflow():
+    poller = (ROOT / "argo/workflow-templates/pr-poller.yaml").read_text(
+        encoding="utf-8"
+    )
+
+    bluefin_block = poller.split("name: qa-bluefin", 1)[1].split("name: report-final", 1)[0]
+    assert "- name: image-digest" in bluefin_block
+    assert (
+        'value: "${ARGO_OPEN}workflow.parameters.image-digest${ARGO_CLOSE}"'
+        in bluefin_block
+    )
+    assert "bluefin-qa-pipeline" in bluefin_block
+    assert "- name: pr-number" not in bluefin_block
+    assert "- name: sha" not in bluefin_block
+    assert "- name: repo" not in bluefin_block
+
+
 def test_caller_contract_requires_forked_testsuite_repo_and_branch():
     contract = (ROOT / "docs/skills/argo-workflows/authoring.md").read_text(
         encoding="utf-8"

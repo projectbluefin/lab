@@ -1,12 +1,12 @@
 {
   "schema_version": "v2",
-  "generated_at": "2026-09-11T10:02:12Z",
+  "generated_at": "2026-09-11T10:19:41Z",
   "generator": {
     "notebook": "notebooks/01_pass_rate_wilson.ipynb",
     "notebook_url": "https://factory.projectbluefin.io/methods/01_pass_rate_wilson.html",
-    "workflow_run_url": "https://github.com/projectbluefin/lab/actions/runs/34586724873",
-    "commit_sha": "5613ddf5a8fc55a05a1809720094a4a729680e84",
-    "inputs_sha256": "592125aadeadba43037b4e84b4cd3b61601de44f96f59389733fa3403502d73b",
+    "workflow_run_url": "https://github.com/projectbluefin/lab/actions/runs/34588173875",
+    "commit_sha": "d55c8337f610db6511fe31f9a7d65d5a4cca239d",
+    "inputs_sha256": "3971c8f0c5d721c47b20b5c0fb6880b958fe7a13d19ec131269e5fcdbdf05b58",
     "library_versions": {
       "statsmodels": "0.14.6",
       "scipy": "1.18.0",
@@ -435,11 +435,11 @@
     {
       "id": "trust_window_pass_rate.bluefin-lts.testing.smoke.contributor",
       "label": "T pass-rate (contributor window) - bluefin-lts/testing/smoke",
-      "value": 0.9750566893424036,
-      "ci_lower": 0.9666817504066108,
-      "ci_upper": 0.9813670645125956,
+      "value": 0.9755102040816327,
+      "ci_lower": 0.9676810509270586,
+      "ci_upper": 0.981479071763981,
       "ci_level": 0.95,
-      "n": 1764,
+      "n": 1960,
       "unit": "proportion",
       "method": "wilson_score_95",
       "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
@@ -457,8 +457,8 @@
         "audience": "contributor"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 1720,
-      "denominator": 1764,
+      "numerator": 1912,
+      "denominator": 1960,
       "failure_modes": [
         {
           "id": "small_sample",
@@ -487,18 +487,18 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-lts-testing-smoke.json",
           "path": "docs/results/bluefin-lts-testing-smoke.json",
-          "sha256": "985fc3cfed15aed04b28eaebba52a2344846ef2fb00ade6c415d80055a0f11c2"
+          "sha256": "460923cb80aa3dbc2b78e575d10586468afc4ebf25c6e9611151445e492805c6"
         }
       ]
     },
     {
       "id": "trust_window_pass_rate.bluefin-lts.testing.smoke.user",
       "label": "T pass-rate (user window) - bluefin-lts/testing/smoke",
-      "value": 0.9580498866213152,
-      "ci_lower": 0.9509213143742714,
-      "ci_upper": 0.9641820496026572,
+      "value": 0.9591836734693877,
+      "ci_lower": 0.9523412343110504,
+      "ci_upper": 0.9650797552290786,
       "ci_level": 0.95,
-      "n": 3528,
+      "n": 3724,
       "unit": "proportion",
       "method": "wilson_score_95",
       "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
@@ -516,66 +516,7 @@
         "audience": "user"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 3380,
-      "denominator": 3528,
-      "failure_modes": [
-        {
-          "id": "small_sample",
-          "description": "n<30; CI width may exceed 10 percentage points",
-          "active": false,
-          "threshold": "n<30",
-          "evidence_url": null
-        },
-        {
-          "id": "noniid_scenarios",
-          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
-          "active": true,
-          "threshold": null,
-          "evidence_url": null
-        },
-        {
-          "id": "flake_masking_regression",
-          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
-          "active": false,
-          "threshold": "future: KM survival AUC<0.7",
-          "evidence_url": null
-        }
-      ],
-      "evidence": [
-        {
-          "kind": "raw-input",
-          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-lts-testing-smoke.json",
-          "path": "docs/results/bluefin-lts-testing-smoke.json",
-          "sha256": "985fc3cfed15aed04b28eaebba52a2344846ef2fb00ade6c415d80055a0f11c2"
-        }
-      ]
-    },
-    {
-      "id": "trust_window_pass_rate.bluefin-lts.testing.smoke.downstream",
-      "label": "T pass-rate (downstream window) - bluefin-lts/testing/smoke",
-      "value": 0.9500537056928035,
-      "ci_lower": 0.942581869909526,
-      "ci_upper": 0.9565980005403317,
-      "ci_level": 0.95,
-      "n": 3724,
-      "unit": "proportion",
-      "method": "wilson_score_95",
-      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
-      "window": {
-        "type": "rolling_hours",
-        "size": 720,
-        "audience": "downstream"
-      },
-      "confidence": "high",
-      "state": "fresh",
-      "context": {
-        "variant": "bluefin-lts",
-        "branch": "testing",
-        "suite": "smoke",
-        "audience": "downstream"
-      },
-      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 3538,
+      "numerator": 3572,
       "denominator": 3724,
       "failure_modes": [
         {
@@ -605,7 +546,66 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-lts-testing-smoke.json",
           "path": "docs/results/bluefin-lts-testing-smoke.json",
-          "sha256": "985fc3cfed15aed04b28eaebba52a2344846ef2fb00ade6c415d80055a0f11c2"
+          "sha256": "460923cb80aa3dbc2b78e575d10586468afc4ebf25c6e9611151445e492805c6"
+        }
+      ]
+    },
+    {
+      "id": "trust_window_pass_rate.bluefin-lts.testing.smoke.downstream",
+      "label": "T pass-rate (downstream window) - bluefin-lts/testing/smoke",
+      "value": 0.951530612244898,
+      "ci_lower": 0.9443545283911974,
+      "ci_upper": 0.9578225950096912,
+      "ci_level": 0.95,
+      "n": 3920,
+      "unit": "proportion",
+      "method": "wilson_score_95",
+      "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
+      "window": {
+        "type": "rolling_hours",
+        "size": 720,
+        "audience": "downstream"
+      },
+      "confidence": "high",
+      "state": "fresh",
+      "context": {
+        "variant": "bluefin-lts",
+        "branch": "testing",
+        "suite": "smoke",
+        "audience": "downstream"
+      },
+      "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
+      "numerator": 3730,
+      "denominator": 3920,
+      "failure_modes": [
+        {
+          "id": "small_sample",
+          "description": "n<30; CI width may exceed 10 percentage points",
+          "active": false,
+          "threshold": "n<30",
+          "evidence_url": null
+        },
+        {
+          "id": "noniid_scenarios",
+          "description": "Wilson assumes independent Bernoulli trials. Scenarios in the same run share infrastructure (same VM, same kernel, same network) and are not independent. CI may undercount.",
+          "active": true,
+          "threshold": null,
+          "evidence_url": null
+        },
+        {
+          "id": "flake_masking_regression",
+          "description": "A scenario that passes intermittently inflates pass-rate even when a real regression is present",
+          "active": false,
+          "threshold": "future: KM survival AUC<0.7",
+          "evidence_url": null
+        }
+      ],
+      "evidence": [
+        {
+          "kind": "raw-input",
+          "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/bluefin-lts-testing-smoke.json",
+          "path": "docs/results/bluefin-lts-testing-smoke.json",
+          "sha256": "460923cb80aa3dbc2b78e575d10586468afc4ebf25c6e9611151445e492805c6"
         }
       ]
     },
@@ -1557,10 +1557,10 @@
       "id": "trust_window_pass_rate.testsuite.testing.common.contributor",
       "label": "T pass-rate (contributor window) - testsuite/testing/common",
       "value": 1.0,
-      "ci_lower": 0.9921255999234249,
-      "ci_upper": 0.9999999999999998,
+      "ci_lower": 0.9936905433014779,
+      "ci_upper": 0.9999999999999999,
       "ci_level": 0.95,
-      "n": 484,
+      "n": 605,
       "unit": "proportion",
       "method": "wilson_score_95",
       "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
@@ -1578,8 +1578,8 @@
         "audience": "contributor"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 484,
-      "denominator": 484,
+      "numerator": 605,
+      "denominator": 605,
       "failure_modes": [
         {
           "id": "small_sample",
@@ -1608,16 +1608,16 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/testsuite-testing-common.json",
           "path": "docs/results/testsuite-testing-common.json",
-          "sha256": "ed3ed88c6e1904f957b409c1786fb88c0134b15cfd4bad68cd1023dcc823ac4d"
+          "sha256": "7d8f9aca3a549e9278a3031156dda875c64b2bcf1b8c8962c863ca40aa84db9f"
         }
       ]
     },
     {
       "id": "trust_window_pass_rate.testsuite.testing.common.user",
       "label": "T pass-rate (user window) - testsuite/testing/common",
-      "value": 0.9181818181818182,
-      "ci_lower": 0.9088172127810432,
-      "ci_upper": 0.9266622748092839,
+      "value": 0.9421487603305785,
+      "ci_lower": 0.9340762837854913,
+      "ci_upper": 0.9492864155442021,
       "ci_level": 0.95,
       "n": 3630,
       "unit": "proportion",
@@ -1637,7 +1637,7 @@
         "audience": "user"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 3333,
+      "numerator": 3420,
       "denominator": 3630,
       "failure_modes": [
         {
@@ -1667,16 +1667,16 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/testsuite-testing-common.json",
           "path": "docs/results/testsuite-testing-common.json",
-          "sha256": "ed3ed88c6e1904f957b409c1786fb88c0134b15cfd4bad68cd1023dcc823ac4d"
+          "sha256": "7d8f9aca3a549e9278a3031156dda875c64b2bcf1b8c8962c863ca40aa84db9f"
         }
       ]
     },
     {
       "id": "trust_window_pass_rate.testsuite.testing.common.downstream",
       "label": "T pass-rate (downstream window) - testsuite/testing/common",
-      "value": 0.9181818181818182,
-      "ci_lower": 0.9088172127810432,
-      "ci_upper": 0.9266622748092839,
+      "value": 0.9421487603305785,
+      "ci_lower": 0.9340762837854913,
+      "ci_upper": 0.9492864155442021,
       "ci_level": 0.95,
       "n": 3630,
       "unit": "proportion",
@@ -1696,7 +1696,7 @@
         "audience": "downstream"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 3333,
+      "numerator": 3420,
       "denominator": 3630,
       "failure_modes": [
         {
@@ -1726,18 +1726,18 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/testsuite-testing-common.json",
           "path": "docs/results/testsuite-testing-common.json",
-          "sha256": "ed3ed88c6e1904f957b409c1786fb88c0134b15cfd4bad68cd1023dcc823ac4d"
+          "sha256": "7d8f9aca3a549e9278a3031156dda875c64b2bcf1b8c8962c863ca40aa84db9f"
         }
       ]
     },
     {
       "id": "trust_window_pass_rate.testsuite.testing.smoke.contributor",
       "label": "T pass-rate (contributor window) - testsuite/testing/smoke",
-      "value": 0.9897959183673469,
-      "ci_lower": 0.9799948665148766,
-      "ci_upper": 0.9948205502183396,
+      "value": 0.9887755102040816,
+      "ci_lower": 0.980013096581204,
+      "ci_upper": 0.9937210263417418,
       "ci_level": 0.95,
-      "n": 784,
+      "n": 980,
       "unit": "proportion",
       "method": "wilson_score_95",
       "method_citation": "Wilson, E. B. (1927). Probable inference, the law of succession, and statistical inference. JASA 22(158):209-212.",
@@ -1755,8 +1755,8 @@
         "audience": "contributor"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 776,
-      "denominator": 784,
+      "numerator": 969,
+      "denominator": 980,
       "failure_modes": [
         {
           "id": "small_sample",
@@ -1785,16 +1785,16 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/testsuite-testing-smoke.json",
           "path": "docs/results/testsuite-testing-smoke.json",
-          "sha256": "8ed69882bde1843746aa8fc6ea551cbd41ec519f4ad44932baef69c0edeb11ea"
+          "sha256": "551abc2ed50f8ae3ff22bcfd97744f8752fc93177f08c3c96abcea357fb6d920"
         }
       ]
     },
     {
       "id": "trust_window_pass_rate.testsuite.testing.smoke.user",
       "label": "T pass-rate (user window) - testsuite/testing/smoke",
-      "value": 0.9622928643895841,
-      "ci_lower": 0.9571302658928531,
-      "ci_upper": 0.9668552849281824,
+      "value": 0.971423740277308,
+      "ci_lower": 0.9668617494340245,
+      "ci_upper": 0.9753736988794527,
       "ci_level": 0.95,
       "n": 5914,
       "unit": "proportion",
@@ -1814,7 +1814,7 @@
         "audience": "user"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 5691,
+      "numerator": 5745,
       "denominator": 5914,
       "failure_modes": [
         {
@@ -1844,16 +1844,16 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/testsuite-testing-smoke.json",
           "path": "docs/results/testsuite-testing-smoke.json",
-          "sha256": "8ed69882bde1843746aa8fc6ea551cbd41ec519f4ad44932baef69c0edeb11ea"
+          "sha256": "551abc2ed50f8ae3ff22bcfd97744f8752fc93177f08c3c96abcea357fb6d920"
         }
       ]
     },
     {
       "id": "trust_window_pass_rate.testsuite.testing.smoke.downstream",
       "label": "T pass-rate (downstream window) - testsuite/testing/smoke",
-      "value": 0.9622928643895841,
-      "ci_lower": 0.9571302658928531,
-      "ci_upper": 0.9668552849281824,
+      "value": 0.971423740277308,
+      "ci_lower": 0.9668617494340245,
+      "ci_upper": 0.9753736988794527,
       "ci_level": 0.95,
       "n": 5914,
       "unit": "proportion",
@@ -1873,7 +1873,7 @@
         "audience": "downstream"
       },
       "formula": "p_hat = passes/n; CI = Wilson score interval at 95%",
-      "numerator": 5691,
+      "numerator": 5745,
       "denominator": 5914,
       "failure_modes": [
         {
@@ -1903,7 +1903,7 @@
           "kind": "raw-input",
           "url": "https://github.com/projectbluefin/testing-lab/blob/main/docs/results/testsuite-testing-smoke.json",
           "path": "docs/results/testsuite-testing-smoke.json",
-          "sha256": "8ed69882bde1843746aa8fc6ea551cbd41ec519f4ad44932baef69c0edeb11ea"
+          "sha256": "551abc2ed50f8ae3ff22bcfd97744f8752fc93177f08c3c96abcea357fb6d920"
         }
       ]
     }

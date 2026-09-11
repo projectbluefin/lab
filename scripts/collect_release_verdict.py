@@ -118,6 +118,81 @@ def latest_build(image_builds, key):
     return max(dated, key=lambda r: r["started_at"])
 
 
+def build_input(build):
+    """Compute build input status and reason for a lane's release verdict (ADR 0002).
+
+    Rules:
+    - Missing build -> status: "unavailable"
+    - In-flight / non-terminal (finished_at is None, status != "completed",
+      conclusion/overall in ("running", "pending")) -> status: "pending"
+    - Succeeded (conclusion == "success", or overall == "passed") -> status: "passed", reason: None
+    - Failed (conclusion in ("failure", "timed_out", "startup_failure"), or overall in ("fail", "failed"))
+      -> status: "failed"
+    - Any other conclusion (e.g., cancelled, skipped) -> status: "pending"
+    """
+    if not build:
+        return {
+            "status": "unavailable",
+            "reason": "no publishing workflow runs tracked in factory-stats.json for this lane",
+            "run_url": None,
+            "finished_at": None,
+        }
+
+    run_url = build.get("run_url")
+    finished_at = build.get("finished_at")
+    status = build.get("status")
+    conclusion = build.get("conclusion")
+    overall = build.get("overall")
+
+    # In-flight / non-terminal runs must never be marked failed (or passed)
+    if (
+        finished_at is None
+        or (status is not None and status != "completed")
+        or conclusion in ("running", "pending")
+        or overall in ("running", "pending")
+    ):
+        if overall == "running":
+            reason = "latest publishing run is running"
+        elif status in ("in_progress", "queued", "waiting"):
+            reason = f"latest publishing run is {status}"
+        elif finished_at is None or (status is not None and status != "completed"):
+            reason = "latest publishing run is in flight"
+        else:
+            reason = f"latest publishing run concluded {conclusion or overall or 'pending'}"
+        return {
+            "status": "pending",
+            "reason": reason,
+            "run_url": run_url,
+            "finished_at": finished_at,
+        }
+
+    # Completed runs
+    if conclusion == "success" or (conclusion is None and overall == "passed"):
+        return {
+            "status": "passed",
+            "reason": None,
+            "run_url": run_url,
+            "finished_at": finished_at,
+        }
+
+    if conclusion in ("failure", "timed_out", "startup_failure") or (
+        conclusion is None and overall in ("fail", "failed")
+    ):
+        return {
+            "status": "failed",
+            "reason": f"latest publishing run concluded {conclusion or overall}",
+            "run_url": run_url,
+            "finished_at": finished_at,
+        }
+
+    return {
+        "status": "pending",
+        "reason": f"latest publishing run concluded {conclusion or overall or 'pending'}",
+        "run_url": run_url,
+        "finished_at": finished_at,
+    }
+
+
 def _qa_substatus(rows, build_finished_at, current_digest, label):
     """Compute a pass/fail/pending/unavailable status for a subset of QA rows."""
     if not rows:
@@ -257,22 +332,10 @@ def main():
 
         # -- input 1: build ------------------------------------------------
         build = latest_build(image_builds, build_key)
-        if build:
-            build_input = {
-                "status": "passed" if build.get("overall") == "passed" else "failed",
-                "reason": None if build.get("overall") == "passed" else f"latest publishing run concluded {build.get('overall')}",
-                "run_url": build.get("run_url"),
-                "finished_at": build.get("finished_at"),
-            }
-        else:
-            build_input = {
-                "status": "unavailable",
-                "reason": "no publishing workflow runs tracked in factory-stats.json for this lane",
-                "run_url": None, "finished_at": None,
-            }
+        b_input = build_input(build)
 
         # -- input 2: qa ----------------------------------------------------
-        qa = qa_input(tests_rows, variant, branch, build_input.get("finished_at"), digest)
+        qa = qa_input(tests_rows, variant, branch, b_input.get("finished_at"), digest)
 
         # -- input 3: signature (cached by digest) ---------------------------
         prev_row = prev_rows.get(lane_id) or {}
@@ -294,7 +357,7 @@ def main():
                 sig_status, sig_reason = "unavailable", detail
 
         # -- verdict ---------------------------------------------------------
-        inputs = (build_input["status"], qa["status"], sig_status)
+        inputs = (b_input["status"], qa["status"], sig_status)
         if all(s == "passed" for s in inputs):
             verdict = "good"
         elif "failed" in inputs:
@@ -311,7 +374,12 @@ def main():
             "image_ref": image_ref,
             "digest": digest,
             "verdict": verdict,
-            "build": {"status": build_input["status"], "reason": build_input["reason"], "run_url": build_input["run_url"], "finished_at": build_input["finished_at"]},
+            "build": {
+                "status": b_input["status"],
+                "reason": b_input["reason"],
+                "run_url": b_input["run_url"],
+                "finished_at": b_input["finished_at"],
+            },
             "qa": {
                 "status": qa["status"],
                 "reason": qa["reason"],
@@ -340,7 +408,7 @@ def main():
             "lane": lane_id,
             "digest": digest,
             "verdict": verdict,
-            "build": build_input["status"],
+            "build": b_input["status"],
             "qa": qa["status"],
             "signature": sig_status,
         })

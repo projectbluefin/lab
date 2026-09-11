@@ -48,7 +48,7 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 - Intended for pod-to-pod (East-West) traffic between these two nodes specifically:
   build artifact transfer, cache I/O.
 - Live link state and its Unix observation time are published as
-  `lab.projectbluefin.io/usb4-link: up|down` and
+  `lab.projectbluefin.io/usb4-link: up|down` (both as a node label and annotation) and
   `lab.projectbluefin.io/usb4-link-observed-at` by the `usb4-link-monitor`
   DaemonSet (`manifests/usb4-link-monitor.yaml`). Every BST pipeline admits
   BuildBarn remote execution only when both node observations are fresh and

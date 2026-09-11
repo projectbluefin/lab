@@ -30,13 +30,27 @@ remote-cache-only run is not an acceptable substitute.
   Kubernetes selects a schedulable node and the local-path provisioner binds
   the PVC below that node's configured data mount. Do not select a node or
   bind-mount a cache path to influence placement.
-- **BST lane policy:** Dakota, COSMIC, and Bluefin Server accept only
+- **BST lane policy:** Dakota, COSMIC, Bluefin Server, and QA pipelines accept only
   `build-mode=re`. Before admission, every lane requires a fresh USB4 `up`
-  annotation and a Ready BuildBarn worker on both `ghost` and `exo-0`.
+  label and annotation (`lab.projectbluefin.io/usb4-link=up`, timestamp within 60s)
+  and a Ready BuildBarn worker on both `ghost` and `exo-0`.
   Runner-local, cache-only, Ethernet-backed, automatic fallback, and
   remote-cache-only execution are prohibited. Before treating a run as
   distributed, verify its generated `projects.<name>.remote-execution`
   configuration, BuildStream RE startup, and current worker action activity.
+  Pipelines fail closed immediately with an explicit rejection when the USB4
+  link is unavailable or stale rather than queueing indefinitely in the scheduler.
+- **Verifying USB4 admission state:** The `usb4-link-monitor` DaemonSet evaluates
+  link health every 15s and publishes both the node label `lab.projectbluefin.io/usb4-link=up|down`
+  and annotations (`lab.projectbluefin.io/usb4-link` and timestamp
+  `lab.projectbluefin.io/usb4-link-observed-at`). Check state before submitting:
+  ```bash
+  kubectl get nodes -L lab.projectbluefin.io/usb4-link
+  ```
+  or verify the label directly:
+  ```bash
+  kubectl get nodes --show-labels | grep -o 'usb4-link=[a-z]*'
+  ```
   Dakota uses a two-slot `bst-build` semaphore and workflow-owned 200Gi
   `local-path` cache PVCs. The distributed workflow builds both `oci/bluefin.bst`
   (`dakota:testing`) and `oci/bluefin-nvidia.bst` (`dakota-nvidia:testing`). NVIDIA

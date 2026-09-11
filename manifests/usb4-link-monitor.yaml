@@ -1,10 +1,10 @@
-# USB4 link monitor — annotates ghost and exo-0 with the live state of the
-# point-to-point thunderbolt0 data-plane link. BuildStream pipelines admit
-# distributed remote execution only while both observations are fresh and up.
+# USB4 link monitor — annotates and labels ghost and exo-0 with the live state
+# of the point-to-point thunderbolt0 data-plane link. BuildStream pipelines
+# admit distributed remote execution only while both observations are fresh and up.
 #
-# Annotations:
-# - lab.projectbluefin.io/usb4-link = up | down
-# - lab.projectbluefin.io/usb4-link-observed-at = Unix epoch seconds
+# Labels and Annotations:
+# - lab.projectbluefin.io/usb4-link = up | down (node label and annotation)
+# - lab.projectbluefin.io/usb4-link-observed-at = Unix epoch seconds (annotation)
 # "up" requires operstate=up AND carrier=1 AND a TCP probe of the peer's
 # kubelet port over the tb subnet (10.99.0.0/30) — proving end-to-end
 # reachability, not just local link state.
@@ -150,11 +150,14 @@ spec:
                 if kubectl annotate node "${NODE_NAME}" \
                      "lab.projectbluefin.io/usb4-link=${STATE}" \
                      "lab.projectbluefin.io/usb4-link-observed-at=${OBSERVED_AT}" \
+                     --overwrite >/dev/null \
+                   && kubectl label node "${NODE_NAME}" \
+                     "lab.projectbluefin.io/usb4-link=${STATE}" \
                      --overwrite >/dev/null; then
                   [[ "${STATE}" != "${LAST}" ]] && echo "usb4-link -> ${STATE}"
                   LAST="${STATE}"
                 else
-                  echo "annotate failed, will retry" >&2
+                  echo "annotate/label failed, will retry" >&2
                 fi
                 sleep 15
               done

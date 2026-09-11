@@ -61,6 +61,7 @@ def test_bst_pipelines_require_fresh_usb4_backed_remote_execution():
         "dakota-build-pipeline.yaml",
         "cosmic-build-pipeline.yaml",
         "bluefin-server-build-pipeline.yaml",
+        "bst-qa-pipeline.yaml",
     ):
         pipeline = (ROOT / "argo/workflow-templates" / filename).read_text(
             encoding="utf-8"
@@ -93,6 +94,7 @@ def test_usb4_monitor_publishes_a_fresh_observation_on_every_probe():
 
     assert "lab.projectbluefin.io/usb4-link-observed-at" in monitor
     assert "date -u +%s" in monitor
+    assert "kubectl label node" in monitor
     assert "N % 20" not in monitor
 
 

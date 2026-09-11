@@ -11,6 +11,168 @@ def parse_iso(ts):
         return None
 
 
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return f"sha256:{h.hexdigest()}"
+
+
+def argo_ui_url(workflow_name):
+    # Argo Workflows run on the cluster, not GitHub Actions; link straight to
+    # the Argo Server UI for the actual workflow instance.
+    return f"http://192.168.1.102:32746/workflows/argo/{workflow_name}"
+
+
+def phase_to_overall(phase):
+    if phase in ('Running', 'Pending'):
+        return 'running'
+    if phase == 'Succeeded':
+        return 'passed'
+    if phase in ('Failed', 'Error'):
+        return 'fail'
+    return 'pending'
+
+
+def infer_trigger(name):
+    if not name:
+        return 'manual'
+    if name.startswith('nightly-'):
+        return 'nightly'
+    if name.startswith('image-poll-') or name.startswith('digest-watch-'):
+        return 'poller'
+    if re.match(r'^[a-z]+-\d+-', name):
+        return 'pr-poller'
+    return 'manual'
+
+
+# Pipelines that produce a build artifact (image, containerdisk, kernel), as
+# opposed to maintenance/polling CronWorkflows (orphan-*-gc, image-poll-*, etc).
+BUILD_PIPELINE_PREFIXES = (
+    'bluefin-qa-pipeline',
+    'dakota-qa-pipeline',
+    'knuckle-qa-pipeline',
+    'bst-qa-pipeline',
+    'build-containerdisk',
+    'build-cd-sync',
+    'flatcar-kernel-build',
+    'bluefin-server-build-pipeline',
+    'dakota-build-pipeline',
+    'cosmic-build-pipeline',
+    'cosmic-qa-pipeline',
+)
+
+
+def pipeline_base_name(name):
+    # Argo generateName workflows append a random 5-char suffix
+    # (build-containerdisk-dsrlm); CronWorkflow instances append an epoch
+    # timestamp (orphan-pod-gc-1783047600). Strip either to get a stable key.
+    stripped = re.sub(r'-[a-z0-9]{5}$', '', name)
+    stripped = re.sub(r'-\d{9,}$', '', stripped)
+    return stripped
+
+
+def build_pipeline_key(name):
+    base = pipeline_base_name(name)
+    for prefix in BUILD_PIPELINE_PREFIXES:
+        if base == prefix or base.startswith(f'{prefix}-'):
+            return prefix
+    return None
+
+
+def infer_label(params, wf_name):
+    p = {x.get('name'): x.get('value') for x in (params or [])}
+    variant = p.get('variant')
+    tag = p.get('image-tag')
+    image = p.get('image', '')
+    if variant and tag:
+        return f'{variant}:{tag}'
+    if image and tag:
+        img_name = image.rsplit('/', 1)[-1]
+        return f'{img_name}:{tag}'
+    if image:
+        return image.rsplit('/', 1)[-1]
+    if wf_name.startswith('dakota'):
+        return 'dakota:latest'
+    return None
+
+
+def safe_int(val, default=0):
+    try:
+        return int(val)
+    except Exception:
+        return default
+
+
+def parse_mem_gib(mem):
+    if not mem:
+        return None
+    if mem.endswith('Ki'):
+        return round(int(mem[:-2]) / (1024 * 1024))
+    if mem.endswith('Mi'):
+        return round(int(mem[:-2]) / 1024)
+    if mem.endswith('Gi'):
+        return int(mem[:-2])
+    return None
+
+
+def parse_mem_bytes(mem):
+    if not mem:
+        return None
+    try:
+        if mem.endswith('Ki'):
+            return int(mem[:-2]) * 1024
+        if mem.endswith('Mi'):
+            return int(mem[:-2]) * 1024 * 1024
+        if mem.endswith('Gi'):
+            return int(mem[:-2]) * 1024 * 1024 * 1024
+        if mem.endswith('Ti'):
+            return int(mem[:-2]) * 1024 * 1024 * 1024 * 1024
+        return int(mem)
+    except Exception:
+        return None
+
+
+def parse_cpu_millicores(cpu):
+    if cpu is None:
+        return None
+    s = str(cpu)
+    try:
+        if s.endswith('n'):
+            return float(s[:-1]) / 1_000_000.0
+        if s.endswith('u'):
+            return float(s[:-1]) / 1000.0
+        if s.endswith('m'):
+            return float(s[:-1])
+        return float(s) * 1000.0
+    except Exception:
+        return None
+
+
+def gh_run_to_overall(run):
+    status = run.get('status')
+    conclusion = run.get('conclusion')
+    if status != 'completed':
+        return 'running'
+    if conclusion == 'success':
+        return 'passed'
+    if conclusion in ('failure', 'timed_out', 'startup_failure'):
+        return 'fail'
+    if conclusion == 'cancelled':
+        return 'pending'
+    return 'pending'
+
+
+def gh_run_duration_min(run):
+    try:
+        started = datetime.datetime.fromisoformat(run['run_started_at'].replace('Z', '+00:00'))
+        updated = datetime.datetime.fromisoformat(run['updated_at'].replace('Z', '+00:00'))
+        return max(0, round((updated - started).total_seconds() / 60))
+    except Exception:
+        return None
+
+
 def append_build_runs_ndjson(stats, image_build_catalog, now):
     """Append terminal build-run records to the rolling NDJSON history file.
 
@@ -144,133 +306,6 @@ def main():
         try:
             out = subprocess.check_output(cmd, shell=True, text=True, stderr=subprocess.DEVNULL, timeout=15)
             return json.loads(out)
-        except Exception:
-            return None
-
-    def sha256_file(path):
-        h = hashlib.sha256()
-        with open(path, 'rb') as f:
-            for chunk in iter(lambda: f.read(65536), b''):
-                h.update(chunk)
-        return f"sha256:{h.hexdigest()}"
-
-    def argo_ui_url(workflow_name):
-        # Argo Workflows run on the cluster, not GitHub Actions; link straight to
-        # the Argo Server UI for the actual workflow instance.
-        return f"http://192.168.1.102:32746/workflows/argo/{workflow_name}"
-
-    def phase_to_overall(phase):
-        if phase in ('Running', 'Pending'):
-            return 'running'
-        if phase == 'Succeeded':
-            return 'passed'
-        if phase in ('Failed', 'Error'):
-            return 'fail'
-        return 'pending'
-
-    def infer_trigger(name):
-        if not name:
-            return 'manual'
-        if name.startswith('nightly-'):
-            return 'nightly'
-        if name.startswith('image-poll-') or name.startswith('digest-watch-'):
-            return 'poller'
-        if re.match(r'^[a-z]+-\d+-', name):
-            return 'pr-poller'
-        return 'manual'
-
-    # Pipelines that produce a build artifact (image, containerdisk, kernel), as
-    # opposed to maintenance/polling CronWorkflows (orphan-*-gc, image-poll-*, etc).
-    BUILD_PIPELINE_PREFIXES = (
-        'bluefin-qa-pipeline',
-        'dakota-qa-pipeline',
-        'knuckle-qa-pipeline',
-        'bst-qa-pipeline',
-        'build-containerdisk',
-        'build-cd-sync',
-        'flatcar-kernel-build',
-        'bluefin-server-build-pipeline',
-        'dakota-build-pipeline',
-        'cosmic-build-pipeline',
-        'cosmic-qa-pipeline',
-    )
-
-    def pipeline_base_name(name):
-        # Argo generateName workflows append a random 5-char suffix
-        # (build-containerdisk-dsrlm); CronWorkflow instances append an epoch
-        # timestamp (orphan-pod-gc-1783047600). Strip either to get a stable key.
-        stripped = re.sub(r'-[a-z0-9]{5}$', '', name)
-        stripped = re.sub(r'-\d{9,}$', '', stripped)
-        return stripped
-
-    def build_pipeline_key(name):
-        base = pipeline_base_name(name)
-        for prefix in BUILD_PIPELINE_PREFIXES:
-            if base == prefix or base.startswith(f'{prefix}-'):
-                return prefix
-        return None
-
-    def infer_label(params, wf_name):
-        p = {x.get('name'): x.get('value') for x in (params or [])}
-        variant = p.get('variant')
-        tag = p.get('image-tag')
-        image = p.get('image', '')
-        if variant and tag:
-            return f'{variant}:{tag}'
-        if image and tag:
-            img_name = image.rsplit('/', 1)[-1]
-            return f'{img_name}:{tag}'
-        if image:
-            return image.rsplit('/', 1)[-1]
-        if wf_name.startswith('dakota'):
-            return 'dakota:latest'
-        return None
-
-    def safe_int(val, default=0):
-        try:
-            return int(val)
-        except Exception:
-            return default
-
-    def parse_mem_gib(mem):
-        if not mem:
-            return None
-        if mem.endswith('Ki'):
-            return round(int(mem[:-2]) / (1024 * 1024))
-        if mem.endswith('Mi'):
-            return round(int(mem[:-2]) / 1024)
-        if mem.endswith('Gi'):
-            return int(mem[:-2])
-        return None
-
-    def parse_mem_bytes(mem):
-        if not mem:
-            return None
-        try:
-            if mem.endswith('Ki'):
-                return int(mem[:-2]) * 1024
-            if mem.endswith('Mi'):
-                return int(mem[:-2]) * 1024 * 1024
-            if mem.endswith('Gi'):
-                return int(mem[:-2]) * 1024 * 1024 * 1024
-            if mem.endswith('Ti'):
-                return int(mem[:-2]) * 1024 * 1024 * 1024 * 1024
-            return int(mem)
-        except Exception:
-            return None
-
-    def parse_cpu_millicores(cpu):
-        if cpu is None:
-            return None
-        s = str(cpu)
-        try:
-            if s.endswith('n'):
-                return float(s[:-1]) / 1_000_000.0
-            if s.endswith('u'):
-                return float(s[:-1]) / 1000.0
-            if s.endswith('m'):
-                return float(s[:-1])
-            return float(s) * 1000.0
         except Exception:
             return None
 
@@ -597,27 +632,6 @@ def main():
         {'id': 'bazzite-stable', 'repo': 'ublue-os/bazzite', 'workflow': 'build_ublue.yml', 'branch': 'main'},
         {'id': 'bazzite-testing', 'repo': 'ublue-os/bazzite', 'workflow': 'build_ublue.yml', 'branch': 'testing'},
     ]
-
-    def gh_run_to_overall(run):
-        status = run.get('status')
-        conclusion = run.get('conclusion')
-        if status != 'completed':
-            return 'running'
-        if conclusion == 'success':
-            return 'passed'
-        if conclusion in ('failure', 'timed_out', 'startup_failure'):
-            return 'fail'
-        if conclusion == 'cancelled':
-            return 'pending'
-        return 'pending'
-
-    def gh_run_duration_min(run):
-        try:
-            started = datetime.datetime.fromisoformat(run['run_started_at'].replace('Z', '+00:00'))
-            updated = datetime.datetime.fromisoformat(run['updated_at'].replace('Z', '+00:00'))
-            return max(0, round((updated - started).total_seconds() / 60))
-        except Exception:
-            return None
 
     image_builds = {}
     for entry in IMAGE_BUILD_CATALOG:

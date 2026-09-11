@@ -1,0 +1,60 @@
+name: Dakota lab validation dispatch
+
+on:
+  repository_dispatch:
+    types: [dakota-validation, dakota-bst-qa]
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Target repository (must be projectbluefin/dakota)"
+        required: true
+        default: "projectbluefin/dakota"
+      validation_class:
+        description: "Validation class (must be dakota-bst-qa)"
+        required: true
+        default: "dakota-bst-qa"
+      pr_number:
+        description: "Pull request number"
+        required: true
+      sha:
+        description: "Exact 40-character current head commit SHA"
+        required: true
+      rerun:
+        description: "Allow explicit rerun of terminal validation (true/false)"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  submit-dakota-validation:
+    name: Submit Dakota validation to Argo
+    runs-on: ghost-runners
+    timeout-minutes: 30
+    container:
+      image: ghcr.io/projectbluefin/arc-runner:latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate and submit Dakota lab validation
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.event.client_payload.repository || github.event.inputs.repository || 'projectbluefin/dakota' }}
+          VALIDATION_CLASS: ${{ github.event.client_payload.validation_class || github.event.client_payload.class || github.event.inputs.validation_class || 'dakota-bst-qa' }}
+          PR_NUMBER: ${{ github.event.client_payload.pr_number || github.event.inputs.pr_number }}
+          SHA: ${{ github.event.client_payload.sha || github.event.inputs.sha }}
+          RERUN: ${{ github.event.client_payload.rerun || github.event.inputs.rerun || 'false' }}
+        run: |
+          set -euo pipefail
+          RERUN_FLAG=""
+          if [[ "${RERUN}" == "true" ]]; then
+            RERUN_FLAG="--rerun"
+          fi
+          python3 scripts/dakota_validation.py request \
+            --repo "${REPO}" \
+            --validation-class "${VALIDATION_CLASS}" \
+            --pr-number "${PR_NUMBER}" \
+            --sha "${SHA}" \
+            ${RERUN_FLAG}

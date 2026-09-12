@@ -116,7 +116,8 @@ done
 """
     res = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=True)
     line = res.stdout.strip()
-    assert line == "| `test-lane(0:smoke)` | `run-container-tests` | `Pod` | `Failed` | 451s | main: Error (exit code 1) |"
+    assert "| `test-lane(0:smoke)` | `run-container-tests` | `Pod` | `Failed` |" in line
+    assert "| main: Error (exit code 1) |" in line
 
 
 

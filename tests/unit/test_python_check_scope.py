@@ -120,10 +120,10 @@ def test_justfile_check_python_uses_the_scope_file():
     assert ".python-scope" in recipe, "just check-python must read .python-scope"
 
 
-def test_coverage_scope_stays_distinct_from_check_scope():
-    """.coveragerc is intentionally narrower; keep that documented, not accidental."""
+def test_scripts_tree_is_in_coverage_scope():
+    """Production scripts must contribute to the blocking coverage result."""
     coveragerc = (ROOT / ".coveragerc").read_text(encoding="utf-8")
+    ci_yaml = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    assert ".python-scope" in coveragerc, (
-        ".coveragerc must document why its scope differs from .python-scope"
-    )
+    assert "    scripts" in coveragerc, ".coveragerc must measure scripts/"
+    assert "--cov=scripts" in ci_yaml, "CI must report coverage for scripts/"

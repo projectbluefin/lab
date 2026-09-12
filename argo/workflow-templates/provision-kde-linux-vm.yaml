@@ -225,14 +225,19 @@ spec:
         VIRT_LAUNCHER=$(kubectl get pod -n "${NS}" \
           -l "kubevirt.io/vm=${VM}" \
           -o jsonpath='{.items[0].metadata.name}')
+        DOMAIN_ID=$(kubectl exec -n "${NS}" "${VIRT_LAUNCHER}" -c compute -- \
+          virsh list --name | head -1)
 
         # Try sshd.service (Arch canonical); fall back to sshd.socket (Fedora).
-        # Both are best-effort — the SSH wait below is the definitive gate.
+        # Both are best-effort — the SSH wait below is the definitive gate. The
+        # exit status is only echoed (not enforced) so a permissions failure or
+        # missing guest agent shows up in the log instead of surfacing 300s
+        # later as an opaque port-22 timeout.
         for _unit in sshd.service sshd.socket; do
           kubectl exec -n "${NS}" "${VIRT_LAUNCHER}" -c compute -- \
-            virsh qemu-agent-command 1 \
+            virsh qemu-agent-command "${DOMAIN_ID}" \
             "{\"execute\":\"guest-exec\",\"arguments\":{\"path\":\"systemctl\",\"arg\":[\"start\",\"${_unit}\"],\"capture-output\":false}}" \
-            >/dev/null 2>&1 || true
+            2>&1 | sed "s/^/guest-exec start ${_unit}: /" || true
         done
 
         # Step 3: wait for KubeVirt to inject the SSH public key via the guest

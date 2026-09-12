@@ -120,7 +120,7 @@ Before merging any VM provisioning change:
 - [ ] VM disks use containerDisk or PVC volumes; no VM workflow relies on hostPath storage
 - [ ] No hardcoded IPs — pod IP derived at runtime via `kubectl get pod`
 - [ ] Zot-writable index checked before running pipeline: `wc -c /var/mnt/ghost-data/zot-local/bluefin-containerdisk/index.json` > 100 bytes
-- [ ] `bluefin-test-ssh-pubkey` secret exists in **both** `bluefin-test` and `bluefin-lts-test` namespaces
+- [ ] `bluefin-test-ssh-pubkey` secret exists in `bluefin-test`, `bluefin-lts-test`, and `aurora-test` namespaces
 - [ ] Runtime user bootstrap sets home dir ownership (`chown 1001:1001 /var/home/bluefin-test`) before pip/pip3 installs
 - [ ] **containerDisk builds**: Image contains `/containerDisk.json` with the correct `capacity` explicitly declared (prevents `No disk capacity` limits)
 - [ ] **LTS containerDisk**: disk build includes `/EFI/BOOT/BOOTX64.EFI` fallback creation (section 13a)

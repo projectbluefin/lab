@@ -85,4 +85,11 @@ jobs:
               --base main
             PR_NUMBER=$(gh pr list --head "${DERIVE_BRANCH}" --repo "${GITHUB_REPOSITORY}" --json number --jq '.[0].number')
           fi
-          gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --auto --squash
+          out=$(gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --auto --squash 2>&1) || {
+            if grep -qi 'already.*mergeable\|clean status\|cannot be enabled' <<<"$out"; then
+              gh pr merge "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --squash
+            else
+              echo "$out" >&2
+              exit 1
+            fi
+          }

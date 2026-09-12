@@ -631,6 +631,8 @@ def main():
                 runs.append({
                     'id': str(run.get('id')),
                     'overall': gh_run_to_overall(run),
+                    'status': run.get('status'),
+                    'conclusion': run.get('conclusion'),
                     'started_at': run.get('run_started_at') or run.get('created_at'),
                     'finished_at': run.get('updated_at') if run.get('status') == 'completed' else None,
                     'duration_min': gh_run_duration_min(run) if run.get('status') == 'completed' else None,

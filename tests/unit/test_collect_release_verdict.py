@@ -2,7 +2,7 @@
 
 Covers the pure verdict logic invoked by
 .github/workflows/update-test-results.yml: load_json, now_iso, latest_build,
-_qa_substatus, qa_input, append_history and the cosign_verify no-binary path.
+build_input, _qa_substatus, qa_input, append_history and the cosign_verify no-binary path.
 Network (ghcr_digest) and main() I/O are out of scope.
 """
 
@@ -66,6 +66,128 @@ def test_latest_build_ignores_runs_without_started_at():
 def test_latest_build_unavailable_for_unknown_or_undated_lane():
     assert verdict.latest_build({}, "lane") is None
     assert verdict.latest_build({"lane": [{"id": "undated"}]}, "lane") is None
+
+
+def test_build_input_unavailable_when_none():
+    result = verdict.build_input(None)
+    assert result["status"] == "unavailable"
+    assert "no publishing workflow runs" in result["reason"]
+    assert result["run_url"] is None
+    assert result["finished_at"] is None
+
+
+def test_build_input_passed_when_conclusion_is_success():
+    build = {
+        "id": "123",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-08-01T00:00:00Z",
+        "finished_at": "2026-08-01T00:30:00Z",
+        "run_url": "https://github.com/org/repo/actions/runs/123",
+    }
+    result = verdict.build_input(build)
+    assert result["status"] == "passed"
+    assert result["reason"] is None
+    assert result["finished_at"] == "2026-08-01T00:30:00Z"
+    assert result["run_url"] == "https://github.com/org/repo/actions/runs/123"
+
+
+def test_build_input_passed_when_overall_is_passed_and_finished():
+    build = {
+        "id": "123",
+        "overall": "passed",
+        "started_at": "2026-08-01T00:00:00Z",
+        "finished_at": "2026-08-01T00:30:00Z",
+    }
+    result = verdict.build_input(build)
+    assert result["status"] == "passed"
+    assert result["reason"] is None
+
+
+def test_build_input_failed_for_failure_conclusions():
+    for conclusion in ("failure", "timed_out", "startup_failure"):
+        build = {
+            "id": "123",
+            "status": "completed",
+            "conclusion": conclusion,
+            "overall": "fail",
+            "started_at": "2026-08-01T00:00:00Z",
+            "finished_at": "2026-08-01T00:30:00Z",
+        }
+        result = verdict.build_input(build)
+        assert result["status"] == "failed"
+        assert conclusion in result["reason"]
+        assert result["finished_at"] == "2026-08-01T00:30:00Z"
+
+
+def test_build_input_failed_for_overall_fail_and_failed():
+    for overall in ("fail", "failed"):
+        build = {
+            "id": "123",
+            "overall": overall,
+            "started_at": "2026-08-01T00:00:00Z",
+            "finished_at": "2026-08-01T00:30:00Z",
+        }
+        result = verdict.build_input(build)
+        assert result["status"] == "failed"
+        assert overall in result["reason"]
+
+
+def test_build_input_pending_when_finished_at_is_null_never_failed():
+    # Regression test for projectbluefin/lab#616:
+    # A run with finished_at: null is in flight and must never yield build.status: "failed".
+    in_flight_builds = [
+        {"overall": "running", "finished_at": None},
+        {"overall": "fail", "finished_at": None},
+        {"overall": "passed", "finished_at": None},
+        {"status": "in_progress", "conclusion": None, "finished_at": None},
+        {"status": "queued", "conclusion": None, "finished_at": None},
+        {"status": "completed", "conclusion": "failure", "finished_at": None},
+        {"status": "completed", "conclusion": "timed_out", "finished_at": None},
+        {"finished_at": None},
+    ]
+    for build in in_flight_builds:
+        result = verdict.build_input(build)
+        assert result["status"] != "failed", f"Expected non-failed status for in-flight build: {build}"
+        assert result["status"] == "pending", f"Expected pending status for in-flight build: {build}"
+
+
+def test_build_input_pending_when_status_is_not_completed():
+    for status in ("in_progress", "queued", "waiting"):
+        build = {
+            "id": "123",
+            "status": status,
+            "started_at": "2026-08-01T00:00:00Z",
+            "finished_at": None,
+        }
+        result = verdict.build_input(build)
+        assert result["status"] == "pending"
+
+
+def test_build_input_pending_when_conclusion_or_overall_is_running_or_pending():
+    # Dakota-testing live case: run concluded cancelled/pending with finished_at set
+    build_cancelled = {
+        "id": "123",
+        "status": "completed",
+        "conclusion": "cancelled",
+        "overall": "pending",
+        "started_at": "2026-08-01T00:00:00Z",
+        "finished_at": "2026-08-01T00:30:00Z",
+    }
+    result = verdict.build_input(build_cancelled)
+    assert result["status"] == "pending"
+    assert "latest publishing run concluded cancelled" in result["reason"]
+
+    build_pending_overall = {
+        "id": "123",
+        "overall": "pending",
+        "started_at": "2026-08-01T00:00:00Z",
+        "finished_at": "2026-08-01T00:30:00Z",
+    }
+    result = verdict.build_input(build_pending_overall)
+    assert result["status"] == "pending"
+    assert "latest publishing run concluded pending" in result["reason"]
+
 
 
 def test_qa_substatus_unavailable_when_no_rows_tracked():

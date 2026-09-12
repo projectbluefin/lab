@@ -458,6 +458,7 @@ def main():
         "rows": rows,
     }
 
+    Path(OUT_PATH).parent.mkdir(parents=True, exist_ok=True)
     with open(OUT_PATH, "w") as f:
         json.dump(doc, f, indent=2)
         f.write("\n")

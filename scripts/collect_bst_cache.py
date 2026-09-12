@@ -230,7 +230,8 @@ def main():
         if ghost_link:
             ghost_doc = json.loads(ghost_link)
             ann = ghost_doc.get("metadata", {}).get("annotations", {})
-            ghost_link_val = ann.get("lab.projectbluefin.io/usb4-link")
+            lbl = ghost_doc.get("metadata", {}).get("labels", {})
+            ghost_link_val = lbl.get("lab.projectbluefin.io/usb4-link") or ann.get("lab.projectbluefin.io/usb4-link")
             ghost_obs_val = ann.get("lab.projectbluefin.io/usb4-link-observed-at")
             if ghost_link_val:
                 ghost_link = ghost_link_val
@@ -241,7 +242,8 @@ def main():
         if exo0_raw:
             exo0_doc = json.loads(exo0_raw)
             ann0 = exo0_doc.get("metadata", {}).get("annotations", {})
-            exo0_link_val = ann0.get("lab.projectbluefin.io/usb4-link")
+            lbl0 = exo0_doc.get("metadata", {}).get("labels", {})
+            exo0_link_val = lbl0.get("lab.projectbluefin.io/usb4-link") or ann0.get("lab.projectbluefin.io/usb4-link")
             exo0_obs_val = ann0.get("lab.projectbluefin.io/usb4-link-observed-at")
             if exo0_link_val:
                 exo0_link = exo0_link_val

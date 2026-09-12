@@ -326,6 +326,7 @@ spec:
           printf '%s' "${COMPLETED_AT}" > /tmp/check/completed-at
 
           to_epoch() {
+            [[ -n "${1:-}" && "$1" != "none" && "$1" != "-" ]] || { printf '0'; return; }
             date -u -d "$1" +%s 2>/dev/null || printf '0'
           }
           START_EPOCH=$(to_epoch "${STARTED_AT}")
@@ -425,12 +426,12 @@ spec:
               | sort_by(.startedAt // "", .displayName // "")
               | .[]
               | [
-                  (.displayName // .name // ""),
-                  (.templateName // ""),
-                  (.type // ""),
+                  (.displayName // .name // "-"),
+                  (.templateName // .templateRef.template // "-"),
+                  (.type // "-"),
                   (.phase // "Unknown"),
-                  (.startedAt // ""),
-                  (.finishedAt // ""),
+                  (.startedAt // "none"),
+                  (.finishedAt // "none"),
                   (.message // "")
                 ]
               | @tsv
@@ -462,7 +463,7 @@ spec:
                   | select(.phase == "Failed" or .phase == "Error")
                   | [
                       (.displayName // .name // "unknown"),
-                      (.templateName // "unknown"),
+                      (.templateName // .templateRef.template // "unknown"),
                       (.message // "No failure message was recorded.")
                     ]
                   | @tsv

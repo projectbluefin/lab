@@ -32,9 +32,9 @@ Dakota PR review is a lab-backed admission process. GitHub Actions status is adv
 
 1. Confirm the PR number, target branch, head SHA, and that it is still open and mergeable.
 2. Do not treat `pr/needs-review`, `automerge`, or `chore/deps` labels as approval. Verify maintainer approval when the repository policy requires it.
-3. Build the exact PR head SHA with `dakota-build-pipeline` in distributed (`re`) mode. Use the live WorkflowTemplate parameters; do not guess them.
-4. Test the resulting image with `dakota-container-qa-pipeline` (image smoke checks) and, when the image supports it, `dakota-qa-pipeline`/`run-container-tests` for the full containerized BDD/GUI suites.
-5. Keep each build serialized by the `bst-build` semaphore. Never start competing Dakota BST builds; queue them and process one PR at a time.
+3. Request or dispatch on-demand SHA-pinned lab validation via validation class `dakota-bst-qa` (using `dakota-validation` dispatch via GitHub Actions if cluster credentials are not available, or `just dakota-validate-request <pr> <sha>`).
+4. Build the exact PR head SHA with `dakota-build-pipeline` in distributed (`re`) mode, followed by `dakota-qa-pipeline` for containerized acceptance suites.
+5. Keep each build serialized by the `bst-build` semaphore. Never start competing Dakota BST builds; queue them and process one PR at a time. Active requests for the same SHA are automatically deduped.
 6. Capture Argo workflow names, exact SHAs, build mode, test result, and failure logs. A pass must be tied to the same commit that will be merged.
 7. If build and E2E pass, recheck the PR head and mergeability, then merge directly. Do not use GitHub merge queue for this process: queue promotion has historically evaluated the wrong/stale commit when GHA is failing.
 8. If lab validation fails, do not merge. Classify infrastructure failures separately from source/test failures and rerun only after the blocker is fixed.

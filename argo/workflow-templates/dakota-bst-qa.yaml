@@ -1,0 +1,154 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: dakota-bst-qa
+  namespace: argo
+  annotations:
+    description: |
+      On-demand SHA-pinned Dakota lab validation pipeline.
+      Executes the existing Dakota BuildStream build followed by full container QA
+      for the exact commit SHA, publishing lifecycle evidence back to GitHub.
+  labels:
+    app.kubernetes.io/component: dakota-bst-qa
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  workflowMetadata:
+    labels:
+      bluefin.io/evidence-contract: qa-run-v1
+      bluefin.io/trigger: on-demand
+      bluefin.io/validation-class: dakota-bst-qa
+      bluefin.io/bst-workload: "true"
+  activeDeadlineSeconds: 90000
+  entrypoint: pipeline
+  onExit: report-final
+  arguments:
+    parameters:
+      - name: repository
+        value: "projectbluefin/dakota"
+      - name: pr-number
+        value: ""
+      - name: commit-sha
+        value: ""
+      - name: validation-class
+        value: "dakota-bst-qa"
+      - name: ref
+        value: "testing"
+      - name: repo
+        value: "https://github.com/projectbluefin/dakota.git"
+      - name: image-tag
+        value: ""
+      - name: registry
+        value: "192.168.1.102:30500"
+      - name: build-mode
+        value: "re"
+      - name: lock-key
+        value: "bst-build"
+      - name: image
+        value: "192.168.1.102:30500/dakota"
+      - name: suites
+        value: "smoke,common,developer,software,system"
+      - name: variant
+        value: "dakota"
+      - name: branch
+        value: "main"
+      - name: testsuite-branch
+        value: "main"
+      - name: testsuite-repo
+        value: "https://github.com/projectbluefin/testsuite"
+      - name: workflow-url
+        value: ""
+
+  templates:
+    - name: pipeline
+      dag:
+        tasks:
+          - name: report-start
+            templateRef:
+              name: github-status-reporter
+              template: send
+            arguments:
+              parameters:
+                - name: repository
+                  value: "{{workflow.parameters.repository}}"
+                - name: sha
+                  value: "{{workflow.parameters.commit-sha}}"
+                - name: pr-number
+                  value: "{{workflow.parameters.pr-number}}"
+                - name: state
+                  value: in_progress
+                - name: conclusion
+                  value: ""
+                - name: workflow-name
+                  value: "{{workflow.name}}"
+                - name: workflow-url
+                  value: "http://192.168.1.102:2746/workflows/argo/{{workflow.name}}"
+                - name: title
+                  value: "Dakota lab validation is running"
+                - name: summary
+                  value: "The lab admitted Dakota PR #{{workflow.parameters.pr-number}} at commit {{workflow.parameters.commit-sha}}."
+
+          - name: build
+            depends: "(report-start.Succeeded || report-start.Failed || report-start.Errored)"
+            templateRef:
+              name: dakota-build-pipeline
+              template: build
+            arguments:
+              parameters:
+                - name: ref
+                  value: "{{workflow.parameters.ref}}"
+                - name: commit-sha
+                  value: "{{workflow.parameters.commit-sha}}"
+                - name: repo
+                  value: "{{workflow.parameters.repo}}"
+                - name: image-tag
+                  value: "{{workflow.parameters.commit-sha}}"
+                - name: registry
+                  value: "{{workflow.parameters.registry}}"
+                - name: build-mode
+                  value: "{{workflow.parameters.build-mode}}"
+                - name: lock-key
+                  value: "{{workflow.parameters.lock-key}}"
+
+          - name: qa-dakota
+            depends: "build.Succeeded"
+            templateRef:
+              name: dakota-qa-pipeline
+              template: pipeline
+            arguments:
+              parameters:
+                - name: image
+                  value: "{{workflow.parameters.image}}"
+                - name: image-tag
+                  value: "{{workflow.parameters.commit-sha}}"
+                - name: image-digest
+                  value: ""
+                - name: suites
+                  value: "{{workflow.parameters.suites}}"
+                - name: variant
+                  value: "{{workflow.parameters.variant}}"
+                - name: branch
+                  value: "{{workflow.parameters.branch}}"
+                - name: testsuite-branch
+                  value: "{{workflow.parameters.testsuite-branch}}"
+                - name: testsuite-repo
+                  value: "{{workflow.parameters.testsuite-repo}}"
+
+    - name: report-final
+      steps:
+        - - name: status-report
+            templateRef:
+              name: github-status-reporter
+              template: final
+            arguments:
+              parameters:
+                - name: repository
+                  value: "{{workflow.parameters.repository}}"
+                - name: sha
+                  value: "{{workflow.parameters.commit-sha}}"
+                - name: pr-number
+                  value: "{{workflow.parameters.pr-number}}"
+                - name: final-status
+                  value: "{{workflow.status}}"
+                - name: workflow-url
+                  value: "http://192.168.1.102:2746/workflows/argo/{{workflow.name}}"

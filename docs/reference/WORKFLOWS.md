@@ -464,6 +464,43 @@ just run-dakota-validate              # bst show only, ~5 min
 just run-dakota-build                 # default + nvidia variants
 ```
 
+### `dakota-bst-qa` (On-Demand SHA-Pinned Dakota Validation)
+
+Exposes on-demand, SHA-bound Dakota lab validation to reviewers and repository
+automation (`review`) without requiring cluster credentials. Executes the
+full Dakota BuildStream build followed by container QA against local Zot.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `repository` | `projectbluefin/dakota` | Fixed target repository. |
+| `pr-number` | *(required)* | Open Dakota PR number. |
+| `commit-sha` | *(required)* | Exact 40-character commit SHA matching current PR head. |
+| `validation-class` | `dakota-bst-qa` | Fixed validation class. |
+| `ref` | `testing` | Dakota branch ref. |
+| `build-mode` | `re` | BuildStream remote execution mode. |
+
+```bash
+# Request on-demand validation
+just dakota-validate-request <pr_number> <sha>
+
+# Query validation status
+just dakota-validate-status <pr_number> <sha>
+```
+
+Contract rules:
+- **Preflight rejection**: Rejects requests for unsupported repo, unsupported class,
+  malformed SHA, closed PRs, or head SHA mismatch before submitting to the cluster.
+- **Deduplication**: Active (`queued` or `running`) requests for the same PR and SHA
+  are deduped rather than launching duplicate workflows.
+- **Terminal rerun**: Terminal workflows (`success`, `failure`, `cancelled`, `timeout`)
+  can be rerun explicitly with `--rerun`.
+- **SHA isolation**: Evidence from SHA A never applies to SHA B; queries for SHA B
+  report `unavailable` if SHA B has not been validated.
+- **Reporting states**: Exactly 8 canonical lifecycle states:
+  `unavailable`, `rejected`, `queued`, `running`, `success`, `failure`, `cancelled`, `timeout`.
+- **GitHub evidence**: Publishes `testing-lab/dakota-bst-qa` commit status and optional
+  `lab-check` repository dispatch on admission, execution, and exit.
+
 ### Dakota durable build/publish records
 
 `scripts/publish_dakota_run.py` is the workflow-independent producer for

@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: podman-remote-service
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: podman-remote-service
+    app.kubernetes.io/component: node-tuning
+    app.kubernetes.io/part-of: bluefin-test-suite
+  annotations:
+    bluefin.io/description: |
+      Starts a rootless Podman API for the core user on explicitly labelled
+      nodes. The API listens only on the node loopback interface and is
+      reached from workstations through authenticated kubectl port-forward.
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: podman-remote-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: podman-remote-service
+        app.kubernetes.io/component: node-tuning
+        app.kubernetes.io/part-of: bluefin-test-suite
+    spec:
+      hostPID: true
+      nodeSelector:
+        lab.projectbluefin.io/podman-remote: "true"
+      initContainers:
+        - name: configure-podman
+          image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+          securityContext:
+            privileged: true
+          command:
+            - /bin/sh
+            - -c
+            - |
+              nsenter -t 1 -m -- sh -eu -c '
+                user=core
+                uid="$(id -u "$user")"
+                home="$(getent passwd "$user" | cut -d: -f6)"
+                unit="$home/.config/systemd/user/podman-remote.service"
+
+                command -v podman >/dev/null
+                install -d -m 0755 -o "$user" -g "$user" "$(dirname "$unit")"
+                printf "%s\n" \
+                  "[Unit]" \
+                  "Description=Rootless Podman API for Kubernetes port-forward" \
+                  "" \
+                  "[Service]" \
+                  "ExecStart=/usr/bin/podman system service --time=0 tcp://127.0.0.1:18080" \
+                  "Restart=always" \
+                  "RestartSec=2" > "$unit"
+                chown "$user:$user" "$unit"
+                chmod 0644 "$unit"
+
+                loginctl enable-linger "$user"
+                systemctl start "user@${uid}.service"
+                export XDG_RUNTIME_DIR="/run/user/${uid}"
+                export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+                runuser -u "$user" -- env \
+                  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+                  DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+                  systemctl --user daemon-reload
+                runuser -u "$user" -- env \
+                  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+                  DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+                  systemctl --user enable --now podman-remote.service
+                runuser -u "$user" -- env \
+                  XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+                  DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+                  systemctl --user restart podman-remote.service
+              '
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
+      terminationGracePeriodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podman-remote-endpoint
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: podman-remote-endpoint
+    app.kubernetes.io/component: node-tuning
+    app.kubernetes.io/part-of: bluefin-test-suite
+  annotations:
+    bluefin.io/description: |
+      Provides a host-network endpoint for kubectl port-forward to the
+      loopback-only rootless Podman API managed by podman-remote-service.
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: podman-remote-endpoint
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: podman-remote-endpoint
+        app.kubernetes.io/component: node-tuning
+        app.kubernetes.io/part-of: bluefin-test-suite
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      nodeSelector:
+        lab.projectbluefin.io/podman-remote: "true"
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          ports:
+            - name: podman-api
+              containerPort: 18080
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi

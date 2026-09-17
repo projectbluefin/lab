@@ -598,6 +598,23 @@ spec:
           )
           patch_file.write_text(patch_content)
           print("Created lab-owned conditional remote-apis-socket patch in patches/gnome-build-meta")
+
+          # Add 0002-glib-stage1-serialize-jobs.patch to prevent parallel build race where test5.gresource runs before libgio symlink
+          patch2_file = patch_dir / '0002-glib-stage1-serialize-jobs.patch'
+          patch2_content = (
+              "--- a/elements/sdk-deps/glib-stage1.bst\n"
+              "+++ b/elements/sdk-deps/glib-stage1.bst\n"
+              "@@ -3,6 +3,7 @@\n"
+              " (@): elements/sdk/glib.inc\n"
+              " \n"
+              " variables:\n"
+              "+  max-jobs: '1'\n"
+              "   meson-local: >-\n"
+              "     -Ddtrace=disabled\n"
+              "     -Dintrospection=disabled\n"
+          )
+          patch2_file.write_text(patch2_content)
+          print("Created 0002-glib-stage1-serialize-jobs.patch in patches/gnome-build-meta")
           GBM_JUNCTION_PATCH
           fi
           if [[ -f /src/elements/bluefin/common.bst ]]; then
@@ -664,8 +681,8 @@ spec:
               if git fetch --depth=1 origin "${GNOME_COMMIT}"; then
                 git checkout --detach FETCH_HEAD
                 if [[ -d patches/gnome-build-meta ]]; then
-                  # Copy upstream patches excluding series/metadata so patch_queue globbing only applies valid unified diffs
-                  find patches/gnome-build-meta -mindepth 1 -maxdepth 1 ! -name 'series' -exec cp -a {} /src/patches/gnome-build-meta/ \;
+                  # Copy upstream patch files only (excluding series/metadata) so patch_queue globbing only applies valid regular diff files
+                  find patches/gnome-build-meta -mindepth 1 -maxdepth 1 -type f ! -name 'series' -exec cp -a {} /src/patches/gnome-build-meta/ \;
                 fi
               else
                 echo "WARN: unable to fetch gnome-build-meta commit ${GNOME_COMMIT}; continuing without patch sync"

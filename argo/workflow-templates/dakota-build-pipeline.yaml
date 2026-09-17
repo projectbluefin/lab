@@ -597,12 +597,7 @@ spec:
               "+            action-cache-enable-update: true\n"
           )
           patch_file.write_text(patch_content)
-          series_file = patch_dir / 'series'
-          series_lines = series_file.read_text().splitlines() if series_file.exists() else []
-          if '0001-conditional-remote-apis-socket.patch' not in series_lines:
-              series_lines.append('0001-conditional-remote-apis-socket.patch')
-              series_file.write_text('\n'.join(series_lines) + '\n')
-          print("Created lab-owned conditional remote-apis-socket patch and registered in series")
+          print("Created lab-owned conditional remote-apis-socket patch in patches/gnome-build-meta")
           GBM_JUNCTION_PATCH
           fi
           if [[ -f /src/elements/bluefin/common.bst ]]; then
@@ -669,16 +664,8 @@ spec:
               if git fetch --depth=1 origin "${GNOME_COMMIT}"; then
                 git checkout --detach FETCH_HEAD
                 if [[ -d patches/gnome-build-meta ]]; then
-                  # Copy upstream patches excluding series so lab-owned series is preserved
+                  # Copy upstream patches excluding series/metadata so patch_queue globbing only applies valid unified diffs
                   find patches/gnome-build-meta -mindepth 1 -maxdepth 1 ! -name 'series' -exec cp -a {} /src/patches/gnome-build-meta/ \;
-                  if [[ -f patches/gnome-build-meta/series ]]; then
-                    while IFS= read -r patch_line; do
-                      [[ -n "${patch_line}" && "${patch_line}" != "#"* ]] || continue
-                      if ! grep -Fxq "${patch_line}" /src/patches/gnome-build-meta/series 2>/dev/null; then
-                        echo "${patch_line}" >> /src/patches/gnome-build-meta/series
-                      fi
-                    done < patches/gnome-build-meta/series
-                  fi
                 fi
               else
                 echo "WARN: unable to fetch gnome-build-meta commit ${GNOME_COMMIT}; continuing without patch sync"

@@ -664,7 +664,7 @@ def test_dakota_build_pipeline_uses_generic_ephemeral_cache_volume():
     assert spec["resources"]["requests"]["storage"] == "200Gi"
 
 
-def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_preserves_series():
+def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_patches_glib_stage1():
     pipeline = yaml.safe_load(
         (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
             encoding="utf-8"
@@ -675,5 +675,6 @@ def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_preserves_series():
 
     assert "doc.setdefault('config', {}).setdefault('options', {})['recc'] = 'passthrough'" in source
     assert "0001-conditional-remote-apis-socket.patch" in source
-    assert 'recc != \\"passthrough\\"' in source
-    assert "! -name 'series'" in source
+    assert "0002-glib-stage1-serialize-jobs.patch" in source
+    assert "max-jobs: '1'" in source
+    assert "-type f ! -name 'series'" in source

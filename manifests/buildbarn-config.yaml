@@ -93,7 +93,7 @@ data:
             },
             persistent: {
               stateDirectoryPath: '/storage-cas/persistent_state',
-              minimumEpochInterval: '300s',
+              minimumEpochInterval: '60s',
             },
           },
         },
@@ -200,15 +200,11 @@ data:
 
     {
       contentAddressableStorage: {
-        grpc: {
-          address: 'storage.buildbarn.svc.cluster.local:8981',
-        },
+        backend: common.blobstore.contentAddressableStorage,
       },
       assetCache: {
         actionCache: {
-          grpc: {
-            address: 'storage.buildbarn.svc.cluster.local:8981',
-          },
+          backend: common.blobstore.actionCache,
         },
       },
       // BuildStream pushes remote assets through the Remote Asset API. Keep the

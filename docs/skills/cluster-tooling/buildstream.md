@@ -67,6 +67,52 @@ remote-cache-only run is not an acceptable substitute.
   device-node failure mode without requiring a cache-only fallback for this
   specific issue. A failing RE action must stop the build for repair; never
   route the work to a local or Ethernet-backed fallback.
+- **Buildbarn RE sandbox has no `/proc` (open)**: device nodes were only half of
+  the chroot gap. `bb_runner` does not mount `/proc` into the input root, and
+  upstream has no configuration option that does — it is tracked as
+  [bb-remote-execution#115](https://github.com/buildbarn/bb-remote-execution/issues/115),
+  with out-of-tree `mountat` patches published by
+  [Meroton](https://meroton.com/docs/improved-chroot-in-buildbarn/the-problem-with-special-filesystems/).
+  Any action whose build runs a tool that reads `/proc` fails. Observed on the
+  Dakota lane (`dakota-build-pipeline-hnc5q`, plain `testing`, not a branch):
+
+  ```text
+  gnomeos-deps/bootc.bst: Running commands
+    /bin/sh: line 1: /usr/lib/os-release: No such file or directory
+    error: reading /proc/1/ns/ipc: No such file or directory (os error 2)
+    make: *** [Makefile:49: completion] Error 1
+  Build Queue: processed 3, skipped 910, failed 2   →  exit status 255
+  ```
+
+  The same class of failure is documented upstream for `cargo`/`rustc`
+  (`/proc/self/exe`), `go`, `node`, and `javac`.
+
+  **Per-element fixes work but do not scale.** bootc's Makefile carried two
+  host probes, both fixable in `elements/gnomeos-deps/bootc.bst` (a dakota-local
+  override element, so no junction patch is needed):
+
+  - `CARGO_FEATURES_DEFAULT ?= $(shell . /usr/lib/os-release; …)` picks the
+    `rhsm` feature from whatever `os-release` the *builder* has. Stating
+    `CARGO_FEATURES` explicitly makes the feature set deterministic.
+  - `install: completion` runs the freshly built binary five times. Upstream
+    already intends to skip joining the host IPC namespace in restricted build
+    environments, but only handles a *masked* `/proc` (`PermissionDenied`), not
+    a *missing* one (`NotFound`). dakota carries
+    `patches/bootc/0001-tolerate-missing-proc-in-sandbox.patch` for that.
+
+  With bootc fixed, the very next element failed the same way —
+  `gnome-build-meta.bst:oci/initramfs.bst`, where freedesktop-sdk's
+  `prepare-image.sh` dies at `Running systemd-firstboot` after
+  `Failed to parse systemd.firstboot= kernel command line argument … No such
+  file or directory` (that is `/proc/cmdline`). Patching elements one at a time
+  is whack-a-mole across dakota, gnome-build-meta and freedesktop-sdk.
+
+  **The systemic fix is a private procfs in the action, not the host's.**
+  Mounting a fresh `proc` inside the input root — what the `mountat` work in
+  bb-remote-execution#115 implements — keeps the action hermetic: it exposes
+  the action's own process tree, not the node's. That is different from bind
+  mounting the host `/proc` or the host `/usr/lib/os-release`, which would make
+  artifacts depend on the machine that built them and must not be done.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

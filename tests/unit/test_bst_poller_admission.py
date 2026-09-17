@@ -29,7 +29,7 @@ def test_shared_bst_pollers_are_suspended_but_staggered_for_on_demand():
 
     source = templates["check-sha"]["script"]["source"]
     assert "bluefin.io/bst-workload=true" in source
-    assert "ACTIVE > 2" in source
+    assert "ACTIVE >= 2" in source
     assert '"${FORCE}" == "false" && "${REMOTE}" == "${STORED}"' in source
     assert "Forced rebuild requested; BST queue has capacity" in source
     assert "kubectl patch configmap" not in source

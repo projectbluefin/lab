@@ -145,8 +145,8 @@ def test_production_lanes_keep_the_overlay_mounted_but_do_not_invoke_it():
     ``remoteApisSocketPath`` support.
     """
 
+    # Unchanged production lanes must not configure or request remote-apis-socket.
     for filename in (
-        "dakota-build-pipeline.yaml",
         "cosmic-build-pipeline.yaml",
         "bluefin-server-build-pipeline.yaml",
         "bst-qa-pipeline.yaml",
@@ -162,6 +162,18 @@ def test_production_lanes_keep_the_overlay_mounted_but_do_not_invoke_it():
         assert "RECC admission rejected" not in pipeline
         assert "remote-apis-socket" not in pipeline
 
+    # Dakota production lane keeps the overlay uninvoked, explicitly sets gbm junction
+    # recc: passthrough, and conditions the junction's remote-apis-socket on socket-capable modes.
+    dakota_pipeline = (
+        ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml"
+    ).read_text(encoding="utf-8")
+    assert "- key: apply_recc_overlay.py" in dakota_pipeline
+    assert "path: apply_recc_overlay.py" in dakota_pipeline
+    assert "python3 /etc/buildstream/apply_recc_overlay.py" not in dakota_pipeline
+    assert "kubectl get configmap buildbarn-config -n buildbarn" not in dakota_pipeline
+    assert "RECC admission rejected" not in dakota_pipeline
+    assert "['recc'] = 'passthrough'" in dakota_pipeline
+    assert '0001-conditional-remote-apis-socket.patch' in dakota_pipeline
 
 def test_every_mandatory_recc_lane_is_refused_by_the_shared_overlay():
     """The kinds the templates pass must all be mandatory-RECC adapters."""

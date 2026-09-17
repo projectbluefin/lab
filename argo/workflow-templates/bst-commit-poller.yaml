@@ -77,6 +77,10 @@ spec:
                   value: "{{workflow.parameters.registry}}"
                 - name: build-mode
                   value: "re"
+                - name: image-tag
+                  value: "testing"
+                - name: lock-key
+                  value: "bst-build"
           - name: update-sha
             depends: "run-build.Succeeded"
             template: update-sha
@@ -277,7 +281,7 @@ spec:
               -o json \
               | jq '[.items[] | select(.status.phase == "Running")] | length'
           )
-          if (( ACTIVE > 2 )); then
+          if (( ACTIVE >= 2 )); then
             echo "BST queue full (${ACTIVE} workflows including this poller); deferring ${REPO}:${BRANCH}" >&2
             echo "false" > /tmp/changed
             exit 0

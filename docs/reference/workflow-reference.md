@@ -78,8 +78,9 @@ bridge that submits Argo Workflows from ephemeral ARC runners, see
   remote-execution configuration before it invokes BuildStream.
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.
-- **Who triggers it automatically:** the `dakota-commit-poller` CronWorkflow
-  through the shared `bst-commit-poller` template (see
+- **Who triggers it automatically:** the `daily-dakota-build` CronWorkflow
+  (scheduled at 00:30 UTC, initially staged suspended) and the `dakota-commit-poller`
+  CronWorkflow through the shared `bst-commit-poller` template (see
   [Cache Warming](#cache-warming-pollers)). The poller resolves the current
   GitHub SHA for `dakota:testing` and passes that exact commit into the local
   BuildStream run, so the lab build checks out the same source revision that
@@ -214,12 +215,16 @@ Buildbarn.
 only and uses the same USB4-gated BuildBarn remote-execution contract as every
 other BST lane.
 
-**`nightly-dakota` does not warm anything** — it's wired to `dakota-qa-pipeline`
-(test runner against pre-built images), not `dakota-build-pipeline` (the actual
-compile step). The real Dakota cache-warming trigger is `dakota-commit-poller`. It must not be
-interpreted as proof of a green distributed build: the poller succeeds only when
-the remote BuildStream workflow, image export, registry push, and configured
-validation path succeed.
+- **`daily-dakota-build`** is the dedicated daily compile schedule (00:30 UTC,
+  staged `suspend: true`). It routes through `bst-commit-poller` (`entrypoint: poll-dakota`,
+  `force: "true"`), enforcing the two-workflow BST admission limit while capturing the
+  current Git SHA and triggering `dakota-build-pipeline` to export to local Zot (`:30500`).
+- **`nightly-dakota` does not warm anything** — it's wired to `dakota-qa-pipeline`
+  (test runner against pre-built images), not `dakota-build-pipeline` (the actual
+  compile step). The real Dakota cache-warming trigger is `dakota-commit-poller`. It must not be
+  interpreted as proof of a green distributed build: the poller succeeds only when
+  the remote BuildStream workflow, image export, registry push, and configured
+  validation path succeed.
 
 The Dakota and Cosmic commit CronWorkflows share one implementation. It compares
 the source SHA, defers when two BST workflows are already admitted, invokes the

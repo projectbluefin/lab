@@ -87,10 +87,11 @@ metadata:
 data:
   server.disable.dex: "true"
   reposerver.parallelism.limit: "1"
+  reposerver.git.request.timeout: "300s"
   controller.status.processors: "5"
   controller.operation.processors: "2"
-  controller.repo.server.timeout.seconds: "180"
-  server.repo.server.timeout.seconds: "180"
+  controller.repo.server.timeout.seconds: "360"
+  server.repo.server.timeout.seconds: "360"
 ---
 # Resource requests for ArgoCD components — currently all BestEffort (resources: {}).
 # Without requests, these are first OOM-killed under VM memory pressure.
@@ -111,11 +112,11 @@ spec:
             - --
             - /usr/local/bin/argocd-application-controller
           args:
-            - --repo-server-timeout-seconds=180
+            - --repo-server-timeout-seconds=360
           # REDIS_PASSWORD must be declared here: this SSA patch owns the
           # container spec, and an earlier apply wiped the upstream env list,
           # leaving the controller unauthenticated to redis (NOAUTH errors,
-          # partial syncs). Other env vars fall back to argocd-cmd-params-cm.
+          # partial syncs).
           env:
             - name: REDIS_PASSWORD
               valueFrom:
@@ -129,10 +130,6 @@ spec:
                   name: argocd-cmd-params-cm
                   key: controller.repo.server.timeout.seconds
                   optional: true
-          envFrom:
-            - configMapRef:
-                name: argocd-cmd-params-cm
-                optional: true
           resources:
             requests:
               cpu: 100m

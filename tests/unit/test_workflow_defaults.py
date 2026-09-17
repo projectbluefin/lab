@@ -643,3 +643,37 @@ def test_kde_runner_sabotage_verdict_requires_recorded_failures():
     assert "no kde_faillog_* bundle was retained" in script
     # The verdict must be able to fail the task, not just log.
     assert 'exit "${SABOTAGE_VERDICT_RC}"' in script
+
+
+def test_dakota_build_pipeline_uses_generic_ephemeral_cache_volume():
+    pipeline = yaml.safe_load(
+        (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    templates = {item["name"]: item for item in pipeline["spec"]["templates"]}
+    volumes = {item["name"]: item for item in templates["bst-build-re"]["volumes"]}
+
+    assert "bst-cache" in volumes
+    cache_volume = volumes["bst-cache"]
+    assert "hostPath" not in cache_volume
+    assert "ephemeral" in cache_volume
+    spec = cache_volume["ephemeral"]["volumeClaimTemplate"]["spec"]
+    assert spec["accessModes"] == ["ReadWriteOnce"]
+    assert spec["storageClassName"] == "local-path"
+    assert spec["resources"]["requests"]["storage"] == "200Gi"
+
+
+def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_preserves_series():
+    pipeline = yaml.safe_load(
+        (ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    templates = {item["name"]: item for item in pipeline["spec"]["templates"]}
+    source = templates["bst-build-re"]["script"]["source"]
+
+    assert "doc.setdefault('config', {}).setdefault('options', {})['recc'] = 'passthrough'" in source
+    assert "0001-conditional-remote-apis-socket.patch" in source
+    assert 'recc != \\"passthrough\\"' in source
+    assert "! -name 'series'" in source

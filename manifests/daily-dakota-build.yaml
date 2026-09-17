@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: CronWorkflow
+metadata:
+  name: daily-dakota-build
+  namespace: argo
+  labels:
+    app.kubernetes.io/component: dakota-build
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  suspend: true
+  schedules:
+    - "30 0 * * *"
+  timezone: "UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  workflowMetadata:
+    labels:
+      app.kubernetes.io/part-of: bluefin-test-suite
+      bluefin.io/bst-workload: "true"
+      bluefin.io/bst-source: dakota
+      bluefin.io/trigger: daily-build
+  workflowSpec:
+    serviceAccountName: argo
+    activeDeadlineSeconds: 86400
+    entrypoint: poll-dakota
+    workflowTemplateRef:
+      name: bst-commit-poller
+    arguments:
+      parameters:
+        - name: repo
+          value: projectbluefin/dakota
+        - name: branch
+          value: testing
+        - name: state-key
+          value: sha-dakota-testing
+        - name: force
+          value: "true"
+        - name: registry
+          value: "192.168.1.102:30500"

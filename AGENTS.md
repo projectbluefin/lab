@@ -48,13 +48,9 @@ npm ci && npm run build
   [`fsdk-containers`](https://github.com/projectbluefin/fsdk-containers); if the
   image you need is missing, propose adding one.
 - **Do not use RPM or `dnf` for image composition or package installation** —
-  not at runtime, not in a Containerfile, not in a builder stage. The sole
-  exception is a GitOps-managed, source-only validation lane that runs
-  `packit srpm` from a digest-pinned upstream image against already verified
-  source archives; it must re-verify those archives afterward and must not
-  build, install, publish, or consume binary RPMs. Fetch upstream release
-  artifacts by checksum instead. See
-  [`docs/skills/gitops-argocd/image-policy.md`](docs/skills/gitops-argocd/image-policy.md).
+  not at runtime, not in a Containerfile, not in a builder stage. No SRPM, Packit,
+  or RPM build paths exist in this lab. Fetch upstream release artifacts by checksum
+  instead. See [`docs/skills/gitops-argocd/image-policy.md`](docs/skills/gitops-argocd/image-policy.md).
 - **Never use a distro-packaged `ffmpeg`.** Fedora's `ffmpeg-free` is
   patent-stripped (measured on fc44: no `libx265`, no `libsvtav1`), so an
   encode path fails hours into a render. `ghcr.io/projectbluefin/bluefin` ships

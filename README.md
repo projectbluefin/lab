@@ -185,6 +185,7 @@ lab/
 │   ├── nightly-smoke.yaml                CronWorkflow: nightly bluefin:testing @ 02:00 UTC
 │   ├── nightly-smoke-lts.yaml            CronWorkflow: nightly bluefin-lts:testing @ 02:30 UTC
 │   ├── nightly-dakota.yaml               CronWorkflow: nightly dakota @ 03:00 UTC
+│   ├── daily-dakota-build.yaml           CronWorkflow: daily dakota build @ 00:30 UTC (suspended)
 │   ├── nightly-knuckle.yaml              CronWorkflow: nightly knuckle @ 03:30 UTC
 │   ├── orphan-vm-cleanup.yaml            CronWorkflow: clean orphaned VMs every 2h
 │   ├── orphan-pod-gc.yaml                CronWorkflow: GC orphaned pods

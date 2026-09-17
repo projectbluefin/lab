@@ -117,6 +117,16 @@ spec:
                   name: argocd-redis
                   key: auth
                   optional: true
+            - name: ARGOCD_REPO_SERVER_TIMEOUT_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: argocd-cmd-params-cm
+                  key: controller.repo.server.timeout.seconds
+                  optional: true
+          envFrom:
+            - configMapRef:
+                name: argocd-cmd-params-cm
+                optional: true
           resources:
             requests:
               cpu: 100m

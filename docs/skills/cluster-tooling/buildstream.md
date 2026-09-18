@@ -102,9 +102,11 @@ remote-cache-only run is not an acceptable substitute.
 
   Do **not** bind the host's `/proc` or `/usr/lib/os-release` into the input
   root to work around this: it breaks hermeticity and makes artifacts depend on
-  the machine that built them. Upstream's own fix direction is a *private*
-  procfs mounted inside the input root (the `mountat` work in
-  bb-remote-execution#115), which exposes the action's own process tree only.
+  the machine that built them. Upstream's fix direction is a procfs mounted
+  inside the input root (the `mountat` work in bb-remote-execution#115). Note
+  that this is necessary but not sufficient: that change mounts a procfs and
+  adds no PID namespace, so the action still sees the runner's process table.
+  Per-action `CLONE_NEWPID` alongside `CLONE_NEWNS` is a separate requirement.
 
   A mount from inside the action is **not** that private procfs. `bb_runner`
   only chroots; it sets `SysProcAttr.Chroot` and no `CLONE_NEW*` flags
@@ -115,16 +117,16 @@ remote-cache-only run is not an acceptable substitute.
   leak held `oci/initramfs.bst` in "Waiting for the remote build to complete"
   for 1h58m. Any in-action mount must unmount in the *same shell*, via a trap.
 
-  **Three failures, one cause, measured.** systemd reports a missing `/proc` as
+  **Three failures, one cause.** systemd reports a missing `/proc` as
   `ENOSYS` — `proc_fd_enoent_errno()` in `src/basic/fd-util.c` returns
   `-ENOSYS` when `proc_mounted() == 0` — so its errors here name neither
   `/proc` nor the real problem:
 
-  | Element | Symptom | Fix in dakota |
-  |---|---|---|
-  | `vm/prepare-image.bst` | `systemd-firstboot` exits 1 | `bluefin/vm-prepare-image.bst` mounts a procfs around the script |
-  | `oci/initramfs.bst` | `module.sh: /dev/fd/63: No such file or directory` | dakota-local copy mounts procfs + links `/dev/fd` for the element |
-  | `core-deps/systemd-hwdb.bst` | `Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented` | `bluefin/systemd-hwdb.bst` deletes the shipped `hwdb.bin` first |
+  | Element | Symptom | Fix in dakota | Status |
+  |---|---|---|---|
+  | `vm/prepare-image.bst` | `systemd-firstboot` exits 1 | `bluefin/vm-prepare-image.bst` mounts a procfs around the script | passed in a build |
+  | `oci/initramfs.bst` | `module.sh: /dev/fd/63: No such file or directory` | dakota-local copy mounts procfs + links `/dev/fd` for the element | passed in a build, 73s |
+  | `core-deps/systemd-hwdb.bst` | `Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented` | `bluefin/systemd-hwdb.bst` deletes the shipped `hwdb.bin` first | **candidate, not yet reached by a build** |
 
   The hwdb case needs no mount at all, and shows how to avoid one. fdsdk ships
   a prebuilt `hwdb.bin`; regenerating it *over* the staged copy is the only
@@ -145,11 +147,22 @@ remote-cache-only run is not an acceptable substitute.
 
   An earlier note here called the `/proc` diagnosis for `oci/initramfs.bst`
   disproved, on the strength of a privileged pod with `/proc` masked to zero
-  entries. That reproduction was wrong: masking `/proc` leaves it *mounted*, so
-  `proc_mounted()` still returns 1 and systemd never takes the failing path.
-  The RE sandbox has no procfs at all. Mounting one moved that build from
-  failing at `systemd-firstboot` to failing one step later in
-  `generate-initramfs`, and fixing both made the element build in 73s.
+  entries, where `systemd-firstboot --root … --locale … --timezone UTC` exits
+  0. Treat that probe as non-equivalent rather than as counter-evidence: it ran
+  outside the RE sandbox, and it passed a *nonempty* `--root`, while
+  `prepare-image.sh` leaves `sysroot=` empty and calls `--root ""`. Whether a
+  masked `/proc` even satisfies systemd's `proc_mounted()` (a `statfs()` check
+  for `PROC_SUPER_MAGIC`) depends on how it was masked, which that note does
+  not record.
+
+  The evidence that settles it is a before/after in the sandbox itself, not a
+  probe: mounting a procfs for the element moved the failure from
+  `systemd-firstboot` to one step later in `generate-initramfs`
+  (`/dev/fd/63: No such file or directory`), and fixing both made the element
+  build in 73s after months of failing. If you revisit this, reproduce inside
+  an Argo/BuildBarn action with the staged sysroot and `LD_PRELOAD=fakecap`,
+  and capture `systemd-firstboot`'s full stderr — the build currently discards
+  its stdout.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

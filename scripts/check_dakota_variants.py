@@ -37,6 +37,29 @@ def main(path):
     if "variants" not in declared:
         failures.append("workflow does not declare a `variants` parameter")
 
+    # bst-commit-poller and bst-cache-warm reach `build`/`build-warmup` through
+    # templateRef, and their workflows declare no `variants` parameter. Reading
+    # workflow scope from inside these templates breaks those callers, so the
+    # value must travel as a template input with a default.
+    if "{{workflow.parameters.variants}}" in path.read_text():
+        failures.append(
+            "templates read {{workflow.parameters.variants}}; templateRef callers "
+            "have no such parameter - take it as an input instead"
+        )
+    for name in ENTRYPOINTS + (CORE,):
+        template = templates.get(name)
+        if template is None:
+            continue
+        inputs = {
+            p["name"]: p.get("value")
+            for p in (template.get("inputs") or {}).get("parameters", [])
+        }
+        if inputs.get("variants") != "all":
+            failures.append(
+                f"`{name}` must default `variants` to \"all\" for templateRef callers, "
+                f"got {inputs.get('variants')!r}"
+            )
+
     # Every caller of build-core must forward the parameter, or the gate below
     # evaluates against an unset value.
     for name in ENTRYPOINTS:

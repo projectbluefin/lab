@@ -225,11 +225,32 @@ spec:
           AUTO_REPOS=(
            "projectbluefin/common"
            "projectbluefin/knuckle"
-           "projectbluefin/testsuite"
           )
           declare -A AUTO_REPO_SET=()
           for AUTO_REPO in "${AUTO_REPOS[@]}"; do
             AUTO_REPO_SET["${AUTO_REPO}"]=1
+          done
+
+          # Repos whose lab checks are RETIRED. This is stronger than merely
+          # being absent from AUTO_REPOS above: these are never dispatched by
+          # any path — not Pass 1, not the test-on-lab catch-all in Pass 2 —
+          # so no ghost-lab status is ever published for them.
+          #
+          # projectbluefin/testsuite retired its lab gate. ghost-lab was never
+          # one of its required status checks (that ruleset requires only
+          # `Lint & syntax`, `Behave dry-run`, and `pytest`) and the lane does
+          # not run, so dispatching only produced a permanently red status on
+          # every open PR.
+          #
+          # Removing an entry here re-enables dispatch. Do that only together
+          # with restoring the gate's documentation in the consuming repo, and
+          # only after observing the lane pass end to end.
+          RETIRED_REPOS=(
+           "projectbluefin/testsuite"
+          )
+          declare -A RETIRED_REPO_SET=()
+          for RETIRED_REPO in "${RETIRED_REPOS[@]}"; do
+            RETIRED_REPO_SET["${RETIRED_REPO}"]=1
           done
 
           dispatch_pr() {
@@ -240,6 +261,14 @@ spec:
            REPO=$(echo "$PR" | jq -r '.base.repo.full_name')
            SHA=$(echo "$PR"  | jq -r '.head.sha')
            PR_NUM=$(echo "$PR" | jq -r '.number')
+
+           # Retired lab gate: never dispatch, never publish a status. Checked
+           # here rather than at each call site so every dispatch path is
+           # covered, including Pass 2's test-on-lab catch-all.
+           if [[ -n "${RETIRED_REPO_SET[${REPO}]:-}" ]]; then
+             echo "Skipping ${REPO} PR #${PR_NUM}: lab checks are retired for this repository" >&2
+             return 0
+           fi
            # Repository slug used for the bluefin.io/repository label. PR numbers
            # collide across repositories, so every label selector that keys on
            # pr-number must also key on this.

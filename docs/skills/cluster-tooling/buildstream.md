@@ -100,19 +100,19 @@ remote-cache-only run is not an acceptable substitute.
     a *missing* one (`NotFound`). dakota carries
     `patches/bootc/0001-tolerate-missing-proc-in-sandbox.patch` for that.
 
-  With bootc fixed, the very next element failed the same way —
-  `gnome-build-meta.bst:oci/initramfs.bst`, where freedesktop-sdk's
-  `prepare-image.sh` dies at `Running systemd-firstboot` after
-  `Failed to parse systemd.firstboot= kernel command line argument … No such
-  file or directory` (that is `/proc/cmdline`). Patching elements one at a time
-  is whack-a-mole across dakota, gnome-build-meta and freedesktop-sdk.
+  Do **not** bind the host's `/proc` or `/usr/lib/os-release` into the input
+  root to work around this: it breaks hermeticity and makes artifacts depend on
+  the machine that built them. Upstream's own fix direction is a *private*
+  procfs mounted inside the input root (the `mountat` work in
+  bb-remote-execution#115), which exposes the action's own process tree only.
 
-  **The systemic fix is a private procfs in the action, not the host's.**
-  Mounting a fresh `proc` inside the input root — what the `mountat` work in
-  bb-remote-execution#115 implements — keeps the action hermetic: it exposes
-  the action's own process tree, not the node's. That is different from bind
-  mounting the host `/proc` or the host `/usr/lib/os-release`, which would make
-  artifacts depend on the machine that built them and must not be done.
+  Scope note, measured rather than assumed: `oci/initramfs.bst` failing at
+  `Running systemd-firstboot` is **not** a `/proc` problem. Reproduced in a
+  privileged pod with `/proc` masked to zero entries,
+  `systemd-firstboot --root … --locale … --timezone UTC` exits 0. The
+  `Failed to parse systemd.firstboot= kernel command line argument` line is a
+  warning systemd prints and ignores. That failure has a different cause and is
+  still open; do not cite it as evidence for the sandbox gap.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

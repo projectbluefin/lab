@@ -422,6 +422,8 @@ lint:
     done
     @echo "Checking semaphore topology..."
     @python3 scripts/check_semaphore_topology.py argo/
+    @echo "Checking dakota build variants stay narrowable..."
+    @python3 scripts/check_dakota_variants.py
     @echo "✓ All manifests valid"
 
 # Run the Python checks over the trees declared in .python-scope — the single

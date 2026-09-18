@@ -106,13 +106,50 @@ remote-cache-only run is not an acceptable substitute.
   procfs mounted inside the input root (the `mountat` work in
   bb-remote-execution#115), which exposes the action's own process tree only.
 
-  Scope note, measured rather than assumed: `oci/initramfs.bst` failing at
-  `Running systemd-firstboot` is **not** a `/proc` problem. Reproduced in a
-  privileged pod with `/proc` masked to zero entries,
-  `systemd-firstboot --root … --locale … --timezone UTC` exits 0. The
-  `Failed to parse systemd.firstboot= kernel command line argument` line is a
-  warning systemd prints and ignores. That failure has a different cause and is
-  still open; do not cite it as evidence for the sandbox gap.
+  A mount from inside the action is **not** that private procfs. `bb_runner`
+  only chroots; it sets `SysProcAttr.Chroot` and no `CLONE_NEW*` flags
+  (`pkg/runner/local_runner_unix.go`), and each worker runs 12 actions
+  concurrently, so a procfs mounted in an input root shows the whole runner
+  container's process table. It also leaks if the action dies before
+  unmounting, and `bb_runner` then blocks tearing the input root down: one such
+  leak held `oci/initramfs.bst` in "Waiting for the remote build to complete"
+  for 1h58m. Any in-action mount must unmount in the *same shell*, via a trap.
+
+  **Three failures, one cause, measured.** systemd reports a missing `/proc` as
+  `ENOSYS` — `proc_fd_enoent_errno()` in `src/basic/fd-util.c` returns
+  `-ENOSYS` when `proc_mounted() == 0` — so its errors here name neither
+  `/proc` nor the real problem:
+
+  | Element | Symptom | Fix in dakota |
+  |---|---|---|
+  | `vm/prepare-image.bst` | `systemd-firstboot` exits 1 | `bluefin/vm-prepare-image.bst` mounts a procfs around the script |
+  | `oci/initramfs.bst` | `module.sh: /dev/fd/63: No such file or directory` | dakota-local copy mounts procfs + links `/dev/fd` for the element |
+  | `core-deps/systemd-hwdb.bst` | `Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented` | `bluefin/systemd-hwdb.bst` deletes the shipped `hwdb.bin` first |
+
+  The hwdb case needs no mount at all, and shows how to avoid one. fdsdk ships
+  a prebuilt `hwdb.bin`; regenerating it *over* the staged copy is the only
+  path that needs `/proc`, because systemd links its `O_TMPFILE` into place,
+  gets `EEXIST`, and reopens the fd through `/proc/self/fd` to compare inodes.
+  Probed in-cluster: in a chroot with no `/proc`,
+  `linkat(fd, "", dirfd, target, AT_EMPTY_PATH)` into a *free* name succeeds,
+  needing neither `/proc` nor `CAP_DAC_READ_SEARCH`. Deleting the target first
+  keeps systemd on that path.
+
+  Ordering matters if you try this elsewhere: BuildStream integrates a
+  junction's elements before the local project's. A command added to
+  `oci/layers/bluefin-stack.bst` runs at position 817 of the integration order
+  while `systemd-hwdb`'s runs at 606 — too late. Check with
+  `bst show --deps run --format '%{name}' <element>`, which prints exactly the
+  order `integrate()` walks, and put the fix in the *same element* as the
+  command it must precede.
+
+  An earlier note here called the `/proc` diagnosis for `oci/initramfs.bst`
+  disproved, on the strength of a privileged pod with `/proc` masked to zero
+  entries. That reproduction was wrong: masking `/proc` leaves it *mounted*, so
+  `proc_mounted()` still returns 1 and systemd never takes the failing path.
+  The RE sandbox has no procfs at all. Mounting one moved that build from
+  failing at `systemd-firstboot` to failing one step later in
+  `generate-initramfs`, and fixing both made the element build in 73s.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

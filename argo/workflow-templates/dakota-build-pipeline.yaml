@@ -557,22 +557,48 @@ spec:
           if [[ -f /src/elements/gnome-build-meta.bst ]]; then
             sed -i 's#https://gitlab.gnome.org/GNOME/gnome-build-meta.git#https://github.com/GNOME/gnome-build-meta.git#g' /src/elements/gnome-build-meta.bst
             python3 - <<'GBM_JUNCTION_PATCH'
+          import re
+          import urllib.error
+          import urllib.request
           import yaml
           from pathlib import Path
 
-          # Set junction option recc: passthrough so nested RECC is not requested in production
           p = Path('/src/elements/gnome-build-meta.bst')
           doc = yaml.safe_load(p.read_text())
-          doc.setdefault('config', {}).setdefault('options', {})['recc'] = 'passthrough'
-          sources = doc.setdefault('sources', [])
-          if not any(s.get('kind') == 'patch_queue' and s.get('path') == 'patches/gnome-build-meta' for s in sources):
-              sources.append({'kind': 'patch_queue', 'path': 'patches/gnome-build-meta'})
-          p.write_text(yaml.safe_dump(doc, sort_keys=False))
-          print("Patched gnome-build-meta junction with recc: passthrough and patch_queue")
 
-          # Create lab-owned conditional remote-apis-socket patch before any upstream clone
+          # The RECC option and its patch target arrived in gnome-build-meta
+          # together, and both are absent from the 50.4 line dakota pins.
+          # Setting an option the junction does not declare fails the load with
+          # "Unknown option 'recc' specified", exactly as a patch against a
+          # missing file fails it with "include/recc.yml: No such file or
+          # directory". Ask the mirror what this ref actually has.
+          gbm_ref = next(
+              (s.get('ref', '') for s in doc.get('sources', []) if s.get('kind') == 'git_repo'), ''
+          )
+          gbm_sha = (re.search(r'-g([0-9a-f]{40})$', gbm_ref) or [None, gbm_ref])[1]
+
+          def target_exists(path_in_repo):
+              url = f"https://raw.githubusercontent.com/GNOME/gnome-build-meta/{gbm_sha}/{path_in_repo}"
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as response:
+                      return response.status == 200
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      return False
+                  raise
+
+          gbm_has_recc = target_exists('include/recc.yml')
+          if gbm_has_recc:
+              # Nested RECC must stay unrequested in production.
+              doc.setdefault('config', {}).setdefault('options', {})['recc'] = 'passthrough'
+          else:
+              options = (doc.get('config') or {}).get('options') or {}
+              options.pop('recc', None)
+              print(f"GBM {gbm_sha} declares no 'recc' option; leaving it unset")
+
           patch_dir = Path('/src/patches/gnome-build-meta')
           patch_dir.mkdir(parents=True, exist_ok=True)
+          written = []
           patch_file = patch_dir / '0001-conditional-remote-apis-socket.patch'
           patch_content = (
               "--- a/include/recc.yml\n"
@@ -596,25 +622,43 @@ spec:
               "+        - recc == \"upload-local-build\":\n"
               "+            action-cache-enable-update: true\n"
           )
-          patch_file.write_text(patch_content)
-          print("Created lab-owned conditional remote-apis-socket patch in patches/gnome-build-meta")
+          if gbm_has_recc:
+              patch_file.write_text(patch_content)
+              written.append(patch_file.name)
+              print("Created lab-owned conditional remote-apis-socket patch in patches/gnome-build-meta")
+          else:
+              patch_file.unlink(missing_ok=True)
+              print(f"Skipped {patch_file.name}: GBM {gbm_sha} has no include/recc.yml")
 
-          # Add 0002-glib-stage1-serialize-jobs.patch to prevent parallel build race where test5.gresource runs before libgio symlink
+          # 0002 serialized sdk-deps/glib-stage1 to dodge a parallel build race
+          # (test5.gresource running before the libgio symlink) by setting
+          # `max-jobs: '1'`. BuildStream 2.7 rejects that outright:
+          #   gnome-build-meta.bst:sdk-deps/glib-stage1.bst [line 6 column 12]:
+          #   invalid redefinition of protected variable 'max-jobs'
+          # so the patch cannot load at all. It stays off until it is rewritten
+          # in a form 2.7 accepts; if the race resurfaces it will show up as a
+          # glib-stage1 failure, not as this load error.
           patch2_file = patch_dir / '0002-glib-stage1-serialize-jobs.patch'
-          patch2_content = (
-              "--- a/elements/sdk-deps/glib-stage1.bst\n"
-              "+++ b/elements/sdk-deps/glib-stage1.bst\n"
-              "@@ -3,6 +3,7 @@\n"
-              " (@): elements/sdk/glib.inc\n"
-              " \n"
-              " variables:\n"
-              "+  max-jobs: '1'\n"
-              "   meson-local: >-\n"
-              "     -Ddtrace=disabled\n"
-              "     -Dintrospection=disabled\n"
+          patch2_file.unlink(missing_ok=True)
+          print("Skipped 0002-glib-stage1-serialize-jobs.patch: 'max-jobs' is protected in BuildStream 2.7")
+
+          # Only wire the queue in when something is actually in it: an empty or
+          # partially-populated queue is what turns a skippable patch into a
+          # hard load failure.
+          sources = doc.setdefault('sources', [])
+          has_queue = any(
+              s.get('kind') == 'patch_queue' and s.get('path') == 'patches/gnome-build-meta'
+              for s in sources
           )
-          patch2_file.write_text(patch2_content)
-          print("Created 0002-glib-stage1-serialize-jobs.patch in patches/gnome-build-meta")
+          if written and not has_queue:
+              sources.append({'kind': 'patch_queue', 'path': 'patches/gnome-build-meta'})
+          elif not written and has_queue:
+              doc['sources'] = [
+                  s for s in sources
+                  if not (s.get('kind') == 'patch_queue' and s.get('path') == 'patches/gnome-build-meta')
+              ]
+          p.write_text(yaml.safe_dump(doc, sort_keys=False))
+          print(f"gnome-build-meta junction: recc=passthrough, patches={written or 'none'}")
           GBM_JUNCTION_PATCH
           fi
           if [[ -f /src/elements/bluefin/common.bst ]]; then

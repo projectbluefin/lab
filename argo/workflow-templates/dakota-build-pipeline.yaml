@@ -827,6 +827,12 @@ spec:
               "${GAMING_FLAG[@]}" \
               build "${ELEMENT}"
 
+          # `bst artifact checkout` resolves by cache key, and every -o option
+          # is part of that key. The build above runs with the project defaults
+          # (dakota pins x86_64_v3 false, as its Justfile and CI require), so
+          # checking out with `-o x86_64_v3 true` asks for a *different*
+          # artifact than the one just built - stale content at best, a cache
+          # miss at worst. Keep both invocations on the same options.
           echo "=== Exporting ${ELEMENT} ==="
           EXPORT_DIR="/tmp/export-$(basename ${ELEMENT} .bst)"
           mkdir -p "${EXPORT_DIR}"
@@ -834,7 +840,6 @@ spec:
               --no-interactive \
               --max-jobs 12 \
               --fetchers 8 \
-              -o x86_64_v3 true \
               "${GAMING_FLAG[@]}" \
               artifact checkout "${ELEMENT}" \
               --directory "${EXPORT_DIR}"

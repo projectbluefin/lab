@@ -199,13 +199,13 @@ data:
     local common = import 'common.libsonnet';
 
     {
-      contentAddressableStorage: {
-        backend: common.blobstore.contentAddressableStorage,
-      },
+      // bb_remote_asset takes BlobAccessConfiguration directly here; there is no
+      // `backend` wrapper (that shape belongs to bb_storage). Wrapping it makes
+      // the binary refuse to start:
+      //   Failed to unmarshal configuration: proto: (line 7:10): unknown field "backend"
+      contentAddressableStorage: common.blobstore.contentAddressableStorage,
       assetCache: {
-        actionCache: {
-          backend: common.blobstore.actionCache,
-        },
+        actionCache: common.blobstore.actionCache,
       },
       // BuildStream pushes remote assets through the Remote Asset API. Keep the
       // fetcher available for any non-pushed assets that need to be resolved from

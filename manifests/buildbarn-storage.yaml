@@ -102,7 +102,13 @@ spec:
         accessModes: [ReadWriteOnce]
         resources:
           requests:
-            storage: 100Gi
+            # Dakota's graph (debug sources included) does not fit in a 90 GiB
+            # block store: BuildBarn rotates blocks mid-build and actions then
+            # fail staging their own inputs with "Shard N: Object not found".
+            # The local-path data mounts have room - ghost 2.2 TiB free of
+            # 3.8 TiB, exo-0 3.2 TiB free - so give each shard 480 GiB with a
+            # 420 GiB block store inside it.
+            storage: 480Gi
     - metadata:
         name: ac
       spec:

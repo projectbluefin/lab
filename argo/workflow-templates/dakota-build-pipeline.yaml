@@ -92,6 +92,12 @@ spec:
             value: "re"
           - name: lock-key
             value: "{{workflow.parameters.lock-key}}"
+          # Callers that reach this template through templateRef (bst-commit-poller,
+          # bst-cache-warm) declare no `variants` workflow parameter, so it has
+          # to arrive as an input with a default rather than be read from
+          # workflow scope.
+          - name: variants
+            value: "all"
       synchronization:
         semaphores:
           - configMapKeyRef:
@@ -123,7 +129,7 @@ spec:
                 - name: lock-key
                   value: "{{inputs.parameters.lock-key}}"
                 - name: variants
-                  value: "{{workflow.parameters.variants}}"
+                  value: "{{inputs.parameters.variants}}"
 
     - name: build-warmup
       synchronization:
@@ -147,6 +153,12 @@ spec:
             value: "re"
           - name: lock-key
             value: ""
+          # Callers that reach this template through templateRef (bst-commit-poller,
+          # bst-cache-warm) declare no `variants` workflow parameter, so it has
+          # to arrive as an input with a default rather than be read from
+          # workflow scope.
+          - name: variants
+            value: "all"
       steps:
         - - name: core
             template: build-core
@@ -167,7 +179,7 @@ spec:
                 - name: lock-key
                   value: "{{inputs.parameters.lock-key}}"
                 - name: variants
-                  value: "{{workflow.parameters.variants}}"
+                  value: "{{inputs.parameters.variants}}"
 
     - name: build-core
       inputs:
@@ -187,7 +199,7 @@ spec:
           - name: lock-key
             value: "{{workflow.parameters.lock-key}}"
           - name: variants
-            value: "{{workflow.parameters.variants}}"
+            value: "all"
       dag:
         tasks:
           - name: detect-build-mode

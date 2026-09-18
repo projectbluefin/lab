@@ -114,7 +114,16 @@ if "/search/issues" in url:
     q = query["q"][0]
     page = int(query.get("page", ["1"])[0])
     if "label:test-on-lab" in q:
-        print(json.dumps({"total_count": 0, "items": []}))
+        labelled = state.get("labelled_prs", [])
+        items = [] if page > 1 else [
+            {
+                "number": p["number"],
+                "repository_url": "https://api.github.com/repos/%s"
+                % p["base"]["repo"]["full_name"],
+            }
+            for p in labelled
+        ]
+        print(json.dumps({"total_count": len(labelled), "items": items}))
         sys.exit(0)
     repo = q.split("repo:")[1].split()[0]
     if repo in state.get("search_fails", []):
@@ -136,7 +145,7 @@ if "/repos/" in url and "/pulls" in url:
     if repo in state.get("search_fails", []):
         log.write("pulls-fail %s\\n" % repo)
         sys.exit(22)
-    prs = [p for p in state["open_prs"] if p["base"]["repo"]["full_name"] == repo]
+    prs = [p for p in (state["open_prs"] + state.get("labelled_prs", [])) if p["base"]["repo"]["full_name"] == repo]
     print(json.dumps([] if page > 1 else prs))
     sys.exit(0)
 
@@ -165,6 +174,12 @@ def make_pr(repo, number, sha, title="a change"):
         },
     }
 
+def labelled_pr(repo, number, sha):
+    """A PR as Pass 2 sees it — Pass 2 re-filters on the label before dispatch."""
+    pr = make_pr(repo, number, sha)
+    pr["labels"] = [{"name": "test-on-lab"}]
+    return pr
+
 
 def workflow(name, product, pr, sha12, completed=False, shutdown=None):
     wf = {
@@ -185,11 +200,12 @@ def workflow(name, product, pr, sha12, completed=False, shutdown=None):
     return wf
 
 
-def run_poller(tmp_path, open_prs, workflows, search_fails=()):
+def run_poller(tmp_path, open_prs, workflows, search_fails=(), labelled_prs=()):
     state = {
         "open_prs": open_prs,
         "workflows": workflows,
         "search_fails": list(search_fails),
+        "labelled_prs": list(labelled_prs),
     }
     state_file = tmp_path / "state.json"
     log_file = tmp_path / "calls.log"
@@ -229,57 +245,57 @@ def tmp_path(tmp_path_factory):
 
 def test_superseded_sha_is_stopped_and_current_sha_survives(tmp_path):
     """A new push cancels the old run instead of letting it burn a slot."""
-    prs = [make_pr("projectbluefin/testsuite", 700, "b" * 40)]
+    prs = [make_pr("projectbluefin/common", 700, "b" * 40)]
     workflows = [
-        workflow("testsuite-700-old", "testsuite", 700, "a" * 12),
-        workflow("testsuite-700-new", "testsuite", 700, "b" * 12),
+        workflow("common-700-old", "common", 700, "a" * 12),
+        workflow("common-700-new", "common", 700, "b" * 12),
     ]
     proc, stopped, _created = run_poller(tmp_path, prs, workflows)
     assert proc.returncode == 0, proc.stderr
-    assert "testsuite-700-old" in stopped
-    assert "testsuite-700-new" not in stopped
+    assert "common-700-old" in stopped
+    assert "common-700-new" not in stopped
 
 
 def test_merged_or_closed_pr_workflows_are_reaped(tmp_path):
     """A workflow whose PR left the open set is cancelled."""
-    prs = [make_pr("projectbluefin/testsuite", 700, "b" * 40)]
+    prs = [make_pr("projectbluefin/common", 700, "b" * 40)]
     workflows = [
-        workflow("testsuite-700-current", "testsuite", 700, "b" * 12),
-        workflow("testsuite-675-merged", "testsuite", 675, "c" * 12),
+        workflow("common-700-current", "common", 700, "b" * 12),
+        workflow("common-675-merged", "common", 675, "c" * 12),
     ]
     proc, stopped, _created = run_poller(tmp_path, prs, workflows)
     assert proc.returncode == 0, proc.stderr
-    assert stopped == {"testsuite-675-merged"}
+    assert stopped == {"common-675-merged"}
 
 
 def test_open_pr_in_another_repo_is_never_reaped_by_number_collision(tmp_path):
     """PR numbers collide across repos; reaping must key on the repository label."""
     prs = [
-        make_pr("projectbluefin/testsuite", 727, "d" * 40),
+        make_pr("projectbluefin/knuckle", 727, "d" * 40),
         make_pr("projectbluefin/common", 958, "e" * 40),
     ]
     workflows = [
-        workflow("testsuite-727-live", "testsuite", 727, "d" * 12),
+        workflow("knuckle-727-live", "knuckle", 727, "d" * 12),
         workflow("common-958-live", "common", 958, "e" * 12),
-        # Same PR number as the live testsuite run, different repository.
+        # Same PR number as the live knuckle run, different repository.
         workflow("common-727-merged", "common", 727, "f" * 12),
     ]
     proc, stopped, _created = run_poller(tmp_path, prs, workflows)
     assert proc.returncode == 0, proc.stderr
-    assert "testsuite-727-live" not in stopped
+    assert "knuckle-727-live" not in stopped
     assert "common-958-live" not in stopped
     assert "common-727-merged" in stopped
 
 
 def test_a_failed_github_search_never_mass_reaps(tmp_path):
     """A transient API error must not be read as 'every PR was merged'."""
-    prs = [make_pr("projectbluefin/testsuite", 727, "d" * 40)]
+    prs = [make_pr("projectbluefin/common", 727, "d" * 40)]
     workflows = [
-        workflow("testsuite-727-live", "testsuite", 727, "d" * 12),
-        workflow("testsuite-675-merged", "testsuite", 675, "c" * 12),
+        workflow("common-727-live", "common", 727, "d" * 12),
+        workflow("common-675-merged", "common", 675, "c" * 12),
     ]
     proc, stopped, _created = run_poller(
-        tmp_path, prs, workflows, search_fails=["projectbluefin/testsuite"]
+        tmp_path, prs, workflows, search_fails=["projectbluefin/common"]
     )
     assert proc.returncode == 0, proc.stderr
     assert stopped == set()
@@ -288,7 +304,7 @@ def test_a_failed_github_search_never_mass_reaps(tmp_path):
 
 def test_zero_open_prs_is_treated_as_suspicious_not_as_mass_merge(tmp_path):
     """An empty open set (auth/scope regression) must not cancel live work."""
-    workflows = [workflow("testsuite-727-live", "testsuite", 727, "d" * 12)]
+    workflows = [workflow("common-727-live", "common", 727, "d" * 12)]
     proc, stopped, _created = run_poller(tmp_path, [], workflows)
     assert proc.returncode == 0, proc.stderr
     assert stopped == set()
@@ -296,11 +312,11 @@ def test_zero_open_prs_is_treated_as_suspicious_not_as_mass_merge(tmp_path):
 
 def test_reaping_is_idempotent(tmp_path):
     """Workflows already shutting down or completed are left alone."""
-    prs = [make_pr("projectbluefin/testsuite", 727, "d" * 40)]
+    prs = [make_pr("projectbluefin/common", 727, "d" * 40)]
     workflows = [
-        workflow("testsuite-727-live", "testsuite", 727, "d" * 12),
-        workflow("testsuite-675-stopping", "testsuite", 675, "c" * 12, shutdown="Stop"),
-        workflow("testsuite-691-done", "testsuite", 691, "g" * 12, completed=True),
+        workflow("common-727-live", "common", 727, "d" * 12),
+        workflow("common-675-stopping", "common", 675, "c" * 12, shutdown="Stop"),
+        workflow("common-691-done", "common", 691, "g" * 12, completed=True),
     ]
     proc, stopped, _created = run_poller(tmp_path, prs, workflows)
     assert proc.returncode == 0, proc.stderr
@@ -309,10 +325,10 @@ def test_reaping_is_idempotent(tmp_path):
 
 def test_unlabelled_workflows_are_ignored(tmp_path):
     """Legacy workflows without bluefin.io/repository cannot be attributed."""
-    prs = [make_pr("projectbluefin/testsuite", 727, "d" * 40)]
-    legacy = workflow("legacy-675", "testsuite", 675, "c" * 12)
+    prs = [make_pr("projectbluefin/common", 727, "d" * 40)]
+    legacy = workflow("legacy-675", "common", 675, "c" * 12)
     del legacy["metadata"]["labels"]["bluefin.io/repository"]
-    workflows = [workflow("testsuite-727-live", "testsuite", 727, "d" * 12), legacy]
+    workflows = [workflow("common-727-live", "common", 727, "d" * 12), legacy]
     proc, stopped, _created = run_poller(tmp_path, prs, workflows)
     assert proc.returncode == 0, proc.stderr
     assert stopped == set()
@@ -371,16 +387,18 @@ def test_both_dispatch_paths_render_valid_labelled_workflow_manifests(tmp_path):
     quoting. The stubbed `kubectl create` parses whatever the shell rendered and
     fails the run if it is not a valid `Workflow`.
 
-    `testsuite` takes the inline `pr-pipeline` path; `knuckle` takes the
+    `dakota` takes the inline `pr-pipeline` path; `knuckle` takes the
     `workflowTemplateRef` fallback path. Both must carry the repository label,
     without which the reaper cannot attribute a workflow to a repo.
+
+    dakota is reached through Pass 2's `test-on-lab` label because it is not in
+    AUTO_REPOS; knuckle is reached through Pass 1. That covers both rendering
+    paths and both dispatch paths in one run.
     """
-    prs = [
-        make_pr("projectbluefin/testsuite", 800, "1" * 40),
-        make_pr("projectbluefin/knuckle", 42, "2" * 40),
-    ]
-    proc, stopped, created = run_poller(tmp_path, prs, [])
+    prs = [make_pr("projectbluefin/knuckle", 42, "2" * 40)]
+    labelled = [labelled_pr("projectbluefin/dakota", 800, "1" * 40)]
+    proc, stopped, created = run_poller(tmp_path, prs, [], labelled_prs=labelled)
     assert proc.returncode == 0, proc.stderr
     assert stopped == set()
-    assert ["testsuite", "800", "1" * 12] in created
+    assert ["dakota", "800", "1" * 12] in created
     assert ["knuckle", "42", "2" * 12] in created

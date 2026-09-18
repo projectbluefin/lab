@@ -142,10 +142,13 @@ The `pr-label-poller` CronWorkflow runs every 5 minutes and dispatches QA in two
 passes:
 
 - **Pass 1 — auto-test repos.** Every open PR in the poller's `AUTO_REPOS` list
-  (`projectbluefin/common`, `bluefin`, `bluefin-lts`, `dakota`, `knuckle`,
-  `testsuite`) is tested with no label required.
+  (`projectbluefin/common`, `knuckle`) is tested with no label required.
 - **Pass 2 — label catch-all.** Any open `projectbluefin` PR labeled
   `test-on-lab` is also picked up.
+- **Retired repos.** Repos in `RETIRED_REPOS` are skipped by both passes and
+  never receive a dispatch or a status. `projectbluefin/testsuite` is retired:
+  its lab gate is not in service and was never one of its required status
+  checks.
 
 For each PR it has not already processed (idempotency is tracked by looking for
 an existing Argo workflow for that repo + head SHA), it:
@@ -162,7 +165,8 @@ see the two-sided enrollment contract in
 [`WORKFLOWS.md`](./WORKFLOWS.md) "Factory PR feedback".
 
 To force a run outside `AUTO_REPOS`: add the `test-on-lab` label to a PR in the
-`projectbluefin` org. The poller picks it up within 5 minutes.
+`projectbluefin` org. The poller picks it up within 5 minutes. This does not
+override `RETIRED_REPOS`.
 
 ---
 

@@ -104,21 +104,6 @@ def test_no_standalone_cache_warming_buildstream_workflow_remains():
     ).exists()
 
 
-def test_testsuite_prs_use_direct_commit_status_reporting():
-    poller = (ROOT / "argo/workflow-templates/pr-poller.yaml").read_text(
-        encoding="utf-8"
-    )
-    reporter = (ROOT / "argo/workflow-templates/github-status-reporter.yaml").read_text(
-        encoding="utf-8"
-    )
-
-    assert '"$REPO" == "projectbluefin/testsuite"' in poller
-    assert 'REPORTER="github-status-reporter"' in poller
-    assert 'name: ${REPORTER}' in poller
-    assert "statuses/${SHA}" in reporter
-    assert '--arg context "ghost-lab"' in reporter
-
-
 def test_ghost_lab_status_reporter_authenticates_with_the_github_token():
     reporter = (ROOT / "argo/workflow-templates/github-status-reporter.yaml").read_text(
         encoding="utf-8"

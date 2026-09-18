@@ -128,6 +128,13 @@ remote-cache-only run is not an acceptable substitute.
   | `oci/initramfs.bst` | `module.sh: /dev/fd/63: No such file or directory` | dakota-local copy mounts procfs + links `/dev/fd` for the element | passed in a build, 73s |
   | `core-deps/systemd-hwdb.bst` | `Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented` | `bluefin/systemd-hwdb.bst` deletes the shipped `hwdb.bin` first | **candidate, not yet reached by a build** |
 
+  A procfs alone does not clear all three. `/dev/fd` is a symlink to
+  `/proc/self/fd`, and the worker's init container creates only character nodes
+  (`null`, `zero`, `random`, `urandom`) plus `stdin`/`stdout`/`stderr` — see
+  `manifests/buildbarn-worker.yaml`. The initramfs failure was specifically
+  `/dev/fd/63` from bash process substitution, so a runner-side fix has to
+  provide the symlink too, not just the mount.
+
   The hwdb case needs no mount at all, and shows how to avoid one. fdsdk ships
   a prebuilt `hwdb.bin`; regenerating it *over* the staged copy is the only
   path that needs `/proc`, because systemd links its `O_TMPFILE` into place,
@@ -137,13 +144,15 @@ remote-cache-only run is not an acceptable substitute.
   needing neither `/proc` nor `CAP_DAC_READ_SEARCH`. Deleting the target first
   keeps systemd on that path.
 
-  Ordering matters if you try this elsewhere: BuildStream integrates a
-  junction's elements before the local project's. A command added to
-  `oci/layers/bluefin-stack.bst` runs at position 817 of the integration order
-  while `systemd-hwdb`'s runs at 606 — too late. Check with
-  `bst show --deps run --format '%{name}' <element>`, which prints exactly the
-  order `integrate()` walks, and put the fix in the *same element* as the
-  command it must precede.
+  Ordering matters if you try this elsewhere, and it does not follow a
+  project/junction rule. Measured for this graph with
+  `bst show --deps run --format '%{name}' oci/layers/bluefin-stack.bst`, which
+  prints exactly the order `integrate()` walks: `systemd-hwdb` at 606, and
+  `oci/layers/bluefin-stack.bst`'s own commands at 817 — too late. Local
+  elements are not uniformly last: `bluefin/virtualization.bst` lands at 321,
+  ahead of `systemd-hwdb`. Do not infer a rule; run the oracle (~3s) against
+  the element you care about, and prefer putting a fix in the *same element* as
+  the command it must precede, which removes the question entirely.
 
   An earlier note here called the `/proc` diagnosis for `oci/initramfs.bst`
   disproved, on the strength of a privileged pod with `/proc` masked to zero

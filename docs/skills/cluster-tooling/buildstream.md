@@ -117,10 +117,10 @@ remote-cache-only run is not an acceptable substitute.
   leak held `oci/initramfs.bst` in "Waiting for the remote build to complete"
   for 1h58m. Any in-action mount must unmount in the *same shell*, via a trap.
 
-  **Three failures, one cause.** systemd reports a missing `/proc` as
-  `ENOSYS` — `proc_fd_enoent_errno()` in `src/basic/fd-util.c` returns
-  `-ENOSYS` when `proc_mounted() == 0` — so its errors here name neither
-  `/proc` nor the real problem:
+  **Two confirmed failures, plus a third consistent with the same gap.**
+  systemd reports a missing `/proc` as `ENOSYS` — `proc_fd_enoent_errno()` in
+  `src/basic/fd-util.c` returns `-ENOSYS` when `proc_mounted() == 0` — so its
+  errors here name neither `/proc` nor the real problem:
 
   | Element | Symptom | Fix in dakota | Status |
   |---|---|---|---|
@@ -128,21 +128,23 @@ remote-cache-only run is not an acceptable substitute.
   | `oci/initramfs.bst` | `module.sh: /dev/fd/63: No such file or directory` | dakota-local copy mounts procfs + links `/dev/fd` for the element | passed in a build, 73s |
   | `core-deps/systemd-hwdb.bst` | `Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented` | `bluefin/systemd-hwdb.bst` deletes the shipped `hwdb.bin` first | **candidate, not yet reached by a build** |
 
-  A procfs alone does not clear all three. `/dev/fd` is a symlink to
+  A procfs alone would not clear all three. `/dev/fd` is a symlink to
   `/proc/self/fd`, and the worker's init container creates only character nodes
   (`null`, `zero`, `random`, `urandom`) plus `stdin`/`stdout`/`stderr` — see
   `manifests/buildbarn-worker.yaml`. The initramfs failure was specifically
   `/dev/fd/63` from bash process substitution, so a runner-side fix has to
   provide the symlink too, not just the mount.
 
-  The hwdb case needs no mount at all, and shows how to avoid one. fdsdk ships
-  a prebuilt `hwdb.bin`; regenerating it *over* the staged copy is the only
-  path that needs `/proc`, because systemd links its `O_TMPFILE` into place,
+  The hwdb row is a **candidate mechanism**, not a measured one: no build has
+  yet reached that element with the fix in place. The reasoning is that fdsdk
+  ships a prebuilt `hwdb.bin`, and regenerating it *over* the staged copy is
+  the only path that needs `/proc` — systemd links its `O_TMPFILE` into place,
   gets `EEXIST`, and reopens the fd through `/proc/self/fd` to compare inodes.
-  Probed in-cluster: in a chroot with no `/proc`,
+  What *is* measured is the probe behind it: in a chroot with no `/proc`,
   `linkat(fd, "", dirfd, target, AT_EMPTY_PATH)` into a *free* name succeeds,
-  needing neither `/proc` nor `CAP_DAC_READ_SEARCH`. Deleting the target first
-  keeps systemd on that path.
+  needing neither `/proc` nor `CAP_DAC_READ_SEARCH`. If it holds, it is the
+  cheaper shape — removing the need for a procfs rather than providing one.
+  Confirm against a build log before treating it as settled.
 
   Ordering matters if you try this elsewhere, and it does not follow a
   project/junction rule. Measured for this graph with

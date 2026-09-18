@@ -299,11 +299,16 @@ lab-check-status repo pr_number:
 # Run Dakota BST pipeline (default bluefin variant only; NVIDIA disabled)
 # Usage: just run-bst-build
 # Usage: just run-bst-build testing https://github.com/projectbluefin/dakota.git
-run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
+# Usage: just run-bst-build testing "" default   # only oci/bluefin.bst
+#   variants=all (default) builds every variant; variants=default builds just
+#   the plain image, which is what a single-machine rebase needs and what fits
+#   on a two-node grid.
+run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git" variants="all":
     argo submit --from workflowtemplate/dakota-build-pipeline \
       -p ref={{ ref }} \
       -p repo={{ repo }} \
       -p build-mode=re \
+      -p variants={{ variants }} \
       -n {{ argo_ns }} --watch
 
 # Re-run the Dakota poller for the current testing SHA without bypassing BST admission.
@@ -313,12 +318,12 @@ force-dakota-poll:
       -n {{ argo_ns }} --watch
 
 # Compatibility alias for older docs/callers.
-run-dakota-validate ref="testing" repo="https://github.com/projectbluefin/dakota.git":
-    just run-bst-build {{ ref }} {{ repo }}
+run-dakota-validate ref="testing" repo="https://github.com/projectbluefin/dakota.git" variants="all":
+    just run-bst-build {{ ref }} {{ repo }} {{ variants }}
 
 # Compatibility alias for older docs/callers.
-run-dakota-build ref="testing" repo="https://github.com/projectbluefin/dakota.git":
-    just run-bst-build {{ ref }} {{ repo }}
+run-dakota-build ref="testing" repo="https://github.com/projectbluefin/dakota.git" variants="all":
+    just run-bst-build {{ ref }} {{ repo }} {{ variants }}
 
 # Full Dakota QA pipeline: container-only suite fan-out against the published Dakota image.
 run-dakota-qa branch="main" variant="dakota":

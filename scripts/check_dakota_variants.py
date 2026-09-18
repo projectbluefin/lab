@@ -109,6 +109,7 @@ def main(path):
         failures.append("no optional variant is gated; variants=all would build one image")
 
     failures += check_build_export_options(path)
+    failures += check_just_recipes()
 
     return report(failures, len(build_tasks), gated)
 
@@ -139,6 +140,33 @@ def check_build_export_options(path):
             "build and export disagree on BuildStream options: "
             f"build={sorted(build_opts) or 'none'} export={sorted(checkout_opts) or 'none'}"
         )
+    return failures
+
+
+def check_just_recipes(justfile=Path("Justfile")):
+    """Every `just` entry point must be able to ask for a single variant.
+
+    The template now defaults to `all`, so a recipe that never passes
+    `variants` silently launches the four-variant matrix that cannot schedule
+    on a two-node grid.
+    """
+    if not justfile.exists():
+        return []
+    text = justfile.read_text()
+    failures = []
+    if "run-bst-build" in text:
+        body_start = text.index("run-bst-build ref=")
+        body = text[body_start : text.index("\n\n", body_start)]
+        if "-p variants=" not in body:
+            failures.append("`just run-bst-build` never passes -p variants")
+        if 'variants="all"' not in body.splitlines()[0]:
+            failures.append("`just run-bst-build` takes no variants argument")
+    for alias in ("run-dakota-build", "run-dakota-validate"):
+        if alias in text:
+            i = text.index(f"{alias} ref=")
+            body = text[i : text.index("\n\n", i)]
+            if "{{ variants }}" not in body:
+                failures.append(f"`just {alias}` does not forward variants")
     return failures
 
 

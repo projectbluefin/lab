@@ -12,6 +12,7 @@ both entrypoints forward the parameter.
 Usage: check_dakota_variants.py [path to dakota-build-pipeline.yaml]
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -84,7 +85,38 @@ def main(path):
     if not gated:
         failures.append("no optional variant is gated; variants=all would build one image")
 
+    failures += check_build_export_options(path)
+
     return report(failures, len(build_tasks), gated)
+
+
+def check_build_export_options(path):
+    """Build and export must resolve the same BuildStream cache key.
+
+    Every `-o` option feeds the cache key, so exporting with a different option
+    set than the build used checks out a *different* artifact - stale content if
+    one was ever cached, a miss otherwise. This caught `-o x86_64_v3 true` on
+    the checkout while the build ran with dakota's default of false.
+    """
+    text = path.read_text()
+    failures = []
+    build = re.search(r"build \"\$\{ELEMENT\}\"", text)
+    checkout = re.search(r"artifact checkout \"\$\{ELEMENT\}\"", text)
+    if not build or not checkout:
+        failures.append("could not locate the build and checkout invocations")
+        return failures
+
+    def options(end):
+        start = text.rfind("bst --config", 0, end)
+        return set(re.findall(r"-o (\S+) (\S+)", text[start:end]))
+
+    build_opts, checkout_opts = options(build.start()), options(checkout.start())
+    if build_opts != checkout_opts:
+        failures.append(
+            "build and export disagree on BuildStream options: "
+            f"build={sorted(build_opts) or 'none'} export={sorted(checkout_opts) or 'none'}"
+        )
+    return failures
 
 
 def report(failures, total=None, gated=None):

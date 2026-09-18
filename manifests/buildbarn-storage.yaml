@@ -108,6 +108,14 @@ spec:
             # The local-path data mounts have room - ghost 2.2 TiB free of
             # 3.8 TiB, exo-0 3.2 TiB free - so give each shard 480 GiB with a
             # 420 GiB block store inside it.
+            #
+            # Changing this is a migration, not an edit: volumeClaimTemplates
+            # are immutable and local-path has allowVolumeExpansion=false. With
+            # no BuildStream workflow running, delete the StatefulSet, delete
+            # *both* cas-storage-* and ac-storage-* (action-cache entries name
+            # CAS blobs, so keeping them across a CAS wipe recreates the same
+            # dangling-reference failure), then let ArgoCD recreate the set.
+            # Storage logs "Reinitializing data store" on a clean start.
             storage: 480Gi
     - metadata:
         name: ac

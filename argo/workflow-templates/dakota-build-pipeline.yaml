@@ -42,6 +42,13 @@ spec:
         value: "re"
       - name: lock-key
         value: "bst-build"
+      # "all" keeps the full matrix. "default" builds only oci/bluefin.bst,
+      # which is what a single-machine rebase needs: the four-variant fan-out
+      # cannot schedule on a two-node grid (pod anti-affinity leaves retries
+      # Unschedulable: "0/2 nodes are available: 2 node(s) didn't match pod
+      # anti-affinity rules") and the extra variants are wasted work there.
+      - name: variants
+        value: "all"
 
   entrypoint: build
   metrics:
@@ -115,6 +122,8 @@ spec:
                   value: "{{steps.detect-build-mode.outputs.parameters.mode}}"
                 - name: lock-key
                   value: "{{inputs.parameters.lock-key}}"
+                - name: variants
+                  value: "{{workflow.parameters.variants}}"
 
     - name: build-warmup
       synchronization:
@@ -157,6 +166,8 @@ spec:
                   value: "{{inputs.parameters.build-mode}}"
                 - name: lock-key
                   value: "{{inputs.parameters.lock-key}}"
+                - name: variants
+                  value: "{{workflow.parameters.variants}}"
 
     - name: build-core
       inputs:
@@ -175,6 +186,8 @@ spec:
             value: "re"
           - name: lock-key
             value: "{{workflow.parameters.lock-key}}"
+          - name: variants
+            value: "{{workflow.parameters.variants}}"
       dag:
         tasks:
           - name: detect-build-mode
@@ -209,6 +222,7 @@ spec:
           - name: build-bluefin-nvidia
             template: run-bst-step-nonblocking
             depends: detect-build-mode
+            when: "{{inputs.parameters.variants}} == all"
             arguments:
               parameters:
                 - name: element
@@ -236,6 +250,7 @@ spec:
           - name: build-bluefin-gaming
             template: run-bst-step-nonblocking
             depends: detect-build-mode
+            when: "{{inputs.parameters.variants}} == all"
             arguments:
               parameters:
                 - name: element
@@ -259,6 +274,7 @@ spec:
           - name: build-bluefin-nvidia-gaming
             template: run-bst-step-nonblocking
             depends: detect-build-mode
+            when: "{{inputs.parameters.variants}} == all"
             arguments:
               parameters:
                 - name: element

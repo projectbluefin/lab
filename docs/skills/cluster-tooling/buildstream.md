@@ -102,17 +102,67 @@ remote-cache-only run is not an acceptable substitute.
 
   Do **not** bind the host's `/proc` or `/usr/lib/os-release` into the input
   root to work around this: it breaks hermeticity and makes artifacts depend on
-  the machine that built them. Upstream's own fix direction is a *private*
-  procfs mounted inside the input root (the `mountat` work in
-  bb-remote-execution#115), which exposes the action's own process tree only.
+  the machine that built them. Upstream's fix direction is a procfs mounted
+  inside the input root (the `mountat` work in bb-remote-execution#115). Note
+  that this is necessary but not sufficient: that change mounts a procfs and
+  adds no PID namespace, so the action still sees the runner's process table.
+  Per-action `CLONE_NEWPID` alongside `CLONE_NEWNS` is a separate requirement.
 
-  Scope note, measured rather than assumed: `oci/initramfs.bst` failing at
-  `Running systemd-firstboot` is **not** a `/proc` problem. Reproduced in a
-  privileged pod with `/proc` masked to zero entries,
-  `systemd-firstboot --root … --locale … --timezone UTC` exits 0. The
-  `Failed to parse systemd.firstboot= kernel command line argument` line is a
-  warning systemd prints and ignores. That failure has a different cause and is
-  still open; do not cite it as evidence for the sandbox gap.
+  A mount from inside the action is **not** that private procfs. `bb_runner`
+  only chroots; it sets `SysProcAttr.Chroot` and no `CLONE_NEW*` flags
+  (`pkg/runner/local_runner_unix.go`), and each worker runs 12 actions
+  concurrently, so a procfs mounted in an input root shows the whole runner
+  container's process table. It also leaks if the action dies before
+  unmounting, and `bb_runner` then blocks tearing the input root down: one such
+  leak held `oci/initramfs.bst` in "Waiting for the remote build to complete"
+  for 1h58m. Any in-action mount must unmount in the *same shell*, via a trap.
+
+  **Three failures, one cause.** systemd reports a missing `/proc` as
+  `ENOSYS` — `proc_fd_enoent_errno()` in `src/basic/fd-util.c` returns
+  `-ENOSYS` when `proc_mounted() == 0` — so its errors here name neither
+  `/proc` nor the real problem:
+
+  | Element | Symptom | Fix in dakota | Status |
+  |---|---|---|---|
+  | `vm/prepare-image.bst` | `systemd-firstboot` exits 1 | `bluefin/vm-prepare-image.bst` mounts a procfs around the script | passed in a build |
+  | `oci/initramfs.bst` | `module.sh: /dev/fd/63: No such file or directory` | dakota-local copy mounts procfs + links `/dev/fd` for the element | passed in a build, 73s |
+  | `core-deps/systemd-hwdb.bst` | `Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented` | `bluefin/systemd-hwdb.bst` deletes the shipped `hwdb.bin` first | **candidate, not yet reached by a build** |
+
+  The hwdb case needs no mount at all, and shows how to avoid one. fdsdk ships
+  a prebuilt `hwdb.bin`; regenerating it *over* the staged copy is the only
+  path that needs `/proc`, because systemd links its `O_TMPFILE` into place,
+  gets `EEXIST`, and reopens the fd through `/proc/self/fd` to compare inodes.
+  Probed in-cluster: in a chroot with no `/proc`,
+  `linkat(fd, "", dirfd, target, AT_EMPTY_PATH)` into a *free* name succeeds,
+  needing neither `/proc` nor `CAP_DAC_READ_SEARCH`. Deleting the target first
+  keeps systemd on that path.
+
+  Ordering matters if you try this elsewhere: BuildStream integrates a
+  junction's elements before the local project's. A command added to
+  `oci/layers/bluefin-stack.bst` runs at position 817 of the integration order
+  while `systemd-hwdb`'s runs at 606 — too late. Check with
+  `bst show --deps run --format '%{name}' <element>`, which prints exactly the
+  order `integrate()` walks, and put the fix in the *same element* as the
+  command it must precede.
+
+  An earlier note here called the `/proc` diagnosis for `oci/initramfs.bst`
+  disproved, on the strength of a privileged pod with `/proc` masked to zero
+  entries, where `systemd-firstboot --root … --locale … --timezone UTC` exits
+  0. Treat that probe as non-equivalent rather than as counter-evidence: it ran
+  outside the RE sandbox, and it passed a *nonempty* `--root`, while
+  `prepare-image.sh` leaves `sysroot=` empty and calls `--root ""`. Whether a
+  masked `/proc` even satisfies systemd's `proc_mounted()` (a `statfs()` check
+  for `PROC_SUPER_MAGIC`) depends on how it was masked, which that note does
+  not record.
+
+  The evidence that settles it is a before/after in the sandbox itself, not a
+  probe: mounting a procfs for the element moved the failure from
+  `systemd-firstboot` to one step later in `generate-initramfs`
+  (`/dev/fd/63: No such file or directory`), and fixing both made the element
+  build in 73s after months of failing. If you revisit this, reproduce inside
+  an Argo/BuildBarn action with the staged sysroot and `LD_PRELOAD=fakecap`,
+  and capture `systemd-firstboot`'s full stderr — the build currently discards
+  its stdout.
 
 Capacity guard: node memory *requests* must leave room for the 32Gi runner.
 Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check

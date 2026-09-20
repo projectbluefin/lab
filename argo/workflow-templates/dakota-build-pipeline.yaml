@@ -658,24 +658,24 @@ spec:
               patch_file.unlink(missing_ok=True)
               print(f"Skipped {patch_file.name}: GBM {gbm_sha} has no include/recc.yml")
 
-          # 0002 serializes sdk-deps/glib-stage1 to dodge the parallel build race
-          # (e.g. test5.gresource running before the libgio symlink) by overriding
-          # its meson-build command with single-threaded ninja execution ('-j1').
-          # Under BuildStream 2.7, setting `max-jobs: '1'` is rejected because
-          # max-jobs is protected, so overriding `meson-build` directly is the form 2.7 accepts.
+          # 0002 disables test builds in sdk-deps/glib-stage1.bst (-Dtests=false -Dinstalled_tests=false).
+          # In stage1, glib-compile-resources fails to run test resource generators (like test5.gresource)
+          # because the runtime libgio shared library is not yet staged or in the runner library path.
+          # As a minimal bootstrap compiler tool, stage1 does not need to build internal unit tests.
           patch2_file = patch_dir / '0002-glib-stage1-serialize-jobs.patch'
           patch2_content = (
               "--- a/elements/sdk-deps/glib-stage1.bst\n"
               "+++ b/elements/sdk-deps/glib-stage1.bst\n"
-              "@@ -10,3 +10,4 @@ variables:\n"
+              "@@ -10,3 +10,5 @@ variables:\n"
               "     -Dselinux=disabled\n"
               "     -Dsysprof=disabled\n"
               "     -Dsystemtap=disabled\n"
-              "+  meson-build: ninja -v -j1 -C %{build-dir}\n"
+              "+    -Dtests=false\n"
+              "+    -Dinstalled_tests=false\n"
           )
           patch2_file.write_text(patch2_content)
           written.append(patch2_file.name)
-          print("Created 0002-glib-stage1-serialize-jobs.patch with meson-build override")
+          print("Created 0002-glib-stage1-serialize-jobs.patch with -Dtests=false")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

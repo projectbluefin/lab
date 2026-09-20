@@ -676,6 +676,24 @@ spec:
           patch2_file.write_text(patch2_content)
           written.append(patch2_file.name)
           print("Created 0002-glib-stage1-serialize-jobs.patch with -Dtests=false")
+
+          # 0003 sets LD_LIBRARY_PATH in sdk/gobject-introspection.bst so g-ir-compiler
+          # and g-ir-scanner find uninstalled libgirepository-1.0.so.1 during build.
+          patch3_file = patch_dir / '0003-gobject-introspection-ld-library-path.patch'
+          patch3_content = (
+              "--- a/elements/sdk/gobject-introspection.bst\n"
+              "+++ b/elements/sdk/gobject-introspection.bst\n"
+              "@@ -13,3 +13,6 @@ variables:\n"
+              "     -Dcairo=disabled\n"
+              "     -Ddoctool=enabled\n"
+              "     -Dgtk_doc=true\n"
+              "+\n"
+              "+environment:\n"
+              "+  LD_LIBRARY_PATH: \"%{build-dir}/girepository:%{libdir}\"\n"
+          )
+          patch3_file.write_text(patch3_content)
+          written.append(patch3_file.name)
+          print("Created 0003-gobject-introspection-ld-library-path.patch")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

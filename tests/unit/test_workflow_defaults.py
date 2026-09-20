@@ -661,5 +661,6 @@ def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_patches_glib_stage1
     assert "doc.setdefault('config', {}).setdefault('options', {})['recc'] = 'passthrough'" in source
     assert "0001-conditional-remote-apis-socket.patch" in source
     assert "0002-glib-stage1-serialize-jobs.patch" in source
-    assert "meson-build: ninja -v -j1 -C %{build-dir}" in source
+    assert "-Dtests=false" in source
+    assert "-Dinstalled_tests=false" in source
     assert "-type f ! -name 'series'" in source

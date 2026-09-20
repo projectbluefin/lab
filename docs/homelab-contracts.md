@@ -148,7 +148,7 @@ The lab hardware has two distinct roles that **must not be conflated**:
 | Role | Hosts | k3s member | KubeVirt capable | In scope for cluster workload validation |
 |---|---|---|---|---|
 | **Cluster node** | ghost, exo-0 | Yes | ghost only | Yes |
-| **Bootc client** | jorge's Bluefin laptop (`yoga`, Lenovo Yoga 6 13ABR8 at `192.168.1.144`), other contributor machines | No | No | No |
+| **Bootc client** | jorge's Bluefin laptop, other contributor machines | No | No | No |
 
 ### What this repo validates for bootc clients
 - `bootc status` reports the expected image reference and digest.

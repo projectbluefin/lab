@@ -665,9 +665,8 @@ def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_patches_glib_stage1
     assert "-Dinstalled_tests=false" in source
     assert "0003-gobject-introspection-ld-library-path.patch" in source
     assert 'env LD_LIBRARY_PATH=\\"$(pwd)/_builddir/girepository:${LD_LIBRARY_PATH:-}\\"' in source
-    assert "0004-networkmanager-disable-docs.patch" in source
-    assert "-Ddocs=false" in source
-    assert "-Dman=false" in source
+    assert "0004-networkmanager-create-exports-patch.patch" in source
+    assert "0001-create-exports-avoid-procfs.patch" in source
     assert "0002-libmbim-meson-build.patch" in source
     assert "env LD_LIBRARY_PATH=\"$(pwd)/_builddir/src/libmbim-glib:${LD_LIBRARY_PATH:-}\"" in source
     assert "0003-libqmi-meson-build.patch" in source

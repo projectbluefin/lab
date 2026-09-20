@@ -693,26 +693,51 @@ spec:
           patch3_file.write_text(patch3_content)
           written.append(patch3_file.name)
           print("Created 0003-gobject-introspection-ld-library-path.patch with meson-build wrapper")
-          # Patch NetworkManager to disable docs generation in RE sandbox
-          patch4_file = patch_dir / "0004-networkmanager-disable-docs.patch"
+          # Patch NetworkManager to use mktemp in create-exports-NetworkManager.sh
+          # instead of bash process substitution <(...) which requires /dev/fd (procfs)
+          patch4_file = patch_dir / "0004-networkmanager-create-exports-patch.patch"
           patch4_content = (
               "diff --git a/elements/core-deps/NetworkManager.bst b/elements/core-deps/NetworkManager.bst\n"
               "--- a/elements/core-deps/NetworkManager.bst\n"
               "+++ b/elements/core-deps/NetworkManager.bst\n"
-              "@@ -46,7 +46,8 @@ variables:\n"
-              "     -Dcrypto=gnutls\n"
-              "     -Dintrospection=true\n"
-              "     -Dvapi=true\n"
-              "-    -Ddocs=true\n"
-              "+    -Ddocs=false\n"
-              "+    -Dman=false\n"
-              "     -Dtests=no\n"
-              "     -Dlibaudit=no\n"
-              "     -Dnmtui=false\n"
+              "@@ -8,6 +8,8 @@ sources:\n"
+              "   - \"*-dev*\"\n"
+              "   - \"*-rc*\"\n"
+              "   ref: 1.58.0-0-g61302aac7f2e7411f3b42159544926484eacd37e\n"
+              "+- kind: patch\n"
+              "+  path: patches/NetworkManager/0001-create-exports-avoid-procfs.patch\n"
+              " \n"
+              " build-depends:\n"
+              " - sdk/gobject-introspection.bst\n"
+              "diff --git a/patches/NetworkManager/0001-create-exports-avoid-procfs.patch b/patches/NetworkManager/0001-create-exports-avoid-procfs.patch\n"
+              "new file mode 100644\n"
+              "--- /dev/null\n"
+              "+++ b/patches/NetworkManager/0001-create-exports-avoid-procfs.patch\n"
+              "@@ -0,0 +1,20 @@\n"
+              "+diff --git a/tools/create-exports-NetworkManager.sh b/tools/create-exports-NetworkManager.sh\n"
+              "+--- a/tools/create-exports-NetworkManager.sh\n"
+              "++++ b/tools/create-exports-NetworkManager.sh\n"
+              "+@@ -43,8 +43,14 @@ get_symbols_missing() {\n"
+              "+             sed -n 's/^\\([U]\\) \\(\\(nm_\\|nmp_\\|_nm\\|NM\\|_NM\\|nmtst_\\|c_siphash_\\|c_list_\\).*\\)$/\\2/p'\n"
+              "+     done) |\n"
+              "+         _sort |\n"
+              "+-        grep -Fx -f <(get_symbols_explicit) -v |\n"
+              "+-        grep -Fx -f <(get_symbols_nm)\n"
+              "++        {\n"
+              "++            TMP_EXP=$(mktemp)\n"
+              "++            TMP_NM=$(mktemp)\n"
+              "++            get_symbols_explicit > \"$TMP_EXP\"\n"
+              "++            get_symbols_nm > \"$TMP_NM\"\n"
+              "++            grep -Fx -f \"$TMP_EXP\" -v | grep -Fx -f \"$TMP_NM\"\n"
+              "++            rm -f \"$TMP_EXP\" \"$TMP_NM\"\n"
+              "++        }\n"
+              "+ }\n"
+              "+ \n"
+              "+ pretty() {\n"
           )
           patch4_file.write_text(patch4_content)
           written.append(patch4_file.name)
-          print("Created 0004-networkmanager-disable-docs.patch")
+          print("Created 0004-networkmanager-create-exports-patch.patch")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

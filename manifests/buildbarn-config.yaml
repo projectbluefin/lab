@@ -199,15 +199,20 @@ data:
     local common = import 'common.libsonnet';
 
     {
-      // bb_remote_asset takes BlobAccessConfiguration directly here; there is no
-      // `backend` wrapper (that shape belongs to bb_storage). Wrapping it makes
-      // the binary refuse to start:
-      //   Failed to unmarshal configuration: proto: (line 7:10): unknown field "backend"
-      contentAddressableStorage: common.blobstore.contentAddressableStorage,
-      assetCache: {
-        actionCache: common.blobstore.actionCache,
+      // Route both CAS and AC lookups through BuildBarn's frontend service,
+      // which acts as the authoritative Rendezvous sharding layer.
+      contentAddressableStorage: {
+        grpc: {
+          address: 'frontend.buildbarn.svc.cluster.local:8980',
+        },
       },
-      // BuildStream pushes remote assets through the Remote Asset API. Keep the
+      assetCache: {
+        actionCache: {
+          grpc: {
+            address: 'frontend.buildbarn.svc.cluster.local:8980',
+          },
+        },
+      },
       // fetcher available for any non-pushed assets that need to be resolved from
       // an external URI while still allowing updates for BuildStream's pushed
       // assets through the indexed instance.

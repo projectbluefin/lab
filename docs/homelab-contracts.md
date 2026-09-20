@@ -153,6 +153,9 @@ The lab hardware has two distinct roles that **must not be conflated**:
 ### What this repo validates for bootc clients
 - `bootc status` reports the expected image reference and digest.
 - `bootc upgrade --check` exits 0 when no update is pending.
+- Rebase to lab-built Dakota and Bluefin images: laptops and contributor workstations
+  in the lab can rebase to test images built from Dakota PRs and branches (exported to
+  the local Zot registry or GHCR) to participate in hands-on testing.
 - Staged-deployment and rollback contracts (via ephemeral VM tests in the
   `system/` behave suite, not via live client enrollment).
 - `uupd` orchestration smoke (`tests/system/features/uupd.feature`).
@@ -162,7 +165,6 @@ The lab hardware has two distinct roles that **must not be conflated**:
 - MDM / fleet-dashboard product features.
 - Bluetooth, Wi-Fi, or peripheral hardware on client machines.
 - Any workload that would require the client to run workflow pods.
-
 ### Evidence model
 Tests that distinguish cluster-member behavior from client behavior should
 label their test environment in artifacts:

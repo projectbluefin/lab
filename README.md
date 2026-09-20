@@ -15,13 +15,15 @@
 ## What This Is
 
 This repo is a reference implementation of a CNCF-native homelab designed for bootc
-image testing. For the Bluefin and Dakota image-poll lanes, the lab now runs
-GUI and contract suites directly inside the published OCI images as Kubernetes
-pods. VM-backed boot and install validation remain only for workflows that still
-explicitly need KubeVirt (Flatcar, Knuckle, migration, and similar lanes).
-Everything is declared in git, reconciled by ArgoCD, and orchestrated by Argo
-Workflows. GitOps.
+image testing and development. The lab's purpose is to build and test PRs and images
+in the Dakota repository so that contributor machines and laptops in the lab can
+rebase to them and assist with development and QA.
 
+For the Bluefin and Dakota image-poll lanes, the lab runs GUI and contract suites
+directly inside the published OCI images as Kubernetes pods. VM-backed boot and install
+validation remain only for workflows that still explicitly need KubeVirt (Flatcar,
+Knuckle, migration, and similar lanes). Everything is declared in git, reconciled by
+ArgoCD, and orchestrated by Argo Workflows. GitOps.
 This instance runs as the CI infrastructure for Project Bluefin — selected image
 poll lanes trigger fully automated test runs with zero human intervention:
 image-poller checks the digest, compares it with stored state, fans out

@@ -703,12 +703,12 @@ spec:
               "@@ -8,6 +8,8 @@ sources:\n"
               "   - \"*-dev*\"\n"
               "   - \"*-rc*\"\n"
-              "   ref: 1.58.0-0-g61302aac7f2e7411f3b42159544926484eacd37e\n"
+              "   ref: 1.58.1-0-g7406dfbcc35beed79bf2734e3e7376ead320bd99\n"
               "+- kind: patch\n"
               "+  path: patches/NetworkManager/0001-create-exports-avoid-procfs.patch\n"
               " \n"
               " build-depends:\n"
-              " - sdk/gobject-introspection.bst\n"
+              " - (@): include/gcc-for-recc.yml\n"
               "diff --git a/patches/NetworkManager/0001-create-exports-avoid-procfs.patch b/patches/NetworkManager/0001-create-exports-avoid-procfs.patch\n"
               "new file mode 100644\n"
               "--- /dev/null\n"
@@ -732,7 +732,7 @@ spec:
               "++            rm -f \"$TMP_EXP\" \"$TMP_NM\"\n"
               "++        }\n"
               "+ }\n"
-              "+ \n"
+              "+\n"
               "+ pretty() {\n"
           )
           patch4_file.write_text(patch4_content)

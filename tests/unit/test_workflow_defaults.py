@@ -664,5 +664,5 @@ def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_patches_glib_stage1
     assert "-Dtests=false" in source
     assert "-Dinstalled_tests=false" in source
     assert "0003-gobject-introspection-ld-library-path.patch" in source
-    assert 'LD_LIBRARY_PATH: "%{build-dir}/girepository:%{libdir}"' in source
+    assert 'env LD_LIBRARY_PATH=\\"$(pwd)/_builddir/girepository:${LD_LIBRARY_PATH:-}\\"' in source
     assert "-type f ! -name 'series'" in source

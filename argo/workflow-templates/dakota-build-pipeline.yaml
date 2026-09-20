@@ -800,29 +800,21 @@ spec:
                 fi
                 # Patch components/libmbim.bst so mbimcli finds uninstalled build-tree library libmbim-glib during help2man
                 mkdir -p /src/patches/freedesktop-sdk
-                python3 - <<'MBIM_PATCH'
-          import textwrap
-          from pathlib import Path
-          p = Path('/src/patches/freedesktop-sdk/0002-libmbim-meson-build.patch')
-          # Unified diff: context lines require 1 space for diff marker + 2 spaces for YAML indentation = 3 spaces.
-          patch_lines = [
-              "diff --git a/elements/components/libmbim.bst b/elements/components/libmbim.bst",
-              "index fa0df83..9744707 100644",
-              "--- a/elements/components/libmbim.bst",
-              "+++ b/elements/components/libmbim.bst",
-              "@@ -29,3 +29,7 @@ sources:",
-              "   exclude:",
-              "   - '*-dev'",
-              "   ref: 1.34.0-0-g2bca5d22137883f348cb117597746483637491db",
-              "+",
-              "+variables:",
-              "+  meson-build: >-",
-              "+    env LD_LIBRARY_PATH=\"$(pwd)/_builddir/src/libmbim-glib:${LD_LIBRARY_PATH:-}\" ninja -v -j ${JOBS} -C _builddir",
-              "",
-          ]
-          p.write_text("\n".join(patch_lines))
-          print('Added 0002-libmbim-meson-build.patch to patches/freedesktop-sdk')
-          MBIM_PATCH
+                printf '%s\n' \
+                  'diff --git a/elements/components/libmbim.bst b/elements/components/libmbim.bst' \
+                  'index fa0df83..9744707 100644' \
+                  '--- a/elements/components/libmbim.bst' \
+                  '+++ b/elements/components/libmbim.bst' \
+                  '@@ -29,3 +29,7 @@ sources:' \
+                  '   exclude:' \
+                  "   - '*-dev'" \
+                  '   ref: 1.34.0-0-g2bca5d22137883f348cb117597746483637491db' \
+                  '+' \
+                  '+variables:' \
+                  '+  meson-build: >-' \
+                  '+    env LD_LIBRARY_PATH="$(pwd)/_builddir/src/libmbim-glib:${LD_LIBRARY_PATH:-}" ninja -v -j ${JOBS} -C _builddir' \
+                  > /src/patches/freedesktop-sdk/0002-libmbim-meson-build.patch
+                echo "Added 0002-libmbim-meson-build.patch to patches/freedesktop-sdk"
               else
                 echo "WARN: unable to fetch freedesktop-sdk commit ${FDS_COMMIT}; continuing without patch sync"
               fi

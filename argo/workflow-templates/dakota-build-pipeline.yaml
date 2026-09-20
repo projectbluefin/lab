@@ -658,18 +658,24 @@ spec:
               patch_file.unlink(missing_ok=True)
               print(f"Skipped {patch_file.name}: GBM {gbm_sha} has no include/recc.yml")
 
-          # 0002 serialized sdk-deps/glib-stage1 to dodge a parallel build race
-          # (test5.gresource running before the libgio symlink) by setting
-          # `max-jobs: '1'`. BuildStream 2.7 rejects that outright:
-          #   gnome-build-meta.bst:sdk-deps/glib-stage1.bst [line 6 column 12]:
-          #   invalid redefinition of protected variable 'max-jobs'
-          # so the patch cannot load at all. It stays off until it is rewritten
-          # in a form 2.7 accepts; if the race resurfaces it will show up as a
-          # glib-stage1 failure, not as this load error.
+          # 0002 serializes sdk-deps/glib-stage1 to dodge the parallel build race
+          # (e.g. test5.gresource running before the libgio symlink) by overriding
+          # its meson-build command with single-threaded ninja execution ('-j1').
+          # Under BuildStream 2.7, setting `max-jobs: '1'` is rejected because
+          # max-jobs is protected, so overriding `meson-build` directly is the form 2.7 accepts.
           patch2_file = patch_dir / '0002-glib-stage1-serialize-jobs.patch'
-          patch2_file.unlink(missing_ok=True)
-          print("Skipped 0002-glib-stage1-serialize-jobs.patch: 'max-jobs' is protected in BuildStream 2.7")
-
+          patch2_content = (
+              "--- a/elements/sdk-deps/glib-stage1.bst\n"
+              "+++ b/elements/sdk-deps/glib-stage1.bst\n"
+              "@@ -10,3 +10,4 @@ variables:\n"
+              "     -Dselinux=disabled\n"
+              "     -Dsysprof=disabled\n"
+              "     -Dsystemtap=disabled\n"
+              "+  meson-build: ninja -v -j1 -C %{build-dir}\n"
+          )
+          patch2_file.write_text(patch2_content)
+          written.append(patch2_file.name)
+          print("Created 0002-glib-stage1-serialize-jobs.patch with meson-build override")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

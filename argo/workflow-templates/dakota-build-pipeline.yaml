@@ -693,6 +693,25 @@ spec:
           patch3_file.write_text(patch3_content)
           written.append(patch3_file.name)
           print("Created 0003-gobject-introspection-ld-library-path.patch with meson-build wrapper")
+          # Patch NetworkManager to disable docs generation in RE sandbox
+          patch4_file = patches_dir / "0004-networkmanager-disable-docs.patch"
+          patch4_content = (
+              "diff --git a/elements/core-deps/NetworkManager.bst b/elements/core-deps/NetworkManager.bst\n"
+              "--- a/elements/core-deps/NetworkManager.bst\n"
+              "+++ b/elements/core-deps/NetworkManager.bst\n"
+              "@@ -46,7 +46,7 @@ variables:\n"
+              "     -Dcrypto=gnutls\n"
+              "     -Dintrospection=true\n"
+              "     -Dvapi=true\n"
+              "-    -Ddocs=true\n"
+              "+    -Ddocs=false\n"
+              "     -Dtests=no\n"
+              "     -Dlibaudit=no\n"
+              "     -Dnmtui=false\n"
+          )
+          patch4_file.write_text(patch4_content)
+          written.append(patch4_file.name)
+          print("Created 0004-networkmanager-disable-docs.patch")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

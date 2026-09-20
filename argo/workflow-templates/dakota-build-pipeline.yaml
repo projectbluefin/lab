@@ -815,6 +815,22 @@ spec:
                   '+    env LD_LIBRARY_PATH="$(pwd)/_builddir/src/libmbim-glib:${LD_LIBRARY_PATH:-}" ninja -v -j ${JOBS} -C _builddir' \
                   > /src/patches/freedesktop-sdk/0002-libmbim-meson-build.patch
                 echo "Added 0002-libmbim-meson-build.patch to patches/freedesktop-sdk"
+                # Patch components/libqmi.bst so qmi-firmware-update and qmicli find uninstalled build-tree libraries during help2man
+                printf '%s\n' \
+                  'diff --git a/elements/components/libqmi.bst b/elements/components/libqmi.bst' \
+                  'index 6ee13b4..7a892b1 100644' \
+                  '--- a/elements/components/libqmi.bst' \
+                  '+++ b/elements/components/libqmi.bst' \
+                  '@@ -31,3 +31,7 @@ sources:' \
+                  '   exclude:' \
+                  "   - '*-dev'" \
+                  '   ref: 1.38.0-0-ge3d79ed3f7fdc6a7fa8b374860b1c23a8f172812' \
+                  '+' \
+                  '+variables:' \
+                  '+  meson-build: >-' \
+                  '+    env LD_LIBRARY_PATH="$(pwd)/_builddir/src/libqmi-glib:${LD_LIBRARY_PATH:-}" ninja -v -j ${JOBS} -C _builddir' \
+                  > /src/patches/freedesktop-sdk/0003-libqmi-meson-build.patch
+                echo "Added 0003-libqmi-meson-build.patch to patches/freedesktop-sdk"
               else
                 echo "WARN: unable to fetch freedesktop-sdk commit ${FDS_COMMIT}; continuing without patch sync"
               fi

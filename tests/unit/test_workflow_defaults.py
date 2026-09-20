@@ -667,4 +667,6 @@ def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_patches_glib_stage1
     assert 'env LD_LIBRARY_PATH=\\"$(pwd)/_builddir/girepository:${LD_LIBRARY_PATH:-}\\"' in source
     assert "0002-libmbim-meson-build.patch" in source
     assert "env LD_LIBRARY_PATH=\"$(pwd)/_builddir/src/libmbim-glib:${LD_LIBRARY_PATH:-}\"" in source
+    assert "0003-libqmi-meson-build.patch" in source
+    assert "env LD_LIBRARY_PATH=\"$(pwd)/_builddir/src/libqmi-glib:${LD_LIBRARY_PATH:-}\"" in source
     assert "-type f ! -name 'series'" in source

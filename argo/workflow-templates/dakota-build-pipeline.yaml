@@ -886,6 +886,22 @@ spec:
                   '+    env LD_LIBRARY_PATH="$(pwd)/_builddir/src/libqmi-glib:${LD_LIBRARY_PATH:-}" ninja -v -j ${JOBS} -C _builddir' \
                   > /src/patches/freedesktop-sdk/0003-libqmi-meson-build.patch
                 echo "Added 0003-libqmi-meson-build.patch to patches/freedesktop-sdk"
+                # Patch components/appstream.bst so appstreamcli finds build-tree libappstream.so.5 during news-to-metainfo
+                printf '%s\n' \
+                  'diff --git a/elements/components/appstream.bst b/elements/components/appstream.bst' \
+                  '--- a/elements/components/appstream.bst' \
+                  '+++ b/elements/components/appstream.bst' \
+                  '@@ -41,6 +41,9 @@ variables:' \
+                  '     -Dman=true' \
+                  '     -Dblake3-support=false' \
+                  '+' \
+                  '+  meson-build: >-' \
+                  '+    mkdir -p _builddir/src && ln -sf libappstream.so.1.1.6 _builddir/src/libappstream.so.5 && env LD_LIBRARY_PATH="$(pwd)/_builddir/src:${LD_LIBRARY_PATH:-}" ninja -v -j ${JOBS} -C _builddir' \
+                  ' ' \
+                  ' public:' \
+                  '   bst:' \
+                  > /src/patches/freedesktop-sdk/0004-appstream-meson-build.patch
+                echo "Added 0004-appstream-meson-build.patch to patches/freedesktop-sdk"
               else
                 echo "WARN: unable to fetch freedesktop-sdk commit ${FDS_COMMIT}; continuing without patch sync"
               fi

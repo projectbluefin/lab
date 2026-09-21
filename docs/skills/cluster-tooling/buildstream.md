@@ -204,6 +204,14 @@ The 2026-07-22 Dakota investigation established the following decision tree:
    runner and current BuildStream/semaphore limits until full-root materialization
    is reliable. Low utilization during a failed action is expected and is not a
    reason to add workers or jobs.
+6. **Use the lab pipeline for Dakota testing images, never GitHub Actions.**
+   Work in the lab repository and cluster is meant to validate Dakota builds locally
+   via `just run-bst-build` (`argo/workflow-templates/dakota-build-pipeline.yaml`)
+   targeting the local Buildbarn grid and the lab-local Zot registry configured by the WorkflowTemplate.
+   Do not trigger external GitHub Actions workflows on `projectbluefin/dakota`
+   (such as opening pull requests to run `build.yml` or relying on GHCR) to obtain test images.
+   The lab exists specifically to build, test, and validate changes hermetically
+   without consuming upstream GitHub Actions quota or cluttering upstream PR queues.
 
 ## Rechunking a Dakota BuildStream OCI export
 

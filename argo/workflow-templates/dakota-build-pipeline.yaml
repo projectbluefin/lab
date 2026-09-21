@@ -759,7 +759,7 @@ spec:
               "     -Ddocs=false\n"
               "+\n"
               "+  meson-build: >-\n"
-              "+    mkdir -p _builddir/lib/colord && ln -sf libcolordprivate.so.2.0.5 _builddir/lib/colord/libcolordprivate.so.2 && jobserver_pool.py -j${JOBS} ninja -v -C _builddir\n"
+              "+    env LD_PRELOAD=\"$(pwd)/_builddir/lib/colord/libcolordprivate.so.2.0.5\" jobserver_pool.py -j${JOBS} ninja -v -C _builddir\n"
           )
           patch5_file.write_text(patch5_content)
           written.append(patch5_file.name)

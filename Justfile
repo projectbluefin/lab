@@ -300,17 +300,18 @@ lab-check-status repo pr_number:
 # Usage: just run-bst-build
 # Usage: just run-bst-build testing https://github.com/projectbluefin/dakota.git
 # Usage: just run-bst-build testing "" default   # only oci/bluefin.bst
+# Usage: just run-bst-build testing "" default <commit-sha>
 #   variants=all (default) builds every variant; variants=default builds just
 #   the plain image, which is what a single-machine rebase needs and what fits
 #   on a two-node grid.
-run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git" variants="all":
+run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git" variants="all" commit_sha="":
     argo submit --from workflowtemplate/dakota-build-pipeline \
       -p ref={{ ref }} \
       -p repo={{ repo }} \
       -p build-mode=re \
       -p variants={{ variants }} \
+      {{ if commit_sha != "" { "-p commit-sha=" + commit_sha } else { "" } }} \
       -n {{ argo_ns }} --watch
-
 # Re-run the Dakota poller for the current testing SHA without bypassing BST admission.
 force-dakota-poll:
     argo submit --from cronworkflow/dakota-commit-poller \

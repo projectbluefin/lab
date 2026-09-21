@@ -81,8 +81,10 @@ A repair is appropriate for a localized build recipe, element, workflow, or test
 
 ## Red Flags
 
-- No linked Dakota workflow for a PR that is otherwise ready to merge
+- Triggering GitHub Actions on upstream `projectbluefin/dakota` (such as opening PRs or adding the `build` label) to produce or test images instead of using the lab's `just run-bst-build` / Argo path
+- Submitting lab builds without pinning the exact commit SHA when testing local or branch changes
 - Workflow fails before the Dakota tests run
+- No linked Dakota workflow for a PR that is otherwise ready to merge
 - Workflow logs contain authenticated command lines, token-bearing variables, or unredacted API output
 - A routine Renovate label is treated as maintainer approval
 - Operator report lacks evidence or a workflow link
@@ -90,6 +92,8 @@ A repair is appropriate for a localized build recipe, element, workflow, or test
 
 ## Verification
 
+- [ ] Requested lab test images built via lab `just run-bst-build` / Argo workflow, not upstream GHA
+- [ ] Exact PR/branch head SHA was pinned and verified in the workflow arguments
 - [ ] PR head SHA, base branch, mergeability, and approval state were verified
 - [ ] Distributed `dakota-build-pipeline` passed for the exact PR SHA
 - [ ] Dakota smoke/E2E workflow passed for the resulting image

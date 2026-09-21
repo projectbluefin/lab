@@ -676,4 +676,6 @@ def test_dakota_build_pipeline_sets_gbm_recc_passthrough_and_patches_glib_stage1
     assert "0004-appstream-meson-build.patch" in source
     assert "ln -sf libappstream.so.1.1.6 _builddir/src/libappstream.so.5" in source
     assert "split-rules:" in source
+    assert "0005-colord-meson-build.patch" in source
+    assert "ln -sf libcolordprivate.so.2.0.5 _builddir/lib/colord/libcolordprivate.so.2" in source
     assert "-type f ! -name 'series'" in source

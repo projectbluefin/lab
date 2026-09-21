@@ -748,6 +748,22 @@ spec:
           patch4_file.write_text(patch4_content)
           written.append(patch4_file.name)
           print("Created 0004-networkmanager-create-exports-patch.patch")
+          patch5_file = patch_dir / "0005-colord-meson-build.patch"
+          patch5_content = (
+              "diff --git a/elements/core-deps/colord.bst b/elements/core-deps/colord.bst\n"
+              "--- a/elements/core-deps/colord.bst\n"
+              "+++ b/elements/core-deps/colord.bst\n"
+              "@@ -30,3 +30,6 @@ variables:\n"
+              "     -Dman=false\n"
+              "     -Dvapi=true\n"
+              "     -Ddocs=false\n"
+              "+\n"
+              "+  meson-build: >-\n"
+              "+    mkdir -p _builddir/lib/colord && ln -sf libcolordprivate.so.2.0.5 _builddir/lib/colord/libcolordprivate.so.2 && jobserver_pool.py -j${JOBS} ninja -v -C _builddir\n"
+          )
+          patch5_file.write_text(patch5_content)
+          written.append(patch5_file.name)
+          print("Created 0005-colord-meson-build.patch")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

@@ -1,0 +1,29 @@
+# Cluster-wide read for the argo SA. Kept pipelines depend on it: the BST
+# USB4 gate (detect-build-mode) reads node annotations, and kubestellar verify
+# and the VM/pod reapers read across namespaces. Previously granted by the
+# removed k8sgpt-runner-rbac.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-cluster-read
+  labels:
+    app.kubernetes.io/part-of: lab
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-cluster-read
+  labels:
+    app.kubernetes.io/part-of: lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-cluster-read
+subjects:
+  - kind: ServiceAccount
+    name: argo
+    namespace: argo

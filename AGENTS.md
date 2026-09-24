@@ -7,9 +7,8 @@ k3s cluster.
 ## Start here
 
 1. Read this file.
-2. Find the skill for the area you need in [`docs/SKILL.md`](docs/SKILL.md)
-   (the skill router, same convention as `projectbluefin/common`) and load
-   only that skill.
+2. Find the skill for the area you need in the
+   [skill index](#when-to-use--when-not-to-use) below and load only that skill.
 3. For deterministic commands, check the [`Justfile`](Justfile) or
    [`docs/reference/agent-cheatsheet.md`](docs/reference/agent-cheatsheet.md).
 4. For operational failure modes, read [`docs/ops/RUNBOOK.md`](docs/ops/RUNBOOK.md).
@@ -67,14 +66,16 @@ just lint              # actionlint + argo lint + registry allowlist
 
 | Task | Where to go |
 |---|---|
-| Which skill should I load? | [`docs/SKILL.md`](docs/SKILL.md) |
 | Authoring Argo workflow templates (YAML) | [`docs/skills/argo-workflows/SKILL.md`](docs/skills/argo-workflows/SKILL.md) |
 | KubeVirt VM provisioning / boot failures | [`docs/skills/kubevirt-vms/SKILL.md`](docs/skills/kubevirt-vms/SKILL.md) |
 | ArgoCD sync, GitOps rules, bootstrap vs managed | [`docs/skills/gitops-argocd/SKILL.md`](docs/skills/gitops-argocd/SKILL.md) |
+| GitHub Actions workflows | [`docs/skills/ci-tooling/SKILL.md`](docs/skills/ci-tooling/SKILL.md) |
+| bluefin-server bootc image | [`docs/skills/bluefin-server/SKILL.md`](docs/skills/bluefin-server/SKILL.md) |
+| Dakota PR review with lab QA | [`docs/skills/dakota-pr-review/SKILL.md`](docs/skills/dakota-pr-review/SKILL.md) |
 | Cluster add-ons, k3s, registries | [`docs/skills/cluster-tooling/SKILL.md`](docs/skills/cluster-tooling/SKILL.md) |
 | KubeStellar core, WECs, BindingPolicies | [`docs/skills/kubestellar/SKILL.md`](docs/skills/kubestellar/SKILL.md) |
 | KubeStellar Console deploy/auth/cards | [`docs/skills/console-dashboard/SKILL.md`](docs/skills/console-dashboard/SKILL.md) |
-| Workflow parameter contracts | [`docs/reference/WORKFLOWS.md`](docs/reference/WORKFLOWS.md) |
+| Workflow parameter contracts | [`docs/reference/workflow-reference.md`](docs/reference/workflow-reference.md) |
 | Architecture / failure modes | [`docs/ops/RUNBOOK.md`](docs/ops/RUNBOOK.md) |
 | Human contributor workflow | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 

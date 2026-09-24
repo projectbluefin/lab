@@ -60,7 +60,9 @@ spec:
     - name: pipeline
       steps:
         - - name: check-admission
-            template: check-admission
+            templateRef:
+              name: bst-admission-gate
+              template: detect-build-mode
         - - name: run-build
             template: build
             arguments:
@@ -75,54 +77,6 @@ spec:
                   value: "{{workflow.parameters.element}}"
                 - name: remote-execution-service
                   value: "{{workflow.parameters.remote-execution-service}}"
-
-    - name: check-admission
-      script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
-        command: [bash]
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 200m
-            memory: 128Mi
-        source: |
-          set -euo pipefail
-
-          MAX_AGE_SECONDS=60
-          NOW="$(date -u +%s)"
-          for NODE in ghost exo-0; do
-            LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.labels.lab\.projectbluefin\.io/usb4-link}')"
-            if [[ -z "${LINK}" ]]; then
-              LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}')"
-            fi
-            OBSERVED_AT="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link-observed-at}')"
-            READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
-
-            if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
-              echo "USB4 BuildBarn gate rejected ${NODE}: link=${LINK:-missing} (label/annotation lab.projectbluefin.io/usb4-link) observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
-              exit 1
-            fi
-            if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
-              echo "USB4 BuildBarn gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
-              exit 1
-            fi
-          done
-
-          # Match the BuildBarn worker containers by name, not by container
-          # count: the DaemonSet also runs preparation sidecars whose readiness
-          # is a separate health boundary from outer remote execution.
-          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|worker="}{range .status.containerStatuses[?(@.name=="worker")]}{.ready}{end}{"|runner="}{range .status.containerStatuses[?(@.name=="runner")]}{.ready}{end}{"\n"}{end}')"
-          for NODE in ghost exo-0; do
-            if ! grep -Eq "^${NODE}\|Running\|worker=true\|runner=true$" <<<"${WORKERS}"; then
-              echo "USB4 BuildBarn gate rejected: no Ready worker on ${NODE}" >&2
-              exit 1
-            fi
-          done
-
-          echo "USB4-backed BuildBarn remote execution admitted"
-
     - name: build
       inputs:
         parameters:
@@ -156,10 +110,6 @@ spec:
                 path: buildstream.conf
               - key: remote-execution.conf
                 path: remote-execution.conf
-              - key: recc-environment.conf
-                path: recc-environment.conf
-              - key: apply_recc_overlay.py
-                path: apply_recc_overlay.py
       script:
         image: 192.168.1.102:30500/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d
         command: [bash]
@@ -189,11 +139,6 @@ spec:
             value: "{{inputs.parameters.element}}"
           - name: REMOTE_EXECUTION_SERVICE
             value: "{{inputs.parameters.remote-execution-service}}"
-          - name: RECC_ENDPOINT
-            valueFrom:
-              configMapKeyRef:
-                name: buildstream-remote-cache
-                key: recc-endpoint
           # Avoid the FUSE staging backend; BuildStream exits 255 in this lab
           # environment when the FUSE stager crashes during source staging.
           - name: BUILDBOX_STAGER

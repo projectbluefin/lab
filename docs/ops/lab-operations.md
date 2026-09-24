@@ -6,7 +6,7 @@ Pair with:
 - [`/docs/reference/agent-cheatsheet.md`](/docs/reference/agent-cheatsheet.md) — canonical command reference
 - [`../AGENTS.md`](/AGENTS.md) — policy + architecture
 - [`../RUNBOOK.md`](/docs/ops/RUNBOOK.md) — timeless architecture + failure modes
-- [`../WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
+- [`workflow-reference.md`](/docs/reference/workflow-reference.md) — WorkflowTemplate parameter contracts
 
 
 > [!WARNING]
@@ -48,7 +48,7 @@ For Dakota image-poll QA, **bootc OCI images are tested directly as containers**
 Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
 MCP is optional.
 
-Every BST run requires `build-mode=re`, fresh USB4 `up` observations on both
+Every BST run requires remote execution, fresh USB4 `up` observations on both
 `ghost` and `exo-0`, two Ready BuildBarn workers, and observable worker actions.
 If any precondition or remote execution is unhealthy, fail, diagnose, and
 repair it. Do not select local, cache-only, Ethernet-backed, or automatic

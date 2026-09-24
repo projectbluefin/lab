@@ -3,5 +3,4 @@
 Lookup tables, contracts, and cheatsheets.
 
 - [`agent-cheatsheet.md`](agent-cheatsheet.md) — deterministic CLI recipes
-- [`/docs/reference/WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate submit interface / agent contract
-- [`workflow-reference.md`](workflow-reference.md) — full WorkflowTemplate reference
+- [`workflow-reference.md`](workflow-reference.md) — WorkflowTemplate submit interface and reference

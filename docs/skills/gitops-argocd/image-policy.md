@@ -28,7 +28,7 @@ general-purpose base box. Concretely:
   results cannot be cited.
 - **Signed and governed.** Org-published images pass through the registry
   allowlist and can be verified with `cosign`. A package repo contacted at
-  runtime is invisible to `scripts/check_gitops_policy.py`.
+  runtime bypasses the registry allowlist.
 - **Composable.** Multi-stage `COPY --from` lets you take exactly one binary
   from a purpose-built image. Package managers force you to take a dependency
   tree and its opinions.

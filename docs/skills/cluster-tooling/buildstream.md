@@ -1,8 +1,8 @@
 ---
 name: cluster-buildstream
 description: >
-  Use when operating USB4 admission, BuildStream distributed builds, Buildbarn
-  recovery, or the isolated RECC pilot evidence path.
+  Use when operating USB4 admission, BuildStream distributed builds, or Buildbarn
+  recovery.
 metadata:
   context7-sources:
     - /apache/buildstream
@@ -31,7 +31,7 @@ remote-cache-only run is not an acceptable substitute.
   the PVC below that node's configured data mount. Do not select a node or
   bind-mount a cache path to influence placement.
 - **BST lane policy:** Dakota, Bluefin Server, and QA pipelines accept only
-  `build-mode=re`. Before admission, every lane requires a fresh USB4 `up`
+  remote execution. Before admission, every lane requires a fresh USB4 `up`
   label and annotation (`lab.projectbluefin.io/usb4-link=up`, timestamp within 60s)
   and a Ready BuildBarn worker on both `ghost` and `exo-0`.
   Runner-local, cache-only, Ethernet-backed, automatic fallback, and
@@ -193,7 +193,7 @@ The 2026-07-22 Dakota investigation established the following decision tree:
    `rustc -vV` successfully.
 3. **Separate evidence classes.** Local BuildStream success, Podman/Zot push
    success, and container E2E are useful diagnostics, but none substitutes for
-   a successful distributed `build-mode=re` build. Never report overall green
+   a successful distributed remote-execution build. Never report overall green
    from those results alone.
 4. **Check live-vs-git configuration.** Before retrying, compare the live
    `buildbarn-config` and worker/runner pods with the repository. Stale ConfigMaps
@@ -212,37 +212,6 @@ The 2026-07-22 Dakota investigation established the following decision tree:
    (such as opening pull requests to run `build.yml` or relying on GHCR) to obtain test images.
    The lab exists specifically to build, test, and validate changes hermetically
    without consuming upstream GitHub Actions quota or cluttering upstream PR queues.
-
-## Rechunking a Dakota BuildStream OCI export
-
-`scripts/rechunk_bst_image.sh` is the reusable layout-to-layout transform for
-Dakota BST exports:
-
-```bash
-FAKECAP_RESTORE=/src/files/fakecap/fakecap-restore \
-  scripts/rechunk_bst_image.sh \
-  /workspace/export \
-  /workspace/rechunked \
-  /src/files/fakecap-manifest.tsv > /workspace/rechunk-metrics.json
-```
-
-The script uses the existing privileged builder tools (`podman`, `skopeo`,
-`jq`, overlayfs, and Dakota's compiled `fakecap-restore`); it installs nothing.
-It pins chunkah v0.6.0, physically restores the manifest xattrs, emits at most
-128 compressed layers, prunes `/sysroot/`, preserves `containers.bootc`, and
-removes `ostree.commit` plus `ostree.final-diffid`. Stdout is one JSON object
-with input/output digests, compressed bytes, layer count, duration, and tool
-version. Logs go to stderr.
-
-In Argo, keep build/export, rechunk, publish, and metrics persistence as
-artifact-connected DAG tasks. Pass the Dakota manifest/helper paths into this
-script; do not duplicate the transform inline in Workflow YAML.
-
-Sources:
-
-- [chunkah v0.6.0 usage and bootc compatibility](https://github.com/coreos/chunkah/blob/v0.6.0/README.md)
-- [Project Bluefin chunkah action](https://github.com/projectbluefin/actions/blob/main/bootc-build/chunka/action.yml)
-- [Dakota fakecap convention](https://github.com/projectbluefin/dakota/blob/main/Justfile)
 
 ## BST build scheduling: avoid preemption
 
@@ -311,7 +280,7 @@ cache writeback and remote execution. Workflow-local state belongs on a
 PVC-backed workspace, while the shared Buildbarn frontend provides cluster-wide
 artifact reuse. Neither cache layer may use a root-backed `hostPath`.
 
-### 0. Mandatory remote execution & RECC compiler distribution
+### 0. Mandatory remote execution
 
 Dakota builds must use BuildBarn remote execution regardless of transport path.
 If remote execution is unhealthy, fail the workflow, diagnose it, and repair the
@@ -319,72 +288,6 @@ grid; do not fall back to a runner-local or cache-only build. The
 `remote-execution.conf` ConfigMap key is appended under the Dakota project in
 the generated BuildStream configuration. A healthy run has two Ready workers,
 two action slots, and observable current worker actions.
-
-The isolated `bst2` RECC pilot is a nested sandbox workload and must run its
-script container with `privileged: true` and `seLinuxOptions.type: spc_t`.
-Without that runtime contract, BuildStream's bubblewrap sandbox fails before
-compiler execution with `Can't mount proc on /newroot/proc: Operation not
-permitted`. This requirement is specific to the pilot container; it does not
-enable nested RECC or relax the production runner admission gate.
-
-**RECC (Remote Execution C/C++ Compiler) integration:**
-The lab has a checkout-local RECC overlay and worker-local `buildbox-casd`
-preparation seam. The isolated operator pilot is the only supported cache
-experiment; production BuildStream/QA/warmup lanes fail closed until a pinned
-runner demonstrably consumes BuildStream's `remoteApisSocketPath` and stages
-the pod-local LocalCAS socket.
-- **Macro level:** BuildStream schedules element builds across BuildBarn workers.
-- **Micro level (RECC):** RECC can cache or distribute individual C/C++
-  compiler invocations inside one element; it is distinct from outer
-  BuildStream remote execution. Linking and non-C++ toolchains remain local
-  unless separately wrapped.
-- **Configuration:** `recc-environment.conf` supplies the shared server,
-  CAS, action-cache, project-root, and policy values. Toolchain elements must
-  supply `RECC_REMOTE_PLATFORM_chrootRootDigest`; the lab does not invent a
-  global digest or set `RECC_PREFIX`.
-- **Pilot:** Run `just run-recc-baseline mode=cache-only cache-policy=both`.
-  Keep the source revision, pinned freedesktop-sdk provider, `bst2` image,
-  and worker set fixed. See `docs/reference/recc-baseline.md`.
-- **Evidence boundary:** A successful outer BuildStream build is not RECC
-  evidence. The collector preserves missing RECC action fields as
-  `unavailable`; current runs have real BuildStream/BuildBarn timing and CAS
-  data but no trustworthy RECC hit/miss metrics.
-
-### RECC pilot evidence handoff
-
-The operator-only `recc-baseline-pipeline` must use BuildStream's configured
-`logdir` as the sandbox-to-workflow evidence path. The fixture writes its
-StatsD output under `%{build-root}`, prints each record with a
-`[RECC_METRICS]` marker into the element build log, and removes the file before
-installing the deterministic artifact. The workflow points `logdir` at its
-`/work` volume and preserves complete RECC-marked lines; do not put metrics in
-`%{install-root}`, a checked-out artifact, or a host mount.
-
-This preserves artifact determinism while making action-cache hits/misses,
-local fallbacks, and compiler timing available to the collector. A cache-only
-or upload-local-build pilot must fail closed when the BuildStream logdir has no
-valid RECC StatsD metric evidence rather than report zeros or infer a warm hit from outer
-BuildStream success. This follows BuildStream's documented writable
-`%{build-root}`/`%{install-root}` sandbox paths and user-configured `logdir`
-(`source: /apache/buildstream`).
-
-### RECC pilot evidence handoff
-
-The operator-only `recc-baseline-pipeline` must use BuildStream's configured
-`logdir` as the sandbox-to-workflow evidence path. The fixture writes its
-StatsD output under `%{build-root}`, prints each record with a
-`[RECC_METRICS]` marker into the element build log, and removes the file before
-installing the deterministic artifact. The workflow points `logdir` at its
-`/work` volume and extracts only RECC-marked lines; do not put metrics in
-`%{install-root}`, a checked-out artifact, or a host mount.
-
-This preserves artifact determinism while making action-cache hits/misses,
-local fallbacks, and compiler timing available to the collector. A cache-only
-or upload-local-build pilot must fail closed when the BuildStream logdir has no
-RECC evidence rather than report zeros or infer a warm hit from outer
-BuildStream success. This follows BuildStream's documented writable
-`%{build-root}`/`%{install-root}` sandbox paths and user-configured `logdir`
-(`source: /apache/buildstream`).
 
 ### 1. Shared Buildbarn frontend
 - **Endpoint**: `grpc://frontend.buildbarn.svc.cluster.local:8980`

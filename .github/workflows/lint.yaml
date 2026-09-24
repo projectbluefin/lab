@@ -71,19 +71,13 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Validate Python syntax
+        run: find scripts tests -name '*.py' -print0 | xargs -0 python -m py_compile
+
       - name: Semaphore topology check
         run: |
-          pip install --quiet pyyaml
-          python scripts/check_semaphore_topology.py argo/
-
-      - name: Validate Python syntax
-        run: |
-          echo "Checking Python syntax..."
-          mapfile -t TREES < <(grep -vE '^[[:space:]]*(#|$)' .python-scope)
-          find "${TREES[@]}" -name '*.py' -print0 | xargs -0 python -m py_compile
+          python -m pip install --quiet pytest pyyaml
+          python -m pytest -q tests/unit/test_semaphore_topology.py
 
       - name: Check pytest collection
-        run: |
-          echo "Checking pytest imports and collection..."
-          python -m pip install pytest -q
-          python -m pytest tests/ --collect-only -q 2>&1 | tail -5
+        run: python -m pytest tests/ --collect-only -q 2>&1 | tail -5

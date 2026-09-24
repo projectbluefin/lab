@@ -5,7 +5,7 @@
 >
 > If your task is not in this file, escalate to:
 > - [`/docs/ops/lab-operations.md`](/docs/ops/lab-operations.md) — long-form procedures
-> - [`/docs/reference/WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
+> - [`/docs/reference/workflow-reference.md`](/docs/reference/workflow-reference.md) — WorkflowTemplate parameter contracts
 > - [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) — architecture + failure-mode index
 > - [`projectbluefin/testsuite`](https://github.com/projectbluefin/testsuite) — writing GUI tests
 > - [`/AGENTS.md`](/AGENTS.md) — hard policy and tenets
@@ -33,7 +33,7 @@
 
 Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.
 
-Every BST submission requires `build-mode=re` and fresh USB4 `up` observations
+Every BST submission requires remote execution and fresh USB4 `up` observations
 on both `ghost` and `exo-0`; the workflow rejects any other state. Local,
 cache-backed, Ethernet-backed, automatic-fallback, and remote-cache-only paths
 are prohibited. Confirm the generated BuildStream configuration, both Ready
@@ -256,7 +256,7 @@ gate when Dakota GHA is unhealthy.
 For each open PR:
 
 1. Confirm the current head SHA and mergeability.
-2. Submit `dakota-build-pipeline` with that exact SHA and `build-mode=re`.
+2. Submit `dakota-build-pipeline` with that exact SHA.
 3. Run `dakota-container-qa-pipeline` against the built local registry image,
    then `dakota-qa-pipeline` for required BDD/GUI coverage.
 4. If a scoped PR defect is found, fix it on the PR branch, push the new SHA,

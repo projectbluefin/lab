@@ -1,6 +1,12 @@
 # Workflow Reference
 
-This doc covers Argo Workflows and WorkflowTemplates.
+Canonical interface for driving the lab: every supported operation is one
+`argo submit --from workflowtemplate/<name> [-p k=v]` (usually via a `just`
+recipe). Templates live in `argo/workflow-templates/` and ArgoCD `testing-lab`
+reconciles them to namespace `argo`; CronWorkflows live in `manifests/`
+(`testing-lab-infra`). Prefer the top-level pipelines; supporting templates are
+called through `templateRef`. Update this file in the same commit as any
+template add or rename.
 
 ## Table of Contents
 - [Pipelines](#pipelines)
@@ -9,10 +15,11 @@ This doc covers Argo Workflows and WorkflowTemplates.
   - [zot-candidate-lifecycle](#zot-candidate-lifecycle)
   - [bluefin-server-build-pipeline](#bluefin-server-build-pipeline)
   - [bst-qa-pipeline](#bst-qa-pipeline)
+- [KubeStellar Workflows](#kubestellar-workflows)
 - [Supporting Templates](#supporting-templates)
 - [Distributed Build/RE Grid](#distributed-buildre-grid)
 - [Cache Warming (Pollers)](#cache-warming-pollers)
-- [Nightly Schedule](#nightly-schedule)
+- [Nightly and Maintenance Schedules](#nightly-and-maintenance-schedules)
 - [Priority Classes](#priority-classes)
 - [Resource Profiles](#resource-profiles)
 
@@ -27,10 +34,10 @@ This doc covers Argo Workflows and WorkflowTemplates.
   fan-out, including the nested systemd/Wayland session used by qecore-headless.
   This lane provides image and GUI-session evidence, but not VM boot or reboot
   evidence.
-- **Parameters:** `image`, `image-tag`, `suites`, `variant`, `branch`, `pr-number`, `sha`,
-  `repo`, `testsuite-branch`, `testsuite-repo`.
-- **DAG:** `validate-suites` → parallel `test-lane` items (`smoke`, `common`, `developer`,
-  `software`, `system`) through `run-container-tests`.
+- **Parameters:** `image`, `image-tag`, `image-digest`, `suites`, `variant`, `branch`,
+  `testsuite-branch`, `testsuite-repo`.
+- **DAG:** parallel `test-lane` items (`smoke`, `common`, `developer`, `software`,
+  `system`) through `run-container-tests`, filtered by `suites`.
 - **Just recipe:** `run-dakota-qa`.
 - **PR review:** use the [Dakota PR review skill](../skills/dakota-pr-review/SKILL.md). Build the exact PR SHA first, then run smoke and required E2E suites against the resulting image. If lab validation identifies a scoped PR defect, repair the PR branch, rebuild from its new SHA, rerun E2E, and merge directly only after a fresh pass.
 
@@ -40,8 +47,8 @@ This doc covers Argo Workflows and WorkflowTemplates.
   given by `image-tag` (default `testing`). NVIDIA variants are built
   non-blocking and pushed with the same tag.
 - **Parameters:** `repo`, `ref`, `commit-sha`, `image-tag` (default `testing`),
-  `registry`, `build-mode`, `lock-key`.
-- **Distribution:** `build-mode=re` is mandatory. A fresh USB4 `up` observation
+  `registry`, `variants`.
+- **Distribution:** remote execution is mandatory. A fresh USB4 `up` observation
   and a Ready BuildBarn worker are required on both `ghost` and `exo-0` before
   admission. Cache-only, Ethernet-backed, automatic fallback, runner-local
   execution, and remote-cache-only execution are failures, not alternatives.
@@ -53,8 +60,7 @@ This doc covers Argo Workflows and WorkflowTemplates.
   remote-execution configuration before it invokes BuildStream.
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.
-- **Who triggers it automatically:** the `daily-dakota-build` CronWorkflow
-  (scheduled at 00:30 UTC, initially staged suspended) and the `dakota-commit-poller`
+- **Who triggers it automatically:** the `dakota-commit-poller`
   CronWorkflow through the shared `bst-commit-poller` template (see
   [Cache Warming](#cache-warming-pollers)). The poller resolves the current
   GitHub SHA for `dakota:testing` and passes that exact commit into the local
@@ -62,7 +68,7 @@ This doc covers Argo Workflows and WorkflowTemplates.
   GitHub is building instead of drifting to a later branch tip.
 
 **Distributed-gate rule:** A Dakota PR build is valid only when a fresh
-`build-mode=re` run completes for the exact PR head SHA and its pushed registry
+remote-execution run completes for the exact PR head SHA and its pushed registry
 image is verified. Local, cache-only, or fallback builds are diagnostic evidence
 and do not satisfy the distributed gate. Inspect failed child nodes even when the
 Argo parent phase is successful; classify BuildBarn storage/DNS/worker failures as
@@ -79,7 +85,8 @@ infrastructure blockers and repair the lab before retrying.
   `application/vnd.projectbluefin.lab.promotion-evidence.v1+json` with ORAS.
 - **Authentication:** optionally mounts `zot-writer-auth` while anonymous writes
   remain active; the secret becomes required at the Zot auth activation gate.
-- **Just recipe:** `run-zot-promotion`.
+- **Just recipe:** `run-zot-promotion`. See
+  [Zot candidate promotion](../ops/zot-candidate-promotion.md).
 
 ### bluefin-server-build-pipeline
 - **Purpose:** BuildStream compile pipeline for Bluefin Server elements
@@ -104,6 +111,24 @@ infrastructure blockers and repair the lab before retrying.
   never actually dispatches an action through the scheduler to a worker — verified
   by checking the CAS blocks file (zero bytes written). A real build-dispatch
   test element would be needed to prove end-to-end RE execution conclusively.
+
+## KubeStellar Workflows
+
+KubeStellar installation and upgrades are owned by the `kubestellar-applications`
+ArgoCD parent Application. Each template takes `wec-name` (default `ghost`).
+
+- **`register-wec`:** registers the WEC with the its1 OCM hub and labels the
+  ManagedCluster `name=<wec>`. SA `kubestellar-bootstrap` (cluster-admin;
+  klusterlet install writes CRDs).
+- **`kubestellar-smoke-test`:** verifies BindingPolicy downsync and singleton
+  status upsync via wds1 (`kubeconfig-incluster` key), then cleans up. SA
+  `kubestellar-bootstrap`. Acceptance gate after any core upgrade.
+- **`kubestellar-platform-verify`:** read-only gate
+  `verify-datasource → verify-query-surfaces → verify-controller-wiring →
+  kubestellar-smoke-test`, run with `just run-kubestellar-verify`. Read-only
+  checks use `kubestellar-observability`; the smoke task is the only one that
+  creates resources. `templateRef` does not inherit workflow-level identity, so
+  the smoke template declares `kubestellar-bootstrap` at template level.
 
 ## Supporting Templates
 
@@ -145,10 +170,6 @@ Buildbarn.
 only and uses the same USB4-gated BuildBarn remote-execution contract as every
 other BST lane.
 
-- **`daily-dakota-build`** is the dedicated daily compile schedule (00:30 UTC,
-  staged `suspend: true`). It routes through `bst-commit-poller` (`entrypoint: poll-dakota`,
-  `force: "true"`), enforcing the two-workflow BST admission limit while capturing the
-  current Git SHA and triggering `dakota-build-pipeline` to export to local Zot (`:30500`).
 - **`nightly-dakota` does not warm anything** — it's wired to `dakota-qa-pipeline`
   (test runner against pre-built images), not `dakota-build-pipeline` (the actual
   compile step). The real Dakota cache-warming trigger is `dakota-commit-poller`. It must not be
@@ -178,11 +199,13 @@ the **upstream registry directly** — never through the zot cache. Zot on-deman
 sync copies manifest + all blobs on a tag read, so polling through zot pulled
 every new multi-GB image even when QA was skipped.
 
-## Nightly Schedule
+## Nightly and Maintenance Schedules
 
 | CronWorkflow | Time (UTC) | Pipeline | Parameters |
 | --- | --- | --- | --- |
 | `nightly-dakota` | 03:00 | `dakota-qa-pipeline` | `image=ghcr.io/projectbluefin/dakota`, `image-tag=testing`, `suites=smoke,developer,system`, `variant=dakota` |
+| `orphan-vm-cleanup` | every 30 min | inline | Delete KubeVirt test VMs whose parent workflow is gone or terminal |
+| `orphan-pod-gc` | every 30 min | inline | Delete ContainerStatusUnknown and stale Failed pods Argo podGC missed |
 
 ## Priority Classes
 

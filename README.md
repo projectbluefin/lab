@@ -60,11 +60,10 @@ See [docs/ops/bootstrap.md](/docs/ops/bootstrap.md) for full setup.
 ```bash
 just setup-argocd                 # once
 just argocd-sync
-just run-dakota-build             # dakota BST build via BuildBarn
+just run-bst-build                # dakota BST build via BuildBarn
 just run-dakota-qa                # Dakota QA
 just run-bluefin-server-build     # bluefin-server BST build
 just run-zot-promotion ...        # promote a Zot candidate
-just run-recc-baseline            # recc baseline
 just list-workflows
 ```
 
@@ -87,8 +86,7 @@ dashboard framework.
 | Doc | Purpose |
 |---|---|
 | [AGENTS.md](AGENTS.md) | Agent entry point |
-| [docs/reference/WORKFLOWS.md](/docs/reference/WORKFLOWS.md) | WorkflowTemplate submit interface |
-| [docs/reference/workflow-reference.md](/docs/reference/workflow-reference.md) | Full WorkflowTemplate reference |
+| [docs/reference/workflow-reference.md](/docs/reference/workflow-reference.md) | WorkflowTemplate submit interface and reference |
 | [docs/ops/bootstrap.md](/docs/ops/bootstrap.md) | Replicate this lab from scratch |
 | [docs/ops/RUNBOOK.md](/docs/ops/RUNBOOK.md) | Architecture + failure modes |
 | [docs/reference/agent-cheatsheet.md](/docs/reference/agent-cheatsheet.md) | Command reference |

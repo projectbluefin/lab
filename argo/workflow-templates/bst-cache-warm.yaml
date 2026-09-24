@@ -33,8 +33,6 @@ spec:
         value: "main"
       - name: registry
         value: "192.168.1.102:30500"
-      - name: build-mode
-        value: "re"
 
   entrypoint: warmup
   metrics:
@@ -64,11 +62,9 @@ spec:
       dag:
         tasks:
           - name: admission-gate
-            template: detect-build-mode
-            arguments:
-              parameters:
-                - name: build-mode
-                  value: "{{workflow.parameters.build-mode}}"
+            templateRef:
+              name: bst-admission-gate
+              template: detect-build-mode
           # The production build templates each hold the global bst-build
           # semaphore. Chain the warmup lanes so Dakota and Bluefin
           # Server never hold that semaphore at the same time within a single
@@ -92,8 +88,6 @@ spec:
                   value: "{{workflow.parameters.dakota-repo}}"
                 - name: registry
                   value: "{{workflow.parameters.registry}}"
-                - name: build-mode
-                  value: "{{workflow.parameters.build-mode}}"
           - name: warm-bluefin-server
             depends: warm-dakota.Succeeded
             templateRef:
@@ -107,66 +101,3 @@ spec:
                   value: "{{workflow.parameters.bluefin-server-repo}}"
                 - name: registry
                   value: "{{workflow.parameters.registry}}"
-                - name: build-mode
-                  value: "{{workflow.parameters.build-mode}}"
-
-    - name: detect-build-mode
-      inputs:
-        parameters:
-          - name: build-mode
-      outputs:
-        parameters:
-          - name: mode
-            valueFrom:
-              path: /tmp/mode
-      script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
-        command: [bash]
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 200m
-            memory: 128Mi
-        source: |
-          set -euo pipefail
-          REQUESTED="{{inputs.parameters.build-mode}}"
-          if [[ "${REQUESTED}" != "re" ]]; then
-            echo "Cache warmup rejected: build-mode '${REQUESTED}' is forbidden; only 're' is permitted" >&2
-            exit 1
-          fi
-
-          MAX_AGE_SECONDS=60
-          NOW="$(date -u +%s)"
-          for NODE in ghost exo-0; do
-            LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.labels.lab\.projectbluefin\.io/usb4-link}')"
-            if [[ -z "${LINK}" ]]; then
-              LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}')"
-            fi
-            OBSERVED_AT="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link-observed-at}')"
-            READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
-
-            if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
-              echo "Cache warmup rejected ${NODE}: link=${LINK:-missing} (label/annotation lab.projectbluefin.io/usb4-link) observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
-              exit 1
-            fi
-            if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
-              echo "Cache warmup rejected ${NODE}: USB4 observation stale ($((NOW - OBSERVED_AT))s)" >&2
-              exit 1
-            fi
-          done
-
-          # Match the BuildBarn worker containers by name, not by container
-          # count: the DaemonSet also runs preparation sidecars whose readiness
-          # is a separate health boundary from outer remote execution.
-          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|worker="}{range .status.containerStatuses[?(@.name=="worker")]}{.ready}{end}{"|runner="}{range .status.containerStatuses[?(@.name=="runner")]}{.ready}{end}{"\n"}{end}')"
-          for NODE in ghost exo-0; do
-            if ! grep -Eq "^${NODE}\|Running\|worker=true\|runner=true$" <<<"${WORKERS}"; then
-              echo "Cache warmup rejected: no Ready BuildBarn worker on ${NODE}" >&2
-              exit 1
-            fi
-          done
-
-          echo "BuildBarn remote-execution grid admitted for cache warmup"
-          printf '%s' re > /tmp/mode

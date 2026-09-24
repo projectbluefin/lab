@@ -87,7 +87,6 @@ run-bst-build ref="testing" repo="https://github.com/projectbluefin/dakota.git" 
     argo submit --from workflowtemplate/dakota-build-pipeline \
       -p ref={{ ref }} \
       -p repo={{ repo }} \
-      -p build-mode=re \
       -p variants={{ variants }} \
       {{ if commit_sha != "" { "-p commit-sha=" + commit_sha } else { "" } }} \
       -n {{ argo_ns }} --watch
@@ -96,14 +95,6 @@ force-dakota-poll:
     argo submit --from cronworkflow/dakota-commit-poller \
       -p force=true \
       -n {{ argo_ns }} --watch
-
-# Compatibility alias for older docs/callers.
-run-dakota-validate ref="testing" repo="https://github.com/projectbluefin/dakota.git" variants="all":
-    just run-bst-build {{ ref }} {{ repo }} {{ variants }}
-
-# Compatibility alias for older docs/callers.
-run-dakota-build ref="testing" repo="https://github.com/projectbluefin/dakota.git" variants="all":
-    just run-bst-build {{ ref }} {{ repo }} {{ variants }}
 
 # Full Dakota QA pipeline: container-only suite fan-out against the published Dakota image.
 run-dakota-qa branch="main" variant="dakota":
@@ -139,40 +130,7 @@ run-bluefin-server-build ref="main" repo="https://github.com/projectbluefin/serv
       -p repo={{ repo }} \
       -n {{ argo_ns }} --watch
 
-# Run the isolated operator-only RECC baseline.
-# Usage: just run-recc-baseline mode=cache-only cache-policy=both recc-provider=components/buildbox.bst
-run-recc-baseline *args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    MODE="buildstream-only"
-    RUN_ID=""
-    CACHE_POLICY="cold"
-    RECC_PROVIDER="freedesktop-sdk.bst:components/buildbox.bst"
-    for arg in {{ args }}; do
-      case "${arg}" in
-        mode=*) MODE="${arg#mode=}" ;;
-        run-id=*) RUN_ID="${arg#run-id=}" ;;
-        cache-policy=*) CACHE_POLICY="${arg#cache-policy=}" ;;
-        recc-provider=*) RECC_PROVIDER="${arg#recc-provider=}" ;;
-        *)
-          echo "Unsupported run-recc-baseline argument: ${arg}" >&2
-          exit 2
-          ;;
-      esac
-    done
-    exec argo submit --from workflowtemplate/recc-baseline-pipeline \
-      -p mode="${MODE}" \
-      -p run-id="${RUN_ID}" \
-      -p cache-policy="${CACHE_POLICY}" \
-      -p recc-provider="${RECC_PROVIDER}" \
-      -n {{ argo_ns }} --watch
-
 # ── Validation ───────────────────────────────────────────────────────────────
-
-# Validate the reusable BuildStream OCI rechunk transform.
-test-rechunk:
-    bash -n scripts/rechunk_bst_image.sh
-    python -m pytest -q tests/unit/test_rechunk_bst_image.py
 
 # Apply bootstrap WorkflowTemplates to the cluster (run once during initial setup)
 apply-bootstrap:
@@ -191,21 +149,12 @@ lint:
     @argo lint --offline argo/bootstrap/
     @echo "✔ bootstrap: no linting errors found!"
     @echo "Checking semaphore topology..."
-    @python3 scripts/check_semaphore_topology.py argo/
+    @python3 -m pytest -q tests/unit/test_semaphore_topology.py
     @echo "Checking dakota build variants stay narrowable..."
     @python3 scripts/check_dakota_variants.py
     @echo "✓ All manifests valid"
 
-# Run the Python checks over the trees declared in .python-scope — the single
-# source of truth also consumed by .github/workflows/lint.yaml (syntax, blocking)
-# and .github/workflows/ci.yml (ruff, advisory). Keeps local == CI.
+# Python syntax + advisory ruff over scripts and tests (matches CI).
 check-python:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    mapfile -t TREES < <(grep -vE '^[[:space:]]*(#|$)' .python-scope)
-    echo "Python check scope (.python-scope): ${TREES[*]}"
-    echo "Validating Python syntax..."
-    find "${TREES[@]}" -name '*.py' -print0 | xargs -0 python3 -m py_compile
-    echo "✔ syntax OK"
-    echo "Linting with ruff (advisory)..."
-    python3 -m ruff check "${TREES[@]}" || echo "WARNING: ruff reported findings (advisory, not a gate)"
+    find scripts tests -name '*.py' -print0 | xargs -0 python3 -m py_compile
+    python3 -m ruff check scripts tests || echo "WARNING: ruff reported findings (advisory, not a gate)"

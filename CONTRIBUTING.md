@@ -15,7 +15,6 @@
 - Validate locally with:
 ```bash
 just lint
-python3 scripts/validate-docs.py
 actionlint .github/workflows/*.yml .github/workflows/*.yaml
 ```
 - Commit to `main`; ArgoCD reconciles from `main`

@@ -3,10 +3,9 @@
 Quick pointers for agents and contributors.
 
 - **Agent entry point** → [`AGENTS.md`](../AGENTS.md)
-- **Skill index** → [`docs/skills/README.md`](skills/README.md)
+- **Skill index** → [`AGENTS.md`](../AGENTS.md#when-to-use--when-not-to-use)
 - **Operational runbook** → [`docs/ops/RUNBOOK.md`](ops/RUNBOOK.md)
 - **Command cheat sheet** → [`docs/reference/agent-cheatsheet.md`](reference/agent-cheatsheet.md)
-- **Workflow contracts** → [`docs/reference/WORKFLOWS.md`](reference/WORKFLOWS.md)
-- **Full workflow reference** → [`docs/reference/workflow-reference.md`](reference/workflow-reference.md)
+- **Workflow reference** → [`docs/reference/workflow-reference.md`](reference/workflow-reference.md)
 
 Human contributor workflow is described in [`../CONTRIBUTING.md`](../CONTRIBUTING.md).

@@ -163,10 +163,8 @@ spec:
           VM="{{inputs.parameters.vm-name}}"
           NS="argo"
 
-          KUBECTL=/tmp/kubectl
-          VIRTCTL=/tmp/virtctl
-          curl -fsSL -o "${KUBECTL}" https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && chmod +x "${KUBECTL}"
-          kubectl() { "${KUBECTL}" "$@"; }
+          # virtctl is not in lab-runner; boot-installed reuses this copy.
+          VIRTCTL=/mnt/target/virtctl
           curl -fsSL -o "${VIRTCTL}" https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64 && chmod +x "${VIRTCTL}"
 
           INSTALLER_PVC="{{workflow.name}}-installer-disk"
@@ -315,11 +313,7 @@ spec:
           VM="{{inputs.parameters.vm-name}}"
           NS="argo"
 
-          KUBECTL=/tmp/kubectl
-          VIRTCTL=/tmp/virtctl
-          curl -fsSL -o "${KUBECTL}" https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && chmod +x "${KUBECTL}"
-          kubectl() { "${KUBECTL}" "$@"; }
-          curl -fsSL -o "${VIRTCTL}" https://github.com/kubevirt/kubevirt/releases/download/v1.8.2/virtctl-v1.8.2-linux-amd64 && chmod +x "${VIRTCTL}"
+          VIRTCTL=/mnt/target/virtctl
 
           TARGET_PVC="{{workflow.name}}-target-rootdisk"
 
@@ -464,9 +458,6 @@ spec:
         source: |
           set -euo pipefail
           VM="{{inputs.parameters.vm-name}}"
-          KUBECTL=/tmp/kubectl
-          curl -fsSL -o "${KUBECTL}" https://dl.k8s.io/release/v1.32.0/bin/linux/amd64/kubectl && chmod +x "${KUBECTL}"
-          kubectl() { "${KUBECTL}" "$@"; }
           kubectl delete vm -n argo "${VM}" --wait=false >/dev/null 2>&1 || true
           for _ in $(seq 1 60); do
             if ! kubectl get vmi -n argo "${VM}" >/dev/null 2>&1; then

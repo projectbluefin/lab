@@ -231,7 +231,7 @@ Commit and push. ArgoCD sets the CronWorkflow's suspend flag and stops schedulin
 
 **Suspend vs delete:** temporarily broken → suspend. Permanently abandoned → delete the file; ArgoCD prune removes the CronWorkflow.
 
-**Currently suspended:** `dakota-commit-poller` and `daily-dakota-build`.
+**Currently suspended:** `dakota-commit-poller`.
 
 ### 9. Taking GitOps ownership of unmanaged Deployments/Services
 

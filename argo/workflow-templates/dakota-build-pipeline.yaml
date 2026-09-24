@@ -38,10 +38,6 @@ spec:
         value: "testing"
       - name: registry
         value: "192.168.1.102:30500"
-      - name: build-mode
-        value: "re"
-      - name: lock-key
-        value: "bst-build"
       # "all" keeps the full matrix. "default" builds only oci/bluefin.bst,
       # which is what a single-machine rebase needs: the four-variant fan-out
       # cannot schedule on a two-node grid (pod anti-affinity leaves retries
@@ -88,10 +84,6 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          - name: build-mode
-            value: "re"
-          - name: lock-key
-            value: "{{workflow.parameters.lock-key}}"
           # Callers that reach this template through templateRef (bst-commit-poller,
           # bst-cache-warm) declare no `variants` workflow parameter, so it has
           # to arrive as an input with a default rather than be read from
@@ -105,11 +97,9 @@ spec:
               key: bst-build
       steps:
         - - name: detect-build-mode
-            template: detect-build-mode
-            arguments:
-              parameters:
-                - name: build-mode
-                  value: "{{inputs.parameters.build-mode}}"
+            templateRef:
+              name: bst-admission-gate
+              template: detect-build-mode
         - - name: core
             template: build-core
             arguments:
@@ -124,10 +114,6 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: build-mode
-                  value: "{{steps.detect-build-mode.outputs.parameters.mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
                 - name: variants
                   value: "{{inputs.parameters.variants}}"
 
@@ -149,10 +135,6 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          - name: build-mode
-            value: "re"
-          - name: lock-key
-            value: ""
           # Callers that reach this template through templateRef (bst-commit-poller,
           # bst-cache-warm) declare no `variants` workflow parameter, so it has
           # to arrive as an input with a default rather than be read from
@@ -174,10 +156,6 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: build-mode
-                  value: "{{inputs.parameters.build-mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
                 - name: variants
                   value: "{{inputs.parameters.variants}}"
 
@@ -194,22 +172,16 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          - name: build-mode
-            value: "re"
-          - name: lock-key
-            value: "{{workflow.parameters.lock-key}}"
           - name: variants
             value: "all"
       dag:
         tasks:
           - name: detect-build-mode
-            template: detect-build-mode
-            arguments:
-              parameters:
-                - name: build-mode
-                  value: "{{inputs.parameters.build-mode}}"
+            templateRef:
+              name: bst-admission-gate
+              template: detect-build-mode
           - name: build-bluefin
-            template: run-bst-step
+            template: bst-build-re
             depends: detect-build-mode
             arguments:
               parameters:
@@ -227,12 +199,8 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
           - name: build-bluefin-nvidia
-            template: run-bst-step-nonblocking
+            template: bst-build-nonblocking
             depends: detect-build-mode
             when: "{{inputs.parameters.variants}} == all"
             arguments:
@@ -251,16 +219,12 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
           # Gaming variants mirror the dakota CI build.yml matrix: same
           # elements, `-o gaming true` (derived from the tag in bst-build-re),
           # published with -gaming suffixes. Non-blocking like nvidia: the lab
           # has no GPU test hardware for these lanes.
           - name: build-bluefin-gaming
-            template: run-bst-step-nonblocking
+            template: bst-build-nonblocking
             depends: detect-build-mode
             when: "{{inputs.parameters.variants}} == all"
             arguments:
@@ -279,12 +243,8 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
           - name: build-bluefin-nvidia-gaming
-            template: run-bst-step-nonblocking
+            template: bst-build-nonblocking
             depends: detect-build-mode
             when: "{{inputs.parameters.variants}} == all"
             arguments:
@@ -303,74 +263,8 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
-    # Dakota builds are distributed-only. Non-RE modes are rejected to prevent
-    # local/serial bypasses that write large build state to node root disks.
-    - name: detect-build-mode
-      inputs:
-        parameters:
-          - name: build-mode
-      outputs:
-        parameters:
-          - name: mode
-            valueFrom:
-              path: /tmp/mode
-      script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
-        command: [bash]
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 200m
-            memory: 128Mi
-        source: |
-          set -euo pipefail
-          REQUESTED="{{inputs.parameters.build-mode}}"
-          if [[ "${REQUESTED}" != "re" ]]; then
-            echo "Dakota build-mode '${REQUESTED}' is forbidden; only distributed mode ('re') is permitted" >&2
-            exit 1
-          fi
-
-          MAX_AGE_SECONDS=60
-          NOW="$(date -u +%s)"
-          for NODE in ghost exo-0; do
-            LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.labels.lab\.projectbluefin\.io/usb4-link}')"
-            if [[ -z "${LINK}" ]]; then
-              LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}')"
-            fi
-            OBSERVED_AT="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link-observed-at}')"
-            READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
-
-            if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
-              echo "USB4 BuildBarn gate rejected ${NODE}: link=${LINK:-missing} (label/annotation lab.projectbluefin.io/usb4-link) observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
-              exit 1
-            fi
-            if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
-              echo "USB4 BuildBarn gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
-              exit 1
-            fi
-          done
-
-          # Match the BuildBarn worker containers by name, not by container
-          # count: the DaemonSet also runs preparation sidecars whose readiness
-          # is a separate health boundary from outer remote execution.
-          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|worker="}{range .status.containerStatuses[?(@.name=="worker")]}{.ready}{end}{"|runner="}{range .status.containerStatuses[?(@.name=="runner")]}{.ready}{end}{"\n"}{end}')"
-          for NODE in ghost exo-0; do
-            if ! grep -Eq "^${NODE}\|Running\|worker=true\|runner=true$" <<<"${WORKERS}"; then
-              echo "USB4 BuildBarn gate rejected: no Ready worker on ${NODE}" >&2
-              exit 1
-            fi
-          done
-
-          echo "USB4-backed BuildBarn remote execution admitted"
-          printf '%s' re > /tmp/mode
-
-    - name: run-bst-step
+    # Steps wrapper: continueOn is not allowed on DAG tasks that use depends.
+    - name: bst-build-nonblocking
       inputs:
         parameters:
           - name: element
@@ -380,50 +274,9 @@ spec:
           - name: image-tag
           - name: repo
           - name: registry
-          - name: mode
-          - name: lock-key
-      dag:
-        tasks:
-          - name: bst-re
+      steps:
+        - - name: build
             template: bst-build-re
-            when: "'{{inputs.parameters.mode}}' == 're'"
-            arguments:
-              parameters:
-                - name: element
-                  value: "{{inputs.parameters.element}}"
-                - name: tag
-                  value: "{{inputs.parameters.tag}}"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: commit-sha
-                  value: "{{inputs.parameters.commit-sha}}"
-                - name: image-tag
-                  value: "{{inputs.parameters.image-tag}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{inputs.parameters.mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
-
-    - name: run-bst-step-nonblocking
-      inputs:
-        parameters:
-          - name: element
-          - name: tag
-          - name: ref
-          - name: commit-sha
-          - name: image-tag
-          - name: repo
-          - name: registry
-          - name: mode
-          - name: lock-key
-      dag:
-        tasks:
-          - name: run-bst-step
-            template: run-bst-step
             continueOn:
               failed: true
             arguments:
@@ -442,10 +295,6 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{inputs.parameters.mode}}"
-                - name: lock-key
-                  value: "{{inputs.parameters.lock-key}}"
 
     - name: bst-build-re
       affinity:
@@ -481,8 +330,6 @@ spec:
           - name: image-tag
           - name: repo
           - name: registry
-          - name: mode
-          - name: lock-key
       volumes:
         - name: fuse
           hostPath:
@@ -507,10 +354,6 @@ spec:
                 path: buildstream.conf
               - key: remote-execution.conf
                 path: remote-execution.conf
-              - key: recc-environment.conf
-                path: recc-environment.conf
-              - key: apply_recc_overlay.py
-                path: apply_recc_overlay.py
       script:
         image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
         command: [bash]
@@ -529,11 +372,6 @@ spec:
           # error, so use `copy-or-link` here.
           - name: BUILDBOX_STAGER
             value: copy-or-link
-          - name: RECC_ENDPOINT
-            valueFrom:
-              configMapKeyRef:
-                name: buildstream-remote-cache
-                key: recc-endpoint
           - name: XDG_CACHE_HOME
             value: "/root/.cache"
         resources:

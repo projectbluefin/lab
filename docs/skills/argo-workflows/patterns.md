@@ -164,7 +164,7 @@ activeDeadlineSeconds: 3600   # 1h
 ### Semaphore topology: hold the key at one level, cap every fan-out
 
 Two rules govern every ConfigMap-backed semaphore in `manifests/workflow-semaphores.yaml`.
-`scripts/check_semaphore_topology.py` enforces both in `just lint`.
+`tests/unit/test_semaphore_topology.py` enforces them in `just lint`.
 
 **Rule 1 — declare the key on the leaf that consumes the resource, never on
 `spec.synchronization`.** A workflow-level semaphore is held for the *entire*

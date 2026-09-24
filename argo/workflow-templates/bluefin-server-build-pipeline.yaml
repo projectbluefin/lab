@@ -29,8 +29,6 @@ spec:
         value: "main"
       - name: registry
         value: "192.168.1.102:30500"
-      - name: build-mode
-        value: "re"
 
   entrypoint: build
   metrics:
@@ -66,15 +64,11 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          - name: build-mode
-            value: "re"
       steps:
         - - name: detect-build-mode
-            template: detect-build-mode
-            arguments:
-              parameters:
-                - name: build-mode
-                  value: "{{inputs.parameters.build-mode}}"
+            templateRef:
+              name: bst-admission-gate
+              template: detect-build-mode
         - - name: core
             template: build-core
             arguments:
@@ -85,8 +79,6 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: build-mode
-                  value: "{{steps.detect-build-mode.outputs.parameters.mode}}"
 
     - name: build-warmup
       synchronization:
@@ -102,8 +94,6 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          - name: build-mode
-            value: "re"
       steps:
         - - name: core
             template: build-core
@@ -115,8 +105,6 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: build-mode
-                  value: "{{inputs.parameters.build-mode}}"
 
     - name: build-core
       synchronization:
@@ -132,18 +120,14 @@ spec:
             value: "{{workflow.parameters.repo}}"
           - name: registry
             value: "{{workflow.parameters.registry}}"
-          - name: build-mode
-            value: "re"
       dag:
         tasks:
           - name: detect-build-mode
-            template: detect-build-mode
-            arguments:
-              parameters:
-                - name: build-mode
-                  value: "{{inputs.parameters.build-mode}}"
+            templateRef:
+              name: bst-admission-gate
+              template: detect-build-mode
           - name: build-ddi
-            template: run-bst-step
+            template: bst-build-re
             depends: detect-build-mode
             arguments:
               parameters:
@@ -157,10 +141,8 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
           - name: build-installer
-            template: run-bst-step
+            template: bst-build-re
             depends: detect-build-mode
             arguments:
               parameters:
@@ -174,10 +156,8 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
           - name: build-sysext
-            template: run-bst-step
+            template: bst-build-re
             depends: detect-build-mode
             arguments:
               parameters:
@@ -191,98 +171,6 @@ spec:
                   value: "{{inputs.parameters.repo}}"
                 - name: registry
                   value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{tasks.detect-build-mode.outputs.parameters.mode}}"
-
-    - name: detect-build-mode
-      inputs:
-        parameters:
-          - name: build-mode
-      outputs:
-        parameters:
-          - name: mode
-            valueFrom:
-              path: /tmp/mode
-      script:
-        image: cgr.dev/chainguard/kubectl:latest-dev
-        command: [bash]
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 200m
-            memory: 128Mi
-        source: |
-          set -euo pipefail
-          REQUESTED="{{inputs.parameters.build-mode}}"
-          if [[ "${REQUESTED}" != "re" ]]; then
-            echo "Bluefin Server build-mode '${REQUESTED}' is forbidden; only distributed mode ('re') is permitted" >&2
-            exit 1
-          fi
-
-          MAX_AGE_SECONDS=60
-          NOW="$(date -u +%s)"
-          for NODE in ghost exo-0; do
-            LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.labels.lab\.projectbluefin\.io/usb4-link}')"
-            if [[ -z "${LINK}" ]]; then
-              LINK="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link}')"
-            fi
-            OBSERVED_AT="$(kubectl get node "${NODE}" -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/usb4-link-observed-at}')"
-            READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
-
-            if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
-              echo "USB4 BuildBarn gate rejected ${NODE}: link=${LINK:-missing} (label/annotation lab.projectbluefin.io/usb4-link) observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
-              exit 1
-            fi
-            if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
-              echo "USB4 BuildBarn gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
-              exit 1
-            fi
-          done
-
-          # Match the BuildBarn worker containers by name, not by container
-          # count: the DaemonSet also runs preparation sidecars whose readiness
-          # is a separate health boundary from outer remote execution.
-          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|worker="}{range .status.containerStatuses[?(@.name=="worker")]}{.ready}{end}{"|runner="}{range .status.containerStatuses[?(@.name=="runner")]}{.ready}{end}{"\n"}{end}')"
-          for NODE in ghost exo-0; do
-            if ! grep -Eq "^${NODE}\|Running\|worker=true\|runner=true$" <<<"${WORKERS}"; then
-              echo "USB4 BuildBarn gate rejected: no Ready worker on ${NODE}" >&2
-              exit 1
-            fi
-          done
-
-          echo "USB4-backed BuildBarn remote execution admitted"
-          printf '%s' re > /tmp/mode
-
-    - name: run-bst-step
-      inputs:
-        parameters:
-          - name: element
-          - name: tag
-          - name: ref
-          - name: repo
-          - name: registry
-          - name: mode
-      dag:
-        tasks:
-          - name: bst-re
-            template: bst-build-re
-            when: "{{=inputs.parameters.mode == 're'}}"
-            arguments:
-              parameters:
-                - name: element
-                  value: "{{inputs.parameters.element}}"
-                - name: tag
-                  value: "{{inputs.parameters.tag}}"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
-                - name: mode
-                  value: "{{inputs.parameters.mode}}"
     - name: bst-build-re
       priorityClassName: bst-build
       activeDeadlineSeconds: 10800   # 3 hours per pod to avoid queue starvation and long tail failures
@@ -296,7 +184,6 @@ spec:
           - name: ref
           - name: repo
           - name: registry
-          - name: mode
       volumes:
         - name: fuse
           hostPath:
@@ -318,10 +205,6 @@ spec:
                 path: buildstream.conf
               - key: remote-execution.conf
                 path: remote-execution.conf
-              - key: recc-environment.conf
-                path: recc-environment.conf
-              - key: apply_recc_overlay.py
-                path: apply_recc_overlay.py
       script:
         image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
         command: [bash]
@@ -350,11 +233,6 @@ spec:
           # environment when the FUSE stager crashes during source staging.
           - name: BUILDBOX_STAGER
             value: copy-or-link
-          - name: RECC_ENDPOINT
-            valueFrom:
-              configMapKeyRef:
-                name: buildstream-remote-cache
-                key: recc-endpoint
         volumeMounts:
           - name: fuse
             mountPath: /dev/fuse

@@ -17,10 +17,6 @@ metadata:
     pod-security.kubernetes.io/warn: baseline
     pod-security.kubernetes.io/audit: baseline
 ---
-# Persistent GGUF cache. Replaces the previous emptyDir, which forced a ~25 GB
-# re-download on every pod restart. local-path is RWO and WaitForFirstConsumer,
-# so this binds on whichever node the pod lands on — deterministic here because
-# the Deployment pins to exo-0.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -46,29 +42,12 @@ metadata:
     app.kubernetes.io/name: llm-d-modelserver
     app.kubernetes.io/part-of: testing-lab
 spec:
-  # To pause inference, set `replicas: 0` here (the PVC is Bound, so this is safe).
-  # The deadlock this comment used to warn about is real but applies ONLY at
-  # first creation. local-path is WaitForFirstConsumer, so `llm-d-model-cache`
-  # binds only once a pod consumes it: staging a NEW deployment at replicas: 0
-  # leaves the PVC Pending, ArgoCD blocks its sync waiting for it to go healthy,
-  # and the Deployment is never created. Once the PVC is Bound it STAYS bound --
-  # WaitForFirstConsumer gates the first binding, not the lifetime -- so pausing
-  # an already-running server here is safe. Verified before committing: the PVC
-  # is Bound to pvc-8cd401e5 (100Gi, RWO, local-path), age 6d19h.
-  #
-  # This is the durable pause. Do NOT use `kubectl scale`: `testing-lab-infra`
-  # runs with selfHeal, and a runtime scale-to-0 was measured being reverted in
-  # ~1 second, a replacement pod spawning immediately. That matches
-  # docs/skills/cluster-tooling/SKILL.md and contradicts this comment's previous
-  # advice, which is why the advice is corrected rather than left standing.
+  # Pause with replicas: 0 here, not kubectl scale (selfHeal reverts it); safe only once the PVC is Bound.
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: llm-d-modelserver
-  # Recreate, not RollingUpdate: the node exposes exactly one amd.com/gpu and
-  # the cache PVC is RWO. A rolling update would create the replacement before
-  # deleting the old pod, the replacement could never obtain the GPU, and
-  # maxUnavailable=0 would keep the old pod forever — a permanent deadlock.
+  # Recreate: one amd.com/gpu and an RWO PVC deadlock a rolling update.
   strategy:
     type: Recreate
   template:
@@ -87,67 +66,29 @@ spec:
         fsGroup: 0
       containers:
         - name: modelserver
-          # llama.cpp on Vulkan (Mesa RADV), not ROCm/HIP. On gfx1151 the Vulkan
-          # backend is the reliable, well-supported inference path and ROCm is
-          # not required — confirmed independently by Foxlight-Foundation/Skulk
-          # and defilantech/LLMKube. It also keeps us on an allowlisted registry:
-          # ggml-org publishes no ROCm tags at all.
-          #
-          # Pinned to an immutable per-build tag rather than a digest. The lab
-          # pulls through the zot mirror, whose on-demand sync only triggers on
-          # *tag* references — a bare @sha256 digest for an uncached image 404s.
-          # server-vulkan-b10290 resolves to
-          # sha256:654482cfc988042fe25c2255199d512bcfd057fcde9b87b8dc07b9a2d3336b6c
-          # (llama.cpp b10290, upstream commit c8e03ce8). Bump the build number
-          # to upgrade; never use the floating :server-vulkan tag.
+          # Immutable per-build tag, not a digest (zot sync needs a tag); never the floating :server-vulkan.
           image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b10290
           imagePullPolicy: IfNotPresent
-          # Not privileged. /dev/dri/renderD128 is mode 0666 on these nodes, so
-          # the Vulkan backend needs the device node and nothing else. The
-          # previous /dev/kfd, /sys and /lib/modules mounts were ROCm-era and are
-          # unnecessary on the Vulkan path.
           securityContext:
             privileged: false
             allowPrivilegeEscalation: false
           args:
-            # Model: Qwen3-30B-A3B-Instruct-2507 at Q6_K (~25.1 GB).
-            #
-            # MoE, 3B active of 30B total. Strix Halo is memory-bandwidth bound
-            # (~85 GB/s host-to-device), so *active* parameters set decode speed
-            # while total parameters mostly cost capacity — which is why a 30B
-            # MoE runs ~6x faster than a dense 32B of the same size.
-            #
-            # Q6_K rather than Q8_0: published quantization guidance rates Q6_K
-            # "very low" loss and recommends it for models up to 32B, while Q8_0
-            # is "minimal". The extra 7.4 GB buys almost nothing and spends the
-            # KV-cache headroom a long-context assistant actually needs.
             - --hf-repo
             - unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q6_K
             - --alias
             - local-llm
             - --port
             - "8000"
-            # Offload every layer to the iGPU.
             - -ngl
             - "999"
-            # Flash attention is required on Strix Halo: without it the community
-            # toolboxes report crashes and severe slowdowns.
             - -fa
             - "on"
-            # Disable mmap. Same intent as the --no-mmap that the Strix Halo
-            # guides mandate (mmap/SVM interaction causes trouble on this APU),
-            # expressed with the current flag since --no-mmap is deprecated.
             - --load-mode
             - none
-            # KV cache quantized to q8_0 — the Strix Halo toolbox default.
-            # At 64k context this costs ~3 GiB instead of ~6 GiB at f16.
             - --cache-type-k
             - q8_0
             - --cache-type-v
             - q8_0
-            # 64k context. The model supports far more, but this node has 62 GiB
-            # of RAM shared with BuildBarn/KubeVirt/KubeStellar, so start
-            # conservative; raise once steady-state headroom is measured.
             - --ctx-size
             - "65536"
             - --batch-size
@@ -156,14 +97,10 @@ spec:
             - "512"
             - --threads
             - "12"
-            # Single user: one slot, so we stay well clear of the GPU MES
-            # scheduler crashes reported under high concurrency with large
-            # batches on this hardware.
             - --parallel
             - "1"
             - --cache-reuse
             - "256"
-            # Qwen3-Instruct-2507 sampling recommended by the model authors.
             - --temp
             - "0.7"
             - --top-p
@@ -173,8 +110,6 @@ spec:
             - --min-p
             - "0.0"
           env:
-            # Where --hf-repo stores the downloaded GGUF. Points at the PVC so
-            # the model survives restarts.
             - name: LLAMA_CACHE
               value: /models
           ports:
@@ -189,24 +124,13 @@ spec:
           resources:
             requests:
               cpu: "4"
-              # Reserves scheduler space for the model so nothing else fills the
-              # node underneath it. GTT is system RAM on this APU.
               memory: 34Gi
               amd.com/gpu: "1"
             limits:
               cpu: "12"
-              # Generous rather than snug: GPU-backed pages may or may not be
-              # charged to this cgroup depending on kernel behaviour, and a tight
-              # limit risks an OOM kill during model load.
               memory: 44Gi
               amd.com/gpu: "1"
-          # /health returns HTTP 503 {"error":"Loading model"} until the model is
-          # loaded. The first start downloads ~25 GB as a single file, which is
-          # network-bound and measured at ~30-60 min on the lab link, so the
-          # budget here is deliberately generous (120 x 60s = 2h). It costs
-          # nothing after the first success, and an undersized budget kills the
-          # pod mid-download and restarts the transfer. Liveness does not engage
-          # until the startupProbe succeeds.
+          # Generous startup budget: the first start downloads ~25 GB; too short restarts the download.
           startupProbe:
             httpGet:
               path: /health

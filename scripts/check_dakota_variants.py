@@ -161,12 +161,6 @@ def check_just_recipes(justfile=Path("Justfile")):
             failures.append("`just run-bst-build` never passes -p variants")
         if 'variants="all"' not in body.splitlines()[0]:
             failures.append("`just run-bst-build` takes no variants argument")
-    for alias in ("run-dakota-build", "run-dakota-validate"):
-        if alias in text:
-            i = text.index(f"{alias} ref=")
-            body = text[i : text.index("\n\n", i)]
-            if "{{ variants }}" not in body:
-                failures.append(f"`just {alias}` does not forward variants")
     return failures
 
 

@@ -75,12 +75,8 @@ spec:
                   value: "https://github.com/{{workflow.parameters.repo}}.git"
                 - name: registry
                   value: "{{workflow.parameters.registry}}"
-                - name: build-mode
-                  value: "re"
                 - name: image-tag
                   value: "testing"
-                - name: lock-key
-                  value: "bst-build"
           - name: update-sha
             depends: "run-build.Succeeded"
             template: update-sha
@@ -110,8 +106,6 @@ spec:
                   value: "https://github.com/{{workflow.parameters.repo}}.git"
                 - name: registry
                   value: "{{workflow.parameters.registry}}"
-                - name: build-mode
-                  value: "re"
           # The gate is the install-and-reboot result, not the build. The build
           # pipeline publishes <registry>/bluefin-server-installer:latest, which
           # is what the boot test consumes.

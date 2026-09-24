@@ -68,7 +68,7 @@ The workflow authoring guidance is split by topic:
   through `templateRef` (only a spec-level `workflowTemplateRef` inherits it),
   so one workflow can hold every slot and starve every other run. Put
   `parallelism` on the fan-out template and keep it below the semaphore limit.
-  Enforced by `scripts/check_semaphore_topology.py` in `just lint`; see
+  Enforced by `tests/unit/test_semaphore_topology.py` in `just lint`; see
   [patterns: semaphore topology](patterns.md#semaphore-topology-hold-the-key-at-one-level-cap-every-fan-out).
 - A `spec.synchronization` semaphore on a pipeline whose children need the same
   key — the parent holds the slot for the whole run and deadlocks its own
@@ -98,10 +98,6 @@ The workflow authoring guidance is split by topic:
   every contract parameter through the call-site arguments.
 - Any `script:` template without `resources:` limits
 - Templates in `argo/workflow-templates/` applied with `kubectl apply` (not via git)
-- Re-enabling a mandatory nested-RECC overlay or `remoteApisSocketPath` admission
-  probe before the pinned BuildBarn runner consumes that socket. Keep production
-  lanes on outer BuildStream remote execution until runner capability is proven;
-  the shared helper may remain mounted for the operator-only baseline.
 - A VM or build pipeline that uses a node selector to reach local storage. Use
   scheduler-selected `WaitForFirstConsumer` PVC placement on an explicitly
   configured non-root data mount instead.

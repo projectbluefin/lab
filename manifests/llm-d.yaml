@@ -46,9 +46,7 @@ metadata:
     app.kubernetes.io/name: llm-d-modelserver
     app.kubernetes.io/part-of: testing-lab
 spec:
-  # PAUSED. The GPU and its GTT budget are wanted for video transcoding on the
-  # Wolves cut; restore `replicas: 1` here to re-enable inference.
-  #
+  # To pause inference, set `replicas: 0` here (the PVC is Bound, so this is safe).
   # The deadlock this comment used to warn about is real but applies ONLY at
   # first creation. local-path is WaitForFirstConsumer, so `llm-d-model-cache`
   # binds only once a pod consumes it: staging a NEW deployment at replicas: 0
@@ -63,7 +61,7 @@ spec:
   # ~1 second, a replacement pod spawning immediately. That matches
   # docs/skills/cluster-tooling/SKILL.md and contradicts this comment's previous
   # advice, which is why the advice is corrected rather than left standing.
-  replicas: 0
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: llm-d-modelserver

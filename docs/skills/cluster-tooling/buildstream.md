@@ -344,8 +344,7 @@ the pod-local LocalCAS socket.
   global digest or set `RECC_PREFIX`.
 - **Pilot:** Run `just run-recc-baseline mode=cache-only cache-policy=both`.
   Keep the source revision, pinned freedesktop-sdk provider, `bst2` image,
-  and worker set fixed. See `docs/reference/recc-baseline.md` and the measured
-  results in `docs/research/2026-07-31-recc-run-results.md`.
+  and worker set fixed. See `docs/reference/recc-baseline.md`.
 - **Evidence boundary:** A successful outer BuildStream build is not RECC
   evidence. The collector preserves missing RECC action fields as
   `unavailable`; current runs have real BuildStream/BuildBarn timing and CAS

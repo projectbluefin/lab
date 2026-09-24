@@ -1,0 +1,63 @@
+# ARC runner image — hummingbird base + bluefin CI toolchain
+# Extend ghcr.io/actions/actions-runner rather than base OS so ARC lifecycle scripts stay intact.
+# ponytail: no custom OS layer — just add missing tools on top of upstream runner
+
+FROM ghcr.io/actions/actions-runner:latest@sha256:e5496277be5d09bc968b3d64911b74e219ac4a3f2edce956a3ecf9271bea1ef4
+
+USER root
+
+# Install bluefin CI toolchain and the tools used by container QA runners:
+# buildah, podman, skopeo, git-core (the Ubuntu package is `git`), cosign,
+# oras, argo CLI, kubectl, jq.
+# Using apt (actions-runner base is Ubuntu); these are the tools currently installed per-job.
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+      buildah \
+      podman \
+      skopeo \
+      git \
+      curl \
+      jq \
+      python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Keep the target image under test authoritative for the installed Python
+# environment. This wheelhouse only moves the download once into the runner
+# image; the disposable target still performs the real installation, including
+# its load-bearing setuptools<81 pin.
+RUN mkdir -p /opt/qa-wheels && \
+    python3 -m pip download \
+      --disable-pip-version-check \
+      --no-cache-dir \
+      --dest /opt/qa-wheels \
+      "setuptools<81" \
+      qecore \
+      dogtail \
+      behave \
+      python-uinput && \
+    chmod -R a+rX /opt/qa-wheels
+
+# kubectl (for cluster operations and debugging from ARC jobs)
+RUN curl -sSfL \
+      https://dl.k8s.io/release/$(curl -sSfL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl \
+      -o /usr/local/bin/kubectl && \
+    chmod +x /usr/local/bin/kubectl
+
+# cosign (no apt package in Ubuntu LTS)
+RUN curl -sSfL \
+      https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+      -o /usr/local/bin/cosign && \
+    chmod +x /usr/local/bin/cosign
+
+# oras (OCI registry push/pull for GGUF artifacts and PR images)
+RUN curl -sSfL \
+      https://github.com/oras-project/oras/releases/download/v1.2.3/oras_1.2.3_linux_amd64.tar.gz \
+    | tar xz -C /usr/local/bin oras
+
+# argo CLI (fire-and-forget workflow submission from ARC runner jobs)
+RUN curl -sSfL \
+      https://github.com/argoproj/argo-workflows/releases/latest/download/argo-linux-amd64.gz \
+    | gunzip -c > /usr/local/bin/argo && \
+    chmod +x /usr/local/bin/argo
+
+USER runner

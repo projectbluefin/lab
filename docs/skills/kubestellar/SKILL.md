@@ -24,7 +24,6 @@ metadata:
 ## When NOT to Use
 
 - Console UI operations → `console-dashboard/SKILL.md`
-- Adding a k3s node to the shared cluster → `node-lifecycle/SKILL.md`
 - General ArgoCD sync issues → `gitops-argocd/SKILL.md`
 
 ## Model (30 seconds)
@@ -51,7 +50,7 @@ metadata:
   ordered platform and smoke acceptance from their managed WorkflowTemplates.
 4. Verify ArgoCD health, control-plane readiness, and WEC availability.
 
-## Install (GitOps, ADR-0003)
+## Install (GitOps)
 
 The `lab-infra` Application reconciles
 `manifests/kubestellar-applications.yaml`, which owns exactly three child
@@ -157,7 +156,7 @@ template declares `kubestellar-bootstrap` at template level because
 | App sync stuck "waiting for healthy state of kubeflex-controller-manager" | postgres deadlock — see install section; check `kubestellar-postgres` app is Synced/Healthy |
 | Parent app stuck "waiting for healthy state of Application/kubestellar" | KubeFlex mutated `PostCreateHook.spec.templates`; retain the scoped ignore and `RespectIgnoreDifferences=true` in the core Application |
 | `kubeflex-controller-manager` sustains a roughly 1 Hz ControlPlane loop, reports `failed to update final status ... object has been modified`, and looks like external bandwidth | KubeFlex v0.9.1 writes ControlPlane status during infrastructure, post-create-hook, and final readiness phases; the resulting status-update race requeues the controller. KubeFlex also generates an `ingressClassName: nginx` Ingress outside the PostCreateHooks, but does not inspect its load-balancer status; the ControlPlane can be `Ready=True` while the Ingress has an empty status. That endpoint is unused in this internal-only lab. Upstream Kubernetes says [Ingress is frozen and recommends Gateway](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/), and the [Ingress NGINX retirement statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/) says there will be no post-retirement fixes or security patches | Upgrade the core chart to 0.30.0, which carries KubeFlex v0.9.3, and let ArgoCD roll the operator. Keep external reachability off by default; never install ingress-nginx or add a class solely to satisfy KubeFlex's hardcoded artifact. Verify `kubectl -n kubeflex-system logs deploy/kubeflex-controller-manager --tail=50` has no status-conflict loop and compare the `container_network_receive_bytes_total` rate before/after. If conflicts persist on v0.9.3, the remaining fix belongs upstream in KubeFlex rather than in an ingress manifest |
-| KubeFlex creates an `ingressClassName: nginx` Ingress in an internal-only k3s lab | The hosted ControlPlane reconcilers create this endpoint unconditionally when `isOpenShift=false`; current KubeFlex chart values expose no disable switch, and the object is not a PostCreateHook template. ADR-0004 intentionally provides no external endpoint. Upstream Kubernetes says [Ingress is frozen and recommends Gateway](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/), while the [Ingress NGINX retirement statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/) says the retired controller receives no further fixes or security patches | Do not install ingress-nginx or a replacement Gateway controller just to claim the object. Keep the lab's off-by-default network policy and track an upstream KubeFlex option/removal; deleting the object alone only causes the owner controller to recreate it. If external reachability is needed later, follow the [Gateway API getting-started guidance](https://gateway-api.sigs.k8s.io/guides/getting-started/) rather than adding another Ingress |
+| KubeFlex creates an `ingressClassName: nginx` Ingress in an internal-only k3s lab | The hosted ControlPlane reconcilers create this endpoint unconditionally when `isOpenShift=false`; current KubeFlex chart values expose no disable switch, and the object is not a PostCreateHook template. The lab intentionally provides no external endpoint. Upstream Kubernetes says [Ingress is frozen and recommends Gateway](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/), while the [Ingress NGINX retirement statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/) says the retired controller receives no further fixes or security patches | Do not install ingress-nginx or a replacement Gateway controller just to claim the object. Keep the lab's off-by-default network policy and track an upstream KubeFlex option/removal; deleting the object alone only causes the owner controller to recreate it. If external reachability is needed later, follow the [Gateway API getting-started guidance](https://gateway-api.sigs.k8s.io/guides/getting-started/) rather than adding another Ingress |
 | `clusteradm get token` forbidden | workflow ran as `argo` SA; needs `serviceAccountName: kubestellar-bootstrap` |
 | Workflow pod rejected "failed quota: argo-quota" | missing resources requests/limits on the template |
 | Downsynced namespace exists but is empty | objectSelectors don't match the inner objects' labels |

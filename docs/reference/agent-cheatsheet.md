@@ -96,8 +96,7 @@ The lab also has a repo-managed llama.cpp deployment in `manifests/llm-d.yaml`
 serving `Qwen3-30B-A3B-Instruct-2507` at Q6_K over the Vulkan backend. It is
 pinned to `exo-0` (the only node with the Strix Halo iGPU) and requests one
 `amd.com/gpu`. A preemptive priority class lets it take over the node when
-needed. See [ADR 0007](../adr/0007-local-inference-runtime.md) for why Vulkan,
-why Q6_K, and why it is not vLLM.
+needed.
 
 ```bash
 kubectl -n llm-d get deploy llm-d-modelserver
@@ -333,7 +332,6 @@ The llama.cpp container requests one `amd.com/gpu` device so the device plugin e
 **Model choice:** the deployment serves `Qwen3-30B-A3B-Instruct-2507` at Q6_K (~25 GB) through llama.cpp on the **Vulkan** backend, on the OpenAI-compatible endpoint at `http://<ghost-ip>:30800/v1`.
 It is a Mixture-of-Experts model with 3B active parameters: `exo-0` is memory-bandwidth bound (~85 GB/s host-to-device), so active parameters set decode speed and a 30B MoE runs ~6x faster than a dense 32B of the same size.
 The pod uses a dedicated preemptive `PriorityClass` so it can evict lower-priority work when needed.
-See [ADR 0007](../adr/0007-local-inference-runtime.md) for the full rationale.
 
 **Check status:**
 ```bash

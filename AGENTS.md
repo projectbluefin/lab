@@ -13,8 +13,6 @@ k3s cluster.
 3. For deterministic commands, check the [`Justfile`](Justfile) or
    [`docs/reference/agent-cheatsheet.md`](docs/reference/agent-cheatsheet.md).
 4. For operational failure modes, read [`docs/ops/RUNBOOK.md`](docs/ops/RUNBOOK.md).
-5. Before changing anything, check the latest project context in
-   [`docs/reference/ubiquitous-language.md`](docs/reference/ubiquitous-language.md).
 
 ## What this repo is
 
@@ -76,8 +74,6 @@ just lint              # actionlint + argo lint + registry allowlist
 | Cluster add-ons, k3s, registries | [`docs/skills/cluster-tooling/SKILL.md`](docs/skills/cluster-tooling/SKILL.md) |
 | KubeStellar core, WECs, BindingPolicies | [`docs/skills/kubestellar/SKILL.md`](docs/skills/kubestellar/SKILL.md) |
 | KubeStellar Console deploy/auth/cards | [`docs/skills/console-dashboard/SKILL.md`](docs/skills/console-dashboard/SKILL.md) |
-| Add/remove nodes or WECs, BST grid scaling | [`docs/skills/node-lifecycle/SKILL.md`](docs/skills/node-lifecycle/SKILL.md) |
-| End of session write-back loop | [`docs/skills/meta-skill-improvement/SKILL.md`](docs/skills/meta-skill-improvement/SKILL.md) |
 | Workflow parameter contracts | [`docs/reference/WORKFLOWS.md`](docs/reference/WORKFLOWS.md) |
 | Architecture / failure modes | [`docs/ops/RUNBOOK.md`](docs/ops/RUNBOOK.md) |
 | Human contributor workflow | [`CONTRIBUTING.md`](CONTRIBUTING.md) |

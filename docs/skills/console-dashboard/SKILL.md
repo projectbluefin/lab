@@ -69,7 +69,7 @@ Lab-specific values (do not regress these):
   `in_cluster: false` and routes cards to local-agent/demo fallbacks instead of
   the pod ServiceAccount-backed API.
 
-## Exposure and auth policy (locked, ADR-0003)
+## Exposure and auth policy (locked)
 
 Dev-mode = anonymous cluster-admin. It NEVER ships exposed. Current access:
 

@@ -291,8 +291,6 @@ Two cluster-specific traps that cost real time:
   `via <cni0 gateway> dev eth0`, because interface selection happens on the
   host — so the in-pod check "confirms" USB4 while proving nothing.
 
-See `docs/adr/0007-local-inference-runtime.md`.
-
 ## Key references
 
 - Cluster topology: `/AGENTS.md`

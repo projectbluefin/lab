@@ -15,4 +15,3 @@ Keep only these repo-specific inline reminders:
   workflows run.
 - After pushing a fix, verify the live template via `argo-mcp-get_workflow_template` before resubmitting — templates snapshot at submit time.
 - Never enable shell tracing in Argo scripts that call authenticated APIs.
-- At end of any non-trivial session, run the self-improvement loop in `/docs/skills/meta-skill-improvement/SKILL.md` and update the relevant skill file(s) with the durable pattern before handoff.

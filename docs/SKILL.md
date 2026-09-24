@@ -23,7 +23,5 @@ For factory onboarding and cross-repo rules, see [`AGENTS.md`](../AGENTS.md) and
 | Configure ArgoCD sync, GitOps rules, bootstrap vs managed | [`skills/gitops-argocd/SKILL.md`](skills/gitops-argocd/SKILL.md) |
 | KubeStellar install/upgrade, WEC registration, BindingPolicies | [`skills/kubestellar/SKILL.md`](skills/kubestellar/SKILL.md) |
 | Provision, manage lifecycle, or debug KubeVirt VMs | [`skills/kubevirt-vms/SKILL.md`](skills/kubevirt-vms/SKILL.md) |
-| Run self-improvement loop, failure triage, or add new skills | [`skills/meta-skill-improvement/SKILL.md`](skills/meta-skill-improvement/SKILL.md) |
-| Add/remove nodes or WECs, second-PC expansion, BST grid scaling | [`skills/node-lifecycle/SKILL.md`](skills/node-lifecycle/SKILL.md) |
 
 For details and secondary skill topic guides, see [`docs/skills/README.md`](skills/README.md).

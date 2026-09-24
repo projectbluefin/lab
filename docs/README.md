@@ -8,8 +8,5 @@ Quick pointers for agents and contributors.
 - **Command cheat sheet** → [`docs/reference/agent-cheatsheet.md`](reference/agent-cheatsheet.md)
 - **Workflow contracts** → [`docs/reference/WORKFLOWS.md`](reference/WORKFLOWS.md)
 - **Full workflow reference** → [`docs/reference/workflow-reference.md`](reference/workflow-reference.md)
-- **Canonical terms** → [`docs/reference/ubiquitous-language.md`](reference/ubiquitous-language.md)
-- **Architecture decisions** → [`docs/adr/README.md`](adr/README.md)
 
-Design drafts live under [`docs/specs/`](specs/README.md).
 Human contributor workflow is described in [`../CONTRIBUTING.md`](../CONTRIBUTING.md).

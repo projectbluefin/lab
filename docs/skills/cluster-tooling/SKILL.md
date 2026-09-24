@@ -1,15 +1,13 @@
 ---
 name: cluster-tooling
-description: "Cluster management tools for the lab: kubectl, k3s, zot, external-secrets, and K8sGPT. Use when managing cluster state, installing cluster add-ons, configuring the OCI registry, or running cluster analysis through MCP."
+description: "Cluster management tools for the lab: kubectl, k3s, zot, and external-secrets. Use when managing cluster state, installing cluster add-ons, or configuring the OCI registry."
 metadata:
   type: reference
   context7-sources:
     - /helm/helm
     - /k3s-io/k3s
     - /project-zot/zot
-    - /websites/prometheus_io
     - /external-secrets/external-secrets
-    - /k8sgpt-ai/k8sgpt
     - /apache/buildstream
     - /kubernetes/website
 ---
@@ -19,16 +17,16 @@ metadata:
 ## When to Use
 
 - Managing cluster state, infra add-ons, registry/cache services, or k8s ops runbooks.
-- Debugging BuildStream cache behavior for Dakota/Cosmic/BST workflow lanes.
+- Debugging BuildStream cache behavior for Dakota/BST workflow lanes.
 
 ## When NOT to Use
 
 - Argo WorkflowTemplate authoring details → [`argo-workflows/SKILL.md`](../argo-workflows/SKILL.md).
-- KubeVirt VM provisioning/test authoring workflows → [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md) and [`test-authoring/SKILL.md`](../test-authoring/SKILL.md).
+- KubeVirt VM provisioning → [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md).
 
 ## Core Process
 
-1. Resolve tool/library docs in Context7 first (kubectl/k3s/K8sGPT/BuildStream as needed).
+1. Resolve tool/library docs in Context7 first (kubectl/k3s/BuildStream as needed).
 2. Prefer `just` recipes, then `kubectl`/`argo` and other API-driven operations.
    Host-level work is private maintainer maintenance; never use workstation SSH
    to `ghost` or `exo-0` from the public agent path.
@@ -49,40 +47,6 @@ metadata:
    node-to-data-mount mappings. It intentionally has no default mapping, so
    PVC provisioning fails on an unconfigured node instead of falling back to
    that node's root disk.
-
-## kagent
-
-`manifests/kagent-apps.yaml` installs kagent as two ArgoCD-managed OCI Helm
-Applications: `kagent-crds` in sync wave 0, then `kagent` in wave 1. The
-default `ModelConfig` uses the lab's OpenAI-compatible llm-d endpoint
-(`http://llm-d-modelserver.llm-d.svc.cluster.local:8000/v1`, model
-`local-llm`). The endpoint itself is unauthenticated, but the ADK OpenAI client
-requires an API key environment variable, so the chart installs the non-secret
-placeholder `sk-local-noauth` as `kagent-openai`. Keep the UI ClusterIP-only; do
-not expose another general-purpose dashboard.
-
-Install-specific traps from the first rollout:
-
-- Override the chart's `cr.kagent.dev` images to `ghcr.io` so node pulls use
-  the zot GHCR mirror.
-- The chart's bundled PostgreSQL defaults to `docker.io/library/postgres` and
-  uid/gid 999. The lab uses `cgr.dev/chainguard/postgres:latest`, whose
-  `postgres` user is uid/gid 70; set the pod security context accordingly.
-- Zot sync globs treat `*` as one repository path segment. Nested repos such as
-  `kagent-dev/kagent/controller` need `kagent-dev/**`, not `kagent-dev/*`.
-  Bump `lab.projectbluefin.io/config-version` when changing the zot ConfigMap.
-
-### GitHub MCP account wiring
-
-`manifests/kagent-github-mcp.yaml` registers GitHub's hosted MCP endpoint as
-`RemoteMCPServer/github-castrojo`; `manifests/kagent-github-agent.yaml` exposes
-it as `Agent/github-castrojo`. The Authorization header lives only in the
-uncommitted `github-mcp-castrojo` Secret in the `kagent` namespace — never
-commit the token. The agent uses the default GitHub toolset but puts
-write-capable tools in `requireApproval`; verify changes by checking
-`RemoteMCPServer.status.discoveredTools`, waiting for `Agent Ready=True`, and
-asking the agent for the authenticated login (`get_me` should return
-`castrojo`).
 
 ## AMD GPU topology
 
@@ -163,45 +127,7 @@ terminate only that stale operation before syncing the current revision. Remove
 only explicitly identified stuck workload pods after the Deployment is scaled
 to zero.
 
-## Lightweight Prometheus backend
-
-`manifests/prometheus-lightweight.yaml` is the lab's backend-only metrics
-service. Keep it as a single `ClusterIP` deployment: do not add an ingress,
-Grafana, Prometheus Operator, or another cluster dashboard.
-
-### Uplink traffic report (LAN + WAN)
-
-For a rolling uplink view, port-forward Prometheus and run:
-
-```bash
-kubectl -n kube-system port-forward svc/prometheus 9090:9090
-just traffic-report
-```
-
-The report calls cAdvisor's node-root counters on the physical `enp191s0`
-**uplink interface totals (LAN + WAN)**. `enp191s0` is the lab LAN NIC, not a
-clean internet boundary: its counters include node-to-node traffic, LAN
-clients, and in-cluster hairpin traffic. Do not present those totals as
-external bandwidth.
-
-The report includes a deliberately partial WAN estimate. Zot cache pod RX is
-shown as estimated upstream image-pull ingress, and a node's uplink TX minus
-the other visible node(s)' RX is shown as estimated non-node egress. These
-subtractions are assumptions, not flow data; a missing or negative component
-is rendered as unavailable. Other WAN/LAN traffic cannot be separated because
-cAdvisor has no remote-address or port labels. Destination-level telemetry
-would require a bounded eBPF/flow exporter, which this report does not invent.
-
-The report also compares Zot upstream RX with Zot TX (cache serving) and shows
-an approximate byte cache-hit ratio under the assumption that upstream RX is
-miss traffic. Its workload sections exclude the known
-`hostNetwork: true` `usb4-link-monitor-*` node mirrors, which otherwise just
-duplicate node counters. Treat any remaining cAdvisor workload rows as
-attribution only, not destination-level internet flow data.
-
-Zot pull counters are included as a ranked image-repository activity signal,
-but Zot does not expose per-repository byte totals; do not present those
-counts as bandwidth.
+## Zot notes
 
 **Zot on-demand sync pulls blobs on tag reads.** Any `skopeo inspect` or pull
 of a *tag* through the cache (`192.168.1.102:30501/...`) copies the manifest
@@ -209,67 +135,14 @@ AND all blobs from upstream when the digest changed — a digest poll through
 zot costs a full multi-GB image, not kilobytes. Digest pollers/watchers must
 inspect the upstream registry directly (`skopeo inspect docker://ghcr.io/...`
 with `--creds "_token:${GITHUB_TOKEN}"` for ghcr); see
-`argo/workflow-templates/image-poller.yaml` and the regression test in
-`tests/unit/test_image_poll_bandwidth.py` (PR #632).
+`argo/workflow-templates/image-poller.yaml`.
 
-`traffic_report.py` also ranks workload counters when cAdvisor exposes
-Kubernetes namespace/pod/container labels. These are still interface totals,
-not network-flow records: the current cAdvisor stack has no remote
-address/port or destination-service labels. Do not infer destination traffic
-from them. Safe destination reporting requires a separately bounded eBPF or
-flow exporter and an explicit allowlisted scrape job.
-
-GitHub request and throttle sections are optional hooks. An exporter may be
-scraped only by annotating its pod with `prometheus.io/scrape: "true"`,
-`prometheus.io/port`, and
-`lab.projectbluefin.io/metrics: github-api`; it must expose bounded
-`github_api_requests_total` and `github_api_throttled_total` counters without
-tokens, URLs containing credentials, request payloads, or unbounded workflow
-labels. The lab does not deploy that exporter or collect GitHub secrets.
-
-- Storage is a `local-path` RWO PVC. The Deployment uses zero-surge rolling
-  updates (`maxSurge: 0`, `maxUnavailable: 1`) so two pods never contend for
-  the node-local volume.
-- The PVC is 50Gi; Prometheus keeps at most 30 days or 45GB, whichever limit is
-  reached first. The remaining space is headroom for WAL and compaction.
-- Required scrape jobs are `kubernetes-nodes`, `kubernetes-cadvisor`,
-  `argo-workflow-controller`, `zot`, `buildbarn`, and the existing
-  `kubestellar-*` controller jobs.
-- Zot metrics require `extensions.metrics` in both `zot-cache-config` and
-  `zot-local-config`; both expose `/metrics` on their existing HTTP port. Bump
-- Zot v2.1.1 requires an authenticated user in
-  `http.accessControl.metrics.users` once repository access control is enabled.
-  Migrate Prometheus to basic auth in the same rollout; do not activate auth
-  while the scrape still depends on anonymous `/metrics`.
 - Stage Zot authentication separately from activation when anonymous writers
   already exist: commit the htpasswd/Secret contract and auth-ready config,
   migrate every writer, then switch the mounted config and make Secrets required
   in one GitOps rollout. Bump
   each workload's `lab.projectbluefin.io/config-version` annotation when either
   ConfigMap changes because Zot reads the subPath-mounted config only at startup.
-- Argo custom build metrics use only constant `pipeline` and bounded `status`
-  labels. Never label metrics with workflow name, UID, commit SHA, image digest,
-  ref, or element.
-- `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, and
-  `bst-qa-pipeline` emit completion and duration metrics. Dakota stays omitted
-  until its DAG refactor makes overall workflow status match the publish result;
-  its current non-blocking branches would record false successes.
-
-After changing scrape configuration, bump
-`lab.projectbluefin.io/config-version` on the Prometheus pod template because
-there is no config-reloader sidecar. Verify through the Kubernetes API:
-
-```bash
-kubectl get pvc -n kube-system prometheus-lightweight-data
-kubectl get pods -n kube-system -l app=prometheus-lightweight
-kubectl port-forward -n kube-system svc/prometheus 9090:9090
-curl -fsS 'http://127.0.0.1:9090/api/v1/targets?state=active' |
-  jq -r '.data.activeTargets[] | [.labels.job, .health, .lastError] | @tsv'
-```
-
-The custom series are exposed as
-`argo_workflows_lab_build_workflow_completed_total` and
-`argo_workflows_lab_build_workflow_duration_seconds`.
 
 ## Deep-dive topics
 
@@ -280,14 +153,13 @@ The custom series are exposed as
 
 ## Mandatory first step
 
-Before any kubectl, k3s, or K8sGPT operation, look up the current API via Context7:
+Before any kubectl or k3s operation, look up the current API via Context7:
 
 ```
 resolve-library-id "/k3s-io/k3s" → get-library-docs
-resolve-library-id "/k8sgpt-ai/k8sgpt" → get-library-docs
 ```
 
-Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exposes `analyze`, `cluster-info`, `list-resources`, `get-resource`, `list-namespaces`, `get-logs`, `list-events`, `list-filters`, `add-filters`, `remove-filters`, `list-integrations`, and `config`; verify the current docs before wiring it into a client.
+Do not guess flags or chart schema.
 
 ## Tool roles
 
@@ -297,7 +169,6 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 | `kubectl` | Direct cluster inspection and apply |
 | `zot` | OCI registry for test artifacts |
 | `external-secrets` | Pulls secrets from vault into k8s Secrets |
-| `k8sgpt` | Cluster analysis / MCP troubleshooting bridge |
 
 ## Common Rationalizations
 
@@ -348,13 +219,8 @@ Do not guess flags, chart schema, or MCP method names. The K8sGPT MCP server exp
 - [ ] The build progresses past source fetches into artifact pulls/builds.
 - [ ] Workflow reaches `Succeeded`, or if it fails, the failure is a real build
       error (not `pod deleted`).
-- [ ] Prometheus PVC is `Bound` on `local-path` and survives a rollout restart.
-- [ ] Required Prometheus targets report `health: up`; no target exposes a
-      user-facing dashboard.
 - [ ] Authenticated Zot rollouts preserve anonymous pulls, reject anonymous
-      writes, admit the configured writer, and keep the authenticated metrics
-      scrape healthy.
-- [ ] Build workflow metric labels remain limited to `pipeline` and `status`.
+      writes, and admit the configured writer.
 - [ ] After a Zot sync-prefix change, the live DaemonSet shows the new
       `lab.projectbluefin.io/config-version`, and every repository in the
       pre-change `zot_repo_downloads_total` inventory still reports a non-zero
@@ -432,34 +298,6 @@ See `docs/adr/0007-local-inference-runtime.md`.
 - Cluster topology: `/AGENTS.md`
 - Bootstrap procedure: `/docs/ops/bootstrap.md`
 - Recovery: `docs/skills/k3s-cluster-ops` (user skill, load before any cluster recovery)
-- K8sGPT MCP config: `~/.copilot/mcp-config.json` on this machine, with `k8sgpt serve --mcp` or `--mcp --mcp-http` as the client target
-
-## K8sGPT usage notes
-
-- Use `k8sgpt analyze --explain` for broad triage.
-- Narrow with `--filter=Pod`, `--filter=Deployment`, or `--namespace=<ns>`.
-- For assistant integration, prefer the MCP server mode (`k8sgpt serve --mcp`) and register it in Copilot/Claude-style MCP configs.
-- For this repo's `k8sgpt-on-demand` Argo template, keep intentionally-idle services in `ignored-services` to avoid known false-positive "Service has no endpoints" noise during stabilization. Remove services from the list once they are expected to have endpoints.
-- **K8sGPT reports symptoms, not causes. Correlate before you treat a finding
-  as the explanation.** It surfaces every unhealthy object, and the most
-  eye-catching one is often unrelated to the behaviour being investigated. A
-  finding is a lead, not a diagnosis. Confirm causation against the controller's
-  own logs and the object's status before acting:
-
-  ```bash
-  kubectl -n <ns> logs deploy/<controller> --tail=400 | grep -ciE 'error|conflict|has been modified'
-  kubectl get <kind> <name> -o jsonpath='{.status.conditions}'
-  ```
-
-  A worked example: a controller burning sustained network throughput was
-  reported alongside a broken Ingress on the same resource. The Ingress was
-  genuinely misconfigured but entirely inert; the throughput came from an
-  optimistic-concurrency requeue loop (`object has been modified`) in the
-  controller, on a resource that reported `Ready=True` throughout. Fixing the
-  Ingress would have changed nothing. Two signals distinguish these cases: a
-  resource that is `Ready=True` is not the thing failing, and a genuine cause
-  produces a matching error frequency in the logs.
-- Verified source: `/k8sgpt-ai/k8sgpt`
 
 ## Common Rationalizations
 

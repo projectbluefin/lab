@@ -126,8 +126,6 @@ PUSH_PATTERNS = [
     r"cosign\s+(sign|attach)\b",
 ]
 
-SCREENSHOT_TEMPLATES = ("run-kde-tests", "run-gnome-tests")
-
 
 def push_scripts() -> list[tuple[str, str, str]]:
     """
@@ -216,18 +214,9 @@ def test_push_scripts_reject_ghcr_before_upload():
     BEFORE its first push command, regardless of whether the script source contains
     a literal 'ghcr.io' reference.  Destination variables (e.g. $DESTINATION_REGISTRY)
     can be redirected at call time, so the guard is required unconditionally.
-
-    The only exemptions are the screenshot scripts (run-kde-tests, run-gnome-tests),
-    which are covered unconditionally by
-    test_screenshot_templates_are_disabled_unconditionally.
     """
     for path, template_name, source in push_scripts():
-        if template_name in SCREENSHOT_TEMPLATES:
-            # Screenshot publication is disabled unconditionally; see
-            # test_screenshot_templates_are_disabled_unconditionally.
-            continue
-
-        # All other push-producing scripts need the guard — independently of whether
+        # Every push-producing script needs the guard — independently of whether
         # 'ghcr.io' appears literally in the source, because the destination may be
         # supplied via a variable that could be set to ghcr.io at invocation time.
         assert (
@@ -271,34 +260,6 @@ def test_dakota_ghcr_publishers_are_deleted():
     justfile = (ROOT / "Justfile").read_text(encoding="utf-8")
     assert "run-dakota-publish:" not in justfile
     assert "--from workflowtemplate/dakota-publish-pipeline" not in justfile
-
-
-def test_screenshot_templates_are_disabled_unconditionally():
-    """
-    KDE and GNOME screenshot publication must stay explicitly disabled.
-
-    Asserted by template file name rather than through push_scripts() so the
-    diagnostic is still required once the last upload verb is removed from the
-    source (otherwise these templates would silently drop out of coverage).
-    """
-    for template_name in SCREENSHOT_TEMPLATES:
-        template_file = TEMPLATES_PATH / f"{template_name}.yaml"
-        assert template_file.exists(), f"{template_name}.yaml is missing"
-
-        sources = [
-            source
-            for _, _, source in collect_script_sources(template_file, template_name)
-        ]
-        combined = "\n".join(sources)
-
-        assert "GHCR screenshot publication disabled" in combined, (
-            f"{template_name}: missing 'GHCR screenshot publication disabled' diagnostic"
-        )
-
-        for source in sources:
-            assert not is_executable_oras_push(source), (
-                f"{template_name}: contains executable oras push (should be disabled)"
-            )
 
 
 def test_push_patterns_do_not_match_read_only_commands():

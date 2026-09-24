@@ -8,19 +8,17 @@ distinguish deliberate decisions from oversights.
 
 | Trade-off | Risk accepted | Production fix |
 |---|---|---|
-| Workflow pods run as `runAsUser: 0` | Required for BIB disk manipulation (losetup, mount, chown), ostree unlock | Rootless podman with user namespaces; separate privileged step with minimal scope |
-| `hostNetwork: true` in run-gnome-tests | Required for KubeVirt masquerade networking — VM IPs only route from the host network namespace | Multus secondary network or a CNI that routes pod→VM without hostNetwork |
-| hostPath volumes for golden disks | BIB output and reflink clones require direct node filesystem access | CSI driver with btrfs reflink support (none exist today) |
+| Workflow pods run as `runAsUser: 0` | Required for disk image manipulation (losetup, mount, chown) | Rootless podman with user namespaces; separate privileged step with minimal scope |
 | No NetworkPolicy in `argo` namespace | Workflow pods can reach all cluster services | Restrict egress to argo-server + ghost node IPs; deny inter-pod lateral movement |
 | Mutable image tags (`:latest`, `:latest-dev`) | Silent upstream breakage if image changes incompatibly | Pin to digest; add a nightly digest-update workflow |
-| `argo-server` ClusterRole | Broad cluster-wide read access for workflow submission | Namespace-scoped RBAC scoped to `argo`, `bluefin-test`, `bluefin-lts-test`, `flatcar-test` |
+| `argo-server` ClusterRole | Broad cluster-wide read access for workflow submission | Namespace-scoped RBAC scoped to `argo` |
 | `selinux=0` in BLS boot entries | SELinux disabled on test VMs — reduces isolation | Accept for test VMs; production VMs should have SELinux enforcing |
 | NodePort 32746 on LAN | Argo API reachable on the lab subnet without TLS | TLS termination + token rotation; restrict to specific agent IPs |
 | `StrictHostKeyChecking=no` in SSH opts | MITM possible if a VM IP is reused for a different host | Acceptable on isolated homelab VLAN; use known_hosts in production |
 
 ## What is NOT a concern in this environment
 
-- **Multi-tenancy**: single user, single cluster purpose (Bluefin QA)
+- **Multi-tenancy**: single user, internal lab
 - **Data sensitivity**: test VMs contain no production data or secrets
 - **Compliance scope**: no PCI, HIPAA, or SOC2 requirements
 - **Internet exposure**: NodePort 32746 is LAN-only, not internet-facing

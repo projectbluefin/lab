@@ -60,11 +60,9 @@ Route by area changed:
 | Area changed | Skill file to update |
 |---|---|
 | `argo/workflow-templates/` or `argo/*.yaml` | [`argo-workflows/SKILL.md`](../argo-workflows/SKILL.md) |
-| `provision-vm`, `KubeVirt`, `btrfs reflink` | [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md) |
+| `KubeVirt` | [`kubevirt-vms/SKILL.md`](../kubevirt-vms/SKILL.md) |
 | ArgoCD Applications, `argocd/`, `manifests/` | [`gitops-argocd/SKILL.md`](../gitops-argocd/SKILL.md) |
-| `tests/`, `behave`, `dogtail`, `qecore` | [`test-authoring/SKILL.md`](../test-authoring/SKILL.md) |
 | `.github/workflows/` | [`ci-tooling/SKILL.md`](../ci-tooling/SKILL.md) |
-| `scripts/refresh_factory_stats.py` or `scripts/generate_page_datasets.py` | [`ci-tooling/SKILL.md`](../ci-tooling/SKILL.md) (+ [`astro-dashboard-pages/SKILL.md`](../astro-dashboard-pages/SKILL.md) when page contracts/rendering changed) |
 | Repo-wide agent behavior or session hygiene | [`AGENTS.md`](../../../AGENTS.md) |
 | Bootstrap cluster setup, `argo/bootstrap/` | [`docs/ops/bootstrap.md`](../../ops/bootstrap.md) |
 | Cluster topology, namespaces, RBAC | [`docs/ops/architecture.md`](../../ops/architecture.md) |
@@ -136,8 +134,7 @@ Before ending any non-trivial session:
 
 1. Write the durable pattern into the routed skill file.
 2. If the pattern changes how future agents should operate in this repo, update `.github/copilot-instructions.md` too.
-3. If the session touched Pages or generated dashboard data, verify the live build/render still matches the published files.
-4. Do not hand off with only code changes; the skill/docs write-back is part of the deliverable.
+3. Do not hand off with only code changes; the skill/docs write-back is part of the deliverable.
 
 ---
 
@@ -151,11 +148,9 @@ docs/skills/
 ├── argo-workflows/              WorkflowTemplate authoring and patterns
 ├── ci-tooling/                  GitHub Actions and CI reliability
 ├── cluster-tooling/             k3s, storage, BuildStream, node recovery
-├── flatcar-node-onboarding/     Flatcar nodes, Nebraska, custom kernels
 ├── gitops-argocd/               ArgoCD sync, manifests, image policy
-├── kubevirt-vms/                Ephemeral VM lifecycle and troubleshooting
+├── kubevirt-vms/                Ephemeral VM lifecycle
 ├── meta-skill-improvement/      This file — the self-improvement loop
-├── test-authoring/              behave/qecore/dogtail and bootc contract tests
 └── README.md                    Skill index
 ```
 
@@ -174,7 +169,6 @@ docs/skills/
 
 - Session ending with no skill update after discovering a non-obvious pattern
 - A pattern being fixed a second time that wasn't written down after the first
-- Session ending after Pages/dashboard work without a skill or instructions write-back
 - Skill files with no `## Verification` section
 - Skill files covering Argo or ArgoCD with unverified code examples
 - Any `docs/skills/*/SKILL.md` file missing the canonical sections

@@ -21,8 +21,7 @@ not active until every writer has migrated.
 
 Zot retains `:testing`, the ten most recently pushed candidate tags, and the
 ten most recent legacy raw-SHA tags for each Dakota repository. Retention and
-orphan cleanup run on Zot's daily GC interval. The separate PR image GC is also
-ready to use the writer auth file.
+orphan cleanup run on Zot's daily GC interval.
 
 ## Secret contracts and activation gate
 
@@ -35,19 +34,15 @@ Credentials are operator-managed and never stored in git:
 
 Do not activate authentication until all of these are true:
 
-1. Provision both secrets and a Prometheus-only credential for `zot-metrics`.
+1. Provision both secrets.
 2. Migrate every existing `:30500` writer to the mounted auth file. The new
-   lifecycle template and daily PR GC already support it; the current Dakota
-   build/export DAG does not.
-3. Configure the Prometheus Zot scrape with `zot-metrics` basic auth. Zot
-   v2.1.1 requires an authenticated metrics user when repository access control
-   is enabled.
-4. Change the registry config mount to `config-authenticated.json`, set the
+   lifecycle template already supports it; the current Dakota build/export
+   DAG does not.
+3. Change the registry config mount to `config-authenticated.json`, set the
    `zot-auth` volume to `optional: false`, and set writer auth volumes to
    `optional: false` in the same GitOps rollout.
-5. Verify anonymous `/v2/` and image pulls, authenticated push/delete, denied
-   anonymous writes, and the authenticated `/metrics` scrape before removing
-   the rollout gate.
+4. Verify anonymous `/v2/` and image pulls, authenticated push/delete, and
+   denied anonymous writes before removing the rollout gate.
 
 ## Remaining Dakota DAG integration
 

@@ -7,7 +7,6 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 GATED_TEMPLATES = (
     "dakota-build-pipeline.yaml",
-    "cosmic-build-pipeline.yaml",
     "bluefin-server-build-pipeline.yaml",
     "bst-cache-warm.yaml",
 )
@@ -125,7 +124,6 @@ def test_recc_seam_does_not_enable_unsupported_runner_fields_or_host_namespaces(
 def test_all_buildstream_pipelines_mount_the_shared_recc_contract():
     for filename in (
         "bluefin-server-build-pipeline.yaml",
-        "cosmic-build-pipeline.yaml",
         "dakota-build-pipeline.yaml",
         "bst-qa-pipeline.yaml",
     ):
@@ -147,7 +145,6 @@ def test_production_lanes_keep_the_overlay_mounted_but_do_not_invoke_it():
 
     # Unchanged production lanes must not configure or request remote-apis-socket.
     for filename in (
-        "cosmic-build-pipeline.yaml",
         "bluefin-server-build-pipeline.yaml",
         "bst-qa-pipeline.yaml",
     ):
@@ -183,7 +180,7 @@ def test_every_mandatory_recc_lane_is_refused_by_the_shared_overlay():
     exec(compile(overlay, "apply_recc_overlay.py", "exec"), namespace)
     adapters = namespace["ADAPTERS"]
 
-    for kind in ("dakota", "cosmic", "bluefin-server", "bst-qa"):
+    for kind in ("dakota", "bluefin-server", "bst-qa"):
         assert adapters[kind].production, kind
     # Only the operator-driven baseline fixture may use the pilot flags.
     assert not adapters["bst-prototype"].production
@@ -213,7 +210,6 @@ def test_outer_admission_does_not_probe_the_unavailable_nested_runner():
 def test_cache_warmup_reuses_the_outer_remote_build_templates():
     for filename in (
         "dakota-build-pipeline.yaml",
-        "cosmic-build-pipeline.yaml",
         "bluefin-server-build-pipeline.yaml",
     ):
         pipeline = (
@@ -227,11 +223,10 @@ def test_cache_warmup_reuses_the_outer_remote_build_templates():
     ).read_text(encoding="utf-8")
     for pipeline in (
         "dakota-build-pipeline",
-        "cosmic-build-pipeline",
         "bluefin-server-build-pipeline",
     ):
         assert f"name: {pipeline}" in cache_warm
-    assert cache_warm.count("template: build-warmup") == 3
+    assert cache_warm.count("template: build-warmup") == 2
 
 
 def test_recc_overlay_configmap_embeds_the_lab_owned_helper():

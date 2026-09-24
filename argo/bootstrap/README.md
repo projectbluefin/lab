@@ -27,9 +27,6 @@ kubectl apply -f argo/bootstrap/ -n argo
 |---|---|---|---|
 | `install-kubevirt.yaml` | `install-kubevirt` | Install KubeVirt (CNCF Incubating) | New cluster |
 | `install-cdi.yaml` | `install-cdi` | Install CDI (disk import support) | New cluster |
-| `install-kubevirt-manager.yaml` | `install-kubevirt-manager` | Web UI at NodePort :30180 | Optional |
-| `install-test-vms.yaml` | `install-test-vms` | Apply initial test VM manifests | After KubeVirt ready |
-| `setup-otel.yaml` | `setup-otel` | Deploy observability stack | Optional |
 
 KubeStellar installation is owned by the `kubestellar-applications` ArgoCD
 Application. Its reusable `register-wec` and `kubestellar-smoke-test`

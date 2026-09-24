@@ -30,7 +30,7 @@ remote-cache-only run is not an acceptable substitute.
   Kubernetes selects a schedulable node and the local-path provisioner binds
   the PVC below that node's configured data mount. Do not select a node or
   bind-mount a cache path to influence placement.
-- **BST lane policy:** Dakota, COSMIC, Bluefin Server, and QA pipelines accept only
+- **BST lane policy:** Dakota, Bluefin Server, and QA pipelines accept only
   `build-mode=re`. Before admission, every lane requires a fresh USB4 `up`
   label and annotation (`lab.projectbluefin.io/usb4-link=up`, timestamp within 60s)
   and a Ready BuildBarn worker on both `ghost` and `exo-0`.
@@ -392,13 +392,6 @@ BuildStream success. This follows BuildStream's documented writable
 - **Role**: CAS/AC artifact writes and reads; execute-forwarding for BuildStream actions that use the in-cluster execution grid
 - **Deployment**: Frontend, scheduler, storage shards, and workers are defined under `manifests/buildbarn-*.yaml` and run in the `buildbarn` namespace
 
-Cache heat is persisted by `scripts/collect_bst_cache.py` in
-`docs/data/history/cache-heat.ndjson`. BuildBarn's current diagnostics expose
-`Get` counts, byte sums, duration sums, and gRPC status counts. The collector
-treats `OK` as a hit and `NotFound` as a miss; if those status counters are unavailable, it keeps
-`hit_count`, `miss_count`, and `effectiveness` null rather than estimating from
-storage occupancy or allocator counters.
-
 ### 2. BuildStream client config
   The build pods should generate a deterministic `buildstream.conf` that keeps upstream source caches read-only and pushes artifacts to the shared Buildbarn frontend first. Dakota's coordinator remains bounded by its two one-slot BuildBarn workers; do not increase BuildStream jobs, worker count, or semaphore capacity while remote execution or CAS materialization is unhealthy:
  
@@ -431,7 +424,7 @@ source-caches:
 
 Repeat the same override and server ordering at the project level so the primary project uses the same cache policy as the top-level config.
 
-**Lab-wide source-cache rule (verified 2026-07-22 / 2026-07-27):** the deployed `bb-remote-asset` image (`ghcr.io/buildbarn/bb-remote-asset:20241031T230517Z-4926e8e`) cannot handle BuildStream source-key URNs. Pushing sources to `grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984` (`type: index`) produces `FetchDirectory ... PERMISSION_DENIED` / `HTTP Fetching of directories is not supported!` and, because the remote-asset asset cache reads through the unsharded storage headless Service, `could not get action from action cache: Object not found`. Until the endpoint is upgraded/configured for URNs, **every** lab BuildStream pipeline (`dakota-build-pipeline`, `cosmic-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline`) must set `source-caches.override-project-caches: true` and list only the upstream read-only source caches. Leaving it `false` inherits junction source-cache entries and causes the build to spend minutes retrying a source push before failing. Artifact/RE cache writes may still use the BuildBarn frontend.
+**Lab-wide source-cache rule (verified 2026-07-22 / 2026-07-27):** the deployed `bb-remote-asset` image (`ghcr.io/buildbarn/bb-remote-asset:20241031T230517Z-4926e8e`) cannot handle BuildStream source-key URNs. Pushing sources to `grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984` (`type: index`) produces `FetchDirectory ... PERMISSION_DENIED` / `HTTP Fetching of directories is not supported!` and, because the remote-asset asset cache reads through the unsharded storage headless Service, `could not get action from action cache: Object not found`. Until the endpoint is upgraded/configured for URNs, **every** lab BuildStream pipeline (`dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline`) must set `source-caches.override-project-caches: true` and list only the upstream read-only source caches. Leaving it `false` inherits junction source-cache entries and causes the build to spend minutes retrying a source push before failing. Artifact/RE cache writes may still use the BuildBarn frontend.
 
 **Worker recovery note (verified 2026-07-22):** a failed virtual/FUSE BuildBarn experiment left stale `bb_worker` mounts on the node-local worker path, causing subsequent `volume-init` failures (`Transport endpoint is not connected`). Recovery was performed through a temporary privileged, host-PID recovery pod using `nsenter -t 1 -m -- umount -l /var/lib/buildbarn/worker/build`, followed by worker-pod recreation. The virtual/FUSE experiment also exposed `rustc -vV: Permission denied` in `gnomeos-deps/bootc.bst`. The runner was upgraded from the 2026-05-27 BuildBarn pair to the coordinated 2026-07-22 worker/installer pair, made privileged/root with `spc_t`, and configured with `/tmp` and `/var/tmp` per-action symlinks plus one action slot. Direct REAPI isolation proved the tiny input root reaches the runner, while the full SDK root stalls during CAS materialization before command execution. The frontend was restarted to load current shard configuration; a 31 MiB CAS blob then read through the frontend in 0.08s, but a fresh full-root action still timed out after 10 minutes. The sharded CAS is inconsistent for the full root: some blobs exist only on storage-0 while storage-1 reports NotFound, and worker failures report `Shard 0/1: context canceled` during input fetch. The distributed gate remains red until CAS replication/routing and full-root materialization are repaired. BuildStream's default config is merged with the supplied config; to force a cache-only local diagnostic, explicitly add a top-level `remote-execution: {}` rather than merely omitting the remote-execution snippet.
 

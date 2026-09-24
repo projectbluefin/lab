@@ -45,8 +45,8 @@ spec:
   block, while matching `volumes` belong on the surrounding template. Argo's
   strict decoder rejects executor mounts placed directly on the template.
 - Template names are unique within one WorkflowTemplate. Give an entrypoint
-  and its executable step distinct names (for example, `toggle-testing` and
-  `run-toggle-testing`) rather than reusing the same name.
+  and its executable step distinct names (for example, `pipeline` and
+  `run-pipeline`) rather than reusing the same name.
 
 ### 1b. Debugging a workflow stuck on a dead node
 
@@ -99,8 +99,8 @@ Use `templateRef` for cross-WorkflowTemplate calls:
 - name: run-tests
   depends: "provision.Succeeded"
   templateRef:
-    name: run-gnome-tests          # WorkflowTemplate name
-    template: run-gnome-tests      # template name within that WorkflowTemplate
+    name: run-tests                # WorkflowTemplate name
+    template: run-tests            # template name within that WorkflowTemplate
   arguments:
     parameters:
     - name: vm-ip
@@ -118,8 +118,8 @@ templates on a scoped ServiceAccount.
 
 ### 3a. Container-only QA caller contract
 
-The container-only QA templates (`bluefin-qa-pipeline`, `dakota-qa-pipeline`,
-and any CronWorkflow/PR caller that feeds them) accept only the OCI-centric
+The container-only QA template (`dakota-qa-pipeline`,
+and any CronWorkflow/PR caller that feeds it) accepts only the OCI-centric
 payload:
 
 - `image`
@@ -137,55 +137,11 @@ PRs, override both `testsuite-repo` and `testsuite-branch` with the PR head
 repository and branch; keep the canonical repository and `main` for other
 repos.
 
-### 3b. QA workflow evidence enrollment
-
-To enroll a top-level QA WorkflowTemplate in the canonical evidence reconciler,
-add a stable label through `spec.workflowMetadata`, not only through the
-WorkflowTemplate object's metadata:
-
-```yaml
-spec:
-  workflowMetadata:
-    labels:
-      bluefin.io/evidence-contract: qa-run-v1
-```
-
-`workflowMetadata` is applied to Workflows created from the template (including
-`workflowTemplateRef` callers), so the reconciler can select real run objects.
-Pass an `image-digest` parameter whenever a caller has resolved one; retain an
-explicit empty default for manual tag-based submissions. Source:
-`/argoproj/argo-workflows`, Workflow Templates > Adding labels/annotations to
-Workflows with workflowMetadata.
-
 For a digest-poller DAG, pass the poller's
 `{{tasks.check-digest.outputs.parameters.remote-digest}}` explicitly to the QA
 pipeline's declared `image-digest` parameter. A matching task dependency does
 not propagate the value on its own. Source: `/argoproj/argo-workflows`,
 Workflow Inputs > Pass Outputs Between DAG Tasks.
-
-When a CronWorkflow defines its own `workflowSpec` and calls a QA pipeline only
-through a DAG task `templateRef`, it creates the parent Workflow itself; the
-referenced template does not create a child Workflow. Put the evidence label on
-the CronWorkflow's own `spec.workflowMetadata` as well:
-
-```yaml
-spec:
-  workflowMetadata:
-    labels:
-      bluefin.io/evidence-contract: qa-run-v1
-  workflowSpec:
-    templates:
-      - name: pipeline
-        dag:
-          tasks:
-            - name: run-qa
-              templateRef:
-                name: dakota-qa-pipeline
-                template: pipeline
-```
-
-Source: `/argoproj/argo-workflows`, Cron Workflows > CronWorkflow Spec >
-`workflowSpec` and `workflowMetadata`.
 
 ### 4. Output parameters — use `script` with stdout
 
@@ -267,8 +223,8 @@ spec:
     steps:
     - - name: teardown
         templateRef:
-          name: teardown-vm
-          template: teardown-vm
+          name: teardown
+          template: teardown
         arguments:
           parameters:
           - name: vm-name
@@ -283,8 +239,8 @@ To guarantee teardown in all entrypoints (direct and via `templateRef`), define 
 ```yaml
     - - name: run-tests
         templateRef:
-          name: run-gnome-tests
-          template: run-gnome-tests
+          name: run-tests
+          template: run-tests
         arguments:
           parameters:
           - name: vm-ip
@@ -293,8 +249,8 @@ To guarantee teardown in all entrypoints (direct and via `templateRef`), define 
         hooks:
           exit:
             templateRef:
-              name: teardown-vm
-              template: teardown-vm
+              name: teardown
+              template: teardown
             arguments:
               parameters:
               - name: vm-name
@@ -379,13 +335,13 @@ Evidence required before calling a BuildStream run distributed:
 
 Practical config generation: mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block. The override must include the `remote-execution` project block pointing at the BuildBarn frontend; artifact/cache server blocks alone are insufficient. Point artifact writes at `grpc://frontend.buildbarn.svc.cluster.local:8980` and list upstream read-only cache servers (`https://gbm.gnome.org:11003`, `https://cache.freedesktop-sdk.io:11001`, `https://cache.projectbluefin.io:11001`) for fallback reads. The current BuildStream image used by these workflows does not accept the legacy `remoteasset:` block, so the override omits it.
 
-When the project uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream caches instead of diverging on local patch-set differences. Junction refs can be Git-describe strings rather than remote names; fetch the trailing full commit ID after `-g` and check out `FETCH_HEAD`, rather than fetching the full descriptive ref. This is the pattern used by `dakota-build-pipeline`, `cosmic-build-pipeline`, and `bluefin-server-build-pipeline`.
+When the project uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream caches instead of diverging on local patch-set differences. Junction refs can be Git-describe strings rather than remote names; fetch the trailing full commit ID after `-g` and check out `FETCH_HEAD`, rather than fetching the full descriptive ref. This is the pattern used by `dakota-build-pipeline` and `bluefin-server-build-pipeline`.
 
 If any of the three evidence items above are missing, stop and fix the config before running. Do not proceed with cache-only or local-driver execution as a normal mode.
 
 ### 7b. Queueing and deduplication: gate the template, not just the workflow
 
-Heavy VM and build workflows should be admitted through a semaphore or a deduplication guard before they fan out. In this repo, `manifests/workflow-semaphores.yaml` defines cluster-wide semaphores for the `qa-vm-fleet`, `containerdisk-build`, and `bst-build` lanes, and the heavy templates (`bluefin-qa-pipeline`, `dakota-qa-pipeline`, `image-poller`, `digest-watch`, and `dakota-build-pipeline`) use that admission path to stop duplicate or overlapping runs.
+Heavy VM and build workflows should be admitted through a semaphore or a deduplication guard before they fan out. In this repo, `manifests/workflow-semaphores.yaml` defines cluster-wide semaphores for the `bst-build`, `bst-cache-warm`, and `ghost-container-qa` lanes, and the heavy templates (`run-container-tests`, `dakota-build-pipeline`, and `bluefin-server-build-pipeline`) use that admission path to stop duplicate or overlapping runs.
 
 Important: workflow-level synchronization is not enough when the caller uses `workflowTemplateRef` or `templateRef` to dispatch a different WorkflowTemplate. Argo Workflows resolves those calls as separate template invocations, so the lock must live on the called template or the shared admission path. Apply the semaphore at the template that actually does the expensive work, not on the parent workflow wrapper.
 
@@ -397,21 +353,21 @@ spec:
         semaphore:
           configMapKeyRef:
             name: workflow-semaphores
-            key: qa-vm-fleet
+            key: ghost-container-qa
 ```
 
 The live pattern in this repo is to place the semaphore on the heavy child template and keep the parent workflow thin; the parent simply passes parameters and exits. This prevents poll bursts from generating unbounded VM fleets and starving node memory requests.
 
 ### 8. File names must match `metadata.name`
 
-WorkflowTemplate file names in `argo/workflow-templates/` must match the resource's `metadata.name`. Divergence (e.g. `provision-vm.yaml` containing `name: provision-containerdisk-vm`) confuses ArgoCD tracking and grep-based navigation:
+WorkflowTemplate file names in `argo/workflow-templates/` must match the resource's `metadata.name`. Divergence (e.g. `dakota-qa.yaml` containing `name: dakota-qa-pipeline`) confuses ArgoCD tracking and grep-based navigation:
 
 ```
 # ✗ WRONG — file name diverged from resource name
-argo/workflow-templates/provision-vm.yaml  →  metadata.name: provision-containerdisk-vm
+argo/workflow-templates/dakota-qa.yaml  →  metadata.name: dakota-qa-pipeline
 
 # ✅ CORRECT — file name matches resource name
-argo/workflow-templates/provision-containerdisk-vm.yaml  →  metadata.name: provision-containerdisk-vm
+argo/workflow-templates/dakota-qa-pipeline.yaml  →  metadata.name: dakota-qa-pipeline
 ```
 
 ArgoCD tracks by GVK + resource name, not filename. A rename is safe — just git mv and push.
@@ -513,9 +469,6 @@ argo lint --offline argo/workflow-templates/
 
 # Lint bootstrap templates
 argo lint --offline argo/bootstrap/
-
-# Lint standalone submit Workflows (online, needs live server)
-argo lint argo/bluefin-smoke-test.yaml
 ```
 
 Or use the convenience wrapper: `just lint`
@@ -552,19 +505,16 @@ spec:
 
 - ArgoCD Application ownership or sync policy changes; use the GitOps skill.
 - KubeVirt VM design or test-suite behavior changes; use the corresponding
-  KubeVirt or test-authoring skill.
+  KubeVirt skill.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 | --- | --- |
-| "The referenced template's labels will label the CronWorkflow run." | A DAG `templateRef` is not a child Workflow; put selection labels on the CronWorkflow's `spec.workflowMetadata`. |
 | "The template linted, so it is live." | GitOps changes must be reconciled and the live template verified before submitting a run. |
 
 ## Red Flags
 
-- A reconciler selects labels that exist only on a referenced template while a
-  CronWorkflow creates the parent Workflow inline.
 - A workflow task relies on inherited parameters or emits a combined suite
   result as though it were per-suite evidence.
 - A GitOps-managed workflow was applied manually.
@@ -572,7 +522,5 @@ spec:
 ## Verification
 
 - [ ] `just lint` passes.
-- [ ] Every top-level Workflow or CronWorkflow selected by an external
-  reconciler has the required label on the created Workflow metadata.
 - [ ] ArgoCD has reconciled the tracked manifest, and the live template was
   verified before resubmission.

@@ -11,16 +11,15 @@ def load(path):
 
 
 def test_shared_bst_pollers_are_suspended_but_staggered_for_on_demand():
-    # Both commit pollers stay suspended: dakota since #609 (failing poller),
-    # cosmic since the 2026-08 bandwidth cuts (unreviewed lane whose cold BST
-    # builds drove ~1 TiB/day uplink spikes). Files and staggered schedules are
-    # kept so `argo submit --from cronworkflow/<name>-commit-poller` and
-    # `just force-dakota-poll` remain the on-demand escape hatch.
+    # The dakota commit poller stays suspended since #609 (failing poller).
+    # The file and schedule are kept so `argo submit --from
+    # cronworkflow/dakota-commit-poller` and `just force-dakota-poll` remain
+    # the on-demand escape hatch.
     template = load("argo/workflow-templates/bst-commit-poller.yaml")
     templates = {item["name"]: item for item in template["spec"]["templates"]}
 
     assert template["metadata"]["name"] == "bst-commit-poller"
-    assert {"poll-dakota", "poll-cosmic", "check-sha", "update-sha"} <= templates.keys()
+    assert {"poll-dakota", "check-sha", "update-sha"} <= templates.keys()
     parameters = {
         item["name"]: item.get("value")
         for item in template["spec"]["arguments"]["parameters"]
@@ -36,7 +35,6 @@ def test_shared_bst_pollers_are_suspended_but_staggered_for_on_demand():
 
     for name, schedule, entrypoint in (
         ("dakota", "2-59/5 * * * *", "poll-dakota"),
-        ("cosmic", "4-59/5 * * * *", "poll-cosmic"),
     ):
         cron = load(f"manifests/{name}-commit-poller.yaml")
         assert cron["spec"]["suspend"] is True
@@ -56,7 +54,7 @@ def test_bst_poller_persists_only_successful_non_stale_builds():
     template = load("argo/workflow-templates/bst-commit-poller.yaml")
     templates = {item["name"]: item for item in template["spec"]["templates"]}
 
-    for entrypoint in ("poll-dakota", "poll-cosmic"):
+    for entrypoint in ("poll-dakota",):
         tasks = {
             item["name"]: item
             for item in templates[entrypoint]["dag"]["tasks"]
@@ -80,15 +78,3 @@ def test_bst_poller_persists_only_successful_non_stale_builds():
     assert "force-dakota-poll:" in justfile
     assert "--from cronworkflow/dakota-commit-poller" in justfile
     assert "-p force=true" in justfile
-
-
-def test_pr_poller_bounds_bst_queue_and_legacy_poller_is_removed():
-    poller = (ROOT / "argo/workflow-templates/pr-poller.yaml").read_text(
-        encoding="utf-8"
-    )
-
-    assert "ACTIVE_BST >= 2" in poller
-    assert 'bluefin.io/bst-workload: "${BST_WORKLOAD}"' in poller
-    assert 'BST_WORKLOAD="true"' in poller
-    assert not (ROOT / "argo/workflow-templates/dakota-pr-import-poller.yaml").exists()
-    assert not (ROOT / "manifests/dakota-pr-import-poller.yaml").exists()

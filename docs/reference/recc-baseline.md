@@ -1,7 +1,7 @@
 # RECC baseline and pilot contract
 
 This is a lab-only contract for measuring C/C++ compilation inside a
-BuildStream element. It does not change Dakota, Cosmic, Bluefin Server, or any
+BuildStream element. It does not change Dakota, Bluefin Server, or any
 other production BuildStream lane.
 
 ## Current state and evidence boundary

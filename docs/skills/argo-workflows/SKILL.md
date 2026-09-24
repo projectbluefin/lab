@@ -27,14 +27,13 @@ metadata:
 
 - ArgoCD Application changes → `gitops-argocd.md`
 - KubeVirt VM manifest design → `kubevirt-vms.md`
-- behave/dogtail test authoring → `test-authoring.md`
 
 ## Core Process
 
 The workflow authoring guidance is split by topic:
 
 - [Authoring rules](authoring.md) — template structure, parameters, outputs, hooks, linting, ArgoCD ownership.
-- [Common patterns](patterns.md) — topic-grouped reference: image sync and pollers, concurrency and semaphores, publishing results to GitHub, `when` traps, CronWorkflows, storage and node safety, desktop QA probes, BuildStream sizing.
+- [Common patterns](patterns.md) — topic-grouped reference: registry publication, concurrency and semaphores, publishing results to GitHub, `when` traps, CronWorkflows, storage and node safety, BuildStream sizing.
 
 ## Common Rationalizations
 
@@ -50,7 +49,7 @@ The workflow authoring guidance is split by topic:
 - **Permission Denied Risk**: Forgetting to mount an `emptyDir` at `/tmp` for containers running as non-root (1000) that need to write results, scripts, or temporary configs to `/tmp`. Inside bootc images, `/tmp` is root-owned and restricted, leading to immediate execution failures.
 - Adding a separate log aggregation stack (Loki, Promtail, Vector, etc.) alongside Argo — Argo Server already retains pod logs for the workflow TTL. A separate stack duplicates storage, adds pods/PVCs, and creates a Helm-outside-ArgoCD installation with GitOps debt. `argo logs` covers the same use case.
 - **Outage Risk**: Leaving nodes cordoned (`SchedulingDisabled`) after k3s upgrades or manual interventions. This completely blocks system pods (including CoreDNS!) from scheduling, causing cluster-wide DNS timeouts (`read udp i/o timeout`) and a silent, complete cluster outage. Always ensure nodes are uncordoned (`kubectl uncordon`) and `Ready`.
-- **Outage Risk**: Setting low memory limits (under 2Gi) for any runner/script step that performs large file transfers (e.g. copying 400MB+ Flatcar update payloads over SCP/kubectl cp). File caching and transfer buffers will instantly trigger the container OOM-killer (exit code 137). Always set memory limits to at least 2Gi–4Gi for transfer-heavy steps.
+- **Outage Risk**: Setting low memory limits (under 2Gi) for any runner/script step that performs large file transfers (e.g. copying 400MB+ payloads over SCP/kubectl cp). File caching and transfer buffers will instantly trigger the container OOM-killer (exit code 137). Always set memory limits to at least 2Gi–4Gi for transfer-heavy steps.
 - `synchronization.semaphore:` (singular) in any pipeline — deprecated, rejected by ArgoCD schema. Use `synchronization.semaphores:` (list with `- configMapKeyRef:` item)
 - `spec.schedule:` (singular) on a CronWorkflow — field does not exist in CRD schema; use `spec.schedules:` (array)
 - A pipeline with VMs and no `spec.activeDeadlineSeconds` — a stuck VM holds its semaphore slot forever
@@ -82,8 +81,7 @@ The workflow authoring guidance is split by topic:
 - A `steps` or `dag` task calling a sub-template without `arguments:`
 - `{{steps.X.outputs...}}` or `{{tasks.X.outputs...}}` used as an input
   parameter *default inside a leaf template* — that scope only exists at
-  the steps/dag call site, and unresolved literals reach the shell (live
-  failures: catalog-install-lsio-njq2s, -vhbcb). Pass via call-site
+  the steps/dag call site, and unresolved literals reach the shell. Pass via call-site
   `arguments:`. Corollary: each step is its own pod — never pass file
   paths between steps; pass file *content* via an output parameter
   (`valueFrom.path`, 256KB cap) or an artifact.
@@ -95,9 +93,6 @@ The workflow authoring guidance is split by topic:
 - A workflow that declares `volumeClaimTemplates` without
   `volumeClaimGC.strategy: OnWorkflowCompletion` — completed runs leave staging
   PVCs behind.
-- A test that falls back to a direct `bootc switch` after the production
-  toggle command fails to stage — this masks the behavior under test; fail the
-  step and report the staging failure instead.
 - A declared workflow parameter that is not passed to the template or helper
   that consumes it — especially disk/image and host-root parameters. Trace
   every contract parameter through the call-site arguments.
@@ -107,20 +102,6 @@ The workflow authoring guidance is split by topic:
   probe before the pinned BuildBarn runner consumes that socket. Keep production
   lanes on outer BuildStream remote execution until runner capability is proven;
   the shared helper may remain mounted for the operator-only baseline.
-- A PR-dispatching poller that dedups on `pr-number` + `pr-sha` but never
-  cancels the superseded run, or that leaves workflows running after their PR
-  merges — both drain the `ghost-container-qa` semaphore for ~20 minutes per
-  stale run. Supersede on every poll and reap closed PRs; see
-  [patterns: PR reaping](patterns.md#reap-superseded-and-closed-pr-workflows-in-the-poller).
-- Cancelling a PR workflow with `kubectl delete` — that skips `onExit`, so
-  `report-final` never runs and the commit is stuck on `pending` forever. Use
-  `spec.shutdown: Stop` (what `argo stop` sets).
-- Reaping workflows by `bluefin.io/pr-number` alone — PR numbers collide across
-  repositories. Always pair it with `bluefin.io/repository`.
-- Treating "PR absent from the open-PR API result" as "PR is closed" without
-  proving the API call succeeded — a transient GitHub error then mass-cancels
-  every live run.
-- A `pr-poller` (or any PR-gating workflow) that skips on ANY existing commit status — it must skip only `pending` (in-flight) and `success` (already passed), and re-test on `error`/`failure`. Skipping `error` means stale statuses from deleted workflows permanently block retests.
 - A VM or build pipeline that uses a node selector to reach local storage. Use
   scheduler-selected `WaitForFirstConsumer` PVC placement on an explicitly
   configured non-root data mount instead.
@@ -187,10 +168,7 @@ The workflow authoring guidance is split by topic:
   [`gitops-argocd/image-policy.md`](../gitops-argocd/image-policy.md): it
   bypasses the registry allowlist, destroys reproducibility, and breaks
   offline resilience. Use an org-published image that already carries the
-  tool: `ghcr.io/projectbluefin/lab-runner` (bash, curl, git, jq, python3,
-  kubectl), `ghcr.io/projectbluefin/skopeo` (distroless skopeo, no shell), or
-  `ghcr.io/projectbluefin/arc-runner` (podman, buildah, skopeo, git, oras,
-  kubectl — baked in at build time via `images/arc-runner/Containerfile`).
+  kubectl), or `ghcr.io/projectbluefin/skopeo` (distroless skopeo, no shell).
   If no published image fits, build one: package installs belong in a
   Containerfile against a digest-pinned base, never in a running pod.
 - `registry.k8s.io/kubectl` used as a shell-capable image — it is distroless, has no bash, nc, or any shell utilities. Use `cgr.dev/chainguard/kubectl:latest-dev` when you need kubectl + bash together
@@ -199,33 +177,27 @@ The workflow authoring guidance is split by topic:
 - A shared containerDisk builder that hard-codes its output repository — pass the
   destination repository through check, build, and push templates whenever
   multiple image families share the builder, or one family can clobber another.
-- Prebaking a DUT-specific KDE automation binary without pinning the source
-  commit and validating the installed server and `inputsynth` paths during the
-  image build.
 - Templates annotated `DEPRECATED` that haven't been deleted from git
 - Two CronWorkflows with the same schedule covering overlapping namespaces
 - A `steps` template with the same `when` condition on 3+ sequential steps (convert to `dag` + `depends` chain)
 - A CronWorkflow that has a `dry-run` parameter defaulting to `"true"` — it will log `KEEP`/`DELETE` decisions and then do nothing; disk fills silently
 - Setting a global Argo `parallelism` / `namespaceParallelism` cap in the workflow-controller-configmap — the real backpressure is Kubernetes pod scheduling (pod resource requests). Remove the cap; let the scheduler self-limit.
-- Using `pr-test-N-` as a workflow generateName prefix — use the repo slug: `blu-N-`, `lts-N-`, `dak-N-`, `knu-N-` so k9s and the Argo UI show meaningful names at a glance
+- Using `pr-test-N-` as a workflow generateName prefix — use the repo slug (e.g. `dak-N-`) so k9s and the Argo UI show meaningful names at a glance
 - **GC CronWorkflow using `registry.k8s.io/kubectl`** — distroless, no bash; every run exits with `bash: not found` and the GC step is skipped silently. Pods and orphaned objects accumulate until the cluster fills. Use `cgr.dev/chainguard/kubectl:latest-dev`. Symptom: `kubectl get cronworkflow orphan-pod-gc -n argo` shows `LAST SCHEDULE` advancing but pods keep piling up; check the workflow pod logs for `bash: not found`.
 - Any `image:` in `argo/` or `manifests/` referencing `:5000` for the local OCI registry — `:5000` is the container-internal Zot port; use the NodePort `<lab-ip>:30500` so non-hostNetwork pods can reach it
 - Any `image:` referencing a registry not in the allowlist (`ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`, `registry.k8s.io`, `<lab-ip>`, `localhost`) — enforce with the lint gate in `.github/workflows/lint.yaml`
 - `depends: "X.Succeeded"` on a task that follows a conditionally-skippable upstream — if upstream is Skipped, the downstream task is Omitted and the whole DAG may appear to succeed even though the chain broke; use `depends: "(X.Succeeded || X.Skipped)"` when the upstream has its own `when` guard
 - A downstream `when` condition that references `{{tasks.X.outputs.result}}` where task X has its own `when` guard — if X is Skipped its output is undefined and the downstream task silently skips too. Fix: let X always run; handle the bypass inside the script (see [patterns: the when/Skipped output trap](patterns.md#the-whenskipped-output-trap-never-reference-a-skipped-tasks-outputs)).
 - A `force=true` rebuild workflow where only 1–2 nodes appear (DAG + a Skipped check) and no build step ever runs — this is the `when`/Skipped output bug from the previous entry, not a semaphore or mutex issue
-- Post-processing K8sGPT JSON with `for item in data.get("results", [])` or `len(data["results"])` without normalizing first — namespace-scoped empty scans can emit `"results": null`, which crashes the script and then triggers a second Argo missing-output-path error. Normalize with `results = data.get("results") or []` before iterating or counting.
-- Passing `containerdisk-tag`, `ssh-key-secret`, `vm-memory`, or caller-side `namespace` parameters into `bluefin-qa-pipeline`/`dakota-qa-pipeline` after the container-only migration — those callers must send only `image`, `image-tag`, `suites`, `variant`, `branch`, and `testsuite-branch`.
+- Passing `containerdisk-tag`, `ssh-key-secret`, `vm-memory`, or caller-side `namespace` parameters into `dakota-qa-pipeline` after the container-only migration — those callers must send only `image`, `image-tag`, `suites`, `variant`, `branch`, and `testsuite-branch`.
 - Any Argo CronWorkflow script template in `argo` namespace without explicit `resources.requests` and `resources.limits` — the `argo-quota` admission check rejects pod creation.
-- Any pod containing `initContainers` (like `git-sync` in `run-gnome-tests.yaml`) that lacks explicit `resources.requests` and `resources.limits` blocks — the `argo-quota` admission controller evaluates all containers in a pod (including init containers), and will reject the entire pod if any container lacks resource definitions.
+- Any pod containing `initContainers` (like `git-sync`) that lacks explicit `resources.requests` and `resources.limits` blocks — the `argo-quota` admission controller evaluates all containers in a pod (including init containers), and will reject the entire pod if any container lacks resource definitions.
 - `orphan-pod-gc` memory capped too low (128Mi) — large pod inventories can OOM the cleanup step (`exit code 137`) and silently skip GC.
 - An image poller that writes the new digest to `image-polling-digests` before the downstream QA pipeline succeeds — failures under cluster pressure then drop work permanently (digest is marked seen, no retry on next poll). Persist digest only after `run-pipeline.Succeeded`.
 - A success-only poller that blindly writes its captured SHA after a retry or resume — an older workflow can overwrite state advanced by a newer successful run. Capture the stored value during admission and compare it again before the final write.
-- Aurora/Bazzite digest pollers running full GNOME suite sets (`smoke,common,developer,software,system`) even though these variants are KDE-focused — this creates 5x VM pressure per trigger and overloads scheduling. Keep Aurora/Bazzite pollers on `suites: system`.
-- K8sGPT finding no-endpoint Services for `argocd-applicationset-controller`, `argocd-dex-server`, `argocd-notifications-controller-metrics`, or `kubevirt/virt-exportproxy` — these are documented control-plane exceptions in this cluster shape.
 - Commit message not in Conventional Commits format — the pre-commit hook rejects any commit not matching `<type>(<scope>): <description>`. Valid types: `feat fix ci chore docs refactor test build perf revert`
 - Removing `suspend: true` from a CronWorkflow, seeing ArgoCD report `Synced`, and stopping there — the live field can silently stay `true`. Always re-check with `kubectl get cronworkflow <name> -o jsonpath='{.spec.suspend}'` after sync.
-- A digest-comparison poller (`digest-watch`, `dakota-commit-poller`, etc.) treated as a guarantee that a downstream artifact exists — it only reacts to source digest *changes*, not to the artifact disappearing out-of-band (disk wipe, registry GC). After any disk/registry event, force-rebuild manually; don't wait for the poller.
+- A digest-comparison poller (`dakota-commit-poller`, `image-poll-dakota`, etc.) treated as a guarantee that a downstream artifact exists — it only reacts to source digest *changes*, not to the artifact disappearing out-of-band (disk wipe, registry GC). After any disk/registry event, force-rebuild manually; don't wait for the poller.
 - A BuildStream poller relying only on the `bst-build` semaphore — execution is serialized, but waiting workflows can still grow without bound. Automated callers must enforce the two-workflow `bluefin.io/bst-workload=true` admission ceiling before submission.
 - **Queue Starvation / `activeDeadlineSeconds` Trap**: Leaving a workflow's `activeDeadlineSeconds` at default (or unspecified) when it queues under a template-level semaphore or resource limit. The workflow-level deadline starts ticking upon *submission/creation*, not *execution/scheduling*. If a workflow queues for longer than the global default deadline (e.g., 2h), it gets instantly canceled with `DeadlineExceeded` as soon as it begins running. Always set a generous workflow-level deadline (e.g., 4h/14400s) on queueable templates and dynamic API submission specs.
 - **Clock-only Cron serialization**: Spacing a CronWorkflow away from other schedules is not a concurrency guard. When a scheduled workflow shares a scarce VM namespace or runner, reference a ConfigMap-backed template semaphore and document the key; keep the schedule as a trigger only.
@@ -246,24 +218,11 @@ The workflow authoring guidance is split by topic:
   braces at runtime (for example with `printf '\x7b\x7b'`) so the outer
   template does not consume them.
 - **PR approval gate bypass**: Routine labels such as `automerge` or `chore/deps` are not maintainer approval. PR-batch templates must stop before build/QA when `pr/needs-review` remains or live GitHub review data lacks a verified maintainer approval.
-- **Half-enrolled status reporting**: A repository-dispatch Check Run sender cannot create visible feedback unless the target repository also has its receiver workflow. For enrolled repositories without that receiver, use a direct commit-status reporter with a stable context instead of silently dropping lifecycle updates.
 - **Custom metric cardinality**: Never label workflow metrics with workflow
   names, UIDs, commit SHAs, refs, image digests, or build elements. Use only
   constant pipeline identifiers and bounded states. Workflow-level completion
   metrics are safe only when the workflow status truthfully represents the
   publish result; non-blocking or transitional DAG branches must be fixed first.
-- A KDE GUI runner that copies the GNOME runner without replacing
-  `qecore-headless` and the GNOME daemon — use the VM's
-  `selenium-webdriver-at-spi-run`, forward port 4723, and gate test start on
-  its `/status` endpoint.
-- KDE QA callers must pass the runner's `branch` parameter (not the removed
-  `testsuite-branch`) and use the established `aurora-test` namespace. The
-  runner must source a generated session environment containing D-Bus,
-  Wayland, AT-SPI, `XDG_SESSION_DESKTOP=kde`, and its WebDriver URL before
-  starting Selenium.
-- KDE runner and teardown containers must use the repository-approved
-  digest-pinned `lab-runner` and shell-capable `kubectl` references; never
-  reintroduce floating `:latest` or `:latest-dev` tags in those workflows.
 
 ## Verification
 
@@ -277,7 +236,7 @@ Before marking any WorkflowTemplate change done:
 - [ ] Nested GNOME QA targets grant the test user `/dev/uinput` by mode, not by
       group membership alone, and install `setuptools` alongside `qecore`
 - [ ] All VM-running pipelines have `spec.activeDeadlineSeconds` set
-- [ ] All queueable templates/dynamic workflows (e.g. `build-containerdisk` and `digest-watch` submit payloads) have a generous workflow-level `activeDeadlineSeconds` (e.g., 14400s / 4h) to avoid queue starvation
+- [ ] All queueable templates/dynamic workflows (e.g. `dakota-build-pipeline` and poller submit payloads) have a generous workflow-level `activeDeadlineSeconds` (e.g., 14400s / 4h) to avoid queue starvation
 - [ ] Any new CronWorkflow uses `spec.schedules:` (array), not `spec.schedule:` (singular)
 - [ ] Any scheduled workflow sharing a VM namespace or scarce runner uses a
       documented ConfigMap-backed template semaphore; clock separation alone is
@@ -295,7 +254,7 @@ Before marking any WorkflowTemplate change done:
       ConfigMap semaphore with an explicit capacity
 - [ ] Change is committed and pushed — not manually applied to cluster
 - [ ] `description:` annotation present on the new/modified template
-- [ ] File name matches `metadata.name` (e.g. `provision-containerdisk-vm.yaml` for `name: provision-containerdisk-vm`)
+- [ ] File name matches `metadata.name` (e.g. `dakota-qa-pipeline.yaml` for `name: dakota-qa-pipeline`)
 - [ ] Any VM pipeline semaphore is justified by documented cross-workflow
       memory contention and is attached at template level, not workflow scope
 - [ ] VM pipeline spec has `activeDeadlineSeconds` (1h or 2h) so stuck VMs self-evict
@@ -313,19 +272,5 @@ Before marking any WorkflowTemplate change done:
 - [ ] After any disk wipe/registry migration/Zot cleanup, every affected containerDisk tag manually force-rebuilt rather than assuming a digest-comparison poller will self-heal
 - [ ] Custom metrics share identical help text and histogram buckets across
       templates, and labels are limited to low-cardinality constants/states
-- [ ] Every PR-gated repository has either a live repository-dispatch receiver
-      or an explicit direct commit-status fallback; verify the target workflow
-      exists on the repository's default branch before relying on dispatch
 - [ ] Registry workflows use a pinned image that actually contains every CLI
       invoked by the script, with flags valid for that exact version
-- [ ] KDE GUI runners preserve the GNOME runner's parameter/result contract,
-      use `selenium-webdriver-at-spi-run`, forward `4723:4723`, and wait for
-      WebDriver readiness before Behave execution
-- [ ] Aurora/KDE sabotage runs are explicit, restricted to `aurora-test`, and
-      exercise both the nonexistent-binary and killed-`plasmashell` red paths;
-      failure results and `kde_faillog` artifacts must be retained before
-      teardown
-- [ ] KDE soak evidence uses the newest 30 persisted runs and a fixed two-flake
-      infrastructure budget; each counted flake has a filed issue URL; the gate
-      never requires a consecutive-green streak; promotion remains a human
-      decision

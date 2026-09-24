@@ -17,17 +17,14 @@ description: >
 
 ## When NOT to Use
 
-- Public read-only status site → `astro-dashboard-pages/SKILL.md` (the
-  Astro Pages site stays the reporting layer; Console is the control layer)
 - BindingPolicy/WEC mechanics → `kubestellar/SKILL.md`
 - Grafana or another general-purpose admin/dashboard framework → do not add
-  one; Prometheus is a backend service, not a parallel UI
+  one
 
 ## Architecture boundary
 
 KubeStellar Console is the sole private cluster-admin and single-pane UI.
-Astro remains public and read-only, and Prometheus remains backend-only. Target
-the local `ghost` k3s topology (`wds1`, `its1`, and `ghost` as the WEC); do not
+Target the local `ghost` k3s topology (`wds1`, `its1`, and `ghost` as the WEC); do not
 turn cloud or external multi-cluster possibilities into lab requirements.
 
 ## Core Process
@@ -122,20 +119,11 @@ client id/secret in a Secret referenced via `github.existingSecret`, keep
 | Argo Workflows | Workflow/CronWorkflow CRDs | `create workflows` (resubmit/submit-from) | edit templates in `argo/workflow-templates/` | Argo UI: `kubectl -n argo port-forward svc/argo-server 2746:2746`; `argo logs` |
 | KubeVirt VMs | VirtualMachine CRDs | `patch virtualmachines` (`spec.running` start/stop/restart) | VM definitions in `manifests/` | `virtctl console` / `virtctl vnc` |
 | KubeStellar | ManagedClusters (its1 surfaces on host) | none | BindingPolicies in git, downsynced via wds1 | `kubestellar/SKILL.md` |
-| Catalog apps | index at `docs/data/catalog/*.json` | install workflow (imperative mode) | install workflow (gitops mode, default capture) | `registry-catalog` skill (when it lands) |
-| Host OS updates (bootc) | none — stays on the Astro Pages site (decision: lab update data already feeds Astro; no Console card duplication) | none | image/branch changes via factory repos | Astro dashboard, `bluefin.io/*` lanes |
-| BuildStream builds | Workflow CRD status (dakota pipeline runs) | `create workflows` (rerun via submit-from) | pipeline templates in Git | BuildBarn/artifact-cache details remain available on Astro |
+| BuildStream builds | Workflow CRD status (dakota pipeline runs) | `create workflows` (rerun via submit-from) | pipeline templates in Git | `argo logs` |
 
 BindingPolicy note: the `control.kubestellar.io` CRDs live in **wds1**, not
 the hosting cluster — `kubectl auth can-i get bindingpolicies` on ghost
 correctly answers no. The Console reaches wds1 as a registered cluster.
-- **Missions** (`kc-mission-v1`): step sequences with `yaml` (one-click
-  apply) and `command` blocks; custom missions are shareable via built-in
-  PR flow. The "add your second PC" onboarding flow is committed as
-  [`missions/add-your-second-pc.json`](../../../missions/add-your-second-pc.json).
-  The Console v0.3.34 does not read custom missions from a ConfigMap/CRD yet;
-  import it via **Missions > Local Files > Import**. See
-  `node-lifecycle/SKILL.md` for the agent-executable version.
 
 ## Failure modes
 
@@ -166,7 +154,6 @@ correctly answers no. The Console reaches wds1 as a registered cluster.
 
 - External dashboard or card JSON claimed as automatically provisioned
 - `arcade`, `quantum`, or other demo/local-agent-only dashboards enabled
-- Invented Prometheus metrics without a live exporter
 - Grafana or another general-purpose cluster-admin/dashboard framework
 - Dev-mode Console exposed beyond a local port-forward
 

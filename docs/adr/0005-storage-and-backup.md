@@ -21,9 +21,7 @@ Stateful workloads today are:
 | `zot-local` registry (`local-registry/registry`) | `hostPath` on `/var/mnt/ghost-data/zot-local` | User data: locally built/pushed images — migrate to `local-path` PVC before Velero backup |
 | `zot-cache` pull-through cache | `hostPath` on `/var/mnt/ghost-data/zot-cache` | Reproducible: exclude |
 | BuildBarn CAS/AC shards (`buildbarn/storage`) | `local-path` PVCs per StatefulSet replica | Reproducible but expensive to rebuild: include |
-| Lightweight Prometheus (`kube-system/prometheus-lightweight`) | 50Gi `local-path` PVC with 30d/45GB TSDB retention | Operational history: exclude; not a source of truth |
 | BuildBarn worker node cache | `hostPath` on `/var/lib/buildbarn/worker` | Reproducible: exclude |
-| ARC runner work volumes | `local-path` PVCs created per runner pod | Ephemeral CI state: exclude |
 
 Everything else in the cluster is reproducible from GitOps, image-based OS
 artifacts, and declarative KubeVirt `VirtualMachine` manifests. KubeVirt VMs use
@@ -231,8 +229,7 @@ metadata:
 
 Apply this label to the KubeFlex PostgreSQL PVC, the KubeStellar Console PVC,
 the BuildBarn storage PVCs, and the `zot-local` PVC after the migration above.
-Do not apply it to `zot-cache`, BuildBarn worker caches, or ARC runner work
-volumes.
+Do not apply it to `zot-cache` or BuildBarn worker caches.
 
 ### Credential handling
 

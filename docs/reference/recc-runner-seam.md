@@ -36,7 +36,7 @@ until a runner actually consumes the nested socket:
 
 1. **Outer remote execution** — the `worker` and `runner` containers. The
    workflow admission gates in `dakota-build-pipeline.yaml`,
-   `cosmic-build-pipeline.yaml`, `bluefin-server-build-pipeline.yaml`, and
+   `bluefin-server-build-pipeline.yaml`, and
    `bst-cache-warm.yaml` select those two containers *by name* from
    `containerStatuses`, so adding or removing a preparation sidecar cannot
    reject a healthy worker. Never gate on the container-count-dependent
@@ -89,7 +89,7 @@ verified; the generic `bst-qa` workflow is not a prototype measurement
 harness.
 
 `scripts/apply_recc_overlay.py` enforces this: it refuses the `dakota`,
-`cosmic`, `bluefin-server`, and `bst-qa` adapters unless `--runner-capability`
+`bluefin-server`, and `bst-qa` adapters unless `--runner-capability`
 is passed to assert a proven runner, and it refuses the operator-only
 `--pilot-cache-only` flag for those lanes.
 
@@ -100,7 +100,7 @@ candidate and a nested-socket canary prove support. It must not substitute
 outer-only execution or a production cache-only fallback.
 
 RECC admission is currently **rolled back**. The mandatory admission probe and
-the shared-overlay invocation were removed from the `dakota`, `cosmic`,
+the shared-overlay invocation were removed from the `dakota`,
 `bluefin-server`, `bst-qa`, and `bst-cache-warm` lanes because they gated on a
 `remoteApisSocketPath:` field that, per the concrete blocker above, the pinned
 `bb_runner` cannot provide. That made every BST lane fail closed permanently

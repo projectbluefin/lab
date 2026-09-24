@@ -1,18 +1,18 @@
 """Unit coverage for scripts/check_gitops_policy.py.
 
-`check_gitops_policy.py` is the sole producer of `docs/data/policy-compliance.json`,
-the dataset the compliance page renders and `scripts/generate_page_datasets.py`
-consumes. It had no unit tests at all, so the registry allowlist, the hostPath
-scanner, the node-pin scanner and the compliance-score arithmetic could all
-regress silently — a broken parser would simply report a 100% score with zero
-checks instead of failing.
+`check_gitops_policy.py` prints a GitOps/cluster compliance scorecard. A broken
+parser would simply report a 100% score with zero checks instead of failing, so
+the registry allowlist, the hostPath scanner, the node-pin scanner and the
+compliance-score arithmetic are pinned here.
 
 These tests cover the pure helpers (`run_cmd`, `extract_images_from_yaml`,
 `is_registry_allowed`) and drive `main()` end to end against a temporary
 repository tree with the live `kubectl` call stubbed.
 """
 
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 
@@ -149,11 +149,12 @@ def _run_main(tmp_path, monkeypatch, manifests=None, kubectl=None):
 
     monkeypatch.setattr(policy, "run_cmd", lambda cmd: kubectl)
     monkeypatch.chdir(tmp_path)
-    policy.main()
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        policy.main()
 
-    report = json.loads(
-        (tmp_path / "docs/data/policy-compliance.json").read_text(encoding="utf-8")
-    )
+    out = stdout.getvalue()
+    report = json.JSONDecoder().raw_decode(out[out.index("{"):])[0]
     return report, {rule["id"]: rule for rule in report["rules"]}
 
 
@@ -161,7 +162,6 @@ def test_main_writes_the_expected_report_envelope(tmp_path, monkeypatch):
     report, rules = _run_main(tmp_path, monkeypatch)
 
     assert report["schema_version"] == "v1"
-    assert report["_meta"]["page"] == "compliance"
     assert report["_meta"]["generated_at"].endswith("Z")
     assert set(rules) == {
         "registry_allowlist_git",

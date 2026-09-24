@@ -121,14 +121,6 @@ spec:
         value: "{{inputs.parameters.variant}}"
       - name: BEHAVE_TAGS
         value: "{{inputs.parameters.behave-tags}}"
-      - name: WORKFLOW_SUITES
-        value: "__auto__"
-      - name: GITHUB_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: github-token
-            key: token
-            optional: true
       volumeMounts:
       - mountPath: /workspace
         name: workspace
@@ -147,9 +139,6 @@ spec:
       command: [bash]
       source: |
         set -euo pipefail
-        # Build slug used to identify QA evidence in the lab repo.
-        IMG_SLUG="${VARIANT}-${IMAGE_TAG}"
-
         # Compute the image reference to pull and run. When an explicit digest is
         # supplied we use it directly and skip remote resolution so the exact
         # pinned reference is preserved end-to-end.
@@ -207,7 +196,7 @@ spec:
               --format '{{.Digest}}' "docker://${ZOT_IMAGE_REPO}:${IMAGE_TAG}" 2>/dev/null || true)
           fi
           if [[ -z "${DIGEST:-}" ]]; then
-            echo "Warning: could not resolve digest for ${IMAGE}; result will still be published but may fall back to tag-based matching." >&2
+            echo "Warning: could not resolve digest for ${IMAGE}; falling back to the tag." >&2
           else
             echo "Resolved digest ${DIGEST} for ${IMAGE}" >&2
           fi
@@ -224,113 +213,17 @@ spec:
         RESULT_STORE="/var/mnt/ghost-data/test-results/{{workflow.name}}"
         SUITE_RESULT_DIR="${RESULT_STORE}/${SUITE}"
         mkdir -p "${SUITE_RESULT_DIR}"
-        if [[ "${WORKFLOW_SUITES}" == "__auto__" ]]; then
-          WORKFLOW_SUITES=$(
-            kubectl get workflow "{{workflow.name}}" \
-              -n "{{workflow.namespace}}" -o json 2>/dev/null |
-              jq -r '.spec.arguments.parameters[]? | select(.name == "suites") | .value' |
-              head -n 1 || true
-          )
-          [[ -n "${WORKFLOW_SUITES}" ]] || WORKFLOW_SUITES="${SUITE}"
-        fi
 
         persist_suite_results() {
           # The hostPath is shared by this workflow's suite pods, which are
           # explicitly pinned to ghost above. Keep the complete per-suite
-          # directory for debugging and for the one aggregate publisher that
-          # wins the mkdir lock below.
+          # directory for debugging.
           mkdir -p "${SUITE_RESULT_DIR}"
           if ! cp -a /tmp/results/. "${SUITE_RESULT_DIR}/"; then
             echo "ERROR: failed to persist suite results to ${SUITE_RESULT_DIR}" >&2
             return 1
           fi
           touch "${SUITE_RESULT_DIR}/.complete"
-
-          # A suite must never make publication failures change its test
-          # verdict. The last suite to finish owns the single clone/commit/push
-          # for the workflow; mkdir is an atomic cross-pod lock on the shared
-          # hostPath. If all suite nodes are terminal but a result directory is
-          # missing, fail loudly instead of publishing incomplete evidence.
-          local expected_suite normalized_suite
-          local -a expected_suites=()
-          if [[ -z "${WORKFLOW_SUITES}" ]]; then
-            expected_suites=("${SUITE}")
-          else
-            IFS=',' read -r -a expected_suites <<< "${WORKFLOW_SUITES}"
-          fi
-          local -a missing_suites=()
-          for expected_suite in "${expected_suites[@]}"; do
-            normalized_suite="${expected_suite//[[:space:]]/}"
-            [[ -n "${normalized_suite}" ]] || continue
-            if [[ ! -f "${RESULT_STORE}/${normalized_suite}/.complete" ]]; then
-              missing_suites+=("${normalized_suite}")
-            fi
-          done
-          if ((${#missing_suites[@]} > 0)); then
-            local workflow_json lane_count terminal_count expected_count
-            workflow_json=$(
-              kubectl get workflow "{{workflow.name}}" \
-                -n "{{workflow.namespace}}" -o json 2>/dev/null || true
-            )
-            expected_count=0
-            for expected_suite in "${expected_suites[@]}"; do
-              normalized_suite="${expected_suite//[[:space:]]/}"
-              [[ -n "${normalized_suite}" ]] || continue
-              expected_count=$((expected_count + 1))
-            done
-            lane_count=0
-            terminal_count=0
-            if [[ -n "${workflow_json}" && "${expected_count}" -gt 0 ]]; then
-              lane_count=$(
-                jq '[.status.nodes[]?
-                  | select(.type == "Pod" and .templateName == "run-container-tests")]
-                  | length' <<<"${workflow_json}" 2>/dev/null || printf '0'
-              )
-              terminal_count=$(
-                jq '[.status.nodes[]?
-                  | select(.type == "Pod" and .templateName == "run-container-tests")
-                  | select(.phase == "Succeeded" or .phase == "Failed" or
-                           .phase == "Error" or .phase == "Skipped" or
-                           .phase == "Omitted" or .phase == "Daemoned")]
-                  | length' <<<"${workflow_json}" 2>/dev/null || printf '0'
-              )
-            fi
-            if [[ "${lane_count}" -ge "${expected_count}" &&
-                  "${terminal_count}" -ge "${expected_count}" ]]; then
-              echo "ERROR: all ${expected_count} suite nodes are terminal but result directories are missing: ${missing_suites[*]}" >&2
-              return 1
-            fi
-            return 0
-          fi
-          if [[ -z "${GITHUB_TOKEN:-}" ]]; then
-            echo "No GITHUB_TOKEN - skipping aggregate test-results publication" >&2
-            return 0
-          fi
-          if ! mkdir "${RESULT_STORE}/.publish.lock" 2>/dev/null; then
-            return 0
-          fi
-
-          local publish_rc=0
-          {
-            rm -rf /tmp/lab-code
-            git clone --depth 1 \
-              "https://x-access-token:${GITHUB_TOKEN}@github.com/projectbluefin/lab.git" \
-              /tmp/lab-code
-            python3 /tmp/lab-code/scripts/publish_test_results.py \
-              --batch-dir "${RESULT_STORE}" \
-              --img-slug "${IMG_SLUG}" \
-              --workflow-name "{{workflow.name}}" \
-              --github-token "${GITHUB_TOKEN}" \
-              --digest "${DIGEST}" \
-              --repo-dir /tmp/lab-code
-          } || publish_rc=$?
-          if [[ "${publish_rc}" -ne 0 ]]; then
-            echo "Warning: failed to publish aggregate test results (rc=${publish_rc})" >&2
-            rmdir "${RESULT_STORE}/.publish.lock" 2>/dev/null || true
-          else
-            echo "Published aggregate test results for ${IMG_SLUG} in one commit" >&2
-          fi
-          return 0
         }
 
         cleanup_target() {
@@ -342,7 +235,7 @@ spec:
           persist_suite_results || persist_rc=$?
           cleanup_target
           if [[ "${persist_rc}" -ne 0 ]]; then
-            echo "ERROR: suite result persistence/aggregation failed (rc=${persist_rc})" >&2
+            echo "ERROR: suite result persistence failed (rc=${persist_rc})" >&2
             [[ "${rc}" -ne 0 ]] || rc="${persist_rc}"
           fi
           return "${rc}"
@@ -375,7 +268,7 @@ spec:
         # already-completed blob and only re-fetches what didn't finish.
         # Under real ghost-container-qa concurrency (up to 6 simultaneous
         # pulls sharing one node's egress), this makes attempts
-        # monotonically faster -- observed live in bluefin-qa-pipeline-42jhj,
+        # monotonically faster -- observed live in a QA run,
         # where attempt 3/3 reached the image's final blob and missed the
         # 480s deadline by only ~47s. 3 attempts (1500s) was sized for the
         # original instant-hang case; one extra bounded attempt (4 total,
@@ -491,7 +384,7 @@ spec:
                   append_group_line "${nss_entry}"
                 else
                   # Image has no entry anywhere — synthesize with well-known fallback GIDs
-                  # so tests can run on minimal images (e.g. common, knuckle CI images).
+                  # so tests can run on minimal images (e.g. common CI images).
                   case "${group}" in
                     video)  gid=39  ;;
                     render) gid=989 ;;

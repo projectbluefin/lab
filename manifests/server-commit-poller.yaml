@@ -10,8 +10,8 @@ metadata:
     app.kubernetes.io/component: commit-poller
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
-  # Offset from the dakota and cosmic pollers so the three share bounded BST
-  # admission rather than contending for the same slot.
+  # Offset from the dakota poller so the two share bounded BST admission
+  # rather than contending for the same slot.
   schedules:
     - "2-59/15 * * * *"
   timezone: "UTC"

@@ -3,9 +3,8 @@
 Live incident: a single QA pipeline held five of the six `ghost-container-qa`
 slots because `spec.parallelism` is not inherited when a caller reaches a
 template through `templateRef` (only a spec-level `workflowTemplateRef`
-inherits it). `pr-poller`'s inline `pr-pipeline` and `image-poller` both use
-`templateRef`, so every `test-lane` in a fan-out started at once and starved
-every other PR.
+inherits it), so every `test-lane` in a fan-out started at once and starved
+every other run.
 """
 
 import importlib.util
@@ -20,11 +19,7 @@ _spec = importlib.util.spec_from_file_location("check_semaphore_topology", CHECK
 topology = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(topology)
 
-FANOUT_PIPELINES = (
-    "argo/workflow-templates/bluefin-qa-pipeline.yaml",
-    "argo/workflow-templates/dakota-qa-pipeline.yaml",
-    "argo/workflow-templates/cosmic-qa-pipeline.yaml",
-)
+FANOUT_PIPELINES = ("argo/workflow-templates/dakota-qa-pipeline.yaml",)
 
 
 def _templates(relpath):

@@ -18,9 +18,7 @@ labels: bug
 
 ## Environment
 
-- Variant: <!-- latest / lts -->
-- GNOME Shell version: <!-- e.g. 50.1 -->
-- Workflow: <!-- e.g. bluefin-qa-pipeline-abc12 -->
+- Workflow: <!-- e.g. dakota-qa-pipeline-abc12 -->
 
 ## Acceptance criteria
 

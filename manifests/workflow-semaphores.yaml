@@ -4,7 +4,7 @@
 # callers, including workflow-of-workflows invocations via templateRef.
 #
 # Keys:
-#   bst-build          — Global Dakota/Cosmic/Bluefin Server BuildStream
+#   bst-build          — Global Dakota/Bluefin Server BuildStream
 #                        execution lane. One pipeline owns the slot; its
 #                        variants still run in parallel, keeping both BuildBarn
 #                        workers busy without stampeding the cache or starving
@@ -13,8 +13,6 @@
 #                        Keeps cache re-seeding from occupying the production
 #                        bst-build slot while still allowing only one warmup
 #                        build at a time.
-#   migration-containerdisk-build — Serializes the migration workflow while it
-#                        refreshes and consumes its temporary VM source disk.
 #   ghost-container-qa — Cross-workflow capacity limit for the control-plane
 #                        container QA runner (run-container-tests). Each pod
 #                        requests 4Gi on ghost; cap concurrent runs to keep
@@ -31,10 +29,6 @@
 #                        scripts/check_semaphore_topology.py in `just lint`.
 #                        VMs are still scheduled natively and must not use this
 #                        semaphore (see docs/skills/argo-workflows/patterns.md).
-#   dakota-publish      — Serializes Zot-to-GHCR Dakota publication workflows
-#                        while both image lanes run independently inside one slot.
-#   aurora-vm-qa        — Serializes Aurora/KDE VM soak runs with other
-#                        workflows using the shared Aurora test namespace.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -45,7 +39,4 @@ metadata:
 data:
   bst-build: "1"
   bst-cache-warm: "1"
-  migration-containerdisk-build: "1"
   ghost-container-qa: "6"
-  dakota-publish: "1"
-  aurora-vm-qa: "1"

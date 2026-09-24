@@ -49,11 +49,6 @@ ArgoCD (watching the WDS) sees true workload health.
   cluster-admin) never ships exposed.
 - Archived and banned: kubestellar/ui, kubestellar/ui-plugins, all KCP-era
   docs.
-- The Astro Pages dashboard remains the public read-only reporting surface;
-  it does not become a cluster-admin UI.
-- Prometheus is a backend metrics service for automation and acceptance
-  checks, not a user-facing dashboard. Console 0.3.34 does not provision
-  Git-backed Prometheus cards, so its admin views use live Kubernetes APIs.
 - Grafana and parallel general-purpose cluster-admin/dashboard frameworks are
   not introduced. Specialized CLI and native troubleshooting views may remain,
   but they do not compete as a second single pane.

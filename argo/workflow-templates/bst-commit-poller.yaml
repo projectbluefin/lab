@@ -5,9 +5,9 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Polls GitHub branches that feed BuildStream pipelines. Dakota and Cosmic
-      share commit comparison, bounded queue admission, and success-only state
-      persistence while retaining their repository-specific build templates.
+      Polls GitHub branches that feed BuildStream pipelines. Dakota and Bluefin
+      Server share commit comparison, bounded queue admission, and success-only
+      state persistence while retaining their repository-specific build templates.
   labels:
     app.kubernetes.io/component: commit-poller
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -81,37 +81,6 @@ spec:
                   value: "testing"
                 - name: lock-key
                   value: "bst-build"
-          - name: update-sha
-            depends: "run-build.Succeeded"
-            template: update-sha
-            arguments:
-              parameters:
-                - name: sha
-                  value: "{{tasks.check-sha.outputs.parameters.sha}}"
-                - name: expected-sha
-                  value: "{{tasks.check-sha.outputs.parameters.stored-sha}}"
-
-    - name: poll-cosmic
-      dag:
-        tasks:
-          - name: check-sha
-            template: check-sha
-          - name: run-build
-            depends: "check-sha.Succeeded"
-            when: "{{tasks.check-sha.outputs.parameters.changed}} == true"
-            templateRef:
-              name: cosmic-build-pipeline
-              template: build
-            arguments:
-              parameters:
-                - name: ref
-                  value: "{{workflow.parameters.branch}}"
-                - name: repo
-                  value: "https://github.com/{{workflow.parameters.repo}}.git"
-                - name: registry
-                  value: "{{workflow.parameters.registry}}"
-                - name: build-mode
-                  value: "re"
           - name: update-sha
             depends: "run-build.Succeeded"
             template: update-sha

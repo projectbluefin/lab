@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 # Inject any missing environment variables required at module import time
 os.environ.setdefault("TEST_NAMESPACE", "dummy-namespace")
 
-# Ensure repository root is in sys.path so 'tests.service_catalog...' imports succeed during collection
+# Ensure repository root is in sys.path so 'tests.shared...' imports succeed during collection
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if repo_root not in sys.path:
     sys.path.insert(0, repo_root)

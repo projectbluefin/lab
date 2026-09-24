@@ -18,7 +18,7 @@ SPEC.loader.exec_module(OVERLAY)
 
 
 # Lanes that must fail closed rather than build without nested RECC.
-MANDATORY_KINDS = ("dakota", "cosmic", "bluefin-server", "bst-qa")
+MANDATORY_KINDS = ("dakota", "bluefin-server", "bst-qa")
 # The only operator-driven fixture allowed to use --pilot-cache-only.
 PILOT_KINDS = ("bst-prototype",)
 PILOT_PROVIDER = "components/buildbox.bst"
@@ -86,25 +86,6 @@ options:
             "- freedesktop-sdk.bst:components/gcc.bst\n",
             encoding="utf-8",
         )
-    elif kind == "cosmic":
-        root = checkout / "elements/core"
-        root.mkdir(parents=True)
-        (root / "cosmic-comp.bst").write_text(
-            "kind: manual\n\nbuild-depends:\n"
-            "- freedesktop-sdk.bst:components/gcc-base.bst\n",
-            encoding="utf-8",
-        )
-        (root / "cosmic-files.bst").write_text(
-            "kind: manual\n\nbuild-depends:\n"
-            "- freedesktop-sdk.bst:components/gcc-base.bst\n",
-            encoding="utf-8",
-        )
-        (checkout / "elements/core-deps").mkdir()
-        (checkout / "elements/core-deps/runtime-only.bst").write_text(
-            "kind: manual\n\nruntime-depends:\n"
-            "- freedesktop-sdk.bst:components/gcc.bst\n",
-            encoding="utf-8",
-        )
     elif kind == "bluefin-server":
         root = checkout / "elements/oci"
         root.mkdir(parents=True)
@@ -129,7 +110,7 @@ options:
 
 @pytest.mark.parametrize(
     "kind",
-    ("dakota", "cosmic", "bluefin-server", "bst-prototype", "bst-qa"),
+    ("dakota", "bluefin-server", "bst-prototype", "bst-qa"),
 )
 def test_overlay_supports_all_lab_project_adapters(tmp_path, kind):
     checkout = _checkout(tmp_path, kind)
@@ -176,9 +157,6 @@ def test_overlay_supports_all_lab_project_adapters(tmp_path, kind):
     assert environment["RECC_ACTION_UNCACHEABLE"] == "0"
     assert environment["RECC_VERBOSE"] == "1"
     assert environment["PATH"] == "/usr/recc/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    if kind == "cosmic":
-        runtime_only = checkout / "elements/core-deps/runtime-only.bst"
-        assert "build-depends:" not in runtime_only.read_text()
 
 
 def test_existing_recc_option_is_forced_to_the_resolved_policy(tmp_path):
@@ -205,11 +183,11 @@ def test_existing_recc_option_is_forced_to_the_resolved_policy(tmp_path):
 
 
 def test_runner_capability_is_required_for_nested_socket(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
+    checkout = _checkout(tmp_path, "dakota")
 
     OVERLAY.apply_overlay(
         checkout,
-        project_kind="cosmic",
+        project_kind="dakota",
         runner_capability=True,
     )
 
@@ -338,8 +316,8 @@ def test_wrapper_script_fails_closed_when_recc_is_absent(tmp_path):
 
 
 def test_commented_build_depends_section_stays_loadable_yaml(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
-    element = checkout / "elements/core/cosmic-comp.bst"
+    checkout = _checkout(tmp_path, "dakota")
+    element = checkout / "elements/oci/layers/bluefin.bst"
     element.write_text(
         "kind: manual\n\n"
         "build-depends:\n"
@@ -348,7 +326,7 @@ def test_commented_build_depends_section_stays_loadable_yaml(tmp_path):
         encoding="utf-8",
     )
 
-    _apply(checkout, "cosmic")
+    _apply(checkout, "dakota")
 
     text = element.read_text()
     assert "build-depends:-" not in text
@@ -363,8 +341,8 @@ def test_commented_build_depends_section_stays_loadable_yaml(tmp_path):
 
 
 def test_build_depends_insertion_preserves_existing_indentation(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
-    element = checkout / "elements/core/cosmic-comp.bst"
+    checkout = _checkout(tmp_path, "dakota")
+    element = checkout / "elements/oci/layers/bluefin.bst"
     element.write_text(
         "kind: manual\n\n"
         "build-depends:\n"
@@ -375,7 +353,7 @@ def test_build_depends_insertion_preserves_existing_indentation(tmp_path):
         encoding="utf-8",
     )
 
-    _apply(checkout, "cosmic")
+    _apply(checkout, "dakota")
 
     text = element.read_text()
     parsed = yaml.safe_load(text)
@@ -385,8 +363,8 @@ def test_build_depends_insertion_preserves_existing_indentation(tmp_path):
 
 
 def test_build_depends_insertion_is_idempotent_for_commented_sections(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
-    element = checkout / "elements/core/cosmic-comp.bst"
+    checkout = _checkout(tmp_path, "dakota")
+    element = checkout / "elements/oci/layers/bluefin.bst"
     original = (
         "kind: manual\n\n"
         "build-depends:\n"
@@ -404,14 +382,14 @@ def test_build_depends_insertion_is_idempotent_for_commented_sections(tmp_path):
 
 
 def test_overlay_fails_closed_before_writing_unsupported_layout(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
-    (checkout / "elements/core/cosmic-comp.bst").write_text(
+    checkout = _checkout(tmp_path, "dakota")
+    (checkout / "elements/oci/layers/bluefin.bst").write_text(
         "kind: manual\nbuild-depends: [freedesktop-sdk.bst:components/gcc-base.bst]\n",
         encoding="utf-8",
     )
 
     with pytest.raises(OVERLAY.OverlayError, match="inline build-depends"):
-        _apply(checkout, "cosmic")
+        _apply(checkout, "dakota")
 
     assert not (checkout / "include/recc.yml").exists()
     assert "include/recc.yml" not in (checkout / "project.conf").read_text()
@@ -554,40 +532,40 @@ def test_wrapper_integration_command_runs_under_bin_sh(tmp_path):
 
 
 def test_endpoint_diagnostics_reject_credentials(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
+    checkout = _checkout(tmp_path, "dakota")
 
     with pytest.raises(OVERLAY.OverlayError, match="credentials"):
         _apply(
             checkout,
-            "cosmic",
+            "dakota",
             endpoint="grpc://user:secret@example.test:8980",
         )
 
 
 def test_endpoint_diagnostics_reject_unsafe_host_or_path(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
+    checkout = _checkout(tmp_path, "dakota")
 
     with pytest.raises(OVERLAY.OverlayError, match="unsafe characters"):
         _apply(
             checkout,
-            "cosmic",
+            "dakota",
             endpoint="grpc://bad*host.example:8980",
         )
 
     with pytest.raises(OVERLAY.OverlayError, match="URL data"):
         _apply(
             checkout,
-            "cosmic",
+            "dakota",
             endpoint="grpc://example.test:8980/path",
         )
 
 
 def test_endpoint_without_scheme_uses_shared_grpc_contract(tmp_path):
-    checkout = _checkout(tmp_path, "cosmic")
+    checkout = _checkout(tmp_path, "dakota")
 
     diagnostics = _apply(
         checkout,
-        "cosmic",
+        "dakota",
         endpoint="frontend.buildbarn.svc.cluster.local:8980",
     )
 

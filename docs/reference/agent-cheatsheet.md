@@ -22,16 +22,6 @@
 
 | Situation | Run |
 |---|---|
-| Validate a smoke test or step change | `just run-tests-tag testing` |
-| Validate atomic OS contract checks | `argo submit -n argo --from workflowtemplate/bluefin-qa-pipeline -p suites=system` |
-| Validate developer or software suites | `argo submit -n argo --from workflowtemplate/bluefin-qa-pipeline -p suites=developer` |
-| Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
-| Validate a single Bluefin tag end-to-end | `just run-tests-tag <testing\|lts-testing>` |
-| Validate released (stable) image | `just run-tests-tag stable` or `just run-tests-tag lts-stable` |
-| Validate a bootc OCI image change | `just run-tests-tag <testing\|lts-testing\|stable\|lts-stable>` or `just run-tests-matrix` |
-| Validate the Flatcar lane | `just run-flatcar-smoke` |
-| Run on-demand K8sGPT cluster triage | `just run-k8sgpt` |
-| Check exo-0 kernel canary status (7.1 target) | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` |
 | Submit Dakota BST build pipeline (default variant only) | `just run-bst-build [ref=testing]` |
 | Run Dakota containerized smoke QA (no VM, works for composefs-oci) | `just run-dakota-container-qa [image-tag=testing] [variant=dakota]` |
 | Trigger the Dakota PR batch workflow | `argo submit -n argo --from workflowtemplate/dakota-pr-batch-pipeline -p pr-numbers=<number> --wait` |
@@ -39,7 +29,6 @@
 | List workflows / VMs | `just list-workflows` · `just list-vms` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |
 | Lint Argo YAML | `just lint` |
-| Refresh dashboard data contracts locally | `gh issue list --repo projectbluefin/lab --label bug --state open --limit 50 --json number,title,url,labels,createdAt > /tmp/bugs-raw.json && ISSUE_COUNT=$(gh issue list --repo projectbluefin/lab --state open --limit 200 --json number \| jq length) && PR_COUNT=$(gh pr list --repo projectbluefin/lab --state open --limit 200 --json number \| jq length) && MERGED_7D=$(gh pr list --repo projectbluefin/lab --state merged --limit 200 --json mergedAt \| jq "[.[] \| select(.mergedAt > \"$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7d +%Y-%m-%dT%H:%M:%SZ)\")] \| length") && python3 scripts/refresh_factory_stats.py "$ISSUE_COUNT" "$PR_COUNT" "$MERGED_7D" && python3 scripts/generate_page_datasets.py --root . && npm run build` |
 | Bootstrap repo-owner workstation access | §9 |
 
 Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.
@@ -121,39 +110,23 @@ kubectl -n llm-d logs -l app.kubernetes.io/name=llm-d-modelserver -c modelserver
 The endpoint is exposed on NodePort `30800` and can be queried at
 `http://<exo-0-ip>:30800/v1/models` after the pod reaches `Running`.
 
-## Flatcar kernel lifecycle — quick checks
-
-Use these for lifecycle-state inspection and manual gate runs:
-
-```bash
-kubectl get configmap flatcar-kernel-lifecycle-state -n argo -o yaml
-argo cron list -n argo | grep flatcar-kernel-gate
-argo submit -n argo --from workflowtemplate/flatcar-kernel-gate
-```
-
 ## 2. Failure triage — symptom → exact next command
 
-Run `just logs` first. Then match a row. **Bluefin and Dakota image-poll QA are now container-only** — rows mentioning VM, VMI, or SSH apply only to VM-backed lanes such as Flatcar, Knuckle, or other explicit KubeVirt workflows.
+Run `just logs` first. Then match a row. **Dakota QA is container-only** — rows mentioning VM or VMI apply only to explicit KubeVirt workflows such as `bluefin-server-boot-test`.
 
 | Symptom in logs | Run next |
 |---|---|
 | `No GITHUB_TOKEN or missing results.json - skipping publication` | `kubectl get secret -n argo github-token` — secret must exist; then inspect `just logs` for the failing suite before rerunning. |
 | `results.json not found` or summary reports `Execution failed` | `just logs | grep -n "results.json not found\|Execution failed"` → identify the failing `run-container-tests` lane, then rerun after fixing the image or suite issue. |
 | Expected image-poll rerun never starts after a new publish | `kubectl get configmap image-polling-digests -n argo -o yaml` — compare the stored digest with the workflow log; stale state means the previous run already claimed that digest. |
-| VMI `NotFound` 1 second after VM creation | Same as above — KubeVirt refused to start VM due to missing accessCredentials secret; VM status will be `Stopped` |
 | `TypeError: ... requireResult` | Fix the step in the upstream `projectbluefin/testsuite` patterns (`findChildren(...)` / `retry=False`) |
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |
 | `outputs.result` is `Waiting...` or other debug text | Send debug output to `>&2`; keep stdout for the result only |
-| VM stuck `Terminating` | `kubectl delete pod -n bluefin-test $(kubectl get pod -n bluefin-test -l kubevirt.io/vm=<name> -o name)` |
-| `qemu-img: command not found` (Flatcar prep) | Use `quay.io/fedora/fedora:latest` for the Flatcar prep image |
-| exo-0 not on expected 7.1 kernel | `kubectl get node exo-0 -o jsonpath='{.status.nodeInfo.kernelVersion}{"\n"}'` then verify Nebraska packages: `curl -s http://<control-plane-ip>:30802/api/v1/apps/e96281a6-d1af-4bde-9a0a-97b76e56dc57/packages \| jq '.[-5:]'` |
-| Kernel poller keeps retriggering wrong versions | Check state: `kubectl get configmap flatcar-kernel-polling-state -n argo -o yaml` and verify CronWorkflow policy is `Forbid`: `kubectl get cronworkflow flatcar-kernel-poller -n argo -o jsonpath='{.spec.concurrencyPolicy}{"\n"}'` |
-| `run-gnome-tests` pod errors immediately | Fix the WorkflowTemplate in git; `volumes:` must live at template scope, not under `container:` |
+| VM stuck `Terminating` | `kubectl delete pod -n argo $(kubectl get pod -n argo -l kubevirt.io/vm=<name> -o name)` |
 | Workflow stuck `Pending` | Run §3 |
 | Workflow stuck on a `NotReady` node / pod never progresses | `kubectl get nodes`; if the worker is `NotReady`, `argo stop -n argo <workflow>` and submit a fresh run so the scheduler can place it on a healthy node (often `ghost`) |
 | Template change did not take effect | Run §4 |
-| Lab QA ran but no `testing-lab / <repo>` Check Run on the factory PR | `gh api repos/projectbluefin/<repo>/contents/.github/workflows/lab-check.yml` — a `404` means the repo is sender-enrolled (in the poller's `AUTO_REPOS`) but missing the receiver workflow, so the `lab-check` dispatch is silently dropped. See [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) failure modes. |
 
 If no row matches:
 
@@ -253,79 +226,25 @@ Do **not** `kubectl apply` a rejected WorkflowTemplate.
 argo cron list -n argo
 
 # Suspend during a debugging session:
-argo cron suspend nightly-smoke -n argo
-argo cron suspend nightly-smoke-lts -n argo
+argo cron suspend nightly-dakota -n argo
 
 # Resume:
-argo cron resume nightly-smoke -n argo
-argo cron resume nightly-smoke-lts -n argo
+argo cron resume nightly-dakota -n argo
 
 # Backfill / run now:
-argo submit -n argo --from cronworkflow/nightly-smoke
+argo submit -n argo --from cronworkflow/nightly-dakota
 argo submit -n argo --from cronworkflow/orphan-vm-cleanup
 ```
 
 | Name | Schedule (UTC) | Purpose |
 |---|---|---|
-| `nightly-smoke` | 02:00 | `bluefin-qa-pipeline` (`testing`) |
-| `nightly-smoke-lts` | 02:30 | `bluefin-qa-pipeline` (`lts-testing`) |
+| `nightly-dakota` | 03:00 | `dakota-qa-pipeline` (`testing`) |
 | `orphan-vm-cleanup` | every 30 min | Clean orphan test VMs |
 
-Suspended since the 2026-08 bandwidth cuts (PR #632) but runnable on demand via
-`argo submit -n argo --from cronworkflow/<name>`: `nightly-smoke-stable`,
-`nightly-smoke-lts-stable`, `nightly-knuckle`, `nightly-kde`, the aurora /
-snosi / fedora-bootc / bluefin-main image pollers, and both BST commit pollers.
-Full list: `docs/reference/workflow-reference.md`.
+Suspended but runnable on demand via `argo submit -n argo --from cronworkflow/<name>`:
+`dakota-commit-poller`. Full list: `docs/reference/workflow-reference.md`.
 
 Any patch that must survive beyond a short debug session also needs a matching git change under `manifests/`.
-
----
-
-## 6. Test-VM key rotation — deliberate, high-risk
-
-This rotates the SSH key used **in-cluster** by workflow pods to reach test VMs. It is not SSH from a workstation — `ssh-keygen` runs locally only to generate key material, which is then stored in a k8s Secret.
-
-```bash
-# 1. Generate a new key locally (do not commit it):
-ssh_key=$(mktemp)
-ssh-keygen -t ed25519 -f "${ssh_key}" -N "" -C "bluefin-test-suite@ghost"
-
-# 2. Replace the client secret (used by workflow pods to SSH into VMs):
-kubectl create secret generic bluefin-test-ssh-key \
-  --from-file=id_ed25519="${ssh_key}" \
-  --from-file=id_ed25519.pub="${ssh_key}.pub" \
-  -n argo --dry-run=client -o yaml | kubectl apply -f -
-
-# 3. Replace the server-side public key (used by KubeVirt accessCredentials
-#    to inject authorized_keys into VMs via QEMU guest agent):
-PUB_KEY=$(cat "${ssh_key}.pub")
-kubectl create secret generic bluefin-test-ssh-pubkey \
-  --from-literal="key=${PUB_KEY}" \
-  -n bluefin-test --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic bluefin-test-ssh-pubkey \
-  --from-literal="key=${PUB_KEY}" \
-  -n bluefin-lts-test --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null || true
-
-shred -u "${ssh_key}" "${ssh_key}.pub"
-
-# 4. Update manifests/bluefin-test-ssh-pubkey.yaml with the new base64 key
-#    so ArgoCD manages the secret going forward.
-
-# 5. Confirm via VM-backed runs:
-just run-migration-test testing
-just run-flatcar-smoke
-
-# 6. Verify the new fingerprint:
-kubectl get secret bluefin-test-ssh-key -n argo \
-  -o jsonpath='{.data.id_ed25519\.pub}' | base64 -d | ssh-keygen -lf -
-```
-
-SSH key rotation now has two parts:
-- `bluefin-test-ssh-key` (argo ns): private+public key for the SSH client (workflow pods)
-- `bluefin-test-ssh-pubkey` (VM ns): public key for KubeVirt accessCredentials injection
-
-VM-backed lanes inject SSH keys at boot through KubeVirt qemuGuestAgent
-accessCredentials rather than baking them into disk images.
 
 ---
 
@@ -333,7 +252,7 @@ accessCredentials rather than baking them into disk images.
 
 Use the [Dakota PR review skill](../skills/dakota-pr-review/SKILL.md) for the
 repeatable pre-merge path. Do not rely on the older batch workflow as the merge
-gate when Dakota GHA or merge queue is unhealthy.
+gate when Dakota GHA is unhealthy.
 
 For each open PR:
 
@@ -343,7 +262,7 @@ For each open PR:
    then `dakota-qa-pipeline` for required BDD/GUI coverage.
 4. If a scoped PR defect is found, fix it on the PR branch, push the new SHA,
    rebuild, and rerun E2E. Old evidence is invalid after a push.
-5. Merge directly only after the fresh lab build and E2E pass; do not enter merge queue.
+5. Merge directly only after the fresh lab build and E2E pass.
 
 The older batch workflow remains useful for validation-only runs:
 
@@ -353,23 +272,18 @@ argo submit -n argo --from workflowtemplate/dakota-pr-batch-pipeline \
   --wait
 ```
 
-## 7. PR queue and ARC runners
-
-- [PR queue / verification report notes](agent-cheatsheet-pr-queue.md)
-- [ARC runners on ghost](agent-cheatsheet-arc-runners.md)
-
 ## 8. Safe cleanup — what you may delete
 
 | Resource | Safe? |
 |---|---|
-| VM in `bluefin-test` / `bluefin-lts-test` / `flatcar-test`, with no live workflow | Yes — delete the single VM or run `orphan-vm-cleanup` |
+| Test VM with no live workflow | Yes — delete the single VM or run `orphan-vm-cleanup` |
 | `just delete-vms` | Only for full teardown when you intentionally accept that all test VMs in those namespaces will be deleted |
 | Workflows in `argo` | Yes — `just delete-workflows` |
 
 Single-VM deletion:
 
 ```bash
-kubectl delete vm -n bluefin-test <name>
+kubectl delete vm -n <namespace> <name>
 ```
 
 ---
@@ -379,9 +293,6 @@ kubectl delete vm -n bluefin-test <name>
 ```bash
 just setup-argocd
 just argocd-sync
-just run-tests-tag testing
-# Optional for VM-backed lanes only:
-just setup-ssh-secret
 ```
 
 ---
@@ -393,12 +304,11 @@ just setup-ssh-secret
 2. argo cron list -n argo
 3. just list-vms
 4. just list-workflows
-5. just run-tests-tag testing
 ```
 
 Expected steady state:
 - both ArgoCD applications are Synced + Healthy
-- all three CronWorkflows are present
+- all expected CronWorkflows are present
 - no idle test VMs remain after workflows finish
 - the most recent container-only smoke run is green
 
@@ -408,7 +318,6 @@ Expected steady state:
 
 | Fact | Command |
 |---|---|
-| SSH key fingerprint | `kubectl get secret bluefin-test-ssh-key -n argo -o jsonpath='{.data.id_ed25519\.pub}' \| base64 -d \| ssh-keygen -lf -` |
 | Live WorkflowTemplate body | `argo template get -n argo <name>` |
 | CronWorkflow schedules | `argo cron list -n argo` |
 | ArgoCD revision in cluster | `just argocd-status` |

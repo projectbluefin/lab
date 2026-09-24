@@ -36,9 +36,6 @@ metadata:
 | `testing-lab` | `argo/workflow-templates/` | argo | WorkflowTemplates |
 | `testing-lab-infra` | `manifests/` | argo + others | CronWorkflows, RBAC, NodePorts, ConfigMaps |
 | `kubestellar-applications` | selected files in `argocd/` | argocd | KubeStellar PostgreSQL, core, and Console Applications |
-| `arc-systems` | `argocd/arc-controller-app.yaml` | arc-systems | ARC controller |
-| `arc-runners` | `argocd/arc-runners-app.yaml` | arc-runners | Org `ghost-runners` scale set |
-| `arc-runners-personal` (optional) | `argocd/arc-runners-personal-app.yaml` | arc-runners | Personal-account scale set |
 
 Managed Applications use `automated: { prune: true, selfHeal: true }` — per
 [Argo CD best practices](https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/).
@@ -53,10 +50,6 @@ Application manifests selected from `argocd/`.
 
 **`prune: true`** — resources removed from git are deleted from the cluster.
 **`selfHeal: true`** — manual cluster changes are reverted within ~3 minutes.
-
-`testing-lab-infra` excludes `manifests/flatcar-update-*.yaml`; those resources are owned by the
-separate `flatcar-update` Application. Keep that split to avoid duplicate ownership and
-persistent `OutOfSync` drift from overlapping Namespace/ConfigMap management.
 
 ### 2. The three-path decision tree
 
@@ -141,7 +134,7 @@ volume.
 **Subdirectories and namespaces:** `testing-lab-infra` runs with
 `directory.recurse: true` (live-patched 2026-07-25; the Application object is
 manually applied, not git-tracked) so nested paths like
-`manifests/catalog-apps/<app>/manifest.yaml` sync. It also sets
+`manifests/<dir>/<file>.yaml` sync. It also sets
 `CreateNamespace=false` — any bundle targeting a new namespace must include
 its own `Namespace` object or the sync fails. Symptom of a missing recurse
 flag: files merge to a subdirectory, app reports Synced/Healthy, but the
@@ -177,9 +170,8 @@ is scoped to one repo:
 kubernetes-mcp-resources_list apiVersion=argoproj.io/v1alpha1 kind=Application namespace=argocd
 ```
 
-Compare the `REVISION` column across all Applications. If Applications
-tracking a *different* repo (e.g. `flatcar-update`) pick up new revisions
-during the same window while every Application tracking `projectbluefin/lab`
+Compare the `REVISION` column across all Applications. If every Application
+tracking `projectbluefin/lab`
 (`testing-lab`, `testing-lab-infra`, `kubestellar-applications`) stays pinned
 to the same old commit SHA across two or more subsequent merges to `main`,
 that's a **repo-specific** reconciliation stall, not a generic ArgoCD
@@ -222,9 +214,6 @@ Use this when a template change is already in git but the live template still ap
 the refresh ensures the next sync uses the latest repo content rather than the previous
 cached manifest snapshot.
 
-### 7. OCI Helm chart Applications (arc-systems, arc-runners)
-For the GitHub Actions Runner Controller setup see [arc-runners.md](arc-runners.md).
-
 ### 9. Suspending a broken CronWorkflow permanently
 
 When a CronWorkflow always fails (upstream image broken, build blocked), suspend it **in git**
@@ -242,11 +231,7 @@ Commit and push. ArgoCD sets the CronWorkflow's suspend flag and stops schedulin
 
 **Suspend vs delete:** temporarily broken → suspend. Permanently abandoned → delete the file; ArgoCD prune removes the CronWorkflow.
 
-**Currently suspended:** see the full list in
-[`docs/reference/workflow-reference.md`](../../reference/workflow-reference.md#cache-warming-pollers)
-("Suspended in the 2026-08 bandwidth cuts"). Notable: `dakota-commit-poller`
-(suspended in #609 while the QA lane still requires `bootc install to-disk` on a
-dakota image without UKI support) and the aurora/KDE cron cluster.
+**Currently suspended:** `dakota-commit-poller` and `daily-dakota-build`.
 
 ### 9. Taking GitOps ownership of unmanaged Deployments/Services
 
@@ -313,7 +298,6 @@ This protocol was established after multiple sessions where:
 - Submitting a new workflow immediately after a push without waiting for ArgoCD sync confirmation
 - **automountServiceAccountToken: false on components that need the Kubernetes API** — setting this globally on a Deployment/StatefulSet pod template blocks all containers (including init containers like `secret-init` in `argocd-redis`) from obtaining their service account tokens. If they run CLI commands (such as `argocd admin redis-initial-password`) that access the cluster API, they will fail immediately with configuration or authentication errors. Always use `automountServiceAccountToken: true` for components that interact with the Kubernetes control plane.
 - **Every sync event says "Partial sync operation" and new commits never land** — self-heal is loop-syncing one permanently-drifted resource (check `.status.operationState.operation.sync.resources` and `autoHealAttemptsCount`), pinned to an old revision, which starves full syncs. Known trigger: StatefulSet `volumeClaimTemplates` — the API server injects `apiVersion`/`kind`/Status per template, which reads as permanent drift under server-side diff. Fix: `ignoreDifferences` with `jqPathExpressions: [.spec.volumeClaimTemplates[]?.apiVersion, ...kind, ...status]` plus `RespectIgnoreDifferences=true` (see `argocd/infra-application.yaml`).
-- **Missing `arc-github-secret` after ARC reinstall** — the `ghost-runners` scale set cannot create a listener or runner pods. Recreate the secret with `scripts/setup-arc-github-secret.sh` (or the `just setup-arc-github-secret` helper). The script now supports non-interactive recovery with `--app-id`, `--installation-id`, `--pem-path`, or the matching `ARC_*` environment variables, while preserving the interactive fallback when those inputs are omitted. It still requires `gh` CLI auth and a GitHub App private key generated in the App UI; do not hard-code the App ID or Installation ID in docs or scripts.
 - **NOAUTH errors in application-controller logs** — the SSA patch in `manifests/argocd-tuning.yaml` owns the controller container spec; any apply that omits `env` wipes the upstream env list including `REDIS_PASSWORD`. The patch must always declare the `REDIS_PASSWORD` secretKeyRef. Symptom: "DiffFromCache error ... NOAUTH Authentication required", degraded/partial syncs.
 - **Using `registry.access.redhat.com` (UBI) or `bitnami/*` images** — both banned in this cluster. Use organization-owned containers (`ghcr.io/projectbluefin/lab-runner:latest`) or fallback to `cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795` instead.
 - **Choosing a base image without checking the policy** — preference order is: organization-owned FSDK containers (`ghcr.io/projectbluefin/lab-runner:latest`) first, then `cgr.dev/chainguard/*` for general/system infra. Fedora images are allowed when appropriate (not replaced with non-existent alternatives). docker.io is banned except `docker.io/rocm/k8s-device-plugin` (annotate `# registry-lint-ignore`).

@@ -10,7 +10,6 @@ metadata:
     - /kubestellar/kubestellar
     - /argoproj/argo-cd
     - /websites/argo-cd_readthedocs_io_en_stable
-    - /websites/prometheus_io
 ---
 
 # KubeStellar — lab Skill
@@ -151,28 +150,12 @@ template declares `kubestellar-bootstrap` at template level because
 - BindingPolicies live in the WDS, committed to git like any manifest once
   the GitOps lane for wds1 exists.
 
-## Controller metrics
-
-The lab uses the standalone `prometheus-lightweight` deployment, not
-Prometheus Operator resources. `manifests/kubestellar-controller-metrics.yaml`
-provides Services for the transport controller, status addon controller, and
-status agent; the existing KubeFlex and KubeStellar controller-manager Services
-provide their kube-rbac-proxy endpoints. Scrape jobs are named
-`kubestellar-*`; query controller-runtime, process, REST client, and workqueue
-families rather than inventing BindingPolicy or ManifestWork gauges. Prometheus
-`role: endpoints` discovery attaches service and backing-pod metadata, so filter
-on service and endpoint port names and relabel only namespace, service, pod, and
-instance.
-
 ## Failure modes
 
 | Symptom | Cause / fix |
 |---|---|
 | App sync stuck "waiting for healthy state of kubeflex-controller-manager" | postgres deadlock — see install section; check `kubestellar-postgres` app is Synced/Healthy |
 | Parent app stuck "waiting for healthy state of Application/kubestellar" | KubeFlex mutated `PostCreateHook.spec.templates`; retain the scoped ignore and `RespectIgnoreDifferences=true` in the core Application |
-| Prometheus cAdvisor targets stay `unknown` and the pod restarts | check for `OOMKilled`; WAL replay plus the controller and cAdvisor scrape set needs the committed 512 MiB request and 2 GiB limit, not the original demo sizing |
-| Prometheus reaches its memory limit after NFD labels appear | never `labelmap` all `__meta_kubernetes_node_label_*` values onto cAdvisor series; map only `__meta_kubernetes_node_name` to `node`, or NFD's 100+ labels multiply across every container metric |
-| Prometheus ConfigMap is Synced but scrape behavior does not change | bump `lab.projectbluefin.io/config-version` on the Deployment pod template with every scrape-config change; Prometheus has no config reloader sidecar |
 | `kubeflex-controller-manager` sustains a roughly 1 Hz ControlPlane loop, reports `failed to update final status ... object has been modified`, and looks like external bandwidth | KubeFlex v0.9.1 writes ControlPlane status during infrastructure, post-create-hook, and final readiness phases; the resulting status-update race requeues the controller. KubeFlex also generates an `ingressClassName: nginx` Ingress outside the PostCreateHooks, but does not inspect its load-balancer status; the ControlPlane can be `Ready=True` while the Ingress has an empty status. That endpoint is unused in this internal-only lab. Upstream Kubernetes says [Ingress is frozen and recommends Gateway](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/), and the [Ingress NGINX retirement statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/) says there will be no post-retirement fixes or security patches | Upgrade the core chart to 0.30.0, which carries KubeFlex v0.9.3, and let ArgoCD roll the operator. Keep external reachability off by default; never install ingress-nginx or add a class solely to satisfy KubeFlex's hardcoded artifact. Verify `kubectl -n kubeflex-system logs deploy/kubeflex-controller-manager --tail=50` has no status-conflict loop and compare the `container_network_receive_bytes_total` rate before/after. If conflicts persist on v0.9.3, the remaining fix belongs upstream in KubeFlex rather than in an ingress manifest |
 | KubeFlex creates an `ingressClassName: nginx` Ingress in an internal-only k3s lab | The hosted ControlPlane reconcilers create this endpoint unconditionally when `isOpenShift=false`; current KubeFlex chart values expose no disable switch, and the object is not a PostCreateHook template. ADR-0004 intentionally provides no external endpoint. Upstream Kubernetes says [Ingress is frozen and recommends Gateway](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/), while the [Ingress NGINX retirement statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/) says the retired controller receives no further fixes or security patches | Do not install ingress-nginx or a replacement Gateway controller just to claim the object. Keep the lab's off-by-default network policy and track an upstream KubeFlex option/removal; deleting the object alone only causes the owner controller to recreate it. If external reachability is needed later, follow the [Gateway API getting-started guidance](https://gateway-api.sigs.k8s.io/guides/getting-started/) rather than adding another Ingress |
 | `clusteradm get token` forbidden | workflow ran as `argo` SA; needs `serviceAccountName: kubestellar-bootstrap` |

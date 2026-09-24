@@ -110,7 +110,7 @@ def main():
                             if m:
                                 hp = m.group(1)
                                 git_hostpath_checks += 1
-                                if hp.startswith("/") and not hp.startswith(("/var/tmp/knuckle-test", "/var/mnt/ghost-data", "/var/log", "/run/containerd")):
+                                if hp.startswith("/") and not hp.startswith(("/var/mnt/ghost-data", "/var/log", "/run/containerd")):
                                     git_hostpath_violations.append({
                                         "source": f"git:{y_file}",
                                         "detail": f"Potentially unauthorized hostPath allocation on root disk: '{hp}'"
@@ -241,12 +241,9 @@ def main():
     if total_checks > 0:
         compliance_score = round(((total_checks - total_violations) / total_checks) * 100, 1)
 
-    # Output to docs/data/policy-compliance.json
-    Path("docs/data").mkdir(parents=True, exist_ok=True)
     output = {
         "schema_version": "v1",
         "_meta": {
-            "page": "compliance",
             "description": "GitOps and running cluster compliance scorecard.",
             "generated_at": now,
             "live_snapshot_ok": live_data_ok,
@@ -257,8 +254,7 @@ def main():
         "rules": rules
     }
 
-    with open("docs/data/policy-compliance.json", "w") as f:
-        json.dump(output, f, indent=2)
+    print(json.dumps(output, indent=2))
 
     print(f"Scan complete. Scanned {git_manifests_scanned} git manifests and {live_pods_scanned} live pods.")
     print(f"Compliance Score: {compliance_score}% ({total_violations} violations found out of {total_checks} checks).")

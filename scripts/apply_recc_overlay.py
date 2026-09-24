@@ -83,32 +83,6 @@ ADAPTERS = {
             "elements/oci/layers/bluefin-nvidia.bst",
         ),
     ),
-    "cosmic": ProjectAdapter(
-        kind="cosmic",
-        required_paths=(
-            "project.conf",
-            "elements/freedesktop-sdk.bst",
-            "elements/core/cosmic-comp.bst",
-            "elements/core/cosmic-files.bst",
-        ),
-        element_roots=(
-            "elements/core",
-            "elements/core-deps",
-            "elements/cosmic-deps",
-            "elements/cosmic-deps-nvidia",
-            "elements/gaming",
-            "elements/oci",
-        ),
-        compiler_markers=(
-            "freedesktop-sdk.bst:components/gcc",
-            "freedesktop-sdk.bst:components/clang",
-            "buildsystems/",
-        ),
-        forced_digest_targets=(
-            "elements/core/cosmic-comp.bst",
-            "elements/core/cosmic-files.bst",
-        ),
-    ),
     "bluefin-server": ProjectAdapter(
         kind="bluefin-server",
         required_paths=(

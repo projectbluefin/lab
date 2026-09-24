@@ -10,7 +10,7 @@ safely.
 
 | Requirement | Notes |
 |---|---|
-| x86_64 bare metal | Minimum 16GB RAM, 256GB NVMe, btrfs root or separate btrfs volume for `/var/tmp` |
+| x86_64 bare metal | Minimum 16GB RAM, 256GB NVMe |
 | Fedora / Bluefin host OS | Tested on Bluefin (bootc, atomic). Any systemd-based distro works. |
 | `k3s` installed | See [k3s.io/docs](https://docs.k3s.io/quick-start) — single node or multi-node. **On image-based, atomic systems (Bluefin/Dakota):** always set `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin` |
 | ArgoCD installed | `kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml` in `argocd` namespace |
@@ -37,7 +37,7 @@ kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/${VERSIO
 kubectl -n kubevirt wait kv kubevirt --for condition=Available --timeout=300s
 ```
 
-**Enable required feature gates** (HostDisk is required for the btrfs reflink VM flow):
+**Enable required feature gates**:
 
 ```bash
 kubectl patch kubevirt kubevirt -n kubevirt --type=merge --patch='
@@ -56,8 +56,7 @@ kubectl patch kubevirt kubevirt -n kubevirt --type=merge --patch='
 
 ## 2. Install Containerized Data Importer (CDI)
 
-CDI is used for disk import workflows (optional if you only use the btrfs reflink path,
-but required for some bootstrap templates).
+CDI is used for disk import workflows.
 
 ```bash
 # Option A: WorkflowTemplate
@@ -69,32 +68,6 @@ VERSION=$(curl -sL https://api.github.com/repos/kubevirt/containerized-data-impo
 kubectl apply -f https://github.com/kubevirt/containerized-data-importer/releases/download/${VERSION}/cdi-operator.yaml
 kubectl apply -f https://github.com/kubevirt/containerized-data-importer/releases/download/${VERSION}/cdi-cr.yaml
 kubectl -n cdi wait cdi cdi --for condition=Available --timeout=300s
-```
-
----
-
-## 3. Install KubeVirt Manager (optional — web UI)
-
-KubeVirt Manager provides a web UI for VM lifecycle management. Exposed at NodePort `:30180`.
-
-```bash
-argo submit --from workflowtemplate/install-kubevirt-manager -n argo --wait --log
-```
-
----
-
-## 4. Configure the Test Namespaces
-
-```bash
-kubectl create namespace bluefin-test      --dry-run=client -o yaml | kubectl apply -f -
-kubectl create namespace bluefin-lts-test  --dry-run=client -o yaml | kubectl apply -f -
-kubectl create namespace flatcar-test      --dry-run=client -o yaml | kubectl apply -f -
-kubectl create namespace knuckle-test      --dry-run=client -o yaml | kubectl apply -f -
-```
-
-Or apply the manifest:
-```bash
-kubectl apply -f manifests/flatcar-test-namespace.yaml
 ```
 
 ---
@@ -124,21 +97,6 @@ This is the [recommended Argo CD GitOps model](https://argo-cd.readthedocs.io/en
 `lab-infra` also creates the `kubestellar-applications` app-of-apps,
 which reconciles PostgreSQL, KubeStellar core, and KubeStellar Console in that
 order. Do not apply the child Applications manually.
-
----
-
-## 6. Create the SSH Key Secret
-
-The test pipeline uses an ed25519 keypair to SSH into freshly-booted test VMs.
-The public key is injected into the running VM by KubeVirt accessCredentials via
-qemuGuestAgent at boot; the private key lives in a Kubernetes Secret.
-
-```bash
-just setup-ssh-secret
-```
-
-This creates `bluefin-test-ssh-key` in the `argo` namespace. Idempotent — skip
-if already present.
 
 ---
 
@@ -186,14 +144,6 @@ kubectl get cronworkflow -n argo
 just list-vms
 ```
 
-Run a smoke test end-to-end to verify the full pipeline:
-```bash
-just run-tests
-```
-
-This submits the container-only `bluefin-qa-pipeline`, which runs the selected
-suite directly inside the published OCI image and cleans up its pods on exit.
-
 ---
 
 ## Bootstrap WorkflowTemplates Reference
@@ -205,8 +155,6 @@ Run them once during initial cluster setup.
 |---|---|---|
 | `install-kubevirt` | `workflowtemplate/install-kubevirt` | Install KubeVirt (CNCF Incubating) |
 | `install-cdi` | `workflowtemplate/install-cdi` | Install CDI for disk import |
-| `install-kubevirt-manager` | `workflowtemplate/install-kubevirt-manager` | Web UI at :30180 |
-| `setup-otel` | `workflowtemplate/setup-otel` | OTel observability stack |
 
 > These templates must be applied to the cluster before they can be run:
 > ```bash
@@ -228,7 +176,7 @@ The reference implementation runs on a single node:
 |---|---|
 | CPU | AMD Ryzen AI MAX+ 395 (Strix Halo) — 16c/32t |
 | RAM | 64GB LPDDR5X |
-| Storage | NVMe with btrfs (`/var/tmp` on btrfs for reflink support) |
+| Storage | NVMe |
 | GPU | AMD Radeon 8060S (integrated, gfx1151/RDNA 3.5) + ROCm for LLM inference |
 | OS | Bluefin (bootc atomic, Fedora-based) |
 | Kernel args | `amdgpu.gttsize=49152 ttm.pages_limit=12582912` (48 GiB GTT, applied by `manifests/amdgpu-kargs.yaml`) |
@@ -236,13 +184,6 @@ The reference implementation runs on a single node:
 
 `amd_iommu=off` is deliberately **not** set. It measures ~5–12% faster for
 inference but risks breaking KubeVirt VFIO passthrough on this cluster.
-
-The btrfs reflink VM clone requires `/var/tmp/bluefin-golden` and
-`/var/tmp/bluefin-test` to be on the same btrfs volume. Verify with:
-```bash
-stat --file-system --format=%T /var/tmp
-# should output: btrfs
-```
 
 ---
 

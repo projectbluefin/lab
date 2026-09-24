@@ -19,8 +19,8 @@ curl -s "http://127.0.0.1:15000/v2/_catalog?n=500"
 ```
 
 Glob semantics: `*` matches one repository path segment and `**` matches
-recursively. Nested repositories such as `kagent-dev/kagent/controller`
-require `kagent-dev/**`.
+recursively. Nested repositories such as `org/project/controller`
+require `org/**`.
 
 ### Verifying the rollout
 

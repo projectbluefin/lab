@@ -6,10 +6,9 @@ metadata:
   annotations:
     description: |
       Controlled BuildStream/BuildBarn cache re-warm. Verifies the same USB4
-      and BuildBarn admission gates used by Dakota/Cosmic/Bluefin Server
+      and BuildBarn admission gates used by Dakota/Bluefin Server
       builds before serially invoking those templates to repopulate BuildBarn
-      action and artifact caches. Triggered manually or by the Prometheus
-      alert/EventSource path.
+      action and artifact caches. Triggered manually.
   labels:
     app.kubernetes.io/component: bst-cache-warm
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -28,10 +27,6 @@ spec:
         value: "https://github.com/projectbluefin/dakota.git"
       - name: dakota-ref
         value: "testing"
-      - name: cosmic-repo
-        value: "https://github.com/RazorfinOS-org/cosmic-build-meta.git"
-      - name: cosmic-ref
-        value: "main"
       - name: bluefin-server-repo
         value: "https://github.com/projectbluefin/server.git"
       - name: bluefin-server-ref
@@ -75,7 +70,7 @@ spec:
                 - name: build-mode
                   value: "{{workflow.parameters.build-mode}}"
           # The production build templates each hold the global bst-build
-          # semaphore. Chain the warmup lanes so Dakota, Cosmic, and Bluefin
+          # semaphore. Chain the warmup lanes so Dakota and Bluefin
           # Server never hold that semaphore at the same time within a single
           # warmup run. The build-warmup templates use the dedicated
           # bst-cache-warm semaphore instead, isolating re-seeding from the
@@ -99,23 +94,8 @@ spec:
                   value: "{{workflow.parameters.registry}}"
                 - name: build-mode
                   value: "{{workflow.parameters.build-mode}}"
-          - name: warm-cosmic
-            depends: warm-dakota.Succeeded
-            templateRef:
-              name: cosmic-build-pipeline
-              template: build-warmup
-            arguments:
-              parameters:
-                - name: ref
-                  value: "{{workflow.parameters.cosmic-ref}}"
-                - name: repo
-                  value: "{{workflow.parameters.cosmic-repo}}"
-                - name: registry
-                  value: "{{workflow.parameters.registry}}"
-                - name: build-mode
-                  value: "{{workflow.parameters.build-mode}}"
           - name: warm-bluefin-server
-            depends: warm-cosmic.Succeeded
+            depends: warm-dakota.Succeeded
             templateRef:
               name: bluefin-server-build-pipeline
               template: build-warmup

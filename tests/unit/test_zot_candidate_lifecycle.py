@@ -6,7 +6,6 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 ZOT_PATH = ROOT / "manifests/zot-writable.yaml"
-GC_PATH = ROOT / "manifests/pr-image-gc.yaml"
 WORKFLOW_PATH = ROOT / "argo/workflow-templates/zot-candidate-lifecycle.yaml"
 
 
@@ -112,16 +111,3 @@ def test_writer_credentials_are_optional_contracts_not_committed_secrets():
                 if manifest.get("metadata", {}).get("name") in {"zot-auth", "zot-writer-auth"}:
                     committed.append(path.name)
     assert not committed
-
-
-def test_daily_gc_is_auth_ready():
-    gc = load_yaml(GC_PATH)
-    template = gc["spec"]["workflowSpec"]["templates"][0]
-    secret = template["volumes"][0]["secret"]
-    source = template["script"]["source"]
-
-    assert gc["spec"]["schedules"] == ["0 3 * * *"]
-    assert secret["secretName"] == "zot-writer-auth"
-    assert secret["optional"] is True
-    assert 'ORAS_AUTH=(--registry-config /auth/config.json)' in source
-    assert 'oras manifest delete "${REGISTRY}/${REPO}:${TAG}" --plain-http "${ORAS_AUTH[@]}"' in source

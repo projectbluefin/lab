@@ -68,7 +68,7 @@ Three options were considered:
 |---|---|---|
 | (a) DaemonSet + right-sized requests | Native k8s mechanism; already in use; new node = new worker automatically; no new controllers | **Chosen** |
 | (b) Deployment + Cluster Proportional Autoscaler | Adds a non-CNCF-graduated controller and does not guarantee a worker on every node; loses the simple "one per node" mental model | Rejected |
-| (c) Deployment + HPA on queue depth | Needs custom metrics from `bb-scheduler` and a `prometheus-adapter` (or equivalent custom metrics API). The cluster only runs a lightweight Prometheus scraper (`manifests/prometheus-lightweight.yaml`) with no adapter. | Rejected |
+| (c) Deployment + HPA on queue depth | Needs custom metrics from `bb-scheduler` and a `prometheus-adapter` (or equivalent custom metrics API). The cluster runs no custom metrics adapter. | Rejected |
 
 Option (a) is the only one that requires no new in-cluster controllers and
 matches the user policy of scheduler-driven, no-pinning placement.

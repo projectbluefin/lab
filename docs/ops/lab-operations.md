@@ -7,7 +7,6 @@ Pair with:
 - [`../AGENTS.md`](/AGENTS.md) — policy + architecture
 - [`../RUNBOOK.md`](/docs/ops/RUNBOOK.md) — timeless architecture + failure modes
 - [`../WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) — WorkflowTemplate parameter contracts
-- [`/docs/skills/test-authoring/dogtail-patterns.md`](/docs/skills/test-authoring/dogtail-patterns.md) — GUI test authoring
 
 
 > [!WARNING]
@@ -36,7 +35,7 @@ image-poller CronWorkflow
                          └─ update digest state only after QA succeeds
 ```
 
-For Bluefin and Dakota image-poll QA, **bootc OCI images are tested directly as containers**. Boot, disk, and install validation are retired from the image-poll path; keep KubeVirt workflows only for lanes that explicitly still need them (Flatcar, Knuckle, migration, and similar).
+For Dakota image-poll QA, **bootc OCI images are tested directly as containers**. Boot, disk, and install validation are retired from the image-poll path; keep KubeVirt workflows only for lanes that explicitly still need them (the boot tests).
 
 ---
 
@@ -44,12 +43,6 @@ For Bluefin and Dakota image-poll QA, **bootc OCI images are tested directly as 
 
 | Goal | Preferred path |
 |---|---|
-| Validate a smoke test or step change | `just run-tests-tag testing` |
-| Validate atomic OS contract checks | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=system` |
-| Validate developer or software suites | Use Argo MCP to submit `bluefin-qa-pipeline` with `suites=developer` or `suites=software` |
-| Validate a bootc OCI image change | `just run-tests-tag <testing\|lts-testing\|stable\|lts-stable>` or `just run-tests-matrix` |
-| Pre-merge gate / promote a passing matrix run | `just run-tests-matrix` |
-| Validate Flatcar | `just run-flatcar-smoke` |
 | Submit Dakota distributed BST pipeline (default variant only) | `just run-bst-build [ref=testing]` |
 
 Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
@@ -184,7 +177,7 @@ Start with the exact workflow that failed.
 2. Delete that pod with `kubernetes-mcp-pods_delete`.
 3. Re-check the VM with `kubernetes-mcp-resources_get`.
 
-### 5.9 `run-gnome-tests` pod errors immediately
+### 5.9 Workflow pod errors immediately
 
 1. `argo-mcp-get_workflow <workflow-name>`
    - **Expected:** the failing template or pod name is visible.
@@ -243,27 +236,6 @@ Answer three questions in order:
 1. Are `run-container-tests` or `image-poller` pods saturating ghost CPU or memory?
 2. Are `virt-launcher-*` pods from VM-backed lanes consuming capacity with no corresponding live workflow?
 3. Are runner pods pending because CPU or memory is exhausted?
-
----
-
-## 8. SSH key rotation
-
-The key rotation flow is still valid because it manages the **in-cluster** test-access secret, not workstation SSH.
-Use the exact command block in [`/docs/reference/agent-cheatsheet.md`](/docs/reference/agent-cheatsheet.md) §6.
-
-After rotation:
-1. Update `manifests/bluefin-test-ssh-pubkey.yaml` with the new base64-encoded public key and push to main.
-2. Run a VM-backed validation lane such as `just run-migration-test testing` and `just run-flatcar-smoke`.
-3. If fresh workflows still fail SSH, verify the `bluefin-test-ssh-pubkey` secret was updated and ArgoCD synced it.
-
----
-
-## 9. PR queue mode
-
-1. Run the minimum required lab loop (`just run-tests-tag testing`; use `just run-tests-matrix` for high-risk work).
-2. Collect workflow names, behave summaries, and log excerpts via MCP.
-3. Keep PR comments minimal: report what ran, pass/fail, and blockers only. Do not duplicate GitHub UI state. These are *manual reviewer comments* you write during PR-queue review — a separate channel from the automated `testing-lab / <repo>` Check Run the `pr-label-poller` posts (see [`/docs/reference/WORKFLOWS.md`](/docs/reference/WORKFLOWS.md) "Factory PR feedback"). Do not restate the automated check's result as a comment.
-4. Only then label / approve / queue.
 
 ---
 

@@ -5,7 +5,7 @@
 > Any multi-node daisy-chain mesh, ZFS storage tier, or Remote Execution grid described
 > in earlier drafts of this document was aspirational and did not match deployed hardware
 > — it has been removed. Extend this doc only after physically verifying new links/nodes
-> (see /docs/ops/RUNBOOK.md:108-116 for the incident this caused previously).
+> (see /docs/ops/RUNBOOK.md for the incident this caused previously).
 
 ## Hardware
 
@@ -45,8 +45,10 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
   (static IP `10.99.0.2/30`) form a direct, switchless point-to-point USB4 link (40 Gbps).
   The IPs are persisted in NetworkManager profiles (`Wired connection 1` on ghost,
   `Wired connection 2` on exo-0) with `ipv4.method manual`, so they survive reboots.
-- Intended for pod-to-pod (East-West) traffic between these two nodes specifically:
-  build artifact transfer, cache I/O.
+- Carries pod-to-pod (East-West) traffic between these two nodes for the lab's three purposes:
+  - BuildStream build farm
+  - local LLM inference
+  - distributed ffmpeg encoding
 - Live link state and its Unix observation time are published as
   `lab.projectbluefin.io/usb4-link: up|down` (both as a node label and annotation) and
   `lab.projectbluefin.io/usb4-link-observed-at` by the `usb4-link-monitor`
@@ -150,15 +152,6 @@ this cluster today. `manifests/local-path-config.yaml` explicitly maps `ghost`
 and `exo-0` to their own data mounts and has no default mapping. Never
 provision workload storage on a root filesystem.
 
-### Metrics storage
-
-The backend-only `prometheus-lightweight` Deployment stores up to 30 days or
-45GB of time series on a 50Gi `local-path` PVC. The size gap reserves space for
-WAL and compaction. It scrapes node and cAdvisor metrics, the Argo workflow
-controller, both Zot registries, BuildBarn, and KubeStellar controllers.
-Prometheus has ClusterIP access only; KubeStellar Console remains the private
-operator UI, and Grafana is intentionally absent.
-
 ---
 
 ## Compute Model
@@ -183,7 +176,7 @@ and is the canonical build cache/remote-exec mechanism for BuildStream (`bst`) j
 - `bb-remote-asset` — Deployment, source-cache Remote Asset index at
   `bb-remote-asset.buildbarn.svc.cluster.local:8984`.
 
-BuildStream jobs (`dakota-build-pipeline`, `cosmic-build-pipeline`,
+BuildStream jobs (`dakota-build-pipeline`,
 `bluefin-server-build-pipeline`, `bst-qa-pipeline`) point
 their artifact and remote-execution config at the shared frontend. Source caches use
 the paired Remote Asset index and frontend CAS,
@@ -191,27 +184,3 @@ so build actions are genuinely distributed across the `worker` DaemonSet pods on
 `ghost` and `exo-0` rather than executing locally on a single node. The `bst-build` client
 pod itself also carries a required podAntiAffinity so concurrent builds spread across
 nodes instead of stacking on one.
-
-## GitHub Actions Runners
-
-A self-hosted Actions Runner Controller (ARC) bridge lets projectbluefin
-maintainers trigger GitHub Actions jobs on the Ghost cluster without keeping fat
-runner pods idle.
-
-- **Controller:** `arc-systems` namespace, `gha-runner-scale-set-controller`
-  0.9.3. It listens to GitHub and creates ephemeral runner pods.
-- **Org scale set:** `arc-runners` namespace, `runnerScaleSetName: ghost-runners`,
-  `githubConfigUrl: https://github.com/projectbluefin`. Only repos covered by the
-  `bluefin-ghost-arc` GitHub App installation can request these runners.
-- **Container mode:** each Actions job declares a `container:` image and runs as a
-  separate Kubernetes pod. Heavy work is submitted back into Argo Workflows
-  (e.g., `argo submit --from workflowtemplate/dakota-build-pipeline
-  --wait`) so the small runner pod coordinates while real build pods consume
-  cluster CPU/memory.
-- **Personal scale set:** maintainers who want the same runners on personal repos
-  install the `bluefin-ghost-arc` app on their personal account and use a second
-  scale set (`ghost-runners-personal`) with a different `githubConfigUrl` and
-  installation secret.
-
-Example workflow: `.github/workflows/example-container-mode-build.yml`.  
-Access, auth, and troubleshooting: `/docs/ops/maintainer-onboarding.md`.

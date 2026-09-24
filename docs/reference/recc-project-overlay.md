@@ -5,7 +5,7 @@ the lab RECC pilot. It is intentionally a lab-owned checkout transformation:
 it does not edit `.github/workflows`, upstream repositories, or production
 lanes, and it is not a measurement workflow.
 
-The helper has explicit adapters for `dakota`, `cosmic`, `bluefin-server`, and
+The helper has explicit adapters for `dakota`, `bluefin-server`, and
 `bst-prototype`/`bst-qa`. It adds the upstream-style wrapper element, the RECC
 project include, GCC/Clang `digest-environment` includes, and the `recc`
 project option pinned to the resolved policy. It refuses unknown layouts,
@@ -18,7 +18,7 @@ Every invocation must state exactly one mode, and there is no default:
 
 | Adapter | no mode flag (what the templates use) | `--runner-capability` | `--pilot-cache-only` |
 | --- | --- | --- | --- |
-| `dakota`, `cosmic`, `bluefin-server`, `bst-qa` | **refused** — lane fails closed | `recc=remote-execution` + `sandbox.remote-apis-socket` | **refused** (operator-only flag) |
+| `dakota`, `bluefin-server`, `bst-qa` | **refused** — lane fails closed | `recc=remote-execution` + `sandbox.remote-apis-socket` | **refused** (operator-only flag) |
 | `bst-prototype` | **refused** | `recc=remote-execution` + nested socket | `recc=cache-only` (requires an explicit provider) |
 
 `--runner-capability` is an assertion that the deployed BuildBarn runner honors
@@ -108,7 +108,7 @@ queue, which is outside this lab-only overlay.
 
 ## Workflow wiring
 
-The Dakota, Cosmic, Bluefin Server, and `bst-qa` BuildStream pods mount the
+The Dakota, Bluefin Server, and `bst-qa` BuildStream pods mount the
 byte-identical helper and shared endpoint from the `buildstream-remote-cache`
 ConfigMap and **each invokes it with no mode flags**, after checkout and before
 any `bst show`/`bst build`. Warmup paths reuse the same `build-core` template,

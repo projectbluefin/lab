@@ -3,9 +3,8 @@ name: node-lifecycle
 description: >
   Add, drain, and remove capacity in the Bluefin Server home cluster:
   k3s node join (shared-cluster expansion), WEC cluster join, and the
-  elastic BuildStream grid checks. Agent-executable counterpart of the
-  GUI onboarding flow. Use when adding a second PC, removing a node, or
-  verifying builds scale with new capacity.
+  elastic BuildStream grid checks. Use when adding a second PC, removing a
+  node, or verifying builds scale with new capacity.
 metadata:
   context7-sources:
     - /k3s-io/k3s
@@ -23,7 +22,6 @@ metadata:
 
 ## When NOT to Use
 
-- Flatcar-specific onboarding → `flatcar-node-onboarding/SKILL.md`
 - KubeStellar install/BindingPolicy mechanics → `kubestellar/SKILL.md`
 
 ## Decision: node join vs WEC join (ADR-0003)
@@ -117,14 +115,3 @@ argo submit --from workflowtemplate/dakota-build-pipeline -n argo ...
 BuildBarn workers scale with cluster capacity; bb-remote-asset:8984 +
 frontend:8980 CAS pattern is grid-ready (see BuildStream source cache
 memory/ADR). Cross-WEC grid joins via Tailscale CAS mesh.
-
-## GUI flow
-
-The Console hosts this as a guided mission ("Add your second PC") wrapping
-the same steps: token display, agent config, verification queries. The
-mission source lives at
-[`missions/add-your-second-pc.json`](../../../missions/add-your-second-pc.json)
-in `kc-mission-v1` format. Because the Console v0.3.34 cannot yet load
-custom missions from an in-cluster ConfigMap or CRD, import it via
-**Missions > Local Files > Import**. Keep the mission and this skill in sync
-— the mission is the GUI counterpart; this file is the agent-executable truth.

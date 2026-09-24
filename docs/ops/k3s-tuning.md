@@ -164,11 +164,6 @@ When adding Framework laptop or desktop nodes as k3s workers, no changes to this
 file are required. Workers join via the standard `K3S_URL` / `K3S_TOKEN`
 registration and are immediately schedulable.
 
-The semaphore-tuner CronWorkflow (`manifests/semaphore-tuner.yaml`) recomputes
-`max-containerdisk-vms` and `max-hostdisk-vms` slots hourly from live node
-allocatable memory. New nodes are reflected automatically within one hour of
-joining the cluster. No manual slot edits are needed.
-
 Do not add node selectors to steer workloads toward local disks. Define an
 explicit non-root local-path mapping for the node, then let
 `WaitForFirstConsumer` and the Kubernetes scheduler co-locate the PVC consumer

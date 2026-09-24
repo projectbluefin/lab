@@ -55,7 +55,6 @@ def test_recc_baseline_is_an_isolated_operator_only_template():
     assert manifest["spec"]["entrypoint"] == "run"
     assert "templateRef" not in text
     assert "dakota-build-pipeline" not in text
-    assert "cosmic" not in text
     assert "bluefin-server" not in text
 
 

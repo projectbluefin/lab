@@ -14,9 +14,6 @@ metadata:
     app.kubernetes.io/part-of: bluefin-test-suite
 spec:
   serviceAccountName: argo
-  workflowMetadata:
-    labels:
-      bluefin.io/evidence-contract: qa-run-v1
   parallelism: 2
   # Generous ceiling because the run-container-tests template now queues behind a
   # cross-workflow semaphore; the workflow-level deadline must outlive queue wait
@@ -49,7 +46,7 @@ spec:
       value: "https://github.com/projectbluefin/testsuite"
   templates:
   - name: pipeline
-    # See bluefin-qa-pipeline: `spec.parallelism` is not inherited through
+    # `spec.parallelism` is not inherited through
     # `templateRef`, so the per-workflow fan-out cap must live on the template
     # itself or one pipeline can hold most of the `ghost-container-qa` slots.
     parallelism: 2

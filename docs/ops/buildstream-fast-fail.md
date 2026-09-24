@@ -7,8 +7,8 @@ The lab's BuildStream pipelines should fail fast once a run is known to be unusa
 - Build preflight now runs before the workflow acquires the shared `bst-build` semaphore.
 - A workflow that fails the BuildBarn/USB4 gate exits immediately instead of burning queue time.
 - Build pods now use bounded per-pod deadlines and limited retries so failures
-  surface quickly without killing cache-cold bootstrap builds. Cosmic allows
-  three hours for its initial upstream fetch/build; Dakota allows one retry.
+  surface quickly without killing cache-cold bootstrap builds. Dakota allows
+  one retry.
 
 ## Why this matters
 
@@ -23,5 +23,4 @@ This policy is intentionally conservative: if a run cannot be admitted to the di
 ## Templates updated
 
 - `argo/workflow-templates/dakota-build-pipeline.yaml`
-- `argo/workflow-templates/cosmic-build-pipeline.yaml`
 - `argo/workflow-templates/bluefin-server-build-pipeline.yaml`

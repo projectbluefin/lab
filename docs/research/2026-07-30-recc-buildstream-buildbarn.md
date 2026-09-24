@@ -193,7 +193,7 @@ BuildStream project enables `remote-apis-socket`.
 Once the worker path works, use the upstream GNOME files rather than copying
 them into the lab:
 
-- update the GNOME junction/ref used by the Dakota/Cosmic projects;
+- update the GNOME junction/ref used by the Dakota project;
 - enable `recc=remote-execution`;
 - enable `recc_optimisations` only after baseline measurements;
 - make sure the BuildStream image includes `recc`, `buildbox-casd`, and the

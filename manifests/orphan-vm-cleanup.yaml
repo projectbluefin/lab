@@ -1,7 +1,6 @@
 # CronWorkflow: deletes orphaned KubeVirt VMs in test namespaces every 30 min.
 # A VM is orphaned when its parent workflow was force-deleted, skipping the onExit handler.
 # Deletes VMs whose parent Argo workflow is in a terminal phase or no longer exists.
-# Covers the fresh-VM namespaces, including knuckle-test installer runs.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -48,7 +47,7 @@ spec:
               fi
               kubectl() { "${KUBECTL}" "$@"; }
             fi
-            NAMESPACES="aurora-test bluefin-test bluefin-lts-test flatcar-test knuckle-test"
+            NAMESPACES="bluefin-test"
             # Delete VMs older than 3 hours — use kubectl with age filter
             # The argo-workflow label links a VM to its parent workflow.
             # Look up the workflow in the VM's own namespace; image-poller and

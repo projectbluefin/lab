@@ -96,7 +96,7 @@ spec:
           # Explicit allowlist: the lab token must never write statuses to an
           # arbitrary repository derived from workflow parameters.
           case "${REPOSITORY}" in
-            projectbluefin/testsuite|projectbluefin/server) ;;
+            projectbluefin/testsuite|projectbluefin/server|projectbluefin/dakota) ;;
             *) echo "Refusing status for ${REPOSITORY}" >&2; exit 1 ;;
           esac
           [[ "${SHA}" =~ ^[0-9a-f]{40}$ ]] ||

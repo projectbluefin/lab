@@ -274,6 +274,25 @@ run-kernel-args:
 
 # ── Dakota BST builds ────────────────────────────────────────────────────────
 
+# Request on-demand Dakota lab validation for a PR and exact head SHA
+# Usage: just dakota-validate-request pr_number sha [validation_class=dakota-bst-qa]
+dakota-validate-request pr_number sha validation_class="dakota-bst-qa" *args:
+    python3 scripts/dakota_validation.py request \
+      --repo projectbluefin/dakota \
+      --validation-class "{{ validation_class }}" \
+      --pr-number {{ pr_number }} \
+      --sha {{ sha }} \
+      {{ args }}
+
+# Query on-demand Dakota lab validation status for a PR and exact SHA
+# Usage: just dakota-validate-status pr_number sha [validation_class=dakota-bst-qa]
+dakota-validate-status pr_number sha validation_class="dakota-bst-qa":
+    python3 scripts/dakota_validation.py status \
+      --repo projectbluefin/dakota \
+      --validation-class "{{ validation_class }}" \
+      --pr-number {{ pr_number }} \
+      --sha {{ sha }}
+
 # Show the MergeRaptor-owned lab Check Run for a PR head commit.
 # Usage: just lab-check-status <repo> <pr_number>
 lab-check-status repo pr_number:

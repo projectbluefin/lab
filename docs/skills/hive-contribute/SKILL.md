@@ -42,8 +42,8 @@ Scaling up through MCP reuses the last Secret that `contribute-on` wrote.
 `contribute-on` sends, every time, with no login step:
 
 - `gh auth token` → `GH_TOKEN`. Hive contributors fork and open PRs as themselves (`gh-wrapper.sh`).
-- `~/.config/hive/contributor.bluefin.env`: the Hive registration (knuckle hive). The relay reads it, and it does not rotate during runs.
-- `~/.omp/agent/config.yml`: your OMP settings. Only the model roles are overridden.
+- `~/.config/hive/contributor.bluefin.env`: the Hive registration (knuckle hive). Its token is reissued with your gh identity on every `contribute-on` (`POST /api/contribute/reissue-token`, what upstream's `contribute-move` does) and written back to the file. That invalidates any other client using this registration.
+- `~/.omp/agent/config.yml`: your OMP settings, shipped with `modelRoles` rewritten (`yq`) to the lab models, so the relay reports the real model to Hive.
 
 Override the paths with `HIVE_CONTRIBUTE_REGISTRATION` and `HIVE_CONTRIBUTE_OMP_CONFIG`; `KUBECONFIG` defaults to `~/.kube/bluespeed.yaml`.
 

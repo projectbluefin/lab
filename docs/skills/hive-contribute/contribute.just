@@ -11,8 +11,16 @@ contribute-on:
     omp="${HIVE_CONTRIBUTE_OMP_CONFIG:-$HOME/.omp/agent/config.yml}"
     tok="$(mktemp)"; trap 'rm -f "$tok"' EXIT
     printf %s "$(gh auth token)" > "$tok"
+    # Refresh the Hive registration token with the gh identity (upstream's contribute-move call),
+    # so a stale or reissued-elsewhere token never needs a manual repair. The lab is the one contributor.
+    hub="$(sed -nE 's/^HIVE_HUB=//p' "$reg" | head -1)"; http="https://${hub#wss://}"; http="${http%/contribute}"
+    new="$(curl -fsS --max-time 20 -X POST "${http}/api/contribute/reissue-token" -H "Authorization: Bearer $(cat "$tok")" | jq -er .registration_token)"
+    sed -i "s|^HIVE_REGISTRATION_TOKEN=.*|HIVE_REGISTRATION_TOKEN=${new}|" "$reg"
+    # Ship your config.yml with the roles pinned to the lab models, so Hive and OMP both see the truth.
+    cfg="$(mktemp)"; trap 'rm -f "$tok" "$cfg"' EXIT
+    yq '.modelRoles = {"default": "lab-worker/ornith", "smol": "lab-worker/ornith", "advisor": "lab-advisor/qwen-advisor"}' "$omp" > "$cfg"
     kubectl -n contribute create secret generic contribute \
-      --from-file=GH_TOKEN="$tok" --from-file=contributor.env="$reg" --from-file=config.yml="$omp" \
+      --from-file=GH_TOKEN="$tok" --from-file=contributor.env="$reg" --from-file=config.yml="$cfg" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     kubectl -n llm-d scale deploy/llm-d-modelserver deploy/llm-d-advisor --replicas=1 >/dev/null
     kubectl -n contribute scale deploy/contribute --replicas=1 >/dev/null

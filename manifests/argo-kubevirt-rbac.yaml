@@ -1,0 +1,68 @@
+# VM rights for the argo SA (boot tests create VMs in argo). Previously hand-applied
+# with cluster-wide secrets; secrets are now scoped to the argo namespace only, so
+# workflow pods cannot read other namespaces' secrets (e.g. contribute's GH token).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-kubevirt-manager
+  labels:
+    app.kubernetes.io/part-of: lab
+rules:
+  - apiGroups: [kubevirt.io]
+    resources: [virtualmachines, virtualmachineinstances, virtualmachineinstancemigrations]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [cdi.kubevirt.io]
+    resources: [datavolumes, datasources]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [persistentvolumeclaims, pods]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list]
+  - apiGroups: [subresources.kubevirt.io]
+    resources: ["virtualmachines/*", "virtualmachineinstances/*"]
+    verbs: [get, update, create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-kubevirt-manager
+  labels:
+    app.kubernetes.io/part-of: lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-kubevirt-manager
+subjects:
+  - kind: ServiceAccount
+    name: argo
+    namespace: argo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-secrets
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-secrets
+  namespace: argo
+  labels:
+    app.kubernetes.io/part-of: lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-secrets
+subjects:
+  - kind: ServiceAccount
+    name: argo
+    namespace: argo

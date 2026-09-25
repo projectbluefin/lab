@@ -322,12 +322,12 @@ spec:
           type: Directory
       initContainers:
       - name: fetch-mtp-draft
-        image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+        image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11151
         command:
         - sh
         - -c
-        - f=/models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf; test -s $f || { mkdir -p /models/mtp && wget -q -O $f.tmp https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/MTP/mtp-Qwen3.8-27B-Q4_0.gguf &&
-          mv $f.tmp $f; }
+        - f=/models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf; test -s $f || { mkdir -p /models/mtp && curl -fsSL -o $f.tmp https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/MTP/mtp-Qwen3.8-27B-Q4_0.gguf
+          && mv $f.tmp $f; }
         volumeMounts:
         - name: model-cache
           mountPath: /models

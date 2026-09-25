@@ -75,6 +75,7 @@ just lint              # actionlint + argo lint + registry allowlist
 | Cluster add-ons, k3s, registries | [`docs/skills/cluster-tooling/SKILL.md`](docs/skills/cluster-tooling/SKILL.md) |
 | KubeStellar core, WECs, BindingPolicies | [`docs/skills/kubestellar/SKILL.md`](docs/skills/kubestellar/SKILL.md) |
 | KubeStellar Console deploy/auth/cards | [`docs/skills/console-dashboard/SKILL.md`](docs/skills/console-dashboard/SKILL.md) |
+| Hive contributor on local llm-d models (contribute-on/off) | [`docs/skills/hive-contribute/SKILL.md`](docs/skills/hive-contribute/SKILL.md) |
 | Workflow parameter contracts | [`docs/reference/workflow-reference.md`](docs/reference/workflow-reference.md) |
 | Architecture / failure modes | [`docs/ops/RUNBOOK.md`](docs/ops/RUNBOOK.md) |
 | Human contributor workflow | [`CONTRIBUTING.md`](CONTRIBUTING.md) |

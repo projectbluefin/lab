@@ -158,3 +158,36 @@ lint:
 check-python:
     find scripts tests -name '*.py' -print0 | xargs -0 python3 -m py_compile
     python3 -m ruff check scripts tests || echo "WARNING: ruff reported findings (advisory, not a gate)"
+
+# ── hive-contribute (docs/skills/hive-contribute/SKILL.md) ───────────────────
+
+# Start both local models and the Hive contributor (ships GH token, Hive registration, OMP config).
+contribute-on:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    token="${HIVE_CONTRIBUTE_GH_TOKEN:-$HOME/.config/hive-contribute/gh-token}"
+    reg="${HIVE_CONTRIBUTE_REGISTRATION:-$HOME/.config/hive/contributor.bluefin.env}"
+    omp="${HIVE_CONTRIBUTE_OMP_CONFIG:-$HOME/.omp/agent/config.yml}"
+    [[ -s "$token" ]] || { echo "Missing $token: create a classic token with scopes public_repo,read:org at"; echo "  https://github.com/settings/tokens/new?scopes=public_repo,read:org&description=hive-contribute"; echo "then: install -Dm600 /dev/stdin $token"; exit 1; }
+    for f in "$reg" "$omp"; do [[ -s "$f" ]] || { echo "Missing $f"; exit 1; }; done
+    kubectl -n contribute create secret generic contribute \
+      --from-file=GH_TOKEN="$token" --from-file=contributor.env="$reg" --from-file=config.yml="$omp" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    kubectl -n llm-d scale deploy/llm-d-modelserver deploy/llm-d-advisor --replicas=1
+    kubectl -n contribute scale deploy/contribute --replicas=1
+    kubectl -n contribute rollout restart deploy/contribute >/dev/null
+    echo "Models load in a few minutes on first start. Watch: just contribute-attach"
+
+# Stop the contributor and free both GPUs.
+contribute-off:
+    kubectl -n contribute scale deploy/contribute --replicas=0
+    kubectl -n llm-d scale deploy/llm-d-modelserver deploy/llm-d-advisor --replicas=0
+
+# Attach to the contributor's tmux session (detach: C-b d).
+contribute-attach:
+    kubectl -n contribute exec -it deploy/contribute -- tmux attach -t contributor
+
+# Replica state of the contributor and both models.
+contribute-status:
+    kubectl -n llm-d get deploy,pods -o wide
+    kubectl -n contribute get deploy,pods -o wide

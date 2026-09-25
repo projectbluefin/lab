@@ -1,6 +1,7 @@
-# ArgoCD Application — manages manifests/ (infra, services, CronWorkflows)
-# Apply once: kubectl apply -f argocd/infra-application.yaml -n argocd
-# After this, any file added to manifests/ and pushed to main is auto-applied.
+# ArgoCD Application — manages manifests/. Applied by hand, not by ArgoCD:
+#   kubectl apply -f argocd/infra-application.yaml
+# Replicas of llm-d-modelserver, llm-d-advisor and contribute are ignored so
+# `just contribute-on/off` (or the k8s MCP scale tool) can toggle them.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -9,29 +10,68 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 spec:
+  destination:
+    namespace: argo
+    server: https://kubernetes.default.svc
+  ignoreDifferences:
+  - group: kubevirt.io
+    jqPathExpressions:
+    - .status
+    - .spec.template.metadata.annotations."kubevirt.io/pci-topology-version"
+    - .spec.template.spec.architecture
+    - .spec.template.spec.domain.firmware
+    - .spec.template.spec.domain.resources
+    - .spec.template.spec.volumes[]?.hostDisk.capacity
+    kind: VirtualMachine
+  - group: apps
+    jsonPointers:
+    - /spec/persistentVolumeClaimRetentionPolicy
+    - /spec/podManagementPolicy
+    - /spec/revisionHistoryLimit
+    - /spec/updateStrategy
+    - /spec/template/spec/initContainers/0/imagePullPolicy
+    - /spec/template/spec/containers/0/imagePullPolicy
+    kind: StatefulSet
+    name: storage
+    namespace: buildbarn
+  - group: apps
+    jqPathExpressions:
+    - .spec.volumeClaimTemplates[]?.apiVersion
+    - .spec.volumeClaimTemplates[]?.kind
+    - .spec.volumeClaimTemplates[]?.status
+    kind: StatefulSet
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+    name: llm-d-modelserver
+    namespace: llm-d
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+    name: llm-d-advisor
+    namespace: llm-d
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/replicas
+    name: contribute
+    namespace: contribute
   project: default
   source:
+    directory:
+      exclude: '{flatcar-update-*.yaml,argo-server-scheduling-reset.yaml}'
+      recurse: true
+    path: manifests
     repoURL: https://github.com/projectbluefin/lab
     targetRevision: main
-    path: manifests
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: argo
-  ignoreDifferences:
-    # StatefulSet volumeClaimTemplates: API server injects apiVersion/kind/
-    # status into each template; with server-side diff this reads as permanent
-    # drift and traps self-heal in a partial-sync loop that starves full syncs.
-    - group: apps
-      kind: StatefulSet
-      jqPathExpressions:
-        - .spec.volumeClaimTemplates[]?.apiVersion
-        - .spec.volumeClaimTemplates[]?.kind
-        - .spec.volumeClaimTemplates[]?.status
   syncPolicy:
     automated:
+      enabled: true
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=false
-      - RespectIgnoreDifferences=true
-      - ServerSideApply=true
+    - CreateNamespace=false
+    - RespectIgnoreDifferences=true
+    - ServerSideApply=true

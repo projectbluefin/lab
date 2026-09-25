@@ -1,3 +1,9 @@
+# Local LLM inference for hive-contribute (docs/skills/hive-contribute/SKILL.md).
+# worker (Ornith 35B-A3B Q6_K) on exo-0 and advisor (Qwen3.8 27B UD-Q6_K) on ghost, one GPU each.
+# Keep replicas: 1 here so each WaitForFirstConsumer PVC binds on first sync; toggle with
+# `just contribute-on/off` (replicas are ignored by testing-lab-infra).
+# Recreate: one amd.com/gpu and an RWO PVC deadlock a rolling update.
+# Image: immutable per-build tag (zot syncs tags only); never the floating :server-vulkan.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -5,7 +11,7 @@ metadata:
 value: 1000000
 preemptionPolicy: PreemptLowerPriority
 globalDefault: false
-description: "Higher scheduling priority for local LLM inference so it can preempt lower-priority work when needed."
+description: Higher scheduling priority for local LLM inference so it can preempt lower-priority work when needed.
 ---
 apiVersion: v1
 kind: Namespace
@@ -27,7 +33,7 @@ metadata:
     app.kubernetes.io/part-of: testing-lab
 spec:
   accessModes:
-    - ReadWriteOnce
+  - ReadWriteOnce
   storageClassName: local-path
   resources:
     requests:
@@ -42,20 +48,16 @@ metadata:
     app.kubernetes.io/name: llm-d-modelserver
     app.kubernetes.io/part-of: testing-lab
 spec:
-  # Pause with replicas: 0 here, not kubectl scale (selfHeal reverts it); safe only once the PVC is Bound.
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: llm-d-modelserver
-  # Recreate: one amd.com/gpu and an RWO PVC deadlock a rolling update.
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
         app.kubernetes.io/name: llm-d-modelserver
-      annotations:
-        lab.projectbluefin.io/config-version: llamacpp-vulkan-v1
     spec:
       priorityClassName: llm-d-preempt
       nodeSelector:
@@ -65,101 +67,96 @@ spec:
         runAsGroup: 0
         fsGroup: 0
       containers:
-        - name: modelserver
-          # Immutable per-build tag, not a digest (zot sync needs a tag); never the floating :server-vulkan.
-          image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b10290
-          imagePullPolicy: IfNotPresent
-          securityContext:
-            privileged: false
-            allowPrivilegeEscalation: false
-          args:
-            - --hf-repo
-            - unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q6_K
-            - --alias
-            - local-llm
-            - --port
-            - "8000"
-            - -ngl
-            - "999"
-            - -fa
-            - "on"
-            - --load-mode
-            - none
-            - --cache-type-k
-            - q8_0
-            - --cache-type-v
-            - q8_0
-            - --ctx-size
-            - "65536"
-            - --batch-size
-            - "4096"
-            - --ubatch-size
-            - "512"
-            - --threads
-            - "12"
-            - --parallel
-            - "1"
-            - --cache-reuse
-            - "256"
-            - --temp
-            - "0.7"
-            - --top-p
-            - "0.8"
-            - --top-k
-            - "20"
-            - --min-p
-            - "0.0"
-          env:
-            - name: LLAMA_CACHE
-              value: /models
-          ports:
-            - name: http
-              containerPort: 8000
-              protocol: TCP
-          volumeMounts:
-            - name: model-cache
-              mountPath: /models
-            - name: dev-dri
-              mountPath: /dev/dri
-          resources:
-            requests:
-              cpu: "4"
-              memory: 34Gi
-              amd.com/gpu: "1"
-            limits:
-              cpu: "12"
-              memory: 44Gi
-              amd.com/gpu: "1"
-          # Generous startup budget: the first start downloads ~25 GB; too short restarts the download.
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 60
-            timeoutSeconds: 10
-            failureThreshold: 120
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 3
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            periodSeconds: 30
-            timeoutSeconds: 10
-            failureThreshold: 5
-      volumes:
+      - name: modelserver
+        image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11151
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+        args:
+        - --hf-repo
+        - ornith-ai/Ornith-1.5-35B-A3B-GGUF
+        - --hf-file
+        - Ornith-1.5-35B-Q6_K.gguf
+        - --no-mmproj
+        - --alias
+        - ornith
+        - --ctx-size
+        - '102400'
+        - --cache-ram
+        - '512'
+        - --reasoning-budget
+        - '3600'
+        - --reasoning-budget-message
+        - ' OK, I''ve thought long enough. Either ask the advisor for advice, or answer.'
+        - --temp
+        - '0.6'
+        - -b
+        - '1024'
+        - -ub
+        - '1024'
+        - --port
+        - '8000'
+        - -ngl
+        - '999'
+        - -fa
+        - 'on'
+        - --load-mode
+        - none
+        - --parallel
+        - '1'
+        - --threads
+        - '12'
+        env:
+        - name: LLAMA_CACHE
+          value: /models
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        volumeMounts:
         - name: model-cache
-          persistentVolumeClaim:
-            claimName: llm-d-model-cache
+          mountPath: /models
         - name: dev-dri
-          hostPath:
-            path: /dev/dri
-            type: Directory
+          mountPath: /dev/dri
+        resources:
+          requests:
+            cpu: '4'
+            memory: 40Gi
+            amd.com/gpu: '1'
+          limits:
+            cpu: '12'
+            memory: 52Gi
+            amd.com/gpu: '1'
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 60
+          timeoutSeconds: 10
+          failureThreshold: 180
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: llm-d-model-cache
+      - name: dev-dri
+        hostPath:
+          path: /dev/dri
+          type: Directory
 ---
 apiVersion: v1
 kind: Service
@@ -174,8 +171,170 @@ spec:
   selector:
     app.kubernetes.io/name: llm-d-modelserver
   ports:
-    - name: http
-      port: 8000
-      targetPort: http
-      nodePort: 30800
-      protocol: TCP
+  - name: http
+    port: 8000
+    targetPort: http
+    nodePort: 30800
+    protocol: TCP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llm-d-advisor-cache
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llm-d-advisor
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 80Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-d-advisor
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llm-d-advisor
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llm-d-advisor
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llm-d-advisor
+    spec:
+      priorityClassName: llm-d-preempt
+      nodeSelector:
+        kubernetes.io/hostname: ghost
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      containers:
+      - name: modelserver
+        image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11151
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+        args:
+        - --hf-repo
+        - unsloth/Qwen3.8-27B-GGUF
+        - --hf-file
+        - Qwen3.8-27B-UD-Q6_K.gguf
+        - --no-mmproj
+        - --alias
+        - qwen-advisor
+        - --ctx-size
+        - '65536'
+        - --cache-ram
+        - '256'
+        - --reasoning-budget
+        - '4000'
+        - --reasoning-budget-message
+        - OK, I've thought long enough. Let's answer.
+        - --spec-type
+        - draft-mtp
+        - --spec-draft-hf
+        - unsloth/Qwen3.8-27B-GGUF:Q4_0
+        - --spec-draft-n-max
+        - '4'
+        - --spec-draft-ngl
+        - '999'
+        - --temp
+        - '0.6'
+        - -b
+        - '256'
+        - -ub
+        - '256'
+        - --port
+        - '8000'
+        - -ngl
+        - '999'
+        - -fa
+        - 'on'
+        - --load-mode
+        - none
+        - --parallel
+        - '1'
+        - --threads
+        - '12'
+        env:
+        - name: LLAMA_CACHE
+          value: /models
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        volumeMounts:
+        - name: model-cache
+          mountPath: /models
+        - name: dev-dri
+          mountPath: /dev/dri
+        resources:
+          requests:
+            cpu: '4'
+            memory: 32Gi
+            amd.com/gpu: '1'
+          limits:
+            cpu: '12'
+            memory: 44Gi
+            amd.com/gpu: '1'
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 60
+          timeoutSeconds: 10
+          failureThreshold: 180
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: llm-d-advisor-cache
+      - name: dev-dri
+        hostPath:
+          path: /dev/dri
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-d-advisor
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llm-d-advisor
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: llm-d-advisor
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http
+    nodePort: 30801
+    protocol: TCP

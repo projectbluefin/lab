@@ -1,0 +1,105 @@
+# hive-contribute: projectbluefin/contribute (OMP in tmux) on the local llm-d models.
+# replicas: 0 in git; `just contribute-on` writes the Secret (GH token, Hive registration,
+# your OMP config.yml) and scales it up. See docs/skills/hive-contribute/SKILL.md.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: contribute
+  labels:
+    app.kubernetes.io/part-of: testing-lab
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: contribute-omp
+  namespace: contribute
+data:
+  models.yml: "providers:\n  lab-worker:\n    baseUrl: http://llm-d-modelserver.llm-d.svc.cluster.local:8000/v1\n    api: openai-completions\n    apiKey: local\n    models:\n      - id: ornith\n       \
+    \ name: Ornith 1.5 35B-A3B Q6_K\n  lab-advisor:\n    baseUrl: http://llm-d-advisor.llm-d.svc.cluster.local:8000/v1\n    api: openai-completions\n    apiKey: local\n    models:\n      - id: qwen-advisor\n\
+    \        name: Qwen3.8 27B UD-Q6_K\n"
+  roles.yml: "# Layered last: every role the user's config.yml names is pinned to a local model.\nmodelRoles:\n  default: lab-worker/ornith\n  smol: lab-worker/ornith\n  advisor: lab-advisor/qwen-advisor\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: contribute
+  namespace: contribute
+  labels:
+    app.kubernetes.io/name: contribute
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: contribute
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: contribute
+    spec:
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+      - name: contribute
+        image: ghcr.io/projectbluefin/contribute:stable
+        imagePullPolicy: Always
+        env:
+        - name: AGENT_BACKEND
+          value: omp
+        - name: HOME
+          value: /home/hive
+        - name: TERM
+          value: xterm-256color
+        - name: COLORTERM
+          value: truecolor
+        - name: PI_CONFIG_FILES
+          value: /usr/share/hive/contribute/omp-config.yml:/etc/contribute/roles.yml
+        - name: GH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: contribute
+              key: GH_TOKEN
+        volumeMounts:
+        - name: home
+          mountPath: /home/hive
+        - name: secret
+          mountPath: /home/hive/.config/hive/contributor.env
+          subPath: contributor.env
+          readOnly: true
+        - name: secret
+          mountPath: /home/hive/.omp/agent/config.yml
+          subPath: config.yml
+          readOnly: true
+        - name: omp
+          mountPath: /home/hive/.omp/agent/models.yml
+          subPath: models.yml
+          readOnly: true
+        - name: omp
+          mountPath: /etc/contribute/roles.yml
+          subPath: roles.yml
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: '1'
+            memory: 2Gi
+          limits:
+            cpu: '8'
+            memory: 16Gi
+      volumes:
+      - name: home
+        emptyDir:
+          sizeLimit: 50Gi
+      - name: tmp
+        emptyDir: {}
+      - name: secret
+        secret:
+          secretName: contribute
+          defaultMode: 256
+      - name: omp
+        configMap:
+          name: contribute-omp

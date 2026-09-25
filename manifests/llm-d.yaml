@@ -3,6 +3,7 @@
 # Keep replicas: 1 here so each WaitForFirstConsumer PVC binds on first sync; toggle with
 # `just contribute-on/off` (replicas are ignored by testing-lab-infra).
 # Recreate: one amd.com/gpu and an RWO PVC deadlock a rolling update.
+# The advisor's MTP draft is fetched by an init container: -hfd <repo>:Q4_0 picks the full 16 GB Q4_0 model.
 # Image: immutable per-build tag (zot syncs tags only); never the floating :server-vulkan.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -245,8 +246,8 @@ spec:
         - OK, I've thought long enough. Let's answer.
         - --spec-type
         - draft-mtp
-        - --spec-draft-hf
-        - unsloth/Qwen3.8-27B-GGUF:Q4_0
+        - --spec-draft-model
+        - /models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf
         - --spec-draft-n-max
         - '4'
         - --spec-draft-ngl
@@ -319,6 +320,17 @@ spec:
         hostPath:
           path: /dev/dri
           type: Directory
+      initContainers:
+      - name: fetch-mtp-draft
+        image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
+        command:
+        - sh
+        - -c
+        - f=/models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf; test -s $f || { mkdir -p /models/mtp && wget -q -O $f.tmp https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/MTP/mtp-Qwen3.8-27B-Q4_0.gguf &&
+          mv $f.tmp $f; }
+        volumeMounts:
+        - name: model-cache
+          mountPath: /models
 ---
 apiVersion: v1
 kind: Service

@@ -155,6 +155,11 @@ spec:
           # once and is OOMKilled (exit 137), which deadlocks ArgoCD because
           # it cannot sync the fix for its own outage. Nodes have 62 GiB;
           # 1Gi is still conservative.
+          # A cold clone of this repo (~400 MB) exceeds the default 90s git
+          # exec timeout, so repo-server can't fetch after a restart.
+          env:
+            - name: ARGOCD_EXEC_TIMEOUT
+              value: 10m
           resources:
             requests:
               cpu: 50m

@@ -1,6 +1,8 @@
 # hive-contribute: projectbluefin/contribute (OMP in tmux) on the local llm-d models.
 # replicas: 0 in git; `just contribute-on` (in ~/.justfile) writes the Secret (your `gh auth token`,
 # Hive registration, OMP config.yml), scales it up and attaches. See docs/skills/hive-contribute/SKILL.md.
+# Files are copied into an emptyDir home by seed-home: subPath mounts would make
+# ~/.omp root-owned, and OMP must write ~/.omp/natives.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -65,24 +67,11 @@ spec:
         volumeMounts:
         - name: home
           mountPath: /home/hive
-        - name: secret
-          mountPath: /home/hive/.config/hive/contributor.env
-          subPath: contributor.env
-          readOnly: true
-        - name: secret
-          mountPath: /home/hive/.omp/agent/config.yml
-          subPath: config.yml
-          readOnly: true
-        - name: omp
-          mountPath: /home/hive/.omp/agent/models.yml
-          subPath: models.yml
-          readOnly: true
-        - name: omp
-          mountPath: /etc/contribute/roles.yml
-          subPath: roles.yml
-          readOnly: true
         - name: tmp
           mountPath: /tmp
+        - name: omp
+          mountPath: /etc/contribute
+          readOnly: true
         resources:
           requests:
             cpu: '1'
@@ -103,3 +92,24 @@ spec:
       - name: omp
         configMap:
           name: contribute-omp
+      initContainers:
+      - name: seed-home
+        image: ghcr.io/projectbluefin/contribute:stable
+        imagePullPolicy: Always
+        command:
+        - bash
+        - -c
+        - mkdir -p ~/.omp/agent ~/.config/hive && install -m600 /seed/secret/config.yml ~/.omp/agent/config.yml && install -m600 /seed/omp/models.yml ~/.omp/agent/models.yml && install -m600 /seed/secret/contributor.env
+          ~/.config/hive/contributor.env
+        env:
+        - name: HOME
+          value: /home/hive
+        volumeMounts:
+        - name: home
+          mountPath: /home/hive
+        - name: secret
+          mountPath: /seed/secret
+          readOnly: true
+        - name: omp
+          mountPath: /seed/omp
+          readOnly: true

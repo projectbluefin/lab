@@ -1,6 +1,6 @@
 # hive-contribute: projectbluefin/contribute (OMP in tmux) on the local llm-d models.
-# replicas: 0 in git; `just contribute-on` writes the Secret (GH token, Hive registration,
-# your OMP config.yml) and scales it up. See docs/skills/hive-contribute/SKILL.md.
+# replicas: 0 in git; `just contribute-on` (in ~/.justfile) writes the Secret (your `gh auth token`,
+# Hive registration, OMP config.yml), scales it up and attaches. See docs/skills/hive-contribute/SKILL.md.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -99,7 +99,7 @@ spec:
       - name: secret
         secret:
           secretName: contribute
-          defaultMode: 256
+          defaultMode: 288
       - name: omp
         configMap:
           name: contribute-omp

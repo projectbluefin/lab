@@ -23,9 +23,15 @@ ConfigMap (`roles.yml`, layered last via `PI_CONFIG_FILES`): `default` and
 
 ## Use
 
+The recipes live in `~/.justfile`, so `just contribute-on` works from any directory. This repo's Justfile has `set fallback`, which reaches them too. Install or refresh them:
+
 ```bash
-just contribute-on       # write Secret, scale models + contributor to 1
-just contribute-attach   # tmux attach -t contributor (detach: C-b d)
+curl -fsSL https://raw.githubusercontent.com/projectbluefin/lab/main/docs/skills/hive-contribute/contribute.just -o ~/.justfile
+```
+
+```bash
+just contribute-on       # write Secret, scale models + contributor to 1, wait, attach to tmux
+just contribute-attach   # re-attach (detach: C-b d; the contributor keeps running)
 just contribute-status
 just contribute-off      # scale all three to 0; frees both GPUs for video jobs
 ```
@@ -33,13 +39,13 @@ just contribute-off      # scale all three to 0; frees both GPUs for video jobs
 The k8s MCP `resources_scale` tool can toggle the same three Deployments.
 Scaling up through MCP reuses the last Secret that `contribute-on` wrote.
 
-`contribute-on` sends, every time:
+`contribute-on` sends, every time, with no login step:
 
-- `~/.config/hive-contribute/gh-token`: a classic token with scopes `public_repo,read:org` only. Hive's contributors fork and open PRs as themselves (`gh-wrapper.sh`). Writes to projectbluefin use the per-task Hive App token.
+- `gh auth token` → `GH_TOKEN`. Hive contributors fork and open PRs as themselves (`gh-wrapper.sh`).
 - `~/.config/hive/contributor.bluefin.env`: the Hive registration (knuckle hive). The relay reads it, and it does not rotate during runs.
 - `~/.omp/agent/config.yml`: your OMP settings. Only the model roles are overridden.
 
-Override the paths with `HIVE_CONTRIBUTE_GH_TOKEN`, `HIVE_CONTRIBUTE_REGISTRATION` and `HIVE_CONTRIBUTE_OMP_CONFIG`.
+Override the paths with `HIVE_CONTRIBUTE_REGISTRATION` and `HIVE_CONTRIBUTE_OMP_CONFIG`; `KUBECONFIG` defaults to `~/.kube/bluespeed.yaml`.
 
 ## Rules
 

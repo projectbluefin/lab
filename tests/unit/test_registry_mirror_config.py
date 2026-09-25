@@ -1,3 +1,4 @@
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -15,22 +16,23 @@ def _config_map():
     )
 
 
-def test_registry_mirrors_have_no_public_fallback():
-    config_map = _config_map()
-    hosts = config_map["data"]
+def test_registry_mirrors_prefer_zot_and_fall_back_upstream():
+    # Zot first; the upstream `server` is only tried when the mirror is down, so a
+    # Zot outage at boot cannot block the pulls needed to recover Zot.
+    hosts = _config_map()["data"]
 
-    for registry, namespace in (
-        ("ghcr.io", "ghcr"),
-        ("docker.io", "docker"),
-        ("quay.io", "quay"),
-        ("registry.fedoraproject.org", "fedora"),
-        ("registry.k8s.io", "k8s"),
-        ("cgr.dev", "cgr"),
-        ("public.ecr.aws", "ecr"),
-        ("lscr.io", "lscr"),
+    for registry, namespace, upstream in (
+        ("ghcr.io", "ghcr", "https://ghcr.io"),
+        ("docker.io", "docker", "https://registry-1.docker.io"),
+        ("quay.io", "quay", "https://quay.io"),
+        ("registry.fedoraproject.org", "fedora", "https://registry.fedoraproject.org"),
+        ("registry.k8s.io", "k8s", "https://registry.k8s.io"),
+        ("cgr.dev", "cgr", "https://cgr.dev"),
+        ("public.ecr.aws", "ecr", "https://public.ecr.aws"),
+        ("lscr.io", "lscr", "https://lscr.io"),
     ):
-        content = hosts[f"{registry}.hosts.toml"]
-        assert "server =" not in content
-        assert f'host."http://192.168.1.102:30501/v2/{namespace}"' in content
-        assert 'capabilities = ["pull", "resolve"]' in content
-        assert "override_path = true" in content
+        config = tomllib.loads(hosts[f"{registry}.hosts.toml"])
+        assert config["server"] == upstream
+        mirror = config["host"][f"http://192.168.1.102:30501/v2/{namespace}"]
+        assert mirror["capabilities"] == ["pull", "resolve"]
+        assert mirror["override_path"] is True

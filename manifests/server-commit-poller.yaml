@@ -1,6 +1,7 @@
-# Bluefin Server is gated on install-and-reboot, not on a successful build, so
-# this poller chains bluefin-server-build-pipeline into bluefin-server-boot-test
-# and only records the SHA when the installed disk boots.
+# Bluefin Server lab gate: builds the image set with dev keys
+# (bluefin-server-build-pipeline) on each new commit and records the SHA when
+# it builds. The installer boot test is re-chained once projectbluefin/server#265
+# gives the offline USB installer an unattended path that works under KubeVirt.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:

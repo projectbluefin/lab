@@ -5,10 +5,13 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      In-cluster BuildStream build pipeline for Bluefin Server.
-      Builds oci/bluefin-server-ddi.bst and oci/bluefin-server-installer.bst
-      and publishes them to the local Zot registry (:30500).
-      Triggered on git changes or manual on-demand submission.
+      In-cluster BuildStream build pipeline for Bluefin Server (the lab).
+      Builds oci/bluefin-server-image.bst -- the whole release set: OS DDI,
+      UKIs, netboot ESP, USB installer, sysexts, signed SHA256SUMS -- with the
+      fixed DEV keys from the bluefin-server-dev-boot-keys Secret, and pushes
+      it to the local Zot registry (:30500) as bluefin-server-image:latest.
+      Release keys never exist here; GitHub Actions builds and publishes
+      releases from main. Submit with -p ref=<branch> to try a branch.
   labels:
     app.kubernetes.io/component: bluefin-server-build
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -126,45 +129,15 @@ spec:
             templateRef:
               name: bst-admission-gate
               template: detect-build-mode
-          - name: build-ddi
+          - name: build-image
             template: bst-build-re
             depends: detect-build-mode
             arguments:
               parameters:
                 - name: element
-                  value: "oci/bluefin-server-ddi.bst"
+                  value: "oci/bluefin-server-image.bst"
                 - name: tag
-                  value: "bluefin-server-ddi"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
-          - name: build-installer
-            template: bst-build-re
-            depends: detect-build-mode
-            arguments:
-              parameters:
-                - name: element
-                  value: "oci/bluefin-server-installer.bst"
-                - name: tag
-                  value: "bluefin-server-installer"
-                - name: ref
-                  value: "{{inputs.parameters.ref}}"
-                - name: repo
-                  value: "{{inputs.parameters.repo}}"
-                - name: registry
-                  value: "{{inputs.parameters.registry}}"
-          - name: build-sysext
-            template: bst-build-re
-            depends: detect-build-mode
-            arguments:
-              parameters:
-                - name: element
-                  value: "oci/k0s-sysext.bst"
-                - name: tag
-                  value: "k0s-sysext"
+                  value: "bluefin-server-image"
                 - name: ref
                   value: "{{inputs.parameters.ref}}"
                 - name: repo
@@ -205,6 +178,13 @@ spec:
                 path: buildstream.conf
               - key: remote-execution.conf
                 path: remote-execution.conf
+        # Fixed dev key set (Secret created out of band, see
+        # docs/skills/bluefin-server/SKILL.md). Fixed, not per-run: the kernel's
+        # cache key includes the module certificate, so a stable dev key keeps
+        # the kernel and everything signed with it in the BuildBarn CAS.
+        - name: dev-keys
+          secret:
+            secretName: bluefin-server-dev-boot-keys
       script:
         image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
         command: [bash]
@@ -212,13 +192,15 @@ spec:
           privileged: true
           seLinuxOptions:
             type: spc_t
+        # Local sandbox builds (see the comment above the bst invocation), so
+        # the pod carries the compile load; the kernel is the long pole.
         resources:
           requests:
-            cpu: "1"
-            memory: 2Gi
+            cpu: "16"
+            memory: 32Gi
           limits:
-            cpu: "2"
-            memory: 4Gi
+            cpu: "28"
+            memory: 56Gi
         env:
           - name: GITHUB_TOKEN
             valueFrom:
@@ -241,6 +223,9 @@ spec:
           - name: buildstream-config
             mountPath: /etc/buildstream
             readOnly: true
+          - name: dev-keys
+            mountPath: /dev-keys
+            readOnly: true
         source: |
           set -euo pipefail
 
@@ -253,11 +238,14 @@ spec:
           rm -rf /src
           git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN}@${REPO#https://}" /src
           cd /src
+          # Lab builds are dev-key builds only; the images are never published.
+          mkdir -p files/boot-keys
+          tar -xzf /dev-keys/keys.tgz -C files/boot-keys
+          echo "=== ${REF} @ $(git rev-parse HEAD), dev keys ==="
           PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
 
           cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
           BST_CONF=/tmp/buildstream-cluster.conf
-          REMOTE_EXECUTION_SERVICE="grpc://frontend.buildbarn.svc.cluster.local:8980"
           cat >> /tmp/buildstream-cluster.conf <<EOF
           projects:
             ${PROJECT_NAME}:
@@ -283,9 +271,12 @@ spec:
                   push: false
           EOF
 
-          # Every retry remains distributed; coordinator-local builds are forbidden.
-          echo "=== Distributed build: remote execution enabled ==="
-          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
+          # Local bubblewrap sandbox, not BuildBarn remote execution: bb_runner
+          # chroots into the input root without /proc, and the FSDK kernel's
+          # objtool (read_stack_limit opens /proc/self/maps) and bootstrap Go
+          # fail there. Artifacts still push to the BuildBarn CAS (artifacts
+          # servers above), so every later build pulls them.
+          echo "=== Local sandbox build, BuildBarn CAS artifact cache ==="
 
           echo "=== Building ${ELEMENT} ==="
           bst --config "${BST_CONF}" \

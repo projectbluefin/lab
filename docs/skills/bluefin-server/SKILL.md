@@ -1,79 +1,111 @@
 ---
 name: bluefin-server
 description: >
-  Build, verify, and maintain the FSDK-based bluefin-server bootc image, including
-  compilation elements and offline Cargo setups.
-  Use when modifying server-image configs, troubleshooting sandboxed BuildStream builds,
-  or resolving bootc target installation requirements.
-metadata:
-  context7-sources:
-    - /bootc-dev/bootc
-    - /ostreedev/ostree
-    - /freedesktop/freedesktop-sdk
+  The Bluefin Server lab loop on ghost: dev-key BuildStream builds of the
+  release image set (bluefin-server-build-pipeline) and the unattended USB
+  installer boot test (bluefin-server-boot-test). Use when building a
+  projectbluefin/server branch in the lab, iterating on the installer or
+  image, or debugging those two WorkflowTemplates.
 ---
 
-# bluefin-server Building and Maintenance — lab Skill
+# Bluefin Server — lab Skill
 
 ## When to Use
 
-- Building or debugging the FSDK-based `bluefin-server-bootc` image on the cluster.
-- Troubleshooting sandboxed, networkless Cargo compiles inside FSDK elements.
-- Handling `bootc install to-disk` requirements and resolving `prepare-root.conf` or filesystem failures.
+- Building a `projectbluefin/server` branch in the lab before pushing it.
+- Iterating on the image set or the USB installer without waiting on GitHub
+  Actions.
+- Debugging `bluefin-server-build-pipeline`, `bluefin-server-boot-test`, or the
+  server leg of `bst-commit-poller`.
 
 ## When NOT to Use
 
-- Deploying boot-test virtual machine instances → `kubevirt-vms.md`.
+- Release builds and signing: GitHub Actions (`build.yml` in
+  projectbluefin/server) is the only place the release keys exist and the only
+  thing that publishes releases.
+- KubeVirt VM mechanics in general → `kubevirt-vms.md`.
 
----
+## The model: lab on dev keys, releases on GitHub Actions
+
+| | Lab (ghost) | GitHub Actions |
+|---|---|---|
+| Keys | Fixed dev set, Secret `argo/bluefin-server-dev-boot-keys` | Release keys (`BOOT_KEYS_TARBALL`, `SYSUPDATE_SIGNING_KEY`) |
+| Cache | BuildBarn CAS (artifacts), persistent | none between runs |
+| Sandbox | local bubblewrap in a 16-28 CPU pod | hosted runner, 4 vCPU |
+| Output | Zot `:30500/bluefin-server-image:latest` | GitHub Release `vYY.MM.<run>` + ghcr.io |
+| Use | fast iteration, installer boot test | what users install |
+
+Iterate in the lab, push to GitHub, and the push to `main` publishes the
+release. Lab images are dev-signed and never published.
+
+The dev set is fixed on purpose: the FSDK kernel's cache key includes the
+module certificate (`components/linux-module-cert.bst` override), so a per-run
+key would rebuild the kernel (about 1 h 45 min) every time. With the fixed set,
+the kernel and everything signed with it stay in the CAS.
+
+Builds run in the pod's local sandbox, not on BuildBarn remote execution:
+bb_runner chroots into the action's input root without `/proc`, and the FSDK
+kernel's objtool (`read_stack_limit` opens `/proc/self/maps`) and bootstrap Go
+fail there. BuildBarn still stores and serves the artifacts.
 
 ## Core Process
 
-### 1. Maintain Sandboxed Offline Cargo Builds
-BuildStream manual/script sandboxes have **no internet access**. All Rust/Cargo dependencies must be fully offline-vendored:
+### Build a branch
 
-1. Package dependencies using `cargo vendor` and compress with `zstd` into a `-vendor.tar.zstd` archive.
-2. In `bootc.bst`, declare both the gzip source tree and the raw `.zstd` vendor archive. BuildStream's tar plugin automatically extracts `.tar.gz` but leaves `.tar.zstd` raw.
-3. Extract the `.zstd` archive in the build script using host tools:
-   ```bash
-   tar --zstd -xf bootc-vendor.tar.zstd
-   ```
-4. Generate a local `.cargo/config.toml` redirecting `crates-io` and any git dependencies (e.g., `composefs-ctl`) to local directories:
-   ```toml
-   [source.crates-io]
-   replace-with = "vendored-sources"
-
-   [source.vendored-sources]
-   directory = "vendor"
-
-   [patch."https://github.com/composefs/composefs-rs"]
-   composefs-ctl = { path = "vendor/composefs-ctl" }
-   ```
-5. Remove test subdirectories (like `crates/tests-integration`) from the workspace to bypass missing network and system dependencies, and compile with `cargo build --release --offline -p bootc`.
-
-### 2. Ensure Bootc Target Readiness
-`bootc install to-disk` asserts on the presence of `/usr/lib/ostree/prepare-root.conf` (or `/etc/ostree/prepare-root.conf`) inside the OCI image. If it is missing, compilation will crash with `Failed to find ostree/prepare-root.conf`.
-
-Always include `bluefin-server/prepare-root-config.bst` in `os-stack.bst` to write a basic config:
-```ini
-[sysroot]
-readonly=false
+```bash
+just run-bluefin-server-build ref=<branch>
 ```
 
----
+The pipeline builds `oci/bluefin-server-image.bst` (OS DDI, UKIs, netboot ESP,
+USB installer, sysexts, signed `SHA256SUMS`) and pushes the export as a
+`FROM scratch` image. Take files out with
+`podman create` + `podman export | tar -x`.
+
+### Commit gate and installer testing
+
+`bst-commit-poller` builds every new `main` commit and reports a "Lab build"
+status on it. `bluefin-server-boot-test` still targets the removed Flatcar
+installer and is not chained: the offline USB installer needs an unattended
+path that works under KubeVirt (plaintext `.cred` files in the stick's
+`/loader/credentials/` are not applied), tracked in projectbluefin/server#265.
+Until then, test the installer interactively: pull the image set from Zot and
+boot `bluefin-server-installer_<ver>.raw` in QEMU/OVMF, or in a KubeVirt VM and
+take screenshots with `virtctl vnc screenshot`.
+
+### Rotate or recreate the dev keys
+
+The Secret is created out of band (it is not a release secret, but keys do not
+go in git here). From a projectbluefin/server checkout:
+
+```bash
+bash scripts/gen-dev-keys.sh --force
+tar -C files/boot-keys -czf /tmp/dev-keys.tgz .
+kubectl -n argo create secret generic bluefin-server-dev-boot-keys \
+  --from-file=keys.tgz=/tmp/dev-keys.tgz --dry-run=client -o yaml | kubectl apply -f -
+```
+
+A new module certificate means one cold kernel build on the next run.
 
 ## Common Rationalizations
 
 | Rationalization | Reality |
 |---|---|
-| "I can build Cargo projects online by enabling network access in the element." | BuildStream policy prohibits network access during build phase to enforce complete reproducibility. All sources must be pre-fetched during fetch phase. |
-| "prepare-root.conf is only needed at runtime, so we can omit it from the OCI build." | `bootc install to-disk` performs static image validation before writing blocks and refuses to install images lacking this file. |
+| "Copy the release keys to the lab so lab images match releases." | Release keys stay in GitHub Actions only. The lab exists to iterate; releases come from `main`. |
+| "Generate fresh dev keys per build, like PR CI does." | That changes the kernel's cache key every run and rebuilds it for ~1 h 45 min. |
 
 ## Red Flags
 
-- `bootc install` failing with `Failed to find ostree/prepare-root.conf` → Missing the `prepare-root-config` dependency in `os-stack.bst`.
-- `cargo` compiler failing with network errors inside BuildStream → Forgot to configure `.cargo/config.toml` or missing `--offline` flag.
+- `Specified path 'files/boot-keys' does not exist` → the dev-keys Secret is
+  missing or not mounted.
+- The kernel (`freedesktop-sdk.bst:components/linux.bst`) builds on every run →
+  the dev key set changed or the CAS was wiped.
+- Boot test waits the full timeout for power-off → the installer prompted
+  (a new prompt, or the credential drop-in no longer matches the image's
+  `ExecStart=`); read the installer serial log.
 
 ## Verification
 
-- [ ] `skopeo inspect --tls-verify=false docker://<lab-ip>:30500/bluefin-server-bootc:latest` returns a valid OCI manifest.
-- [ ] `podman run --rm --tls-verify=false --entrypoint=ls <lab-ip>:30500/bluefin-server-bootc:latest /usr/lib/ostree/prepare-root.conf` completes successfully.
+- [ ] `argo get -n argo @latest` shows `bst-build-re` Succeeded and
+      `bluefin-server-image:latest` pushed.
+- [ ] `bluefin-server-boot-test` Succeeded: the target has an ESP and a
+      `bluefin_usr_<ver>` slot, and the installed disk reached a systemd target.

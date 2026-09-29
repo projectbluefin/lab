@@ -106,22 +106,14 @@ spec:
                   value: "https://github.com/{{workflow.parameters.repo}}.git"
                 - name: registry
                   value: "{{workflow.parameters.registry}}"
-          # The gate is the install-and-reboot result, not the build. The build
-          # pipeline publishes <registry>/bluefin-server-installer:latest, which
-          # is what the boot test consumes.
-          - name: run-boot-test
-            depends: "run-build.Succeeded"
-            templateRef:
-              name: bluefin-server-boot-test
-              template: pipeline
-            arguments:
-              parameters:
-                - name: installer-image
-                  value: "{{workflow.parameters.registry}}/bluefin-server-installer:latest"
-                - name: target-disk-size
-                  value: "20G"
+          # Build gate for now: the pipeline publishes
+          # <registry>/bluefin-server-image:latest (the whole image set, dev
+          # keys). The installer boot test is not chained here: the offline
+          # USB installer needs an unattended credential path that works under
+          # KubeVirt (plaintext ESP .cred files are not applied), tracked in
+          # projectbluefin/server#265. Re-add run-boot-test once that lands.
           - name: report-pass
-            depends: "run-boot-test.Succeeded"
+            depends: "run-build.Succeeded"
             templateRef:
               name: github-status-reporter
               template: send
@@ -138,11 +130,11 @@ spec:
                 - name: workflow-name
                   value: "{{workflow.name}}"
                 - name: title
-                  value: Lab boot gate
+                  value: Lab build
                 - name: summary
-                  value: Installer installed and the target disk booted to a systemd target.
+                  value: The lab built the image set with dev keys (installer boot test not yet chained, see #265).
           - name: report-fail
-            depends: "run-build.Failed || run-boot-test.Failed"
+            depends: "run-build.Failed"
             templateRef:
               name: github-status-reporter
               template: send
@@ -159,12 +151,12 @@ spec:
                 - name: workflow-name
                   value: "{{workflow.name}}"
                 - name: title
-                  value: Lab boot gate
+                  value: Lab build
                 - name: summary
-                  value: The lab build or installer-to-boot test failed.
+                  value: The lab build of the image set failed.
           # State only advances on a green gate, so a failed ref is retried.
           - name: update-sha
-            depends: "run-boot-test.Succeeded"
+            depends: "run-build.Succeeded"
             template: update-sha
             arguments:
               parameters:

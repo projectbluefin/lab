@@ -2,10 +2,9 @@
 name: bluefin-server
 description: >
   The Bluefin Server lab loop on ghost: dev-key BuildStream builds of the
-  release image set (bluefin-server-build-pipeline) and the unattended USB
-  installer boot test (bluefin-server-boot-test). Use when building a
-  projectbluefin/server branch in the lab, iterating on the installer or
-  image, or debugging those two WorkflowTemplates.
+  release image set (bluefin-server-build-pipeline) and the server leg of
+  bst-commit-poller. Use when building a projectbluefin/server branch in the
+  lab or iterating on the image set or USB installer.
 ---
 
 # Bluefin Server — lab Skill
@@ -15,8 +14,8 @@ description: >
 - Building a `projectbluefin/server` branch in the lab before pushing it.
 - Iterating on the image set or the USB installer without waiting on GitHub
   Actions.
-- Debugging `bluefin-server-build-pipeline`, `bluefin-server-boot-test`, or the
-  server leg of `bst-commit-poller`.
+- Debugging `bluefin-server-build-pipeline` or the server leg of
+  `bst-commit-poller`.
 
 ## When NOT to Use
 
@@ -33,20 +32,19 @@ description: >
 | Cache | BuildBarn CAS (artifacts), persistent | none between runs |
 | Sandbox | local bubblewrap in a 16-28 CPU pod | hosted runner, 4 vCPU |
 | Output | Zot `:30500/bluefin-server-image:latest` | GitHub Release `vYY.MM.<run>` + ghcr.io |
-| Use | fast iteration, installer boot test | what users install |
+| Use | fast iteration, dev images to test by hand | what users install |
 
 Iterate in the lab, push to GitHub, and the push to `main` publishes the
 release. Lab images are dev-signed and never published.
 
 The dev set is fixed on purpose: the FSDK kernel's cache key includes the
 module certificate (`components/linux-module-cert.bst` override), so a per-run
-key would rebuild the kernel (about 1 h 45 min) every time. With the fixed set,
-the kernel and everything signed with it stay in the CAS.
+key would rebuild the kernel every time even with a working artifact cache.
 
 Builds run in the pod's local sandbox, not on BuildBarn remote execution:
 bb_runner chroots into the action's input root without `/proc`, and the FSDK
 kernel's objtool (`read_stack_limit` opens `/proc/self/maps`) and bootstrap Go
-fail there. BuildBarn still stores and serves the artifacts.
+fail there.
 
 ## Core Process
 
@@ -97,15 +95,14 @@ A new module certificate means one cold kernel build on the next run.
 
 - `Specified path 'files/boot-keys' does not exist` → the dev-keys Secret is
   missing or not mounted.
-- The kernel (`freedesktop-sdk.bst:components/linux.bst`) builds on every run →
-  the dev key set changed or the CAS was wiped.
-- Boot test waits the full timeout for power-off → the installer prompted
-  (a new prompt, or the credential drop-in no longer matches the image's
-  `ExecStart=`); read the installer serial log.
+- Every run rebuilds everything, kernel included (27 min): expected today.
+  BuildStream pushes no artifacts to the BuildBarn frontend (0 pushed on runs
+  74fcj and t6p48), so each lab build is cold until the pipeline gets a
+  persistent local cache volume.
 
 ## Verification
 
 - [ ] `argo get -n argo @latest` shows `bst-build-re` Succeeded and
       `bluefin-server-image:latest` pushed.
-- [ ] `bluefin-server-boot-test` Succeeded: the target has an ESP and a
-      `bluefin_usr_<ver>` slot, and the installed disk reached a systemd target.
+- [ ] `skopeo inspect --tls-verify=false docker://<lab-ip>:30500/bluefin-server-image:latest`
+      shows the new image, and it contains `bluefin-server-installer_<ver>.raw`.

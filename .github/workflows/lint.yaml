@@ -79,5 +79,14 @@ jobs:
           python -m pip install --quiet pytest pyyaml
           python -m pytest -q tests/unit/test_semaphore_topology.py
 
+      - name: Test Dakota build-tree library loading
+        run: |
+          curl -sSfL -o /tmp/jobserver_pool.py https://raw.githubusercontent.com/ninja-build/ninja/3441b633c2fe2c494e958780ba0f4227b1327634/misc/jobserver_pool.py
+          echo "5a3ae98df00c522914db0299773c3999338d9e6b4e963339a1c09cbfd5a11237  /tmp/jobserver_pool.py" | sha256sum -c -
+          chmod +x /tmp/jobserver_pool.py
+          export PATH="/tmp:${PATH}"
+          for tool in bash cc ninja jobserver_pool.py; do command -v "${tool}" >/dev/null; done
+          python -m pytest -q tests/unit/test_dakota_colord_loader.py
+
       - name: Check pytest collection
         run: python -m pytest tests/ --collect-only -q 2>&1 | tail -5

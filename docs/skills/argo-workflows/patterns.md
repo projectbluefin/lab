@@ -577,6 +577,32 @@ argo-mcp-logs_workflow <workflow-name>
 
 ## BuildStream pipelines
 
+### Dakota colord build-time library loading
+
+The lab source-preparation step generates `0005-colord-meson-build.patch`.
+`cd-it8` links to the public `libcolord.so.2` and runs during Ninja's CMF/SP
+data generation, before installation. Its build wrapper searches the absolute
+`_builddir/lib/colord` directory with `LD_LIBRARY_PATH`, retaining a nonempty
+inherited path and the `jobserver_pool.py -j${JOBS}` concurrency wrapper.
+Unlike `LD_PRELOAD`, a search directory does not load an unfinished library into
+the compiler, jobserver, or Ninja. An unset/empty inherited path must not add an
+empty search component (which would admit the current working directory).
+
+Run the complete regression module with
+`pytest -q tests/unit/test_dakota_colord_loader.py` in an environment carrying
+the real jobserver, `cc`, and Ninja; skipped cases are not loader proof.
+The regression executes the generated command, builds real ELF dependencies,
+and runs a build-time generator with unset, empty, and nonempty inherited paths.
+For the actual package, use Ghost Lab's source-prepared checkout to build
+`gnome-build-meta.bst:core-deps/colord.bst`, then inspect its artifact for
+`libcolord.so.2`, `Colord-1.0.typelib`, `CIE1964-10deg-XYZ.cmf`,
+`CIE1931-2deg-XYZ.cmf`, and `CIE-A.sp`. All BST operations stay in Ghost Lab.
+
+Sources: [conditional shell expansion](https://www.gnu.org/software/bash/manual/html_node/Shell-Parameter-Expansion.html),
+[loader search/preload semantics](https://man7.org/linux/man-pages/man8/ld.so.8.html),
+[colord client linkage](https://github.com/hughsie/colord/blob/1.4.8/client/meson.build),
+[CMF generators](https://github.com/hughsie/colord/blob/1.4.8/data/cmf/meson.build).
+
 ### BuildStream resource right-sizing and scheduler-driven affinities
 
 When designing or updating BuildStream compilation pipelines (e.g. `dakota-build-pipeline` and `bluefin-server-build-pipeline`), right-size all step-level resource requests and limits to maximize cluster capacity and prevent scheduling bottlenecks:

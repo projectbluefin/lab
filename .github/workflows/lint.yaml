@@ -88,5 +88,17 @@ jobs:
           for tool in bash cc ninja jobserver_pool.py; do command -v "${tool}" >/dev/null; done
           python -m pytest -q tests/unit/test_dakota_colord_loader.py
 
+      - name: Test pinned cargo2 conditional downloads
+        run: |
+          for tool in git curl sha256sum; do command -v "${tool}" >/dev/null; done
+          python -m pip install --quiet BuildStream==2.8.0
+          export CARGO2_SOURCE_ARCHIVE="${RUNNER_TEMP}/buildstream_plugins_community-2.3.1.tar.gz"
+          curl -sSfL -o "${CARGO2_SOURCE_ARCHIVE}" https://files.pythonhosted.org/packages/source/b/buildstream-plugins-community/buildstream_plugins_community-2.3.1.tar.gz
+          echo "85c2bae9d3a1eb3121c9674f68ef6e87211fddb9c930f3e5057b9a1e66eb41d9  ${CARGO2_SOURCE_ARCHIVE}" | sha256sum -c -
+          export CARGO2_SDK_SOURCE_ARCHIVE="${RUNNER_TEMP}/buildstream_plugins_community-2.3.3.tar.gz"
+          curl -sSfL -o "${CARGO2_SDK_SOURCE_ARCHIVE}" https://files.pythonhosted.org/packages/a8/3e/4827d60845eab67d93a3e0adf0ea86a86f80de75a07c8f410128c9cf9fe4/buildstream_plugins_community-2.3.3.tar.gz
+          echo "28ccf91c48044ea2889b2dc2a5b5644e5e625479d87a8feb7214a4d1bfd6179a  ${CARGO2_SDK_SOURCE_ARCHIVE}" | sha256sum -c -
+          python -m pytest -q tests/unit/test_cargo2_download.py
+
       - name: Check pytest collection
         run: python -m pytest tests/ --collect-only -q 2>&1 | tail -5

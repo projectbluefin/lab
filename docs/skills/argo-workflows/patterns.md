@@ -611,6 +611,53 @@ it. The optional-cpuinfo regression applies both levels of the generated mozjs
 patch in an isolated fixture and exercises the patched getter; it needs no
 shared scratch clone and must run rather than skip in CI.
 
+### Dakota cargo2 conditional downloads
+
+The root community 2.3.1 and SDK community 2.3.3 `download_file()` both return
+`(None, None, None)` for HTTP 304 and for HTTP 200 with the requested ETag.
+Those responses mean "not modified", not a failed download. `CrateRegistry`
+must only send an ETag when the cached crate matches its pinned SHA256, then
+revalidate that cache before accepting a not-modified response. Missing or
+corrupted cached bytes cannot satisfy it; fresh downloaded bytes still pass
+the existing SHA256/reference checks. Transport failures retain temporary
+`SourceError` handling, and TLS/authentication remain unchanged.
+
+Before any BST plugin resolution, the lab source-preparation workflow verifies
+the root community junction's exact 2.3.1 source pin and reads the SDK's
+community junction declaration from the SDK's exact pinned Git commit. It
+rejects any unexpected 2.3.3 source pin, downloads both checksum-verified
+archives, and applies one authoritative `cargo2_patch` literal to both with
+native `git apply`. The root `/src/.lab-cargo2/cargo2.py` overlays the existing
+2.3.1 junction. The SDK's independently patched
+`/src/.lab-cargo2/sdk/cargo2.py` overlays a generated root-owned
+`elements/plugins/lab-community-sdk.bst` retaining the original 2.3.3 tar
+source; `freedesktop-sdk.bst` overrides its
+`plugins/buildstream-plugins-community.bst` to that junction. Thus the SDK is
+not downgraded to Dakota's plugin version. Both overlays are core `local`
+sources with `directory: src/buildstream_plugins_community/sources`.
+
+Original tar URLs and checksums remain intact. Do not patch
+`.bst/staged-junctions`, use the community plugin's own `patch_queue` to repair
+its junction (a plugin bootstrap cycle), or change image files after the
+build. An unexpected community source pin is a preparation failure, not
+permission to patch an arbitrary version. Remove an overlay when its pinned
+upstream release contains this fix and its real-download regressions pass
+without it.
+
+CI fetches both SHA256-verified archives and runs the complete
+`tests/unit/test_cargo2_download.py` module with
+`CARGO2_SOURCE_ARCHIVE=/path/to/buildstream_plugins_community-2.3.1.tar.gz`
+and `CARGO2_SDK_SOURCE_ARCHIVE=/path/to/buildstream_plugins_community-2.3.3.tar.gz`.
+The same real-download scenarios run against each source version. They use
+the actual emitted patch, native `git apply`, BuildStream's real checksum/error
+helpers, and a local HTTP server; neither missing prerequisites nor skipped
+tests constitute proof. Set `CARGO2_TEST_UNPATCHED=1` to reproduce the original
+behavior against both verified archives.
+All actual BST fetch/build verification stays in Ghost Lab. This repair is
+separate from `0007-remove-crates-mirror.patch`: bypassing the failed mirror
+alone does not fix conditional downloads from any registry.
+
+
 ### BuildStream resource right-sizing and scheduler-driven affinities
 
 When designing or updating BuildStream compilation pipelines (e.g. `dakota-build-pipeline` and `bluefin-server-build-pipeline`), right-size all step-level resource requests and limits to maximize cluster capacity and prevent scheduling bottlenecks:

@@ -419,6 +419,162 @@ spec:
             git checkout --detach FETCH_HEAD
           fi
 
+          echo "=== Repairing pinned community cargo2 conditional downloads ==="
+          python3 - <<'CARGO2_SOURCE_PATCH'
+          import hashlib
+          import io
+          import re
+          import subprocess
+          import tarfile
+          import tempfile
+          import urllib.request
+          from pathlib import Path
+          import yaml
+
+          # Upstream-Status: Pending; drop when the pinned community release contains this fix.
+          # Keep this literal authoritative: downloader regressions apply it from this workflow.
+          cargo2_patch = (
+              '--- a/src/buildstream_plugins_community/sources/cargo2.py\n'
+              '+++ b/src/buildstream_plugins_community/sources/cargo2.py\n'
+              '@@ -310,6 +310,13 @@\n'
+              '         # corrupted download.\n'
+              '         if self.sha:\n'
+              '             etag = self._get_etag(self.sha)\n'
+              '+            if etag:\n'
+              '+                mirror_file = self._get_mirror_file()\n'
+              '+                if (\n'
+              '+                    not os.path.isfile(mirror_file)\n'
+              '+                    or utils.sha256sum(mirror_file) != self.sha\n'
+              '+                ):\n'
+              '+                    etag = None\n'
+              '         else:\n'
+              '             etag = None\n'
+              ' \n'
+              '@@ -319,6 +326,20 @@\n'
+              '             if error:\n'
+              '                 raise SourceError(\n'
+              '                     "{}: Error mirroring {}: {}".format(self, url, error),\n'
+              '+                    temporary=True,\n'
+              '+                )\n'
+              '+\n'
+              '+            if local_file is None:\n'
+              '+                if self.sha:\n'
+              '+                    mirror_file = self._get_mirror_file()\n'
+              '+                    if (\n'
+              '+                        os.path.isfile(mirror_file)\n'
+              '+                        and utils.sha256sum(mirror_file) == self.sha\n'
+              '+                    ):\n'
+              '+                        return self.sha\n'
+              '+                raise SourceError(\n'
+              '+                    "{}: Error mirroring {}: server reported an unchanged file "\n'
+              '+                    "without a valid cached copy".format(self, url),\n'
+              '                     temporary=True,\n'
+              '                 )\n'
+              ' \n'
+          )
+
+          def prepare_cargo2_source(project_dir, archive_path=None, sdk_archive_path=None):
+              junction = project_dir / 'elements/plugins/buildstream-plugins-community.bst'
+              doc = yaml.safe_load(junction.read_text())
+              expected_source = {
+                  'kind': 'tar',
+                  'url': 'pypi:source/b/buildstream-plugins-community/buildstream_plugins_community-2.3.1.tar.gz',
+                  'ref': '85c2bae9d3a1eb3121c9674f68ef6e87211fddb9c930f3e5057b9a1e66eb41d9',
+              }
+              if doc.get('kind') != 'junction' or doc.get('sources') != [expected_source]:
+                  raise SystemExit('community plugin source pin/layout changed; review cargo2 repair')
+
+              aliases = yaml.safe_load((project_dir / 'include/aliases.yml').read_text())['aliases']
+              sdk_junction = project_dir / 'elements/freedesktop-sdk.bst'
+              sdk_doc = yaml.safe_load(sdk_junction.read_text())
+              sdk_sources = [s for s in sdk_doc.get('sources', []) if s.get('kind') == 'git_repo']
+              if len(sdk_sources) != 1 or sdk_sources[0].get('url') != 'gitlab:freedesktop-sdk/freedesktop-sdk.git':
+                  raise SystemExit('SDK source layout changed; review cargo2 repair')
+              sdk_ref = sdk_sources[0].get('ref', '')
+              sdk_sha = re.fullmatch(r'(?:.*-g)?([0-9a-f]{40})', sdk_ref)
+              if sdk_sha is None:
+                  raise SystemExit('SDK source is not pinned to an exact commit')
+              sdk_plugin_url = (
+                  aliases['gitlab'] + 'freedesktop-sdk/freedesktop-sdk/-/raw/'
+                  + sdk_sha.group(1) + '/elements/plugins/buildstream-plugins-community.bst'
+              )
+              with urllib.request.urlopen(sdk_plugin_url, timeout=60) as response:
+                  sdk_plugin_doc = yaml.safe_load(response.read())
+              expected_sdk_source = {
+                  'kind': 'tar',
+                  'url': 'pypi:a8/3e/4827d60845eab67d93a3e0adf0ea86a86f80de75a07c8f410128c9cf9fe4/buildstream_plugins_community-2.3.3.tar.gz',
+                  'ref': '28ccf91c48044ea2889b2dc2a5b5644e5e625479d87a8feb7214a4d1bfd6179a',
+              }
+              if sdk_plugin_doc.get('kind') != 'junction' or sdk_plugin_doc.get('sources') != [expected_sdk_source]:
+                  raise SystemExit('SDK community plugin source pin/layout changed; review cargo2 repair')
+              sdk_plugin_key = 'plugins/buildstream-plugins-community.bst'
+              overrides = sdk_doc.setdefault('config', {}).setdefault('overrides', {})
+              if sdk_plugin_key in overrides:
+                  raise SystemExit('SDK community plugin already overridden; review cargo2 repair')
+              sdk_plugin_path = project_dir / 'elements/plugins/lab-community-sdk.bst'
+              if sdk_plugin_path.exists():
+                  raise SystemExit('lab SDK community junction already exists; review cargo2 repair')
+
+              def patched_source(source, version, archive_path):
+                  # Fetch only during source preparation, never inside a build sandbox.
+                  if archive_path is None:
+                      alias, path = source['url'].split(':', 1)
+                      with urllib.request.urlopen(aliases[alias] + path, timeout=60) as response:
+                          archive_bytes = response.read()
+                  else:
+                      # Offline proof uses precisely the same checksum-verified source archive.
+                      archive_bytes = Path(archive_path).read_bytes()
+                  if hashlib.sha256(archive_bytes).hexdigest() != source['ref']:
+                      raise SystemExit(f'community {version} plugin archive SHA256 mismatch')
+
+                  source_path = Path('src/buildstream_plugins_community/sources/cargo2.py')
+                  member_name = f'buildstream_plugins_community-{version}/' + source_path.as_posix()
+                  with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode='r:gz') as archive:
+                      member = archive.getmember(member_name)
+                      if not member.isfile():
+                          raise SystemExit('community cargo2 archive member is not a regular file')
+                      with archive.extractfile(member) as cargo2_file:
+                          cargo2_bytes = cargo2_file.read()
+
+                  with tempfile.TemporaryDirectory(prefix='dakota-cargo2-') as temporary:
+                      tree = Path(temporary)
+                      cargo2_file = tree / source_path
+                      cargo2_file.parent.mkdir(parents=True)
+                      cargo2_file.write_bytes(cargo2_bytes)
+                      subprocess.run(['git', 'apply', '--check', '-'], input=cargo2_patch.encode(), cwd=tree, check=True)
+                      subprocess.run(['git', 'apply', '-'], input=cargo2_patch.encode(), cwd=tree, check=True)
+                      return cargo2_file.read_bytes()
+
+              root_cargo2 = patched_source(expected_source, '2.3.1', archive_path)
+              sdk_cargo2 = patched_source(expected_sdk_source, '2.3.3', sdk_archive_path)
+              overlay = project_dir / '.lab-cargo2/cargo2.py'
+              overlay.parent.mkdir(parents=True, exist_ok=True)
+              overlay.write_bytes(root_cargo2)
+              sdk_overlay = project_dir / '.lab-cargo2/sdk/cargo2.py'
+              sdk_overlay.parent.mkdir(parents=True, exist_ok=True)
+              sdk_overlay.write_bytes(sdk_cargo2)
+
+              # Core local sources load without the community patch_queue plugin, avoiding
+              # a cycle while repairing the junction that supplies that very plugin.
+              doc['sources'].append({
+                  'kind': 'local',
+                  'path': '.lab-cargo2/cargo2.py',
+                  'directory': 'src/buildstream_plugins_community/sources',
+              })
+              junction.write_text(yaml.safe_dump(doc, sort_keys=False))
+              sdk_plugin_doc['sources'].append({
+                  'kind': 'local',
+                  'path': '.lab-cargo2/sdk/cargo2.py',
+                  'directory': 'src/buildstream_plugins_community/sources',
+              })
+              sdk_plugin_path.write_text(yaml.safe_dump(sdk_plugin_doc, sort_keys=False))
+              overrides[sdk_plugin_key] = 'plugins/lab-community-sdk.bst'
+              sdk_junction.write_text(yaml.safe_dump(sdk_doc, sort_keys=False))
+              print('community cargo2: verified and repaired root 2.3.1 + SDK 2.3.3 without changing either pin')
+
+          prepare_cargo2_source(Path('/src'))
+          CARGO2_SOURCE_PATCH
+
           echo "=== Rewriting gnome-build-meta source URL to GitHub mirror ==="
           if [[ -f /src/elements/gnome-build-meta.bst ]]; then
             sed -i 's#https://gitlab.gnome.org/GNOME/gnome-build-meta.git#https://github.com/GNOME/gnome-build-meta.git#g' /src/elements/gnome-build-meta.bst

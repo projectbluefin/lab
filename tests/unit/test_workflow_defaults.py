@@ -44,6 +44,7 @@ def test_execution_and_storage_share_one_cas():
     assert host(env["CAS_URL"]) == "cas.buildgrid.svc.cluster.local:50051"
     assert host(env["BUILDBARN_URL"]) == BUILDBARN_HOST
     assert host(env["BUILDGRID_URL"]) == BUILDGRID_HOST
+    assert host(env["BOTS_URL"]) == "bots.buildgrid.svc.cluster.local:50051"
 
 
 def test_scheduler_accepts_every_platform_key_buildstream_sends():
@@ -54,3 +55,17 @@ def test_scheduler_accepts_every_platform_key_buildstream_sends():
     known = set(props["match-property-keys"]) | set(props["wildcard-property-keys"])
     assert {"OSFamily", "ISA", "unixUID", "unixGID", "network", "remoteApisSocketPath", "chrootRootDigest"} <= known
 
+
+
+def test_controller_and_bots_share_one_scheduler():
+    # Jobs queued through the controller are leased through the bots service;
+    # if their scheduler configs drift, workers stop matching queued jobs.
+    data = manifest("buildgrid-controller.yaml")[0]["data"]
+    controller = yaml.load(data["controller.yml"], Loader=_Tagged)
+    bots = yaml.load(data["bots.yml"], Loader=_Tagged)
+    for key in ("storages", "caches"):
+        assert controller[key] == bots[key]
+    # Pool sizes differ per front end; everything else in the scheduler must not.
+    strip = lambda schedulers: [{k: v for k, v in s.items() if k != "sql"} for s in schedulers]
+    assert strip(controller["schedulers"]) == strip(bots["schedulers"])
+    assert controller["connections"][0]["connection-string"] == bots["connections"][0]["connection-string"]

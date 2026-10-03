@@ -5,7 +5,7 @@
 # scheduler bookkeeping only; build inputs and outputs live in Buildbarn CAS.
 #
 # Authentication is `trust`, scoped by the NetworkPolicy below to the BuildGrid
-# controller pods in this namespace. No credential is stored in git.
+# scheduler pods (controller and bots) in this namespace. No credential is stored in git.
 apiVersion: v1
 kind: Service
 metadata:
@@ -96,7 +96,7 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: buildgrid-controller
+              buildgrid-scheduler-client: "true"
       ports:
         - port: 5432
           protocol: TCP

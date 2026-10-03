@@ -1,7 +1,7 @@
 # BuildGrid workers: one buildbox-worker per node (DaemonSet).
 #
 # This is the elastic BuildStream grid: a node that joins the cluster gets a
-# worker, the worker opens a bot session with the controller, and it starts
+# worker, the worker opens a bot session with the bots service, and it starts
 # taking element builds from the shared queue. No node list, pin, or client
 # configuration changes.
 #
@@ -67,7 +67,7 @@ spec:
               done
               [[ -S /run/casd/casd.sock ]]
               buildbox-worker \
-                --bots-remote="${BUILDGRID_URL}" \
+                --bots-remote="${BOTS_URL}" \
                 --cas-remote=unix:/run/casd/casd.sock \
                 --buildbox-run=/usr/local/bin/buildbox-run-bubblewrap \
                 --concurrent-jobs="${CONCURRENT_JOBS}" \
@@ -87,6 +87,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # Bot sessions use the dedicated Remote Workers API service; nested
+            # recc Execute requests go to the controller.
+            - name: BOTS_URL
+              value: http://bots.buildgrid.svc.cluster.local:50051
             - name: BUILDGRID_URL
               value: http://controller.buildgrid.svc.cluster.local:50051
             # GetTree-capable BuildGrid CAS front over Buildbarn (buildgrid-cas.yaml);

@@ -67,11 +67,18 @@ remote-cache-only run is not an acceptable substitute.
 BuildStream remote execution runs on **BuildGrid** with **buildbox** workers;
 Buildbarn is storage only.
 
-- **Controller:** `manifests/buildgrid-controller.yaml`, namespace `buildgrid`,
-  Service `controller.buildgrid.svc.cluster.local:50051`. Execution, Operations,
-  and Bots services share that port. Scheduler state lives in Postgres
+- **Scheduler front ends:** `manifests/buildgrid-controller.yaml`, namespace
+  `buildgrid`. Deployment `controller`
+  (`controller.buildgrid.svc.cluster.local:50051`) serves Execution and
+  Operations to BuildStream and to nested recc actions; each in-flight action
+  holds a streaming Execute RPC, so its thread pool is 800. Deployment `bots`
+  (`bots.buildgrid.svc.cluster.local:50051`) serves only the Remote Workers API.
+  Keep them separate: with Bots co-located, a recc fan-out exhausts the RPC
+  limit, `UpdateBotSession` fails with `Concurrent RPC limit exceeded`, and
+  workers exit mid-action. Both share one scheduler (identical config, enforced
+  by `tests/unit/test_workflow_defaults.py`) whose state lives in Postgres
   (`manifests/buildgrid-database.yaml`, StatefulSet `database`, local-path PVC,
-  trust auth reachable only from controller pods via NetworkPolicy).
+  trust auth reachable only from pods labelled `buildgrid-scheduler-client`).
   Platform matching compares `OSFamily` and `ISA`; `unixUID`, `unixGID`,
   `network`, `remoteApisSocketPath`, `chrootRootDigest`, and `capability` are
   accepted as wildcard keys.

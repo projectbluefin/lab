@@ -1,14 +1,21 @@
-# BuildGrid controller: REAPI Execution + Operations + Remote Workers (Bots).
+# BuildGrid scheduler front ends, split the way upstream deploys them.
 #
-# BuildStream sends every element build here as an Execute request; the
-# scheduler queues it in Postgres and hands it to any connected
-# buildbox-worker (buildgrid-worker DaemonSet). Workers are not pinned or
-# enumerated: a new node gets a worker from the DaemonSet, the worker opens a
-# bot session, and it starts draining the shared queue.
+# - controller: REAPI Execution + Operations for clients. BuildStream sends every
+#   element build here, and worker casd forwards GNOME recc compile actions here.
+#   Each in-flight action holds one streaming Execute RPC for its whole run, so
+#   the thread pool is sized for hundreds of concurrent actions.
+# - bots: Remote Workers API only. buildbox-worker bot sessions never share a
+#   thread pool with Execute streams; co-locating them let a recc fan-out starve
+#   UpdateBotSession ("Concurrent RPC limit exceeded") and crash workers
+#   mid-action.
 #
-# CAS and the action cache stay in Buildbarn. The controller reads Actions from
-# Buildbarn CAS and records ActionResults in Buildbarn AC through BuildGrid's
-# remote proxies; clients and workers talk to Buildbarn directly for blobs.
+# Both share one Postgres-backed scheduler, so a job queued through the
+# controller is leased through bots. Workers are not pinned or enumerated: a new
+# node gets a worker from the DaemonSet, it opens a bot session, and it starts
+# draining the shared queue.
+#
+# CAS and the action cache stay in Buildbarn; the scheduler reads Actions and
+# records ActionResults there through BuildGrid's remote proxies.
 #
 # Platform matching: OSFamily/ISA must match the worker. BuildStream also sends
 # unixUID/unixGID, network and remoteApisSocketPath, and GNOME's recc actions
@@ -29,11 +36,11 @@ data:
         address: "[::]:50051"
         insecure-mode: true
 
+    description: >
+      Lab BuildGrid controller: Execution and Operations; CAS and AC in Buildbarn.
+
     grpc-server-options:
       grpc.max_connection_age_ms: 300000
-
-    description: >
-      Lab BuildGrid controller: Execution/Operations/Bots, CAS and AC in Buildbarn.
 
     authorization:
       method: none
@@ -44,9 +51,9 @@ data:
     connections:
       - !sql-connection &sql
         connection-string: postgresql://bgd@database.buildgrid.svc.cluster.local:5432/bgd
-        pool-size: 10
+        pool-size: 40
         pool-timeout: 30
-        max-overflow: 20
+        max-overflow: 60
 
     storages:
       - !remote-storage &cas-storage
@@ -58,6 +65,7 @@ data:
         url: http://frontend.buildbarn.svc.cluster.local:8980
         instance-name: ''
 
+    # Keep this scheduler block identical in controller.yml and bots.yml.
     schedulers:
       - !sql-scheduler &state-database
         sql: *sql
@@ -86,6 +94,79 @@ data:
         services:
           - !execution
             scheduler: *state-database
+            endpoints:
+              - execution
+              - operations
+
+    # One thread per streaming Execute RPC: element builds plus every recc
+    # compile in flight across all workers.
+    thread-pool-size: 800
+    maximum-concurrent-rpcs: 800
+
+  bots.yml: |
+    server:
+      - !channel
+        address: "[::]:50051"
+        insecure-mode: true
+
+    description: >
+      Lab BuildGrid bots interface: Remote Workers API only.
+
+    grpc-server-options:
+      grpc.max_connection_age_ms: 300000
+
+    authorization:
+      method: none
+
+    monitoring:
+      enabled: false
+
+    connections:
+      - !sql-connection &sql
+        connection-string: postgresql://bgd@database.buildgrid.svc.cluster.local:5432/bgd
+        pool-size: 10
+        pool-timeout: 30
+        max-overflow: 20
+
+    storages:
+      - !remote-storage &cas-storage
+        url: http://frontend.buildbarn.svc.cluster.local:8980
+        instance-name: ''
+
+    caches:
+      - !remote-action-cache &build-cache
+        url: http://frontend.buildbarn.svc.cluster.local:8980
+        instance-name: ''
+
+    # Keep this scheduler block identical in controller.yml and bots.yml.
+    schedulers:
+      - !sql-scheduler &state-database
+        sql: *sql
+        storage: *cas-storage
+        action-cache: *build-cache
+        # Large element builds (webkit, mozjs, llvm) run for hours.
+        max-execution-timeout: 43200
+        poll-interval: 0.5
+        pruner-job-max-age:
+          days: 7
+        property-set: !dynamic-property-set
+          match-property-keys:
+            - OSFamily
+            - ISA
+          wildcard-property-keys:
+            - unixUID
+            - unixGID
+            - network
+            - remoteApisSocketPath
+            - chrootRootDigest
+            - capability
+
+    instances:
+      - name: ''
+        description: The unnamed lab instance.
+        services:
+          - !bots
+            scheduler: *state-database
 
     thread-pool-size: 100
 ---
@@ -107,8 +188,9 @@ spec:
     metadata:
       labels:
         app: buildgrid-controller
+        buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-03-initial"
+        buildgrid-config-revision: "2026-10-03-split-bots"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller
@@ -129,8 +211,8 @@ spec:
               memory: 1Gi
               ephemeral-storage: 256Mi
             limits:
-              cpu: "4"
-              memory: 4Gi
+              cpu: "8"
+              memory: 8Gi
               ephemeral-storage: 2Gi
           volumeMounts:
             - name: config
@@ -151,6 +233,74 @@ metadata:
 spec:
   selector:
     app: buildgrid-controller
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bots
+  namespace: buildgrid
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: buildgrid-bots
+  template:
+    metadata:
+      labels:
+        app: buildgrid-bots
+        buildgrid-scheduler-client: "true"
+      annotations:
+        buildgrid-config-revision: "2026-10-03-split-bots"
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: workflow-controller
+      containers:
+        - name: bgd
+          image: 192.168.1.102:30500/buildgrid/buildgrid@sha256:9e34bf3745545686a52b368b62ed27fbfcde3522eaa6e2fd4c360e6f38e9f8db
+          command: [bgd, server, start, -v, /etc/buildgrid/bots.yml]
+          ports:
+            - name: grpc
+              containerPort: 50051
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+              ephemeral-storage: 2Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/buildgrid
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: buildgrid-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bots
+  namespace: buildgrid
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    app: buildgrid-bots
   ports:
     - name: grpc
       port: 50051

@@ -196,7 +196,7 @@ echo "$SUMMARIES" | jq '
 
 This avoids `jq` parse errors when the aggregated values arrive as strings and keeps the template compatible if Argo later normalizes them to objects.
 
-**`ghcr.io/projectbluefin/lab-runner:latest`** is the preferred, organization-owned FSDK container for pollers, GC, and CronWorkflows that need `kubectl`, `curl`, `jq`, and a full shell. Do not assume it contains registry clients: verified 2026-08, the live `latest` image carries bash, curl, git, jq, python3, and kubectl, but **not** `skopeo`, `oras`, or `tar`. Use the digest-pinned `quay.io/skopeo/stable` image for shell+skopeo steps (or the distroless org `ghcr.io/projectbluefin/skopeo` for shell-free `container:` steps) and the digest-pinned `ghcr.io/oras-project/oras` image when referrer handling is required.
+**`ghcr.io/projectbluefin/lab-runner`** is the preferred, organization-owned FSDK container for pollers, GC, admission gates, and CronWorkflows that need `kubectl`, `curl`, `jq`, and a full shell. Pin a `YY.MM.X` release by digest (`lab-runner@sha256:… # 26.08.2`); fsdk-containers no longer publishes `:latest`, and the leftover `:latest` tag is a frozen 25.08 image. The `26.08.2` release has bash, curl, git, jq, yq, python3 + PyYAML, kubectl, argo, just, skopeo, and tar, but not `oras` or `podman`. Use the distroless org `ghcr.io/projectbluefin/skopeo` for shell-free `container:` steps and the digest-pinned `ghcr.io/oras-project/oras` image when referrer handling is required.
 
 For steps that still use other images, **`cgr.dev/chainguard/kubectl:latest-dev`** can be used as a fallback if it needs both `kubectl` and `bash`. `registry.k8s.io/kubectl` is distroless (no shell — `nc`, `bash /dev/tcp` all fail).
 

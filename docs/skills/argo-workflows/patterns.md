@@ -56,13 +56,12 @@ Log explicit `none present` or `discovery unavailable` states as non-fatal;
 failure to copy referrers that were discovered is a lane failure. Verify the
 destination digest after this optional evidence step.
 
-Do not rely on `lab-runner:latest` for registry clients — verified (2026-08) to
-contain bash, curl, git, jq, python3, and kubectl, but **not** skopeo, oras, or
-tar. Use images that already carry the client at a pinned version:
-digest-pinned `quay.io/skopeo/stable` for shell+skopeo steps (or the distroless
-org `ghcr.io/projectbluefin/skopeo` for shell-free `container:` steps) and
-digest-pinned `ghcr.io/oras-project/oras` for referrer work, as the live
-`zot-candidate-lifecycle` template does. Never bootstrap a tool by downloading
+Do not use `lab-runner:latest` — fsdk-containers no longer publishes `:latest`,
+and the leftover tag is a frozen 25.08 image. A digest-pinned `lab-runner` `YY.MM.X` release (`26.08.2`
+or later) carries skopeo for shell+skopeo steps; the distroless org
+`ghcr.io/projectbluefin/skopeo` covers shell-free `container:` steps. Neither
+carries oras: use digest-pinned `ghcr.io/oras-project/oras` for referrer work,
+as the live `zot-candidate-lifecycle` template does. Never bootstrap a tool by downloading
 it at pod start — a runtime download is an ungoverned, offline-fragile
 dependency (see [`gitops-argocd/image-policy.md`](../gitops-argocd/image-policy.md)).
 If a referrer client is genuinely unavailable to a lane, log the missing

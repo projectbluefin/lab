@@ -168,7 +168,8 @@ The workflow authoring guidance is split by topic:
   If no published image fits, build one: package installs belong in a
   Containerfile against a digest-pinned base, never in a running pod.
 - `registry.k8s.io/kubectl` used as a shell-capable image — it is distroless, has no bash, nc, or any shell utilities. Use `cgr.dev/chainguard/kubectl:latest-dev` when you need kubectl + bash together
-- `ghcr.io/projectbluefin/lab-runner:latest` assumed to contain `skopeo` or `oras` — verified (2026-08) to carry bash, curl, git, jq, python3, and kubectl, but **not** skopeo, oras, or tar. Use digest-pinned `quay.io/skopeo/stable` (or the distroless `ghcr.io/projectbluefin/skopeo` for shell-free steps) and digest-pinned `ghcr.io/oras-project/oras` when registry referrers are required.
+- Any `ghcr.io/projectbluefin/*:latest` reference — fsdk-containers stopped publishing `:latest` (fsdk-containers#23); the tags that still resolve are frozen pre-removal images (e.g. a 25.08 `lab-runner` without skopeo, tar, find, awk, or argo). Pin a `YY.MM.X` release by digest (`lab-runner@sha256:… # 26.08.2`); that release carries skopeo, yq, and tar, but not oras or podman. Use digest-pinned `ghcr.io/oras-project/oras` when registry referrers are required, and the distroless `ghcr.io/projectbluefin/skopeo` for shell-free copy steps.
+- Publishing a BuildStream OCI export from the `bst2` container — `bst2` ships podman but no skopeo, so the export round-trips through local containers-storage (minutes per variant). Run the build as the `main` container of a `containerSet` and `skopeo copy oci:<dir>` from a `publish` container (`ghcr.io/projectbluefin/skopeo`) that shares the pod's CAS volume, as `dakota-build-pipeline` does.
 - A WorkflowTemplate file name that doesn't match its `metadata.name` (confuses ArgoCD tracking)
 - A shared containerDisk builder that hard-codes its output repository — pass the
   destination repository through check, build, and push templates whenever
@@ -198,16 +199,13 @@ The workflow authoring guidance is split by topic:
 - **Queue Starvation / `activeDeadlineSeconds` Trap**: Leaving a workflow's `activeDeadlineSeconds` at default (or unspecified) when it queues under a template-level semaphore or resource limit. The workflow-level deadline starts ticking upon *submission/creation*, not *execution/scheduling*. If a workflow queues for longer than the global default deadline (e.g., 2h), it gets instantly canceled with `DeadlineExceeded` as soon as it begins running. Always set a generous workflow-level deadline (e.g., 4h/14400s) on queueable templates and dynamic API submission specs.
 - **Clock-only Cron serialization**: Spacing a CronWorkflow away from other schedules is not a concurrency guard. When a scheduled workflow shares a scarce VM namespace or runner, reference a ConfigMap-backed template semaphore and document the key; keep the schedule as a trigger only.
 - **Secret leakage via shell tracing**: Never use `set -x`/`set -eux` in a script that invokes authenticated APIs or expands secret-bearing variables. Argo retains command output in workflow logs. Disable tracing for the whole script or bracket only non-secret diagnostics with explicit `set +x`/`set -x` boundaries, then inspect logs for credentials before publishing evidence.
-- **Assuming registry tools exist in `lab-runner`**: the image does not include
-  ORAS or skopeo. Use a pinned tool image that already carries the client —
+- **Assuming registry or archive tools exist in `lab-runner`**: check the
+  pinned release. `26.08.x` releases carry skopeo and tar but not
+  ORAS. Use a pinned tool image that already carries the client —
   never bootstrap a tool by downloading it at pod start (banned runtime
   dependency per `gitops-argocd/image-policy.md`) — and validate flags against
   that pinned release. In particular, ORAS v1.2.3
   `discover` supports `--format json` but not `--depth`.
-- **Assuming archive utilities exist in `lab-runner`**: the image includes
-  Python, `curl`, and `jq`, but not `tar`. Download archives to a workspace,
-  extract them with `python3 -m tarfile`, and remove the archive afterward, or
-  use a pinned image that provides the required utility.
 - **Doubling braces for generated child workflows**: `{{{{workflow.*}}}}`
   reaches a child Workflow literally and its `when` expressions compare the
   wrong value. When an outer script must emit an Argo expression, build the

@@ -16,7 +16,7 @@ general-purpose base box. Concretely:
 | Need | Use (CNCF / OCI) | Not (distro) |
 |---|---|---|
 | Registry ops | `ghcr.io/projectbluefin/skopeo`, `oras`, `crane` | `dnf install skopeo` |
-| General CI utilities | `ghcr.io/projectbluefin/lab-runner:latest` | `dnf install jq git curl` |
+| General CI utilities | `ghcr.io/projectbluefin/lab-runner@sha256:… # YY.MM.X` | `dnf install jq git curl` |
 
 **Why this is the advantage, not just a preference:**
 
@@ -56,12 +56,18 @@ upstream-native and reproducible; it is not distribution tooling.
 
 1. **[`fsdk-containers`](https://github.com/projectbluefin/fsdk-containers)** — if the image you need is missing, propose making one for the need.
 
-**Verified contents (2026-08-21) — do not assume, these are commonly mis-stated:**
+**Verified contents of the `26.08.2` release — do not assume, these are commonly mis-stated:**
+
+fsdk-containers publishes only `YY.MM.X` release tags (plus `YY.MM`); it no
+longer publishes `:latest` (fsdk-containers#23), and any `:latest` that still
+resolves is a frozen pre-removal image. Pin a release by digest
+(`ghcr.io/projectbluefin/<image>@sha256:<digest> # <version>`) and re-check
+contents when bumping.
 
 | Image | Contains | Does NOT contain |
 |---|---|---|
-| `lab-runner` | bash, curl, git, jq, python3.13, kubectl | skopeo, oras, tar, yq, PyYAML, podman |
-| `skopeo` | skopeo 1.23.0 at `/usr/bin/skopeo` | any shell (distroless, no entrypoint) |
+| `lab-runner` | bash, curl, git, jq, yq, python3 + PyYAML, kubectl, argo, just, skopeo, tar | oras, podman |
+| `skopeo` | skopeo 1.24.0 | any shell (distroless, no entrypoint: set `command: [skopeo]`) |
 | `bluefin` | full ffmpeg (libx265, libsvtav1, ffv1, prores_ks), Mesa RADV, git, curl, tar, xz, python3 | — |
 
 `bluefin` is an ostree/bootc image: `/opt` → `/var/opt`, `/usr/local` → `/var/usrlocal` and `/root` → `/var/roothome`, and `/var` is empty at build time. Install into `/usr/lib`, and set `HOME` to a real in-image path or anything writing to it fails with `FileExistsError`/`NotDir`.

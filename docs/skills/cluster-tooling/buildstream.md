@@ -234,6 +234,12 @@ The 2026-07-22 Dakota investigation established the following decision tree:
    can preserve virtual/FUSE directories or `setTmpdirEnvironmentVariable` after
    the source manifest has moved to native directories. Reconcile through GitOps
    and wait for both worker pairs to restart before testing.
+   Compare generated source patches in the deployed WorkflowTemplate with the
+   verified fix too; an ad-hoc workflow repair does not update the canonical lane.
+   Colord build-tree tools need `LD_LIBRARY_PATH` for `_builddir/lib/colord` and
+   `_builddir/lib/colorhug`, not `LD_PRELOAD` of a versioned library that Ninja
+   has not built yet. Stop deterministic retries until the corrected template
+   reconciles; Argo retries retain the original template snapshot.
 5. **Do not tune capacity around a correctness failure.** Keep one action slot per
    runner and current BuildStream/semaphore limits until full-root materialization
    is reliable. Low utilization during a failed action is expected and is not a

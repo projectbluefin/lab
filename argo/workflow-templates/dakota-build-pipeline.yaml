@@ -604,6 +604,44 @@ spec:
           patch5_file.write_text(patch5_content)
           written.append(patch5_file.name)
           print("Created 0005-colord-meson-build.patch")
+          # In BuildBarn RE sandboxes, /proc/cpuinfo is absent.
+          # mozjs ./mach configure fails in telemetry cpu_brand_linux() if /proc/cpuinfo does not exist.
+          patch6_file = patch_dir / "0006-mozjs-proc-cpuinfo.patch"
+          patch6_content = (
+              "diff --git a/elements/sdk/mozjs.bst b/elements/sdk/mozjs.bst\n"
+              "index 85943f7..b686743 100644\n"
+              "--- a/elements/sdk/mozjs.bst\n"
+              "+++ b/elements/sdk/mozjs.bst\n"
+              "@@ -11,6 +11,8 @@ sources:\n"
+              "   path: patches/mozjs/bmo1973994-fix-os-dependent-headers.patch\n"
+              " - kind: patch\n"
+              "   path: patches/mozjs/python-3.14.patch\n"
+              "+- kind: patch\n"
+              "+  path: patches/mozjs/proc-cpuinfo.patch\n"
+              " \n"
+              " build-depends:\n"
+              " - (@): include/clang-for-recc.yml\n"
+              "diff --git a/patches/mozjs/proc-cpuinfo.patch b/patches/mozjs/proc-cpuinfo.patch\n"
+              "new file mode 100644\n"
+              "index 0000000..1b96641\n"
+              "--- /dev/null\n"
+              "+++ b/patches/mozjs/proc-cpuinfo.patch\n"
+              "@@ -0,0 +1,11 @@\n"
+              "+--- a/python/mozbuild/mozbuild/telemetry.py\n"
+              "++++ b/python/mozbuild/mozbuild/telemetry.py\n"
+              "+@@ -18,6 +18,8 @@\n"
+              "+ def cpu_brand_linux():\n"
+              "+     \"\"\"\n"
+              "+     Read the CPU brand string out of /proc/cpuinfo on Linux.\n"
+              "+     \"\"\"\n"
+              "++    if not os.path.exists(\"/proc/cpuinfo\"):\n"
+              "++        return None\n"
+              "+     with open(\"/proc/cpuinfo\") as f:\n"
+              "+         for line in f:\n"
+          )
+          patch6_file.write_text(patch6_content)
+          written.append(patch6_file.name)
+          print("Created 0006-mozjs-proc-cpuinfo.patch")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

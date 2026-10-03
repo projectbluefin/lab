@@ -4,6 +4,7 @@ import ast
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -83,3 +84,37 @@ def test_generated_command_loads_build_tree_and_inherited_libraries(tmp_path, in
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert (build / "result").read_text() == "42\n"
+
+
+def test_generated_mozjs_patch_applies_cleanly():
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    source = next(
+        template["script"]["source"]
+        for template in workflow["spec"]["templates"]
+        if "GBM_JUNCTION_PATCH" in template.get("script", {}).get("source", "")
+    )
+    preparation = source.split("<<'GBM_JUNCTION_PATCH'\n", 1)[1].split(
+        "\nGBM_JUNCTION_PATCH", 1
+    )[0]
+    assignment = next(
+        node
+        for node in ast.parse(preparation).body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "patch6_content"
+                for target in node.targets)
+    )
+    patch = ast.literal_eval(assignment.value)
+    with tempfile.NamedTemporaryFile("w", delete=False) as f:
+        f.write(patch)
+        patch_path = f.name
+
+    try:
+        scratch = Path("/tmp/scratch-gbm")
+        if not (scratch / ".git").is_dir():
+            pytest.skip("Scratch gnome-build-meta clone not available")
+        subprocess.run(["git", "-C", str(scratch), "reset", "--hard", "5ec987b6b074a9b871ef01e479bbbb91f4463efb"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(scratch), "clean", "-fd"], check=True, capture_output=True)
+        result = subprocess.run(["git", "-C", str(scratch), "apply", "--check", patch_path], capture_output=True, text=True)
+        assert result.returncode == 0, f"git apply --check failed:\n{result.stderr}\n{result.stdout}"
+    finally:
+        os.unlink(patch_path)

@@ -13,8 +13,9 @@
 #
 # buildbox-casd and buildbox-worker run in one container on purpose: casd
 # stages input roots (FUSE) into its own mount namespace, and the runner that
-# bwrap-executes them must see those mounts. casd talks to Buildbarn for CAS
-# and AC, and forwards nested REAPI Execute requests (GNOME's recc through
+# bwrap-executes them must see those mounts. casd reads and writes CAS through
+# the BuildGrid CAS front (GetTree-capable, stores in Buildbarn), uses Buildbarn
+# AC directly, and forwards nested REAPI Execute requests (GNOME's recc through
 # BuildStream's remote-apis-socket) back to the controller, so compile actions
 # fan out across the same workers.
 #
@@ -52,7 +53,7 @@ spec:
               mkdir -p /var/lib/buildbox/casd /run/casd
               buildbox-casd \
                 --bind=unix:/run/casd/casd.sock \
-                --cas-remote="${BUILDBARN_URL}" \
+                --cas-remote="${CAS_URL}" \
                 --ac-remote="${BUILDBARN_URL}" \
                 --exec-remote="${BUILDGRID_URL}" \
                 --quota-high="${CASD_QUOTA}" \
@@ -88,6 +89,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: BUILDGRID_URL
               value: http://controller.buildgrid.svc.cluster.local:50051
+            # GetTree-capable BuildGrid CAS front over Buildbarn (buildgrid-cas.yaml);
+            # the action cache is Buildbarn's directly.
+            - name: CAS_URL
+              value: http://cas.buildgrid.svc.cluster.local:50051
             - name: BUILDBARN_URL
               value: http://frontend.buildbarn.svc.cluster.local:8980
             # Element actions run in parallel per node; each runs its own

@@ -82,11 +82,17 @@ Buildbarn is storage only.
   fresh `/proc`, a `/dev`, and its input root as `/`, staged through FUSE.
   `--concurrent-jobs` comes from the `CONCURRENT_JOBS` env (4). casd keeps its
   cache on a per-pod generic-ephemeral local-path PVC (200Gi, quota 150G).
-- **Storage:** casd reads and writes CAS and action cache through the Buildbarn
-  frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`, two sharded
-  storage replicas), which also hosts `bb-remote-asset`. casd forwards nested
-  Execute requests (recc via BuildStream's `remote-apis-socket`) to the
-  BuildGrid controller.
+- **Storage:** Buildbarn (`grpc://frontend.buildbarn.svc.cluster.local:8980`,
+  two sharded storage replicas, plus `bb-remote-asset`) is the only CAS and
+  action cache. Worker casd uses Buildbarn AC directly but reaches CAS through
+  the BuildGrid CAS front (`manifests/buildgrid-cas.yaml`, Deployment `cas`,
+  Service `cas.buildgrid.svc.cluster.local:50051`, stateless, 2 replicas).
+  `buildbox-run-bubblewrap` resolves recc actions' `chrootRootDigest` with
+  REAPI `GetTree`, which Buildbarn's frontend does not implement
+  (`UNIMPLEMENTED: This service does not support downloading directory trees`);
+  the BuildGrid CAS front serves `GetTree` itself and stores every blob in
+  Buildbarn. casd forwards nested Execute requests (recc via BuildStream's
+  `remote-apis-socket`) to the BuildGrid controller.
 - **BuildStream config** (`manifests/buildstream-remote-cache-config.yaml`):
   `execution-service` points at the BuildGrid controller; `storage-service` and
   `action-cache-service` point at the Buildbarn frontend.

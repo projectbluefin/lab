@@ -36,8 +36,12 @@ def test_execution_and_storage_share_one_cas():
     assert [host(s["url"]) for s in controller["storages"]] == [BUILDBARN_HOST]
     assert [host(c["url"]) for c in controller["caches"]] == [BUILDBARN_HOST]
 
+    cas_front = yaml.load(manifest("buildgrid-cas.yaml")[0]["data"]["cas.yml"], Loader=_Tagged)
+    assert [host(s["url"]) for s in cas_front["storages"]] == [BUILDBARN_HOST]
+
     worker = manifest("buildgrid-worker.yaml")[0]["spec"]["template"]["spec"]["containers"][0]
     env = {e["name"]: e.get("value") for e in worker["env"]}
+    assert host(env["CAS_URL"]) == "cas.buildgrid.svc.cluster.local:50051"
     assert host(env["BUILDBARN_URL"]) == BUILDBARN_HOST
     assert host(env["BUILDGRID_URL"]) == BUILDGRID_HOST
 

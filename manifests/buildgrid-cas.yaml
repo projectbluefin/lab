@@ -1,0 +1,127 @@
+# BuildGrid CAS front for the workers.
+#
+# buildbox-run-bubblewrap resolves GNOME recc actions (chrootRootDigest) by
+# calling REAPI GetTree on its CAS. Buildbarn's frontend does not implement
+# GetTree ("This service does not support downloading directory trees"), so
+# worker casd talks to this stateless BuildGrid CAS/ByteStream service instead.
+# It serves GetTree itself and stores every blob in Buildbarn, so there is still
+# exactly one CAS. Replicas scale independently of the controller.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildgrid-cas-config
+  namespace: buildgrid
+  labels:
+    app.kubernetes.io/part-of: lab
+data:
+  cas.yml: |
+    server:
+      - !channel
+        address: "[::]:50051"
+        insecure-mode: true
+
+    grpc-server-options:
+      grpc.max_connection_age_ms: 300000
+
+    description: >
+      Lab BuildGrid CAS front: GetTree-capable CAS/ByteStream over Buildbarn.
+
+    authorization:
+      method: none
+
+    monitoring:
+      enabled: false
+
+    storages:
+      - !remote-storage &cas-storage
+        url: http://frontend.buildbarn.svc.cluster.local:8980
+        instance-name: ''
+
+    instances:
+      - name: ''
+        description: The unnamed lab instance.
+        services:
+          - !cas
+            storage: *cas-storage
+            tree-cache-size: 4096
+            tree-cache-ttl-minutes: 60
+          - !bytestream
+            storage: *cas-storage
+
+    thread-pool-size: 200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cas
+  namespace: buildgrid
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: buildgrid-cas
+  template:
+    metadata:
+      labels:
+        app: buildgrid-cas
+      annotations:
+        buildgrid-cas-config-revision: "2026-10-03-initial"
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: workflow-controller
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: buildgrid-cas
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: bgd
+          image: 192.168.1.102:30500/buildgrid/buildgrid@sha256:9e34bf3745545686a52b368b62ed27fbfcde3522eaa6e2fd4c360e6f38e9f8db
+          command: [bgd, server, start, -v, /etc/buildgrid/cas.yml]
+          ports:
+            - name: grpc
+              containerPort: 50051
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "8"
+              memory: 8Gi
+              ephemeral-storage: 2Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/buildgrid
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: buildgrid-cas-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cas
+  namespace: buildgrid
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    app: buildgrid-cas
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc

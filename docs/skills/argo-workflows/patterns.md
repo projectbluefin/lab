@@ -603,6 +603,14 @@ Sources: [conditional shell expansion](https://www.gnu.org/software/bash/manual/
 [colord client linkage](https://github.com/hughsie/colord/blob/1.4.8/client/meson.build),
 [CMF generators](https://github.com/hughsie/colord/blob/1.4.8/data/cmf/meson.build).
 
+The lab's `0007-remove-crates-mirror.patch` removes only `crates` from GNOME's
+lorry mirror map. The canonical `crates: https://static.crates.io/` alias,
+crate references, and checksum validation remain unchanged. Alias-relative
+paths already start with `crates/`; adding that segment to the base URL doubles
+it. The optional-cpuinfo regression applies both levels of the generated mozjs
+patch in an isolated fixture and exercises the patched getter; it needs no
+shared scratch clone and must run rather than skip in CI.
+
 ### BuildStream resource right-sizing and scheduler-driven affinities
 
 When designing or updating BuildStream compilation pipelines (e.g. `dakota-build-pipeline` and `bluefin-server-build-pipeline`), right-size all step-level resource requests and limits to maximize cluster capacity and prevent scheduling bottlenecks:

@@ -623,14 +623,12 @@ spec:
               " - (@): include/clang-for-recc.yml\n"
               "diff --git a/patches/mozjs/proc-cpuinfo.patch b/patches/mozjs/proc-cpuinfo.patch\n"
               "new file mode 100644\n"
-              "index 0000000..1b96641\n"
               "--- /dev/null\n"
               "+++ b/patches/mozjs/proc-cpuinfo.patch\n"
               "@@ -0,0 +1,11 @@\n"
               "+--- a/python/mozbuild/mozbuild/telemetry.py\n"
               "++++ b/python/mozbuild/mozbuild/telemetry.py\n"
               "+@@ -18,6 +18,8 @@\n"
-              "+ def cpu_brand_linux():\n"
               "+     \"\"\"\n"
               "+     Read the CPU brand string out of /proc/cpuinfo on Linux.\n"
               "+     \"\"\"\n"
@@ -638,10 +636,30 @@ spec:
               "++        return None\n"
               "+     with open(\"/proc/cpuinfo\") as f:\n"
               "+         for line in f:\n"
+              "+             if line.startswith(\"model name\"):\n"
           )
           patch6_file.write_text(patch6_content)
           written.append(patch6_file.name)
           print("Created 0006-mozjs-proc-cpuinfo.patch")
+          # Keep canonical crates.io URLs and checksums; bypass only the failed lorry mirror.
+          patch7_file = patch_dir / "0007-remove-crates-mirror.patch"
+          patch7_content = (
+              "diff --git a/include/mirrors.yml b/include/mirrors.yml\n"
+              "--- a/include/mirrors.yml\n"
+              "+++ b/include/mirrors.yml\n"
+              "@@ -11,8 +11,6 @@ mirrors:\n"
+              "     - https://gitlab.gnome.org/Infrastructure/Mirrors/lorry-mirrors/cairographics_org/tar-files/-/raw/master/\n"
+              "     cpan:\n"
+              "     - https://gitlab.gnome.org/Infrastructure/Mirrors/lorry-mirrors/cpan_metacpan_org/tar-files/-/raw/master/\n"
+              "-    crates:\n"
+              "-    - https://gitlab.gnome.org/Infrastructure/Mirrors/lorry-mirrors/static_crates_io/tar-files/-/raw/master/\n"
+              "     dbmx:\n"
+              "     - https://gitlab.gnome.org/Infrastructure/Mirrors/lorry-mirrors/fallabs_com/tar-files/-/raw/master/\n"
+              "     debian_salsa:\n"
+          )
+          patch7_file.write_text(patch7_content)
+          written.append(patch7_file.name)
+          print("Created 0007-remove-crates-mirror.patch")
           # Only wire the queue in when something is actually in it: an empty or
           # partially-populated queue is what turns a skippable patch into a
           # hard load failure.

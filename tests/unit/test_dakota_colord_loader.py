@@ -1,10 +1,10 @@
 """Exercise the generated colord build command with real ELF dependencies."""
 
 import ast
+import io
 import os
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -16,7 +16,7 @@ WORKFLOW = ROOT / "argo/workflow-templates/dakota-build-pipeline.yaml"
 TOOLS = ("bash", "cc", "ninja", "jobserver_pool.py")
 
 
-def _colord_build_command():
+def _generated_patch(variable):
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     source = next(
         template["script"]["source"]
@@ -30,12 +30,15 @@ def _colord_build_command():
         node
         for node in ast.parse(preparation).body
         if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "patch5_content"
+        and any(isinstance(target, ast.Name) and target.id == variable
                 for target in node.targets)
     )
-    patch = ast.literal_eval(assignment.value)
+    return ast.literal_eval(assignment.value)
+
+
+def _colord_build_command():
     additions = "\n".join(
-        line[1:] for line in patch.splitlines()
+        line[1:] for line in _generated_patch("patch5_content").splitlines()
         if line.startswith("+") and not line.startswith("+++")
     )
     return yaml.safe_load(additions)["meson-build"]
@@ -86,35 +89,62 @@ def test_generated_command_loads_build_tree_and_inherited_libraries(tmp_path, in
     assert (build / "result").read_text() == "42\n"
 
 
-def test_generated_mozjs_patch_applies_cleanly():
-    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    source = next(
-        template["script"]["source"]
-        for template in workflow["spec"]["templates"]
-        if "GBM_JUNCTION_PATCH" in template.get("script", {}).get("source", "")
+@pytest.mark.parametrize("cpuinfo, expected", [
+    (None, None),
+    ("processor\t: 0\nmodel name\t: Example CPU\n", "Example CPU"),
+    ("processor\t: 0\n", None),
+])
+def test_generated_mozjs_patch_handles_optional_cpuinfo(tmp_path, monkeypatch, cpuinfo, expected):
+    # Minimal upstream source tree; neither a shared clone nor network access is required.
+    element = tmp_path / "elements/sdk/mozjs.bst"
+    element.parent.mkdir(parents=True)
+    element.write_text(
+        "kind: manual\n\nsources:\n- kind: tar\n  url: mozilla:source.tar.xz\n"
+        "  ref: pinned\n- kind: patch\n  path: patches/mozjs/bmo1973993-fix-installed-headers.patch\n"
+        "- kind: patch\n  path: patches/mozjs/bmo1973994-fix-os-dependent-headers.patch\n"
+        "- kind: patch\n  path: patches/mozjs/python-3.14.patch\n\nbuild-depends:\n"
+        "- (@): include/clang-for-recc.yml\n"
     )
-    preparation = source.split("<<'GBM_JUNCTION_PATCH'\n", 1)[1].split(
-        "\nGBM_JUNCTION_PATCH", 1
-    )[0]
-    assignment = next(
-        node
-        for node in ast.parse(preparation).body
-        if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "patch6_content"
-                for target in node.targets)
-    )
-    patch = ast.literal_eval(assignment.value)
-    with tempfile.NamedTemporaryFile("w", delete=False) as f:
-        f.write(patch)
-        patch_path = f.name
+    (tmp_path / "patches/mozjs").mkdir(parents=True)
+    outer = tmp_path / "outer.patch"
+    outer.write_text(_generated_patch("patch6_content"))
+    subprocess.run(["git", "apply", "--check", str(outer)], cwd=tmp_path,
+                   check=True, capture_output=True, timeout=10)
+    subprocess.run(["git", "apply", str(outer)], cwd=tmp_path,
+                   check=True, capture_output=True, timeout=10)
+    source = tmp_path / "python/mozbuild/mozbuild/telemetry.py"
+    source.parent.mkdir(parents=True)
+    source.write_text('''import os
 
-    try:
-        scratch = Path("/tmp/scratch-gbm")
-        if not (scratch / ".git").is_dir():
-            pytest.skip("Scratch gnome-build-meta clone not available")
-        subprocess.run(["git", "-C", str(scratch), "reset", "--hard", "5ec987b6b074a9b871ef01e479bbbb91f4463efb"], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(scratch), "clean", "-fd"], check=True, capture_output=True)
-        result = subprocess.run(["git", "-C", str(scratch), "apply", "--check", patch_path], capture_output=True, text=True)
-        assert result.returncode == 0, f"git apply --check failed:\n{result.stderr}\n{result.stdout}"
-    finally:
-        os.unlink(patch_path)
+def cpu_brand_linux():
+    """
+    Read the CPU brand string out of /proc/cpuinfo on Linux.
+    """
+    with open("/proc/cpuinfo") as f:
+        for line in f:
+            if line.startswith("model name"):
+                _, brand = line.split(": ", 1)
+                return brand.rstrip()
+    return None
+''')
+    subprocess.run(["patch", "--batch", "--fuzz=0", "-p1", "--input",
+                    str(tmp_path / "patches/mozjs/proc-cpuinfo.patch")], cwd=tmp_path,
+                   check=True, capture_output=True, timeout=10)
+    namespace = {}
+    exec(compile(source.read_text(), str(source), "exec"), namespace)
+    original_exists, original_open = os.path.exists, open
+
+    def cpuinfo_exists(path):
+        return cpuinfo is not None if path == "/proc/cpuinfo" else original_exists(path)
+
+    def cpuinfo_open(path, *args, **kwargs):
+        if path != "/proc/cpuinfo":
+            return original_open(path, *args, **kwargs)
+        if cpuinfo is None:
+            raise FileNotFoundError(path)
+        return io.StringIO(cpuinfo)
+
+    with monkeypatch.context() as context:
+        context.setattr(os.path, "exists", cpuinfo_exists)
+        context.setattr("builtins.open", cpuinfo_open)
+        assert namespace["cpu_brand_linux"]() == expected

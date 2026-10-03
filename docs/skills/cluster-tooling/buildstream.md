@@ -150,6 +150,17 @@ whose `build-commands` read `/proc/cpuinfo`, `readlink /proc/self/exe`,
 `ls /dev/fd`, and compile a file with `gcc`, then confirm the action ran
 remotely in the `jobs` table.
 
+Cache hits are not execution. An unmodified dakota commit that dakota CI has
+already built resolves `oci/bluefin.bst` from `cache.projectbluefin.io`
+(`Build Queue: processed 0`), so a pipeline success alone proves nothing about
+the grid. To prove execution for real elements, run a throwaway Workflow that
+(1) `bst artifact pull --deps build <targets>` with every artifact cache
+configured, then (2) `bst build <targets>` with
+`artifacts: {override-project-caches: true, servers: []}` and the BuildGrid
+`remote-execution` block, and count the run's `jobs` rows per `worker_name`.
+With gnome-build-meta's default `recc: remote-execution`, one element fans out
+into hundreds of compile actions spread across every worker.
+
 **Images.** Upstream publishes only `:nightly` for `buildgrid`, `buildbox`, and
 `buildgrid-postgres` at `registry.gitlab.com/buildgrid/buildgrid.hub.docker.com`.
 Mirror a specific digest into the lab Zot in OCI format and pin manifests by

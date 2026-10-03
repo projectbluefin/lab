@@ -17,7 +17,8 @@ k3s cluster.
 
 Three purposes, all on the `ghost`<->`exo-0` USB4 link:
 
-- **BuildStream build farm** — BuildBarn + BST pipelines (dakota,
+- **BuildStream build farm** — BuildGrid remote execution (bubblewrap workers on
+  every node) with Buildbarn CAS/action cache, BST pipelines (dakota,
   bluefin-server), the Zot registry, and the dakota OCI pipeline that makes
   `projectbluefin/dakota` (Dakota QA, boot tests, Zot candidate promotion).
 - **Local LLM inference** — llm-d (llama.cpp on Vulkan on `exo-0`, NodePort

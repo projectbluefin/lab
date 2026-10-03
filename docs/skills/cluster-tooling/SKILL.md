@@ -35,11 +35,12 @@ metadata:
    - set `override-project-caches: false` to allow the project's own upstream caches (for example Freedesktop SDK and GNOME OS) to be used as read-only fallbacks, preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
    - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`). Persist fetched sources through the paired BuildBarn Remote Asset index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) and frontend CAS (`type: storage`), both `push: true`; the external artifact/source cache URLs are read-only fallbacks.
    - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
-   - when the checkout uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream remote caches instead of diverging on local patch-set differences.
-   - match BuildStream concurrency to live BuildBarn capacity. Dakota uses four
-     coordinator fetchers, two builders/pushers for its two one-slot workers,
-     and eight jobs per action for the runner CPU limit. Do not serialize a
-     healthy distributed build or call cache traffic distributed execution.
+   - build the pinned upstream sources unmodified; never patch elements, junctions, or patch queues to work around the execution sandbox. A sandbox-only failure is a BuildGrid runner bug to fix in the grid.
+   - BuildStream concurrency targets the BuildGrid queue, not a fixed slot
+     count: `scheduler.builders: 32` stays above total worker slots
+     (`CONCURRENT_JOBS` × nodes) and `max-jobs: 12` per action. Adding a node
+     adds a worker with no config change. Do not serialize a healthy
+     distributed build or call cache traffic distributed execution.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
 6. Never use a root filesystem for persistent workload data or a `hostPath` build
@@ -81,7 +82,7 @@ remains, raising it makes GPU memory *worse*:
 | 48 GiB (tested, reverted) | 48.0 GiB | **15.4 GiB** | **7.9 GiB** |
 
 At 48 GiB carve-out, Kubernetes saw the node as a 15 GiB machine — too small for
-the buildbarn workers, KubeVirt VMs, and KubeStellar control-plane pods it
+the BuildGrid workers, KubeVirt VMs, and KubeStellar control-plane pods it
 carries. Minimum carve-out plus a raised `ttm.pages_limit` yields 48 GiB of
 GPU-addressable memory *and* keeps all 62 GiB of system RAM.
 
@@ -187,10 +188,10 @@ Do not guess flags or chart schema.
   parallelize only after the cluster has enough dedicated memory capacity.
 
 - "The semaphore already limits concurrency."  
-  The `bst-build` semaphore was set to 3, allowing multiple BST lanes to run
-  at once. On a two-node lab where each pod requests 14 GiB, that causes
-  collisions and preemptions. Set it to 1 and let the scheduler choose among
-  nodes that can satisfy the declared requests.
+  The `bst-build` semaphore (`"1"` in `manifests/workflow-semaphores.yaml`)
+  serializes BST pipelines; letting several coordinators run at once causes
+  collisions and preemptions. Action-level parallelism comes from BuildGrid
+  worker slots, not from raising the semaphore.
 
 ## Red Flags
 

@@ -5,9 +5,10 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Shared USB4/BuildBarn admission gate for BuildStream lanes. Requires a
-      fresh usb4-link=up observation and a Ready node, worker and runner on
-      both ghost and exo-0. Outputs mode=re; builds are distributed-only.
+      Shared USB4/BuildGrid admission gate for BuildStream lanes. Requires a
+      fresh usb4-link=up observation and a Ready node and BuildGrid worker on
+      both ghost and exo-0, plus a Ready BuildGrid controller. Workers on any
+      additional node add capacity without changing this gate. Outputs mode=re.
   labels:
     app.kubernetes.io/component: bst-admission-gate
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -44,25 +45,27 @@ spec:
             READY="$(kubectl get node "${NODE}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
 
             if [[ "${LINK}" != "up" || ! "${OBSERVED_AT}" =~ ^[0-9]+$ || "${READY}" != "True" ]]; then
-              echo "USB4 BuildBarn gate rejected ${NODE}: link=${LINK:-missing} (label/annotation lab.projectbluefin.io/usb4-link) observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
+              echo "USB4 BuildGrid gate rejected ${NODE}: link=${LINK:-missing} (label/annotation lab.projectbluefin.io/usb4-link) observed-at=${OBSERVED_AT:-missing} ready=${READY:-unknown}" >&2
               exit 1
             fi
             if (( NOW - OBSERVED_AT > MAX_AGE_SECONDS )); then
-              echo "USB4 BuildBarn gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
+              echo "USB4 BuildGrid gate rejected ${NODE}: observation is stale ($((NOW - OBSERVED_AT))s old)" >&2
               exit 1
             fi
           done
 
-          # Match the BuildBarn worker containers by name, not by container
-          # count: the DaemonSet also runs preparation sidecars whose readiness
-          # is a separate health boundary from outer remote execution.
-          WORKERS="$(kubectl get pods -n buildbarn -l app=worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|worker="}{range .status.containerStatuses[?(@.name=="worker")]}{.ready}{end}{"|runner="}{range .status.containerStatuses[?(@.name=="runner")]}{.ready}{end}{"\n"}{end}')"
+          WORKERS="$(kubectl get pods -n buildgrid -l app=buildgrid-worker -o jsonpath='{range .items[*]}{.spec.nodeName}{"|"}{.status.phase}{"|ready="}{range .status.containerStatuses[?(@.name=="worker")]}{.ready}{end}{"\n"}{end}')"
           for NODE in ghost exo-0; do
-            if ! grep -Eq "^${NODE}\|Running\|worker=true\|runner=true$" <<<"${WORKERS}"; then
-              echo "USB4 BuildBarn gate rejected: no Ready worker on ${NODE}" >&2
+            if ! grep -Eq "^${NODE}\|Running\|ready=true$" <<<"${WORKERS}"; then
+              echo "USB4 BuildGrid gate rejected: no Ready BuildGrid worker on ${NODE}" >&2
               exit 1
             fi
           done
+          CONTROLLER_READY="$(kubectl get deploy -n buildgrid controller -o jsonpath='{.status.readyReplicas}')"
+          if [[ "${CONTROLLER_READY:-0}" -lt 1 ]]; then
+            echo "USB4 BuildGrid gate rejected: BuildGrid controller is not Ready" >&2
+            exit 1
+          fi
 
-          echo "USB4-backed BuildBarn remote execution admitted"
+          echo "USB4-backed BuildGrid remote execution admitted ($(grep -c 'ready=true$' <<<"${WORKERS}") workers)"
           printf '%s' re > /tmp/mode

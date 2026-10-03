@@ -53,7 +53,7 @@ Dakota PR review is a lab-backed admission process. GitHub Actions status is adv
 2. For each PR, inspect the current head SHA and changed paths, then dispatch the distributed build from the exact branch/ref.
 3. Wait for `dakota-build-pipeline` to complete. A parent workflow marked successful with failed child nodes is not a clean pass; inspect the node summary and logs.
 4. Run `dakota-container-qa-pipeline` against the built local registry image. Run the full `dakota-qa-pipeline` suites when the PR needs GUI/BDD coverage.
-5. Record pass/fail evidence and stop on infrastructure failures such as BuildBarn storage/DNS or worker loss; recover the lab before retrying.
+5. Record pass/fail evidence and stop on infrastructure failures such as BuildBarn storage/DNS or BuildGrid worker loss; recover the lab before retrying.
 6. On a clean pass, re-read the PR head SHA, confirm it remains mergeable, and merge directly.
 7. After merge, verify the merge commit and watch the next build/publish workflow; do not report success merely because the merge API accepted the operation.
 
@@ -74,7 +74,7 @@ A repair is appropriate for a localized build recipe, element, workflow, or test
 ## Known Lab Lessons
 
 - A Dakota image may have an empty OCI `Cmd`. `run-container-tests` must pass `/sbin/init` explicitly after the image reference or crun fails before systemd starts.
-- BuildBarn storage/worker DNS or disappearance errors are infrastructure failures, not PR failures. Confirm storage StatefulSet pods, frontends, scheduler, workers, and the `bst-build` semaphore before retrying.
+- Buildbarn storage DNS errors and BuildGrid controller/worker disappearance are infrastructure failures, not PR failures. Confirm Buildbarn storage StatefulSet pods and frontends, BuildGrid controller/database/worker pods, and the `bst-build` semaphore before retrying.
 - A successful Argo parent can hide failed child build nodes. Read the node summary and logs.
 
 ## Red Flags

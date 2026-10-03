@@ -63,7 +63,7 @@ placed on any healthy node without depending on a node-local root-disk cache.
 
 For distributed BuildStream runs, fix the shared config or template first and then stop/re-submit the workflow once; do not let Argo keep retrying a pod that is failing for a known configuration reason. Repeated retries burn node CPU and memory, overfill the namespace queue, and make the cluster look resource-constrained even when the underlying config issue is trivial.
 
-A BuildStream run is only "distributed" when BuildBarn remote execution is actually engaged over USB4. Remote artifact caches alone are not distributed builds. Before admission, require fresh `lab.projectbluefin.io/usb4-link=up` observations and Ready workers on both `ghost` and `exo-0`. Before calling any BuildStream build distributed, require three independent pieces of evidence: (1) `projects.<name>.remote-execution` appears in the generated BuildStream config for the project, (2) BuildStream startup logs report a Remote Execution Configuration pointing at the BuildBarn frontend, and (3) current action activity is visible on BuildBarn workers (`kubectl logs -n buildbarn` or BuildBarn dashboards). Cache-only, Ethernet-backed, or local-driver BuildStream behavior is a failed operational state, not a supported fallback, and must fail fast.
+A BuildStream run is only "distributed" when BuildGrid remote execution is actually engaged over USB4. Remote artifact caches alone are not distributed builds. Before admission, require fresh `lab.projectbluefin.io/usb4-link=up` observations, Ready BuildGrid workers on both `ghost` and `exo-0`, and a Ready BuildGrid controller. Before calling any BuildStream build distributed, require three independent pieces of evidence: (1) `projects.<name>.remote-execution` appears in the generated BuildStream config for the project, (2) BuildStream startup logs report a Remote Execution Configuration pointing at the BuildGrid controller, and (3) the run's actions appear in the BuildGrid `jobs` table with a `worker_name` (see `docs/skills/cluster-tooling/buildstream.md` § "Operating BuildGrid"). Cache-only, Ethernet-backed, or local-driver BuildStream behavior is a failed operational state, not a supported fallback, and must fail fast.
 
 ### 2. Parameter passing — always explicit
 
@@ -325,17 +325,17 @@ This fires `run-system` whether `run-software` succeeded or was skipped by its o
 
 #### BuildStream workflows: remote execution is mandatory; cache is not distribution
 
-BuildStream workflows in this lab must run against the BuildBarn remote-execution grid. A workflow that only mounts the shared cache ConfigMap or points at remote artifact servers is not distributed and is not a valid operational fallback.
+BuildStream workflows in this lab must run against the BuildGrid remote-execution grid. A workflow that only mounts the shared cache ConfigMap or points at remote artifact servers is not distributed and is not a valid operational fallback.
 
 Evidence required before calling a BuildStream run distributed:
 
 1. Generated BuildStream config contains `projects.<name>.remote-execution` for the project being built.
 2. BuildStream startup logs show a Remote Execution Configuration loaded (frontend address, instance name, and platform properties).
-3. BuildBarn workers show current action activity for the run (scheduled/executing actions matching the BuildStream platform properties).
+3. The BuildGrid `jobs` table shows the run's actions with a `worker_name` (`kubectl -n buildgrid exec database-0 -- psql -U bgd -d bgd -At -c "select worker_name, stage, status_code from jobs order by queued_timestamp desc limit 20;"`).
 
-Practical config generation: mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append a per-project override block. The override must include the `remote-execution` project block pointing at the BuildBarn frontend; artifact/cache server blocks alone are insufficient. Point artifact writes at `grpc://frontend.buildbarn.svc.cluster.local:8980` and list upstream read-only cache servers (`https://gbm.gnome.org:11003`, `https://cache.freedesktop-sdk.io:11001`, `https://cache.projectbluefin.io:11001`) for fallback reads. The current BuildStream image used by these workflows does not accept the legacy `remoteasset:` block, so the override omits it.
+Practical config generation: mount the shared `buildstream-remote-cache` ConfigMap at `/etc/buildstream`, copy `buildstream.conf` into a temp file, and append the `remote-execution.conf` key as a per-project override block. Its `execution-service` points at `http://controller.buildgrid.svc.cluster.local:50051`; `storage-service` and `action-cache-service` point at the Buildbarn frontend. Artifact/cache server blocks alone are insufficient. Point artifact writes at `grpc://frontend.buildbarn.svc.cluster.local:8980` and list upstream read-only cache servers (`https://gbm.gnome.org:11003`, `https://cache.freedesktop-sdk.io:11001`, `https://cache.projectbluefin.io:11001`) for fallback reads. The current BuildStream image used by these workflows does not accept the legacy `remoteasset:` block, so the override omits it.
 
-When the project uses upstream `gnome-build-meta`/`freedesktop-sdk` junctions, mirror their patch queues into the checkout before the build so the cache keys match the upstream caches instead of diverging on local patch-set differences. Junction refs can be Git-describe strings rather than remote names; fetch the trailing full commit ID after `-g` and check out `FETCH_HEAD`, rather than fetching the full descriptive ref. This is the pattern used by `dakota-build-pipeline` and `bluefin-server-build-pipeline`.
+Build the checked-out upstream commit unmodified. Do not patch elements, junctions, or upstream patch queues from a workflow to work around the execution sandbox; a failure that only occurs under lab remote execution is a BuildGrid runner bug to fix in the grid.
 
 If any of the three evidence items above are missing, stop and fix the config before running. Do not proceed with cache-only or local-driver execution as a normal mode.
 
@@ -440,10 +440,10 @@ When BuildStream logs show:
 
 `FAILED_PRECONDITION: No workers exist ... platform {"properties":[{"name":"ISA","value":"x86-64"},{"name":"OSFamily","value":"linux"}]}`
 
-check Buildbarn worker platform registration before changing workflow behavior:
+check BuildGrid worker registration before changing workflow behavior:
 
-1. Confirm workers are actually running (`kubectl get pods -n buildbarn`).
-2. Check `manifests/buildbarn-config.yaml` `worker.jsonnet` runner `platform.properties`.
+1. Confirm worker pods are Ready (`kubectl -n buildgrid get pods -l app=buildgrid-worker`) and have bot sessions (`kubectl -n buildgrid exec database-0 -- psql -U bgd -d bgd -At -c "select bot_id, bot_status from bots;"`).
+2. Check the `--platform` flags in `manifests/buildgrid-worker.yaml` and the controller's platform matching in `manifests/buildgrid-controller.yaml`.
 3. Ensure worker properties match BuildStream action properties (`ISA=x86-64`, `OSFamily=linux`).
 4. Do not disable `remote-execution` or switch to a local driver as a workaround; solve the queue-key mismatch while keeping the mandatory RE path intact.
 

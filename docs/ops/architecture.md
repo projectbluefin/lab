@@ -53,7 +53,7 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
   `lab.projectbluefin.io/usb4-link: up|down` (both as a node label and annotation) and
   `lab.projectbluefin.io/usb4-link-observed-at` by the `usb4-link-monitor`
   DaemonSet (`manifests/usb4-link-monitor.yaml`). Every BST pipeline admits
-  BuildBarn remote execution only when both node observations are fresh and
+  BuildGrid remote execution only when both node observations are fresh and
   `up`, with a Ready worker on each node. A transport or worker failure fails
   the workflow for repair; Ethernet, local, and cache-only fallbacks are
   forbidden.
@@ -159,28 +159,35 @@ provision workload storage on a root filesystem.
 Standard k3s workload scheduling — Argo Workflows dispatch KubeVirt VM provisioning and
 test pods across whichever nodes are schedulable.
 
-A Buildbarn Remote Execution (REAPI) grid **is** deployed, in the `buildbarn` namespace,
-and is the canonical build cache/remote-exec mechanism for BuildStream (`bst`) jobs:
+BuildStream remote execution runs on **BuildGrid** in the `buildgrid` namespace
+(`manifests/buildgrid-*.yaml`):
+
+- `controller` — Deployment, 1 replica, Service
+  `controller.buildgrid.svc.cluster.local:50051` serving Execution, Operations,
+  and Bots.
+- `database` — Postgres StatefulSet on a local-path PVC holding scheduler state;
+  NetworkPolicy limits access to controller pods.
+- `worker` — DaemonSet, one privileged pod per node running `buildbox-casd` and
+  `buildbox-worker` with `buildbox-run-bubblewrap` (private PID namespace, fresh
+  `/proc` per action). Adding a node adds a worker and capacity.
+
+A Buildbarn deployment in the `buildbarn` namespace provides storage only
+(CAS, action cache, remote asset):
 
 - `frontend` — Deployment, 2 replicas, **preferred** podAntiAffinity (degrades gracefully
   to co-location if a node is unavailable). Single entrypoint at
-  `frontend.buildbarn.svc.cluster.local:8980` for artifact cache, source blob
-  storage, and remote-execution traffic from `bst` clients.
-- `scheduler` — Deployment, 1 replica (single point of failure by design; see
-  `production-hardening-*` follow-ups).
+  `frontend.buildbarn.svc.cluster.local:8980` for artifact cache and CAS/AC
+  traffic from `bst` clients and BuildGrid workers.
 - `storage` — StatefulSet, 2 replicas, **required** podAntiAffinity + per-pod
   local-path PVCs. `WaitForFirstConsumer` and the Kubernetes scheduler choose
   placement; no node selector or root-disk fallback is permitted.
-- `worker` — DaemonSet, one pod per schedulable node, each with a `runner` sidecar
-  (`CAP_SYS_CHROOT`) that executes BuildStream REAPI actions dispatched by the scheduler.
 - `bb-remote-asset` — Deployment, source-cache Remote Asset index at
   `bb-remote-asset.buildbarn.svc.cluster.local:8984`.
 
 BuildStream jobs (`dakota-build-pipeline`,
-`bluefin-server-build-pipeline`, `bst-qa-pipeline`) point
-their artifact and remote-execution config at the shared frontend. Source caches use
-the paired Remote Asset index and frontend CAS,
-so build actions are genuinely distributed across the `worker` DaemonSet pods on both
+`bluefin-server-build-pipeline`, `bst-qa-pipeline`) send execution to the
+BuildGrid controller and artifact/CAS traffic to the Buildbarn frontend, so build
+actions are distributed across the BuildGrid `worker` pods on both
 `ghost` and `exo-0` rather than executing locally on a single node. The `bst-build` client
 pod itself also carries a required podAntiAffinity so concurrent builds spread across
 nodes instead of stacking on one.

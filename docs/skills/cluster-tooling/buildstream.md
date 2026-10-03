@@ -1,8 +1,8 @@
 ---
 name: cluster-buildstream
 description: >
-  Use when operating USB4 admission, BuildStream distributed builds, or Buildbarn
-  recovery.
+  Use when operating USB4 admission, BuildStream distributed builds, BuildGrid
+  remote execution, or Buildbarn cache recovery.
 metadata:
   context7-sources:
     - /apache/buildstream
@@ -15,15 +15,15 @@ metadata:
 When the ghost<->exo-0 USB4 link is down (see RUNBOOK), all cross-node traffic
 falls back to 2.5GbE, but **no BuildStream build may run**. Repair the link and
 wait for fresh `lab.projectbluefin.io/usb4-link=up` observations on both nodes
-before submitting or retrying. An Ethernet-backed, cache-only, runner-local, or
+before submitting or retrying. An Ethernet-backed, cache-only, local-sandbox, or
 remote-cache-only run is not an acceptable substitute.
 
-- **Shared Buildbarn storage**: artifact and source caches use the scheduler-managed
-  Buildbarn storage service. Do not add node-local `hostPath` caches; they bypass
+- **Shared Buildbarn storage**: artifact and source caches use the Buildbarn
+  CAS/action-cache storage service. Do not add node-local `hostPath` caches; they bypass
   Kubernetes storage accounting and can fill a node root filesystem.
-- **Build capacity is admitted, not assumed:** derive Buildbarn runner slots
-  from live allocatable CPU, memory, and storage. Never reserve capacity by
-  pinning a build to a node.
+- **Build capacity is admitted, not assumed:** execution capacity is the sum of
+  BuildGrid worker slots (one worker per node, `CONCURRENT_JOBS` each). Never
+  reserve capacity by pinning a build to a node.
 - **Zot pull-through** on every node (`registry-mirror-config` DaemonSet) keeps
   image pulls off the WAN and off cross-node paths.
 - **BuildStream workspaces** use workflow PVCs. With `WaitForFirstConsumer`,
@@ -32,12 +32,13 @@ remote-cache-only run is not an acceptable substitute.
   bind-mount a cache path to influence placement.
 - **BST lane policy:** Dakota, Bluefin Server, and QA pipelines accept only
   remote execution. Before admission, every lane requires a fresh USB4 `up`
-  label and annotation (`lab.projectbluefin.io/usb4-link=up`, timestamp within 60s)
-  and a Ready BuildBarn worker on both `ghost` and `exo-0`.
-  Runner-local, cache-only, Ethernet-backed, automatic fallback, and
+  label and annotation (`lab.projectbluefin.io/usb4-link=up`, timestamp within 60s),
+  a Ready BuildGrid worker on both `ghost` and `exo-0`, and a Ready BuildGrid
+  controller. Additional nodes only add workers.
+  Local-sandbox, cache-only, Ethernet-backed, automatic fallback, and
   remote-cache-only execution are prohibited. Before treating a run as
   distributed, verify its generated `projects.<name>.remote-execution`
-  configuration, BuildStream RE startup, and current worker action activity.
+  configuration, BuildStream RE startup, and BuildGrid `jobs` rows for the run.
   Pipelines fail closed immediately with an explicit rejection when the USB4
   link is unavailable or stale rather than queueing indefinitely in the scheduler.
 - **Verifying USB4 admission state:** The `usb4-link-monitor` DaemonSet evaluates
@@ -51,155 +52,121 @@ remote-cache-only run is not an acceptable substitute.
   ```bash
   kubectl get nodes --show-labels | grep -o 'usb4-link=[a-z]*'
   ```
-  Dakota uses a two-slot `bst-build` semaphore and workflow-owned 200Gi
+  The `bst-build` semaphore in `manifests/workflow-semaphores.yaml` is `"1"`:
+  one BuildStream pipeline owns the execution lane at a time, and its variants
+  run in parallel inside it. Workflows use workflow-owned 200Gi
   `local-path` cache PVCs. The distributed workflow builds both `oci/bluefin.bst`
   (`dakota:testing`) and `oci/bluefin-nvidia.bst` (`dakota-nvidia:testing`). NVIDIA
   builds run in parallel with continueOn (non-blocking) as the lab does not have GPU
   hardware to test NVIDIA runtime execution. The Dakota
   commit poller pins the checkout to the exact GitHub SHA
   it observed.
-- **Buildbarn RE sandbox device nodes:** with `chrootIntoInputRoot: true`,
-  actions need character devices inside their input root. The supported setting
-  is `worker.jsonnet`'s per-runner `inputRootCharacterDeviceNodes`; `bb_worker`
-  stages `null`, `zero`, `random`, `urandom`, and `tty` into each action's
-  `root/dev` before execution. The init container's `/worker/dev` tree is not
-  the mechanism that populates the action chroot. There is no supported
-  `bb_runner.devDirectoryPath` field in the pinned runner schema.
-- **Per-action POSIX semaphore directory:** `runner.jsonnet` uses the upstream
-  `temporaryDirectoryInstaller` hook over the pod-local
-  `unix:///run/buildbarn/sandbox/preparer.sock`. Before every action, the
-  `sandbox-preparer` validates the relative `<action>/tmp` path and existing
-  sibling `root` before creating `root/dev/shm` with mode `01777`. Traversal of
-  the configured build path and action tree uses dir-fd `O_DIRECTORY|O_NOFOLLOW`
-  opens and relative mkdir operations; escapes, symlinks, and missing layouts
-  fail closed. Only `shm` is chmodded, never `root` or `dev`. A disk-backed directory is
-  sufficient for POSIX named semaphores; no new tmpfs or bind mount is needed.
-  Each action owns its directory, which is removed with the native action tree;
-  host `/dev/shm` and other actions' semaphore files are never shared. This does
-  not change `TMPDIR`, input-root permissions, or the existing 12 action slots.
-  No package/element workaround or BuildGrid migration is part of this fix.
-- **Fail-closed readiness and evidence:** the sidecar readiness probe executes
-  the helper's `--check` CLI, which calls the actual gRPC `CheckReadiness`, not
-  merely a socket-existence check. The pinned runner also calls that RPC during
-  its own readiness check and refuses to execute an action if installation
-  fails. A successful helper probe proves the service/build-directory health
-  only; it does not prove SDK-root execution, semaphore creation inside the
-  chroot, or Dakota image production. After GitOps reconciliation and rollout,
-  require a real RE semaphore smoke action, full SDK-root execution, and a
-  successful distributed Dakota image build before claiming recovery. A failing
-  RE action must stop the build for repair; never route to local or
-  Ethernet-backed fallback. Existing USB4 and admission gates remain.
 
-Supported upstream contract: the worker and runner-installer tag
-`20260722T162832Z-236bcd9` corresponds to bb-remote-execution commit
-`236bcd95eb8fd2136807f8f6b47093639311a9f1`. Use these pinned source references
-when changing the integration (Context7 has no matching Buildbarn library;
-the pinned upstream source is authoritative):
+## Execution model
 
-- [Runner configuration schema](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/proto/configuration/bb_runner/bb_runner.proto): `temporary_directory_installer` is a gRPC client configuration.
-- [Temporary-directory runner wrapper](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/runner/temporary_directory_installing_runner.go): installation precedes every `Run`; helper readiness precedes runner readiness.
-- [Installer wire schema](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/proto/tmp_installer/tmp_installer.proto): service `buildbarn.tmp_installer.TemporaryDirectoryInstaller`, request string `temporary_directory = 1`, and `google.protobuf.Empty` replies/readiness request.
-- [Native local executor](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/builder/local_build_executor.go): worker stages character devices into `root/dev` and passes the sibling `tmp` path relative to the build directory.
+BuildStream remote execution runs on **BuildGrid** with **buildbox** workers;
+Buildbarn is storage only.
 
-- **Buildbarn RE sandbox has no `/proc` (open)**: device nodes were only half of
-  the chroot gap. `bb_runner` does not mount `/proc` into the input root, and
-  upstream has no configuration option that does — it is tracked as
-  [bb-remote-execution#115](https://github.com/buildbarn/bb-remote-execution/issues/115),
-  with out-of-tree `mountat` patches published by
-  [Meroton](https://meroton.com/docs/improved-chroot-in-buildbarn/the-problem-with-special-filesystems/).
-  Any action whose build runs a tool that reads `/proc` fails. Observed on the
-  Dakota lane (`dakota-build-pipeline-hnc5q`, plain `testing`, not a branch):
+- **Controller:** `manifests/buildgrid-controller.yaml`, namespace `buildgrid`,
+  Service `controller.buildgrid.svc.cluster.local:50051`. Execution, Operations,
+  and Bots services share that port. Scheduler state lives in Postgres
+  (`manifests/buildgrid-database.yaml`, StatefulSet `database`, local-path PVC,
+  trust auth reachable only from controller pods via NetworkPolicy).
+  Platform matching compares `OSFamily` and `ISA`; `unixUID`, `unixGID`,
+  `network`, `remoteApisSocketPath`, `chrootRootDigest`, and `capability` are
+  accepted as wildcard keys.
+- **Workers:** DaemonSet `worker` in `buildgrid`
+  (`manifests/buildgrid-worker.yaml`), one pod per node. Each pod runs
+  `buildbox-casd` and `buildbox-worker` in one privileged container. The runner
+  is `buildbox-run-bubblewrap`: each action gets a private PID namespace, a
+  fresh `/proc`, a `/dev`, and its input root as `/`, staged through FUSE.
+  `--concurrent-jobs` comes from the `CONCURRENT_JOBS` env (4). casd keeps its
+  cache on a per-pod generic-ephemeral local-path PVC (200Gi, quota 150G).
+- **Storage:** casd reads and writes CAS and action cache through the Buildbarn
+  frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`, two sharded
+  storage replicas), which also hosts `bb-remote-asset`. casd forwards nested
+  Execute requests (recc via BuildStream's `remote-apis-socket`) to the
+  BuildGrid controller.
+- **BuildStream config** (`manifests/buildstream-remote-cache-config.yaml`):
+  `execution-service` points at the BuildGrid controller; `storage-service` and
+  `action-cache-service` point at the Buildbarn frontend.
 
-  ```text
-  gnomeos-deps/bootc.bst: Running commands
-    /bin/sh: line 1: /usr/lib/os-release: No such file or directory
-    error: reading /proc/1/ns/ipc: No such file or directory (os error 2)
-    make: *** [Makefile:49: completion] Error 1
-  Build Queue: processed 3, skipped 910, failed 2   →  exit status 255
-  ```
+This matches upstream BuildStream's own CI: `.github/compose/ci.buildgrid.yml`
+runs BuildGrid with `buildbox-worker --buildbox-run=buildbox-run-bubblewrap`,
+and `ci.buildbarn.yml` uses Buildbarn only as a cache. `buildbox-run-bubblewrap`
+(`run-bubblewrap/buildboxrun_bubblewrap.cpp`) passes `--unshare-pid` and
+`--proc /proc`. Buildbarn's chroot runners still lack procfs upstream
+([bb-remote-execution#115](https://github.com/buildbarn/bb-remote-execution/issues/115),
+PR #116), which is why Buildbarn is not used for execution.
 
-  The same class of failure is documented upstream for `cargo`/`rustc`
-  (`/proc/self/exe`), `go`, `node`, and `javac`.
+**Invariant: build the exact upstream commit.** Lab pipelines build the pinned
+dakota (and gnome-build-meta) sources unmodified. Never patch elements,
+junctions, or upstream patch queues to work around the execution sandbox. A
+build that fails only in the lab sandbox is a runner bug: fix it in the grid
+(worker, runner, or controller configuration), not in the project. Upstream
+GNOME `recc` defaults apply when the pinned gnome-build-meta declares them.
+Do not bind the host's `/proc` or other host files into the input root; it
+breaks hermeticity.
 
-  **Per-element fixes work but do not scale.** bootc's Makefile carried two
-  host probes, both fixable in `elements/gnomeos-deps/bootc.bst` (a dakota-local
-  override element, so no junction patch is needed):
+## Scale-out
 
-  - `CARGO_FEATURES_DEFAULT ?= $(shell . /usr/lib/os-release; …)` picks the
-    `rhsm` feature from whatever `os-release` the *builder* has. Stating
-    `CARGO_FEATURES` explicitly makes the feature set deterministic.
-  - `install: completion` runs the freshly built binary five times. Upstream
-    already intends to skip joining the host IPC namespace in restricted build
-    environments, but only handles a *masked* `/proc` (`PermissionDenied`), not
-    a *missing* one (`NotFound`). dakota carries
-    `patches/bootc/0001-tolerate-missing-proc-in-sandbox.patch` for that.
+- Adding a node adds a worker: the DaemonSet schedules a pod, the pod opens a
+  bot session with the controller, and BuildGrid's queue hands it actions. No
+  config change is needed.
+- `scheduler.builders` is 32, deliberately above the total worker slot count
+  (`CONCURRENT_JOBS` × nodes), so BuildStream keeps enough actions queued in
+  BuildGrid for new workers to pick up immediately. `build.max-jobs` is 12 per
+  action.
+- Queued actions wait in BuildGrid, not in BuildStream or Argo. A deep queue
+  with all bots busy means the grid is saturated, not broken.
 
-  Do **not** bind the host's `/proc` or `/usr/lib/os-release` into the input
-  root to work around this: it breaks hermeticity and makes artifacts depend on
-  the machine that built them. Upstream's fix direction is a procfs mounted
-  inside the input root (the `mountat` work in bb-remote-execution#115). Note
-  that this is necessary but not sufficient: that change mounts a procfs and
-  adds no PID namespace, so the action still sees the runner's process table.
-  Per-action `CLONE_NEWPID` alongside `CLONE_NEWNS` is a separate requirement.
+## Operating BuildGrid
 
-  A mount from inside the action is **not** that private procfs. `bb_runner`
-  only chroots; it sets `SysProcAttr.Chroot` and no `CLONE_NEW*` flags
-  (`pkg/runner/local_runner_unix.go`), and each worker runs 12 actions
-  concurrently, so a procfs mounted in an input root shows the whole runner
-  container's process table. It also leaks if the action dies before
-  unmounting, and `bb_runner` then blocks tearing the input root down: one such
-  leak held `oci/initramfs.bst` in "Waiting for the remote build to complete"
-  for 1h58m. Any in-action mount must unmount in the *same shell*, via a trap.
+Health checks:
 
-  **Three failures, one cause.** systemd reports a missing `/proc` as
-  `ENOSYS` — `proc_fd_enoent_errno()` in `src/basic/fd-util.c` returns
-  `-ENOSYS` when `proc_mounted() == 0` — so its errors here name neither
-  `/proc` nor the real problem:
+```bash
+kubectl -n buildgrid get pods -o wide            # controller, database-0, one worker per node
+kubectl -n buildgrid rollout status deployment/controller
+kubectl -n buildgrid rollout status statefulset/database
+kubectl -n buildgrid rollout status daemonset/worker
+# Bot sessions (one per worker pod; bot_id is the node name)
+kubectl -n buildgrid exec database-0 -- psql -U bgd -d bgd -At -c "select bot_id, bot_status from bots;"
+# Recent actions and which worker ran them
+kubectl -n buildgrid exec database-0 -- psql -U bgd -d bgd -At -c "select worker_name, stage, status_code from jobs order by queued_timestamp desc limit 20;"
+```
 
-  | Element | Symptom | Fix in dakota | Status |
-  |---|---|---|---|
-  | `vm/prepare-image.bst` | `systemd-firstboot` exits 1 | `bluefin/vm-prepare-image.bst` mounts a procfs around the script | passed in a build |
-  | `oci/initramfs.bst` | `module.sh: /dev/fd/63: No such file or directory` | dakota-local copy mounts procfs + links `/dev/fd` for the element | passed in a build, 73s |
-  | `core-deps/systemd-hwdb.bst` | `Failed to write database /usr/lib/udev/hwdb.bin: Function not implemented` | `bluefin/systemd-hwdb.bst` deletes the shipped `hwdb.bin` first | **candidate, not yet reached by a build** |
+A run is distributed when its actions appear in `jobs` with a `worker_name`.
+A missing bot row for a node means its worker pod is not Ready or cannot reach
+the controller; check that node's `worker` pod logs.
 
-  The hwdb case needs no mount at all, and shows how to avoid one. fdsdk ships
-  a prebuilt `hwdb.bin`; regenerating it *over* the staged copy is the only
-  path that needs `/proc`, because systemd links its `O_TMPFILE` into place,
-  gets `EEXIST`, and reopens the fd through `/proc/self/fd` to compare inodes.
-  Probed in-cluster: in a chroot with no `/proc`,
-  `linkat(fd, "", dirfd, target, AT_EMPTY_PATH)` into a *free* name succeeds,
-  needing neither `/proc` nor `CAP_DAC_READ_SEARCH`. Deleting the target first
-  keeps systemd on that path.
+Sandbox smoke test: submit a throwaway Workflow that builds a `manual` element
+whose `build-commands` read `/proc/cpuinfo`, `readlink /proc/self/exe`,
+`ls /dev/fd`, and compile a file with `gcc`, then confirm the action ran
+remotely in the `jobs` table.
 
-  Ordering matters if you try this elsewhere: BuildStream integrates a
-  junction's elements before the local project's. A command added to
-  `oci/layers/bluefin-stack.bst` runs at position 817 of the integration order
-  while `systemd-hwdb`'s runs at 606 — too late. Check with
-  `bst show --deps run --format '%{name}' <element>`, which prints exactly the
-  order `integrate()` walks, and put the fix in the *same element* as the
-  command it must precede.
+**Images.** Upstream publishes only `:nightly` for `buildgrid`, `buildbox`, and
+`buildgrid-postgres` at `registry.gitlab.com/buildgrid/buildgrid.hub.docker.com`.
+Mirror a specific digest into the lab Zot in OCI format and pin manifests by
+digest:
 
-  An earlier note here called the `/proc` diagnosis for `oci/initramfs.bst`
-  disproved, on the strength of a privileged pod with `/proc` masked to zero
-  entries, where `systemd-firstboot --root … --locale … --timezone UTC` exits
-  0. Treat that probe as non-equivalent rather than as counter-evidence: it ran
-  outside the RE sandbox, and it passed a *nonempty* `--root`, while
-  `prepare-image.sh` leaves `sysroot=` empty and calls `--root ""`. Whether a
-  masked `/proc` even satisfies systemd's `proc_mounted()` (a `statfs()` check
-  for `PROC_SUPER_MAGIC`) depends on how it was masked, which that note does
-  not record.
+```bash
+skopeo copy --format oci --dest-tls-verify=false \
+  docker://registry.gitlab.com/buildgrid/buildgrid.hub.docker.com/<name>@<digest> \
+  docker://192.168.1.102:30500/buildgrid/<name>:nightly-YYYYMMDD
+```
 
-  The evidence that settles it is a before/after in the sandbox itself, not a
-  probe: mounting a procfs for the element moved the failure from
-  `systemd-firstboot` to one step later in `generate-initramfs`
-  (`/dev/fd/63: No such file or directory`), and fixing both made the element
-  build in 73s after months of failing. If you revisit this, reproduce inside
-  an Argo/BuildBarn action with the staged sysroot and `LD_PRELOAD=fakecap`,
-  and capture `systemd-firstboot`'s full stderr — the build currently discards
-  its stdout.
+Zot rejects docker v2s2 manifests with `--preserve-digests`, so convert to OCI
+and pin the resulting Zot digest. Moving these images to fsdk-containers per
+the image policy remains the long-term goal.
 
-Capacity guard: node memory *requests* must leave room for the 32Gi runner.
-Orphaned 8Gi test VMs from failed image-poll runs are the usual thief — check
+**Worker concurrency.** To change slots per node, edit `CONCURRENT_JOBS` in
+`manifests/buildgrid-worker.yaml` and let GitOps roll the DaemonSet. Keep
+`scheduler.builders` above the new `CONCURRENT_JOBS` × node count, and check
+node CPU/memory headroom against `max-jobs` per action.
+
+Capacity guard: node memory *requests* must leave room for the BuildGrid
+worker pods and the BuildStream coordinator. Orphaned 8Gi test VMs from
+failed image-poll runs are the usual thief — check
 `kubectl describe node | grep -A8 "Allocated resources"` and delete VMs whose
 parent workflow is terminal.
 
@@ -215,35 +182,25 @@ and blocked Buildbarn storage scheduling on `exo-0` until the Job was removed.
 
 ## Lessons for future agents
 
-The 2026-07-22 Dakota investigation established the following decision tree:
-
 1. **Verify admission before debugging compilation.** Fresh USB4 timestamps, node
-   readiness, two Ready BuildBarn workers, and workflow resource requests/limits
-   are prerequisites. An initial graph-validation rejection was quota/admission
-   related because a step lacked resources; it was not a Dakota compiler result.
-2. **Prove runner correctness with a small action, then prove the full root.** A
-   tiny REAPI input root executing proves connectivity only. The gate remains red
-   until the full SDK root completes CAS materialization and an action executes
-   `rustc -vV` successfully.
-3. **Separate evidence classes.** Local BuildStream success, Podman/Zot push
+   readiness, Ready BuildGrid workers on `ghost` and `exo-0`, a Ready controller,
+   and workflow resource requests/limits are prerequisites. A graph-validation
+   rejection caused by a step lacking resources is an admission failure, not a
+   Dakota compiler result.
+2. **Separate evidence classes.** Local BuildStream success, Podman/Zot push
    success, and container E2E are useful diagnostics, but none substitutes for
    a successful distributed remote-execution build. Never report overall green
    from those results alone.
-4. **Check live-vs-git configuration.** Before retrying, compare the live
-   `buildbarn-config` and worker/runner pods with the repository. Stale ConfigMaps
-   can preserve virtual/FUSE directories or `setTmpdirEnvironmentVariable` after
-   the source manifest has moved to native directories. Reconcile through GitOps
-   and wait for both worker pairs to restart before testing.
-   Compare generated source patches in the deployed WorkflowTemplate with the
-   verified fix too; an ad-hoc workflow repair does not update the canonical lane.
-   Colord build-tree tools need `LD_LIBRARY_PATH` for `_builddir/lib/colord` and
-   `_builddir/lib/colorhug`, not `LD_PRELOAD` of a versioned library that Ninja
-   has not built yet. Stop deterministic retries until the corrected template
-   reconciles; Argo retries retain the original template snapshot.
-5. **Do not tune capacity around a correctness failure.** Keep one action slot per
-   runner and current BuildStream/semaphore limits until full-root materialization
-   is reliable. Low utilization during a failed action is expected and is not a
-   reason to add workers or jobs.
+3. **Check live-vs-git configuration.** Before retrying, compare the live
+   `buildstream-remote-cache` ConfigMap, BuildGrid controller config, and worker
+   pods with the repository. Reconcile through GitOps and wait for the worker
+   DaemonSet rollout before testing. Argo retries retain the original template
+   snapshot, so stop deterministic retries until the corrected template reconciles.
+4. **Fix sandbox failures in the grid.** If an element builds upstream but fails
+   only under lab remote execution, reproduce it with the sandbox smoke test and
+   fix the runner or worker configuration. Do not patch the element.
+5. **Do not tune capacity around a correctness failure.** Low utilization during
+   a failed action is expected and is not a reason to add workers or jobs.
 6. **Use the lab pipeline for Dakota testing images, never GitHub Actions.**
    Work in the lab repository and cluster is meant to validate Dakota builds locally
    via `just run-bst-build` (`argo/workflow-templates/dakota-build-pipeline.yaml`)
@@ -276,14 +233,14 @@ owns the value. Raising it lets builds preempt polling VMs instead of the
 reverse.
 
 2. **Use verified parallel BST capacity.** Keep independent work concurrent when
-BuildBarn workers and node requests have safe headroom. Respect actual BuildStream graph dependencies and reassess live worker and node
-capacity before raising or lowering the two-slot `bst-build` limit. NVIDIA
+BuildGrid workers and node requests have safe headroom. Respect actual BuildStream
+graph dependencies. Execution parallelism comes from BuildGrid worker slots, not
+from the `bst-build` semaphore, which stays at one pipeline. NVIDIA
 variants are built in parallel with continueOn (non-blocking).
 
-3. **Clear stale semaphore holders before reducing capacity.** The semaphore in
+3. **Clear stale semaphore holders.** The semaphore in
 `manifests/workflow-semaphores.yaml` gates all BST build lanes. Confirm terminal
-workflows do not retain locks, then set `bst-build` to the safe live worker
-capacity instead of serializing independent work by default.
+workflows do not retain locks before suspecting the grid.
 
 4. **Verify the fix live.** After submission, confirm the pod is Running and on a
 node with enough free requested memory:
@@ -294,7 +251,7 @@ kubectl describe node <node> | grep -A8 "Allocated resources"
 kubectl get events -n argo --field-selector reason=Preempted --sort-by='.lastTimestamp'
 ```
 
-## Queueing, cleanup, and Buildbarn recovery
+## Queueing, cleanup, and Buildbarn storage recovery
 
 When the cluster is already hot, the fastest recovery is usually to stop the noise
 instead of submitting more work:
@@ -315,36 +272,36 @@ storage budget.
 
 ## BuildStream 2.x Distributed Builds and Caching
 
-BuildStream 2.x uses the cluster's shared Buildbarn deployment for artifact
-cache writeback and remote execution. Workflow-local state belongs on a
+BuildStream 2.x uses the BuildGrid controller for remote execution and the
+shared Buildbarn deployment for artifact cache writeback. Workflow-local state belongs on a
 PVC-backed workspace, while the shared Buildbarn frontend provides cluster-wide
 artifact reuse. Neither cache layer may use a root-backed `hostPath`.
 
 ### 0. Mandatory remote execution
 
-Dakota builds must use BuildBarn remote execution regardless of transport path.
+Dakota builds must use BuildGrid remote execution regardless of transport path.
 If remote execution is unhealthy, fail the workflow, diagnose it, and repair the
-grid; do not fall back to a runner-local or cache-only build. The
-`remote-execution.conf` ConfigMap key is appended under the Dakota project in
-the generated BuildStream configuration. A healthy run has two Ready workers,
-two action slots, and observable current worker actions.
+grid; do not fall back to a local-sandbox or cache-only build. The
+`remote-execution.conf` ConfigMap key is appended under each project in
+the generated BuildStream configuration. A healthy run has a bot session per
+node and its actions in the BuildGrid `jobs` table with a `worker_name`.
 
 ### 1. Shared Buildbarn frontend
 - **Endpoint**: `grpc://frontend.buildbarn.svc.cluster.local:8980`
-- **Role**: CAS/AC artifact writes and reads; execute-forwarding for BuildStream actions that use the in-cluster execution grid
-- **Deployment**: Frontend, scheduler, storage shards, and workers are defined under `manifests/buildbarn-*.yaml` and run in the `buildbarn` namespace
+- **Role**: CAS/AC artifact writes and reads for BuildStream and buildbox-casd; no execution
+- **Deployment**: Frontend (2 replicas), sharded storage (2 replicas), and `bb-remote-asset` are defined under `manifests/buildbarn-*.yaml` and run in the `buildbarn` namespace
 
 ### 2. BuildStream client config
-  The build pods should generate a deterministic `buildstream.conf` that keeps upstream source caches read-only and pushes artifacts to the shared Buildbarn frontend first. Dakota's coordinator remains bounded by its two one-slot BuildBarn workers; do not increase BuildStream jobs, worker count, or semaphore capacity while remote execution or CAS materialization is unhealthy:
+  The build pods generate a deterministic `buildstream.conf` from `manifests/buildstream-remote-cache-config.yaml` that keeps upstream source caches read-only and pushes artifacts to the shared Buildbarn frontend first:
  
 ```yaml
 scheduler:
   network-retries: 8
-  fetchers: 4
-  builders: 2
-  pushers: 2
+  fetchers: 8
+  builders: 32
+  pushers: 4
 build:
-  max-jobs: 8
+  max-jobs: 12
 artifacts:  override-project-caches: false
   servers:
   - url: grpc://frontend.buildbarn.svc.cluster.local:8980
@@ -366,28 +323,13 @@ source-caches:
 
 Repeat the same override and server ordering at the project level so the primary project uses the same cache policy as the top-level config.
 
-**Lab-wide source-cache rule (verified 2026-07-22 / 2026-07-27):** the deployed `bb-remote-asset` image (`ghcr.io/buildbarn/bb-remote-asset:20241031T230517Z-4926e8e`) cannot handle BuildStream source-key URNs. Pushing sources to `grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984` (`type: index`) produces `FetchDirectory ... PERMISSION_DENIED` / `HTTP Fetching of directories is not supported!` and, because the remote-asset asset cache reads through the unsharded storage headless Service, `could not get action from action cache: Object not found`. Until the endpoint is upgraded/configured for URNs, **every** lab BuildStream pipeline (`dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline`) must set `source-caches.override-project-caches: true` and list only the upstream read-only source caches. Leaving it `false` inherits junction source-cache entries and causes the build to spend minutes retrying a source push before failing. Artifact/RE cache writes may still use the BuildBarn frontend.
-
-**Worker recovery note (verified 2026-07-22):** a failed virtual/FUSE BuildBarn experiment left stale `bb_worker` mounts on the node-local worker path, causing subsequent `volume-init` failures (`Transport endpoint is not connected`). Recovery was performed through a temporary privileged, host-PID recovery pod using `nsenter -t 1 -m -- umount -l /var/lib/buildbarn/worker/build`, followed by worker-pod recreation. The virtual/FUSE experiment also exposed `rustc -vV: Permission denied` in `gnomeos-deps/bootc.bst`. The runner was upgraded from the 2026-05-27 BuildBarn pair to the coordinated 2026-07-22 worker/installer pair, made privileged/root with `spc_t`, and configured with `/tmp` and `/var/tmp` per-action symlinks plus one action slot. Direct REAPI isolation proved the tiny input root reaches the runner, while the full SDK root stalls during CAS materialization before command execution. The frontend was restarted to load current shard configuration; a 31 MiB CAS blob then read through the frontend in 0.08s, but a fresh full-root action still timed out after 10 minutes. The sharded CAS is inconsistent for the full root: some blobs exist only on storage-0 while storage-1 reports NotFound, and worker failures report `Shard 0/1: context canceled` during input fetch. The distributed gate remains red until CAS replication/routing and full-root materialization are repaired. BuildStream's default config is merged with the supplied config; to force a cache-only local diagnostic, explicitly add a top-level `remote-execution: {}` rather than merely omitting the remote-execution snippet.
-
-**Controlled retry update (2026-07-23):** after reconciling native runner configuration and restarting both worker pods, the Dakota retry uploaded SDK input roots and reached remote command execution, demonstrating progress beyond the historical `rustc`/TMPDIR failure. However, both actions failed when the old workers disappeared during execution, and the retry was still in artifact pulls afterward. Do not call this green; worker continuity and the full build/publish/digest/E2E chain still require proof.
+**Lab-wide source-cache rule:** the deployed `bb-remote-asset` image (`ghcr.io/buildbarn/bb-remote-asset:20241031T230517Z-4926e8e`) cannot handle BuildStream source-key URNs. Pushing sources to `grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984` (`type: index`) produces `FetchDirectory ... PERMISSION_DENIED` / `HTTP Fetching of directories is not supported!` and, because the remote-asset asset cache reads through the unsharded storage headless Service, `could not get action from action cache: Object not found`. Until the endpoint is upgraded/configured for URNs, **every** lab BuildStream pipeline (`dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline`) must set `source-caches.override-project-caches: true` and list only the upstream read-only source caches. Leaving it `false` inherits junction source-cache entries and causes the build to spend minutes retrying a source push before failing. Artifact and action-cache writes still use the Buildbarn frontend.
 
 **Distributed NVIDIA Policy:** The distributed Dakota workflow builds both default (`oci/bluefin.bst`) and NVIDIA (`oci/bluefin-nvidia.bst`) variants in parallel. Because the lab cluster lacks NVIDIA GPU hardware to execute GPU test suites, the NVIDIA build runs as non-blocking (`continueOn`). When the NVIDIA build succeeds, its image (`dakota-nvidia:testing`) is published directly to Zot.
 
-**Registry publication verified 2026-07-22:** the local Zot registry accepts anonymous pushes over its configured insecure HTTP endpoint. Publish with Podman (`podman push --tls-verify=false localhost/dakota:testing docker://<ghost-ip>:30500/dakota:testing`) rather than rootful Skopeo, which may look at `/run/containers/storage` and fail for a rootless session. Verify the registry digest with `skopeo inspect --tls-verify=false` and pull the registry tag back before smoke testing.
+**Registry publication:** the local Zot registry accepts anonymous pushes over its configured insecure HTTP endpoint. Publish with Podman (`podman push --tls-verify=false localhost/dakota:testing docker://<ghost-ip>:30500/dakota:testing`) rather than rootful Skopeo, which may look at `/run/containers/storage` and fail for a rootless session. Verify the registry digest with `skopeo inspect --tls-verify=false` and pull the registry tag back before smoke testing.
 
-**GPU validation boundary (updated 2026-08-06):** the NVIDIA image contains `/usr/sbin/nvidia-smi`, but the lab has no NVIDIA hardware — no node advertises `nvidia.com/gpu` and no NVIDIA device plugin is running. Docker's `--gpus all` fails because the host has no communicating NVIDIA driver; Podman CDI fails because `nvidia.com/gpu=all` is unresolvable. NVIDIA GPU runtime validation is therefore not actionable on this cluster. Both nodes *do* advertise `amd.com/gpu: 1` (Radeon 8060S / gfx1151, ROCm) via `manifests/amdgpu-device-plugin.yaml`, so AMD-side GPU validation is possible — see `docs/skills/cluster-tooling/SKILL.md` § "AMD GPU topology".
-
-### Verified CAS materialization findings (2026-07-22)
-
-Direct REAPI isolation separates the failure stages:
-
-- A tiny input root reaches the BuildBarn runner and executes immediately.
-- The full SDK input root stalls during native CAS materialization before the runner starts.
-- The target tree contains executable /usr/bin/rustc and /usr/bin/cargo entries.
-- Restarting stale frontend and scheduler pods made a 31 MiB frontend CAS read complete in 0.08s, but a fresh full-root action still exceeded ten minutes.
-- A correctly configured virtual/FUSE worker was tested and failed at startup with Failed to expose build directory mount: operation not permitted; production therefore remains native.
-- The current native configuration uses the large persistent hardlink cache and inputDownloadConcurrency: 128. The distributed gate remains red until a full SDK input root materializes reliably.
+**GPU validation boundary:** the NVIDIA image contains `/usr/sbin/nvidia-smi`, but the lab has no NVIDIA hardware — no node advertises `nvidia.com/gpu` and no NVIDIA device plugin is running. Docker's `--gpus all` fails because the host has no communicating NVIDIA driver; Podman CDI fails because `nvidia.com/gpu=all` is unresolvable. NVIDIA GPU runtime validation is therefore not actionable on this cluster. Both nodes *do* advertise `amd.com/gpu: 1` (Radeon 8060S / gfx1151, ROCm) via `manifests/amdgpu-device-plugin.yaml`, so AMD-side GPU validation is possible — see `docs/skills/cluster-tooling/SKILL.md` § "AMD GPU topology".
 
 ### 3. BuildStream parser constraints
 - **No top-level `source:` key**: `buildstream.conf` does not support a top-level `source:` block.
@@ -450,7 +392,7 @@ Use `rsync` with `--sparse`; do **not** use a naive `tar | ssh | tar` pipe that 
 1. **Quiesce writers first.** Do not back up while BST jobs are actively pushing new CAS/AC entries.
    ```bash
    kubectl get workflows -n argo
-   kubectl scale deployment/frontend deployment/scheduler deployment/bb-remote-asset -n buildbarn --replicas=0
+   kubectl scale deployment/frontend deployment/bb-remote-asset -n buildbarn --replicas=0
    kubectl scale statefulset/storage -n buildbarn --replicas=0
    kubectl wait --for=delete pod -l app=storage -n buildbarn --timeout=180s
    ```
@@ -490,9 +432,9 @@ Use `rsync` with `--sparse`; do **not** use a naive `tar | ssh | tar` pipe that 
    ```bash
    kubectl scale statefulset/storage -n buildbarn --replicas=2
    kubectl rollout status statefulset/storage -n buildbarn --timeout=180s
-   kubectl scale deployment/frontend deployment/scheduler deployment/bb-remote-asset -n buildbarn --replicas=1
+   kubectl scale deployment/frontend -n buildbarn --replicas=2
+   kubectl scale deployment/bb-remote-asset -n buildbarn --replicas=1
    kubectl rollout status deployment/frontend -n buildbarn --timeout=180s
-   kubectl rollout status deployment/scheduler -n buildbarn --timeout=180s
    kubectl rollout status deployment/bb-remote-asset -n buildbarn --timeout=180s
    ```
 
@@ -532,9 +474,9 @@ Use `rsync` with `--sparse`; do **not** use a naive `tar | ssh | tar` pipe that 
    ```bash
    kubectl scale statefulset/storage -n buildbarn --replicas=2
    kubectl rollout status statefulset/storage -n buildbarn --timeout=180s
-   kubectl scale deployment/frontend deployment/scheduler deployment/bb-remote-asset -n buildbarn --replicas=1
+   kubectl scale deployment/frontend -n buildbarn --replicas=2
+   kubectl scale deployment/bb-remote-asset -n buildbarn --replicas=1
    kubectl rollout status deployment/frontend -n buildbarn --timeout=180s
-   kubectl rollout status deployment/scheduler -n buildbarn --timeout=180s
    kubectl rollout status deployment/bb-remote-asset -n buildbarn --timeout=180s
    kubectl get pods -n buildbarn -o wide
    kubectl get endpointslice -n buildbarn -l kubernetes.io/service-name=storage
@@ -543,7 +485,7 @@ Use `rsync` with `--sparse`; do **not** use a naive `tar | ssh | tar` pipe that 
 #### Post-restore verification
 - **Filesystem check**: rerun `find ... -printf '%P %s\n' | sort`, `du -sh`, and `du -sh --apparent-size` against the restored host paths and compare them with the backup copy.
 - **Pod readiness**: `storage-0` and `storage-1` must both be `Running`, and `kubectl rollout status statefulset/storage -n buildbarn` must succeed.
-- **Client reachability**: `frontend`, `scheduler`, and `bb-remote-asset` must be `Available`, and the `storage` headless Service must show endpoints for both storage pods.
+- **Client reachability**: `frontend` and `bb-remote-asset` must be `Available`, and the `storage` headless Service must show endpoints for both storage pods.
 - **End-to-end smoke test**: run one lightweight BST workflow that exercises CAS/AC and remote execution:
   ```bash
   argo submit -n argo --from workflowtemplate/bst-qa-pipeline --watch
@@ -560,6 +502,5 @@ maximumMessageSizeBytes: 64 * 1024 * 1024
 If the value is too low, BuildStream lanes can fail with `Unable to upload <N> blobs to remote CAS`.
 When `buildbarn-config` changes, also bump the `buildbarn-config-revision` pod-template annotations in:
 - `manifests/buildbarn-frontend.yaml`
-- `manifests/buildbarn-scheduler.yaml`
 - `manifests/buildbarn-storage.yaml`
-- `manifests/buildbarn-worker.yaml`
+- `manifests/buildbarn-remote-asset.yaml`

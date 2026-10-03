@@ -111,7 +111,7 @@ Options=defaults,noatime,nodiratime,logbufs=8,logbsize=256k,allocsize=64m
 non-root local-path PVC data. **`/dev/nvme0n1` on `exo-0` is the live system disk
 — never target it.**
 
-1. **Scale down any legacy artifact-server deployment** if one still exists; current BuildStream lanes use the shared Buildbarn frontend and workers rather than a single `bst-artifact-server` pod (removed from `manifests/` — see git history if reviving).
+1. **Scale down any legacy artifact-server deployment** if one still exists; current BuildStream lanes use the shared Buildbarn frontend rather than a single `bst-artifact-server` pod (removed from `manifests/` — see git history if reviving).
 2. **Stop and unmount unit on `exo-0`**:
    ```bash
    ssh core@<worker-ip> "sudo systemctl stop 'var-mnt-exo0\x2ddata.mount'"
@@ -143,7 +143,7 @@ non-root local-path PVC data. **`/dev/nvme0n1` on `exo-0` is the live system dis
    `DEFAULT_PATH_FOR_NON_LISTED_NODES`; omitting that entry makes provisioning
    fail closed on future nodes until their non-root data mount is explicitly
    configured.
-8. **Re-enable shared Buildbarn workloads** after the filesystem migration: confirm the Buildbarn frontend/scheduler/storage/worker pods are healthy before resuming heavy BST traffic.
+8. **Re-enable shared build workloads** after the filesystem migration: confirm the Buildbarn frontend/storage pods and the BuildGrid controller/database/worker pods are healthy before resuming heavy BST traffic.
 
 ### 2. Migrating `ghost` (Stateful Control Plane Storage)
 `ghost` holds persistent states like OCI cache layers in `zot-local` and persistent volume data in `local-path`. This data must be preserved.

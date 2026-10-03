@@ -1,8 +1,8 @@
-# Buildbarn remote-execution grid config, adapted from the upstream reference
-# deployment (github.com/buildbarn/bb-deployments kubernetes/config/*.jsonnet)
-# for this cluster's real 2-node topology (ghost + exo-0). No browser, no
-# file-system access cache (FSAC) — both are optional and dropped to keep the
-# homelab footprint small; add them later if virtual build dirs are needed.
+# Buildbarn storage config: sharded CAS/AC storage, the client-facing frontend
+# and bb-remote-asset, adapted from the upstream reference deployment
+# (github.com/buildbarn/bb-deployments kubernetes/config/*.jsonnet). Buildbarn
+# is the lab's CAS and action cache only; remote execution runs on BuildGrid
+# (manifests/buildgrid-*.yaml), whose controller and workers use this CAS.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -127,47 +127,6 @@ data:
       },
     }
 
-  scheduler.jsonnet: |
-    local common = import 'common.libsonnet';
-
-    {
-      adminHttpServers: [{
-        listenAddresses: [':7982'],
-        authenticationPolicy: { allow: {} },
-      }],
-      clientGrpcServers: [{
-        listenAddresses: [':8982'],
-        authenticationPolicy: { allow: {} },
-      }],
-      workerGrpcServers: [{
-        listenAddresses: [':8983'],
-        authenticationPolicy: { allow: {} },
-      }],
-      contentAddressableStorage: common.blobstore.contentAddressableStorage,
-      maximumMessageSizeBytes: common.maximumMessageSizeBytes,
-      global: common.global,
-      executeAuthorizer: { allow: {} },
-      modifyDrainsAuthorizer: { allow: {} },
-      killOperationsAuthorizer: { allow: {} },
-      synchronizeAuthorizer: { allow: {} },
-      actionRouter: {
-        simple: {
-          platformKeyExtractor: { action: {} },
-          invocationKeyExtractors: [{ toolInvocationId: {} }],
-          initialSizeClassAnalyzer: {
-            // BST clients send no explicit action timeout, so the default is
-            // the effective cap. 30m killed every big compile (gcc-stage1,
-            // llvm, webkit are 1-4h actions) — the "RE build dies ~30min in"
-            // pattern during the dakota:testing outage. 6h default / 8h max
-            // matches the dakota CI job budget.
-            defaultExecutionTimeout: '21600s',
-            maximumExecutionTimeout: '28800s',
-          },
-        },
-      },
-      platformQueueWithNoWorkersTimeout: '900s',
-    }
-
   frontend.jsonnet: |
     local common = import 'common.libsonnet';
 
@@ -176,9 +135,6 @@ data:
         listenAddresses: [':8980'],
         authenticationPolicy: { allow: {} },
       }],
-      schedulers: {
-        '': { endpoint: { address: 'scheduler:8982' } },
-      },
       maximumMessageSizeBytes: common.maximumMessageSizeBytes,
       global: common.global,
       contentAddressableStorage: {
@@ -230,82 +186,3 @@ data:
       pushAuthorizer: { allow: {} },
     }
 
-  worker.jsonnet: |
-    local common = import 'common.libsonnet';
-
-    {
-      blobstore: common.blobstore,
-      maximumMessageSizeBytes: common.maximumMessageSizeBytes,
-      scheduler: { address: 'scheduler:8983' },
-      global: common.global {
-        setUmask: { umask: 0 },
-      },
-      buildDirectories: [{
-        native: {
-          buildDirectoryPath: '/worker/build',
-          cacheDirectoryPath: '/worker/cache',
-          // Keep enough native cache for several complete SDK roots. The
-          // virtual/FUSE experiment failed startup with operation not
-          // permitted, so production must remain on native directories.
-          maximumCacheFileCount: 1000000,
-          maximumCacheSizeBytes: 96 * 1024 * 1024 * 1024,
-          cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
-        },
-        runners: [{
-          endpoint: { address: 'unix:///worker/runner' },
-          // Scale worker concurrency to 12 parallel actions per node across the
-          // Thunderbolt/NVMe fabric for high throughput distributed builds.
-          concurrency: 12,
-          // Match BuildStream REAPI action platform properties so workers
-          // register into the same scheduler queue key.
-          platform: {
-            properties: [
-              { name: 'ISA', value: 'x86-64' },
-              { name: 'OSFamily', value: 'linux' },
-            ],
-          },
-          workerId: {
-            pod: std.extVar('POD_NAME'),
-            node: std.extVar('NODE_NAME'),
-          },
-          // BuildStream actions (meson compiler detection) and many Unix
-          // utilities expect /dev/null, /dev/zero, /dev/random, etc. inside
-          // the sandbox. The runner chroots into the input root, so install
-          // minimal character device nodes there before each action.
-          inputRootCharacterDeviceNodes: ['null', 'zero', 'random', 'urandom', 'tty'],
-        }],
-      }],
-      // The USB4 link is effectively local-bus latency; deep pipelines are
-      // free. Raise CAS transfer concurrency so input roots stream instead of
-      // trickling file-by-file.
-      // Frontend and scheduler have been restarted with the current shard
-      // configuration; use the worker's high-concurrency native fetch path
-      // now that large CAS reads are healthy again.
-      inputDownloadConcurrency: 128,
-      outputUploadConcurrency: 64,
-      directoryCache: {
-        maximumCount: 1000000,
-        maximumSizeBytes: 4 * 1024 * 1024 * 1024,
-        cacheReplacementPolicy: 'LEAST_RECENTLY_USED',
-      },
-    }
-
-  runner.jsonnet: |
-    {
-      buildDirectoryPath: '/worker/build',
-      // Pinned bb_runner calls this helper before each action and during
-      // readiness checks; failures prevent execution without a prepared shm.
-      temporaryDirectoryInstaller: {
-        address: 'unix:///run/buildbarn/sandbox/preparer.sock',
-      },
-      grpcServers: [{
-        listenPaths: ['/worker/runner'],
-        authenticationPolicy: { allow: {} },
-      }],
-      // BuildStream requires the input root to become the sandbox's `/`.
-      // bb_runner supports this natively via chroot(2); see
-      // bb-remote-execution pkg/proto/configuration/bb_runner/bb_runner.proto.
-      // Keep this config aligned with bb_runner ApplicationConfiguration fields.
-      chrootIntoInputRoot: true,
-      runCommandsAs: { userId: 0, groupId: 0 },
-    }

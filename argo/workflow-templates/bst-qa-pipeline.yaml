@@ -8,9 +8,9 @@ metadata:
       BuildStream QA pipeline for the bst-prototype project.
       Installs buildstream via pip in a chainguard/python container, stages
       bst-prototype/ from this repo, configures local in-cluster writeback cache
-      plus read-only upstream mirrors, points
-      remote-execution at the in-cluster Buildbarn frontend
-      (buildbarn/frontend:8980, distributed across ghost+exo-0 workers),
+      plus read-only upstream mirrors, sends element builds to the BuildGrid
+      controller (bubblewrap workers on every node) with CAS and action cache in
+      the in-cluster Buildbarn frontend,
       and builds hello.bst.
   labels:
     app.kubernetes.io/component: bst-qa
@@ -30,7 +30,7 @@ spec:
       - name: element
         value: "hello.bst"
       - name: remote-execution-service
-        value: "grpc://frontend.buildbarn.svc.cluster.local:8980"
+        value: "http://controller.buildgrid.svc.cluster.local:50051"
 
   entrypoint: pipeline
   metrics:
@@ -184,9 +184,10 @@ spec:
                 execution-service:
                   url: ${REMOTE_EXECUTION_SERVICE}
                 storage-service:
-                  url: ${REMOTE_EXECUTION_SERVICE}
+                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
                 action-cache-service:
-                  url: ${REMOTE_EXECUTION_SERVICE}
+                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  push: true
           EOF
 
           echo "=== Building ${ELEMENT} ==="

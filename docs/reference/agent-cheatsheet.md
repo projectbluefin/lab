@@ -36,9 +36,9 @@ Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` dire
 Every BST submission requires remote execution and fresh USB4 `up` observations
 on both `ghost` and `exo-0`; the workflow rejects any other state. Local,
 cache-backed, Ethernet-backed, automatic-fallback, and remote-cache-only paths
-are prohibited. Confirm the generated BuildStream configuration, both Ready
-BuildBarn workers, and live worker action activity before calling a run
-distributed.
+are prohibited. Confirm the generated BuildStream configuration, Ready
+BuildGrid workers on both nodes, and the run's actions in the BuildGrid `jobs`
+table before calling a run distributed.
 
 ## AMD ROCm GPU readiness — quick checks
 

@@ -30,7 +30,7 @@ description: >
 |---|---|---|
 | Keys | Fixed dev set, Secret `argo/bluefin-server-dev-boot-keys` | Release keys (`BOOT_KEYS_TARBALL`, `SYSUPDATE_SIGNING_KEY`) |
 | Cache | BuildBarn CAS (artifacts), persistent | none between runs |
-| Sandbox | local bubblewrap in a 16-28 CPU pod | hosted runner, 4 vCPU |
+| Sandbox | BuildGrid remote execution (bubblewrap workers on every node) | hosted runner, 4 vCPU |
 | Output | Zot `:30500/bluefin-server-image:latest` | GitHub Release `vYY.MM.<run>` + ghcr.io |
 | Use | fast iteration, dev images to test by hand | what users install |
 
@@ -41,10 +41,10 @@ The dev set is fixed on purpose: the FSDK kernel's cache key includes the
 module certificate (`components/linux-module-cert.bst` override), so a per-run
 key would rebuild the kernel every time even with a working artifact cache.
 
-Builds run in the pod's local sandbox, not on BuildBarn remote execution:
-bb_runner chroots into the action's input root without `/proc`, and the FSDK
-kernel's objtool (`read_stack_limit` opens `/proc/self/maps`) and bootstrap Go
-fail there.
+Element builds run on BuildGrid remote execution like every lab BST lane;
+the coordinator pod only orchestrates (2-4 CPU, 4-8Gi). The bubblewrap runner
+gives each action a private PID namespace and a fresh `/proc`, which the FSDK
+kernel's objtool (`/proc/self/maps`) and bootstrap Go require.
 
 ## Core Process
 

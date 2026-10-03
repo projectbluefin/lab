@@ -192,15 +192,17 @@ spec:
           privileged: true
           seLinuxOptions:
             type: spc_t
-        # Local sandbox builds (see the comment above the bst invocation), so
-        # the pod carries the compile load; the kernel is the long pole.
+        # Element builds run on the BuildGrid workers; this pod only
+        # coordinates, fetches sources and exports the result.
         resources:
           requests:
-            cpu: "16"
-            memory: 32Gi
+            cpu: "2"
+            memory: 4Gi
+            ephemeral-storage: 10Gi
           limits:
-            cpu: "28"
-            memory: 56Gi
+            cpu: "4"
+            memory: 8Gi
+            ephemeral-storage: 50Gi
         env:
           - name: GITHUB_TOKEN
             valueFrom:
@@ -271,14 +273,14 @@ spec:
                   push: false
           EOF
 
-          # Local bubblewrap sandbox, not BuildBarn remote execution: bb_runner
-          # chroots into the input root without /proc, and the FSDK kernel's
-          # objtool (read_stack_limit opens /proc/self/maps) and bootstrap Go
-          # fail there. Artifacts still push to the BuildBarn CAS (artifacts
-          # servers above), so every later build pulls them.
-          echo "=== Local sandbox build, BuildBarn CAS artifact cache ==="
+          echo "=== Distributed build: BuildGrid remote execution ==="
+          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
+          if ! grep -q '^        url: http://controller.buildgrid.svc.cluster.local:50051$' /tmp/buildstream-cluster.conf; then
+            echo "BuildStream remote execution is not pointed at the BuildGrid controller" >&2
+            exit 1
+          fi
 
-          echo "=== Building ${ELEMENT} ==="
+          echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
           bst --config "${BST_CONF}" \
               --no-interactive \
               build "${ELEMENT}"

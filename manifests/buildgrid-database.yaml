@@ -1,0 +1,102 @@
+# BuildGrid scheduler state (job queue, leases, bot sessions).
+#
+# The upstream buildgrid-postgres image ships the BuildGrid schema in
+# /docker-entrypoint-initdb.d, so a fresh volume initialises itself. The data is
+# scheduler bookkeeping only; build inputs and outputs live in Buildbarn CAS.
+#
+# Authentication is `trust`, scoped by the NetworkPolicy below to the BuildGrid
+# controller pods in this namespace. No credential is stored in git.
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: buildgrid
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    app: buildgrid-database
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  namespace: buildgrid
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  serviceName: database
+  replicas: 1
+  selector:
+    matchLabels:
+      app: buildgrid-database
+  template:
+    metadata:
+      labels:
+        app: buildgrid-database
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: workflow-controller
+      containers:
+        - name: postgres
+          image: 192.168.1.102:30500/buildgrid/buildgrid-postgres@sha256:d72af919b13b6628a0b55e2cb5462f168306da4ab3598e1440bfc01bd8438809
+          env:
+            - name: POSTGRES_USER
+              value: bgd
+            - name: POSTGRES_DB
+              value: bgd
+            - name: POSTGRES_HOST_AUTH_METHOD
+              value: trust
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, bgd, -d, bgd]
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+              ephemeral-storage: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 20Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-controller-only
+  namespace: buildgrid
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  podSelector:
+    matchLabels:
+      app: buildgrid-database
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: buildgrid-controller
+      ports:
+        - port: 5432
+          protocol: TCP

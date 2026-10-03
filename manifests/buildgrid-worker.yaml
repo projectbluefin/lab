@@ -1,0 +1,137 @@
+# BuildGrid workers: one buildbox-worker per node (DaemonSet).
+#
+# This is the elastic BuildStream grid: a node that joins the cluster gets a
+# worker, the worker opens a bot session with the controller, and it starts
+# taking element builds from the shared queue. No node list, pin, or client
+# configuration changes.
+#
+# Each action runs under buildbox-run-bubblewrap, the same sandbox model
+# BuildStream uses locally and in its own CI against BuildGrid: a private PID
+# namespace, a fresh /proc, a /dev tree, and the action's input root as /.
+# Toolchains that read /proc/self/exe, /proc/cpuinfo or /dev/fd therefore work
+# without element patches.
+#
+# buildbox-casd and buildbox-worker run in one container on purpose: casd
+# stages input roots (FUSE) into its own mount namespace, and the runner that
+# bwrap-executes them must see those mounts. casd talks to Buildbarn for CAS
+# and AC, and forwards nested REAPI Execute requests (GNOME's recc through
+# BuildStream's remote-apis-socket) back to the controller, so compile actions
+# fan out across the same workers.
+#
+# bwrap needs user/PID/mount namespaces and FUSE; the container is privileged,
+# matching upstream's privileged bot. The local CAS cache is a per-pod
+# generic-ephemeral local-path PVC on the node's data disk, not a hostPath.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: worker
+  namespace: buildgrid
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+  labels:
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    matchLabels:
+      app: buildgrid-worker
+  template:
+    metadata:
+      labels:
+        app: buildgrid-worker
+    spec:
+      automountServiceAccountToken: false
+      priorityClassName: workflow-controller
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: 192.168.1.102:30500/buildgrid/buildbox@sha256:2f16b34913d1e26f31a79cef99c0079e9404d6fc165be452e8a8171cf84e42d9
+          command: [bash, -c]
+          args:
+            - |
+              set -euo pipefail
+              mkdir -p /var/lib/buildbox/casd /run/casd
+              buildbox-casd \
+                --bind=unix:/run/casd/casd.sock \
+                --cas-remote="${BUILDBARN_URL}" \
+                --ac-remote="${BUILDBARN_URL}" \
+                --exec-remote="${BUILDGRID_URL}" \
+                --quota-high="${CASD_QUOTA}" \
+                --log-level=info \
+                /var/lib/buildbox/casd &
+              CASD_PID=$!
+              for _ in $(seq 1 60); do
+                [[ -S /run/casd/casd.sock ]] && break
+                kill -0 "${CASD_PID}"
+                sleep 1
+              done
+              [[ -S /run/casd/casd.sock ]]
+              buildbox-worker \
+                --bots-remote="${BUILDGRID_URL}" \
+                --cas-remote=unix:/run/casd/casd.sock \
+                --buildbox-run=/usr/local/bin/buildbox-run-bubblewrap \
+                --concurrent-jobs="${CONCURRENT_JOBS}" \
+                --request-timeout=60 \
+                --graceful-shutdown-timeout=100 \
+                --platform OSFamily=linux \
+                --platform ISA=x86-64 \
+                --log-level=info \
+                "${NODE_NAME}" &
+              WORKER_PID=$!
+              trap 'kill -TERM "${WORKER_PID}" "${CASD_PID}" 2>/dev/null || true' TERM INT
+              # Either process exiting takes the pod down so Kubernetes restarts both.
+              wait -n "${CASD_PID}" "${WORKER_PID}"
+              exit 1
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: BUILDGRID_URL
+              value: http://controller.buildgrid.svc.cluster.local:50051
+            - name: BUILDBARN_URL
+              value: http://frontend.buildbarn.svc.cluster.local:8980
+            # Element actions run in parallel per node; each runs its own
+            # make/ninja with BuildStream's max-jobs.
+            - name: CONCURRENT_JOBS
+              value: "4"
+            - name: CASD_QUOTA
+              value: 150G
+          # Ready only while casd serves its socket and the bot process runs.
+          readinessProbe:
+            exec:
+              command: [sh, -c, "test -S /run/casd/casd.sock && pidof buildbox-worker >/dev/null"]
+            periodSeconds: 10
+          securityContext:
+            privileged: true
+            seLinuxOptions:
+              type: spc_t
+            seccompProfile:
+              type: Unconfined
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+              ephemeral-storage: 1Gi
+            limits:
+              cpu: "28"
+              memory: 56Gi
+              ephemeral-storage: 20Gi
+          volumeMounts:
+            - name: casd-cache
+              mountPath: /var/lib/buildbox
+            - name: fuse
+              mountPath: /dev/fuse
+      volumes:
+        - name: fuse
+          hostPath:
+            path: /dev/fuse
+            type: CharDevice
+        - name: casd-cache
+          ephemeral:
+            volumeClaimTemplate:
+              spec:
+                accessModes: [ReadWriteOnce]
+                storageClassName: local-path
+                resources:
+                  requests:
+                    storage: 200Gi

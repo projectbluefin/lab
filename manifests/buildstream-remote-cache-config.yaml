@@ -8,14 +8,15 @@ metadata:
     app.kubernetes.io/component: buildstream
 
 data:
-  # Dakota's coordinator fetches four artifacts/sources concurrently. Use a
-  # moderate profile that still leaves headroom for BuildBarn queue depth and
-  # worker action pressure while avoiding the earlier over-saturation.
+  # Element builds are BuildGrid actions queued cluster-wide; `builders` is how
+  # many the coordinator keeps in flight. Keep it above the total worker slot
+  # count (buildgrid-worker CONCURRENT_JOBS x nodes) so a newly added node gets
+  # work immediately instead of waiting for this value to change.
   dakota-buildstream.conf: |
     scheduler:
       network-retries: 8
       fetchers: 8
-      builders: 4
+      builders: 32
       pushers: 4
     build:
       max-jobs: 12
@@ -41,16 +42,17 @@ data:
       - url: https://cache.freedesktop-sdk.io:11001
         push: false
   # Per-project remote-execution snippet body. Pipelines append this under
-  # projects.<name> (indented) when distributed builds are enabled.
+  # projects.<name> (indented). Execution goes to BuildGrid (bubblewrap
+  # workers); CAS and the action cache stay in Buildbarn, which the BuildGrid
+  # controller and workers use as their CAS too.
   remote-execution.conf: |
     remote-execution:
       execution-service:
-        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        url: http://controller.buildgrid.svc.cluster.local:50051
         connection-config:
           keepalive-time: 60
           retry-limit: 8
           retry-delay: 1000
-          request-timeout: 1800
       storage-service:
         url: grpc://frontend.buildbarn.svc.cluster.local:8980
         connection-config:

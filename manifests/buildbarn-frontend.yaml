@@ -1,8 +1,8 @@
-# Buildbarn frontend — the single client-facing REAPI endpoint (CAS + AC +
-# Execute-forwarding to the scheduler). BuildStream's remote-execution,
-# storage-service, and action-cache-service all point here (single URL,
-# port 8980). 2 replicas spread across both nodes via podAntiAffinity;
-# ClusterIP only (internal cluster traffic — no external LB needed).
+# Buildbarn frontend — the client-facing CAS + AC endpoint (port 8980).
+# BuildStream's storage-service, action-cache-service and artifact cache, the
+# BuildGrid controller and every buildbox-casd on the BuildGrid workers point
+# here; remote execution itself is BuildGrid's. 2 replicas spread across nodes
+# via podAntiAffinity; ClusterIP only.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,7 +20,7 @@ spec:
       labels:
         app: frontend
       annotations:
-        buildbarn-config-revision: "2026-07-12-2"
+        buildbarn-config-revision: "2026-10-03-cas-only"
         prometheus.io/scrape: "true"
         prometheus.io/port: "9980"
     spec:

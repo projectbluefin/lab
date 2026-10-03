@@ -48,15 +48,19 @@ template add or rename.
   non-blocking and pushed with the same tag.
 - **Parameters:** `repo`, `ref`, `commit-sha`, `image-tag` (default `testing`),
   `registry`, `variants`.
-- **Distribution:** remote execution is mandatory. A fresh USB4 `up` observation
-  and a Ready BuildBarn worker are required on both `ghost` and `exo-0` before
-  admission. Cache-only, Ethernet-backed, automatic fallback, runner-local
-  execution, and remote-cache-only execution are failures, not alternatives.
+- **Distribution:** remote execution on BuildGrid is mandatory. A fresh USB4
+  `up` observation and a Ready BuildGrid worker are required on both `ghost` and
+  `exo-0`, plus a Ready BuildGrid controller, before admission. Cache-only,
+  Ethernet-backed, automatic fallback, local-sandbox execution, and
+  remote-cache-only execution are failures, not alternatives.
   Scheduler-driven placement selects the coordinator; no task pins it to a node.
-- **Capacity:** The coordinator uses four fetchers, two BuildStream builders and
-  pushers, and eight jobs per action. Each of the two BuildBarn workers exposes
-  one action slot. This capacity must not be increased until remote execution and
-  full SDK CAS materialization are healthy. The workflow verifies its generated
+- **Source fidelity:** builds the exact dakota commit unmodified. The workflow
+  applies no element, junction, or patch-queue changes; upstream GNOME `recc`
+  defaults apply when the pinned gnome-build-meta declares them.
+- **Capacity:** the coordinator keeps `scheduler.builders: 32` actions in flight
+  with `max-jobs: 12` per action. Actions queue in BuildGrid and run on the
+  `worker` DaemonSet (one per node, `CONCURRENT_JOBS` slots each); a new node
+  adds capacity with no config change. The workflow verifies its generated
   remote-execution configuration before it invokes BuildStream.
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.
@@ -71,8 +75,9 @@ template add or rename.
 remote-execution run completes for the exact PR head SHA and its pushed registry
 image is verified. Local, cache-only, or fallback builds are diagnostic evidence
 and do not satisfy the distributed gate. Inspect failed child nodes even when the
-Argo parent phase is successful; classify BuildBarn storage/DNS/worker failures as
-infrastructure blockers and repair the lab before retrying.
+Argo parent phase is successful; classify BuildGrid controller/worker and
+Buildbarn storage/DNS failures as infrastructure blockers and repair the lab
+before retrying.
 
 ### zot-candidate-lifecycle
 - **Purpose:** Reusable, independent single-lane lifecycle for immutable local
@@ -92,25 +97,26 @@ infrastructure blockers and repair the lab before retrying.
 - **Purpose:** BuildStream compile pipeline for Bluefin Server elements
   (`oci/bluefin-server-ddi.bst`, `oci/bluefin-server-installer.bst`) and push to local Zot.
 - **Safety guards (aligned with dakota):**
-  `activeDeadlineSeconds: 14400` (workflow), `activeDeadlineSeconds: 5400` (step),
-  `retryStrategy: limit=2, retryPolicy=Always`, `GRPC_POLL_STRATEGY=poll`,
-  `GRPC_ENABLE_FORK_SUPPORT=1`, `request-timeout: 900`,
-  `scheduler.network-retries: 4`, `scheduler.fetchers: 1`.
-- **Cache policy:** uses the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`) for artifact cache writes and remote execution; the current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it. The checked-in `buildstream-remote-cache` config leaves project cache overrides disabled and lists the project's own upstream artifact/source cache URLs as read-only fallbacks.
+  `activeDeadlineSeconds: 28800` (workflow), `activeDeadlineSeconds: 10800` (step),
+  `retryStrategy: limit=1`, `GRPC_POLL_STRATEGY=poll`,
+  `GRPC_ENABLE_FORK_SUPPORT=1`.
+- **Execution:** element builds run on BuildGrid like every BST lane; the
+  coordinator pod only orchestrates (2-4 CPU, 4-8Gi). No local sandbox is used.
+- **Cache policy:** CAS and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); the current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it. The checked-in `buildstream-remote-cache` config leaves project cache overrides disabled and lists the project's own upstream artifact/source cache URLs as read-only fallbacks.
 
 ### bst-qa-pipeline
-- **Purpose:** Smoke-tests the Buildbarn distributed remote-execution grid itself
-  by running a trivial BuildStream element through it.
-- **Cache + RE wiring:** artifact cache writes, remote execution, and remote asset
-  fetches all flow through the shared Buildbarn frontend and remote-asset service
+- **Purpose:** Smoke-tests BuildStream wiring against BuildGrid execution and
+  Buildbarn storage by building a trivial element.
+- **Cache + RE wiring:** element builds go to the BuildGrid controller
+  (`controller.buildgrid.svc.cluster.local:50051`); artifact cache, CAS/AC, and
+  remote asset use the shared Buildbarn frontend and remote-asset service
   (`frontend.buildbarn.svc.cluster.local:8980` and
-  `bb-remote-asset.buildbarn.svc.cluster.local:8984`). The project cache remotes
-  are Buildbarn-only. See [Distributed Build/RE Grid](#distributed-buildre-grid).
-- **Known limitation:** the current test element (`hello.bst`, an `import` kind)
-  proves config wiring (BuildStream connects to the frontend with no errors) but
-  never actually dispatches an action through the scheduler to a worker — verified
-  by checking the CAS blocks file (zero bytes written). A real build-dispatch
-  test element would be needed to prove end-to-end RE execution conclusively.
+  `bb-remote-asset.buildbarn.svc.cluster.local:8984`). See
+  [Distributed Build/RE Grid](#distributed-buildre-grid).
+- **Known limitation:** the default element (`hello.bst`, an `import` kind)
+  proves config wiring but dispatches no build action. To prove execution, build
+  an element with `build-commands` and confirm a `jobs` row with a `worker_name`
+  in the BuildGrid database.
 
 ## KubeStellar Workflows
 
@@ -139,20 +145,24 @@ ArgoCD parent Application. Each template takes `wec-name` (default `ghost`).
 
 ## Distributed Build/RE Grid
 
-Two independent distributed-build mechanisms exist on the cluster — they solve
-different problems and do not overlap:
+Three cluster mechanisms cooperate on a distributed BuildStream build, each with
+one job:
 
 | Mechanism | What it distributes | Used by |
 | --- | --- | --- |
-| k8s scheduler (no pin) | Full privileged bootc OCI builds (needs real FUSE/mount-namespace access) | `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
-| Buildbarn (`buildbarn` namespace) | BuildStream cache writes and remote-execution actions (chroot-only sandbox, `CAP_SYS_CHROOT`) | `dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline` |
+| k8s scheduler (no pin) | BuildStream coordinator pods and OCI export/push | `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
+| BuildGrid (`buildgrid` namespace) | Remote-execution actions on `buildbox-run-bubblewrap` workers (private PID namespace, fresh `/proc`) | `dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline` |
+| Buildbarn (`buildbarn` namespace) | CAS, action cache, and remote asset only; no execution | same lanes, plus BuildGrid workers' casd |
 
-Buildbarn topology (2 storage shards, 1 scheduler, 2 frontend replicas, 1
-worker+runner DaemonSet pair per node — storage replicas spread with
-`podAntiAffinity`) is defined in `manifests/buildbarn-*.yaml`. Every BST lane
-requires the real BuildBarn execution grid over a fresh USB4 link between
-`ghost` and `exo-0`. If a link, worker, or action is unavailable, the workflow
-must fail for repair; it must not use an Ethernet, local, or cache-only fallback.
+BuildGrid topology: one `controller` Deployment
+(`controller.buildgrid.svc.cluster.local:50051`, Execution/Operations/Bots),
+a Postgres `database` StatefulSet, and a `worker` DaemonSet with one
+buildbox-casd + buildbox-worker pod per node (`manifests/buildgrid-*.yaml`).
+Buildbarn topology: 2 storage shards (spread with `podAntiAffinity`), 2
+frontend replicas, and `bb-remote-asset` (`manifests/buildbarn-*.yaml`). Every
+BST lane requires BuildGrid execution over a fresh USB4 link between `ghost`
+and `exo-0`. If a link, worker, or action is unavailable, the workflow must fail
+for repair; it must not use an Ethernet, local, or cache-only fallback.
 
 ## Cache Warming (Pollers)
 
@@ -161,13 +171,13 @@ must fail for repair; it must not use an Ethernet, local, or cache-only fallback
 | `dakota-commit-poller` | **suspended** (was every 5 min at minute +2) | shared `bst-commit-poller` → `dakota-build-pipeline` when `dakota:testing` changes | Dakota BuildStream cache/execution path; on-demand via `just force-dakota-poll` |
 | `image-poll-dakota` | every 10 min at :08 | custom digest DAG with `run-qa=false` | Dakota testing digest freshness; daily QA runs at 03:00 UTC |
 
-Dakota/Bluefin Server/BST lanes now use the shared Buildbarn frontend for
-cache writes and remote execution while leaving upstream mirrors read-only. Cold
+Dakota/Bluefin Server/BST lanes execute on BuildGrid and write caches to the
+shared Buildbarn frontend while leaving upstream mirrors read-only. Cold
 runs may fetch from upstream source origins, but cache writes stay in-cluster via
 Buildbarn.
 
 **`bluefin-server-build-pipeline` has no poller at all** — it is manual-trigger
-only and uses the same USB4-gated BuildBarn remote-execution contract as every
+only and uses the same USB4-gated BuildGrid remote-execution contract as every
 other BST lane.
 
 - **`nightly-dakota` does not warm anything** — it's wired to `dakota-qa-pipeline`

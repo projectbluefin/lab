@@ -49,19 +49,18 @@ Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
 MCP is optional.
 
 Every BST run requires remote execution, fresh USB4 `up` observations on both
-`ghost` and `exo-0`, two Ready BuildBarn workers, and observable worker actions.
+`ghost` and `exo-0`, Ready BuildGrid workers on both plus a Ready BuildGrid
+controller, and the run's actions in the BuildGrid `jobs` table.
 If any precondition or remote execution is unhealthy, fail, diagnose, and
 repair it. Do not select local, cache-only, Ethernet-backed, or automatic
 fallback. A successful local build/push or container E2E is diagnostic evidence
-only and does not satisfy this gate. Do not increase jobs, workers, or semaphore
-capacity while the full SDK input root or runner remains unhealthy.
+only and does not satisfy this gate.
 
-For Dakota distributed-build failures, inspect runner logs for `rustc -vV`,
-`Permission denied`, invalid `TMPDIR`, CAS materialization errors, BuildBarn
-storage DNS failures, and disappeared workers. Confirm the live ConfigMaps and
-pods match the checked-in manifests; GitOps/config drift can leave the cluster
-running an obsolete virtual/FUSE or `setTmpdirEnvironmentVariable` configuration
-even when the repository is fixed. Treat storage/DNS/worker failures as lab
+For Dakota distributed-build failures, check BuildGrid controller and worker
+pod logs, bot sessions, and `jobs` status codes, plus Buildbarn storage DNS
+failures. Confirm the live ConfigMaps and pods match the checked-in manifests.
+A failure that only reproduces under lab remote execution is a runner bug to
+fix in the grid, never by patching elements. Treat storage/DNS/worker failures as lab
 blockers and recover them before judging a PR.
 
 ---

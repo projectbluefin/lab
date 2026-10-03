@@ -4,8 +4,11 @@
 # calling REAPI GetTree on its CAS. Buildbarn's frontend does not implement
 # GetTree ("This service does not support downloading directory trees"), so
 # worker casd talks to this stateless BuildGrid CAS/ByteStream service instead.
-# It serves GetTree itself and stores every blob in Buildbarn, so there is still
-# exactly one CAS. Replicas scale independently of the controller.
+# A bare `!remote-storage` forwards GetTree to Buildbarn, so the remote store is
+# wrapped in `!with-cache-storage`: BuildGrid then walks the tree itself with
+# batched directory reads. The in-memory LRU is a read cache only; every write
+# goes through to Buildbarn, which stays the one CAS. Replicas scale
+# independently of the controller.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -33,9 +36,13 @@ data:
       enabled: false
 
     storages:
-      - !remote-storage &cas-storage
+      - !remote-storage &buildbarn
         url: http://frontend.buildbarn.svc.cluster.local:8980
         instance-name: ''
+      - !with-cache-storage &cas-storage
+        cache: !lru-storage
+          size: 2048M
+        fallback: *buildbarn
 
     instances:
       - name: ''
@@ -69,7 +76,7 @@ spec:
       labels:
         app: buildgrid-cas
       annotations:
-        buildgrid-cas-config-revision: "2026-10-03-initial"
+        buildgrid-cas-config-revision: "2026-10-03-local-tree-walk"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller

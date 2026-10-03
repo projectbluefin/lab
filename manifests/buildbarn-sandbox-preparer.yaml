@@ -177,7 +177,9 @@ data:
                 invoke, response_serializer=empty_type.SerializeToString
             )
     
-        server = grpc.server(executor, maximum_concurrent_rpcs=MAX_WORKERS)
+        # Bound execution threads, not admission: readiness must queue rather than
+        # consume an action slot and reject legitimate preparation RPCs.
+        server = grpc.server(executor)
         server.add_generic_rpc_handlers((grpc.method_handlers_generic_handler(SERVICE, {
             "InstallTemporaryDirectory": handler(
                 request_type, lambda request: preparer.prepare(request.temporary_directory), "sandbox preparation failed"

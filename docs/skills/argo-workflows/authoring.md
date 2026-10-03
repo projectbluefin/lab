@@ -150,7 +150,7 @@ For steps that produce a value consumed by downstream steps, write the result to
 ```yaml
 - name: wait-for-vm-ready
   script:
-    image: cgr.dev/chainguard/kubectl:latest-dev
+    image: ghcr.io/projectbluefin/lab-runner@sha256:767777acd14e340698f31992e6e2cc9bc1b2009ccb1472dfcfd9c7f6e9d60e29 # 26.08.2
     command: [bash]
     source: |
       # Send all debug output to stderr

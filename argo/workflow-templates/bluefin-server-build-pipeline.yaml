@@ -334,17 +334,22 @@ spec:
             dependencies: [main]
             image: ghcr.io/projectbluefin/skopeo@sha256:2e83b66c8ee7d045cb4ba9dacaea2c3a5d9d7a5d8daefd81b895b84f1cfa3258 # 26.08.2
             command: [skopeo]
+            # The lab Zot NodePort (192.168.1.102:30500) is a node IP, which
+            # routes over 2.5GbE. Its in-cluster Service is pod-to-pod, which
+            # rides the USB4 link. kubelet image refs keep using the NodePort.
             args:
               - copy
               - --dest-tls-verify=false
               - oci:/root/.cache/buildstream/oci-export
-              - "docker://{{inputs.parameters.registry}}/{{inputs.parameters.tag}}:latest"
+              - "docker://{{=inputs.parameters.registry == '192.168.1.102:30500' ? 'registry.local-registry.svc.cluster.local:5000' : inputs.parameters.registry}}/{{inputs.parameters.tag}}:latest"
+            # skopeo compresses the uncompressed export with parallel gzip; a
+            # 1-CPU limit made publish compression-bound.
             resources:
               requests:
-                cpu: 100m
+                cpu: "1"
                 memory: 256Mi
                 ephemeral-storage: 1Gi
               limits:
-                cpu: "1"
+                cpu: "16"
                 memory: 2Gi
                 ephemeral-storage: 5Gi

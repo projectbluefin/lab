@@ -124,8 +124,12 @@ breaks hermeticity.
 ## Scale-out
 
 - Adding a node adds a worker: the DaemonSet schedules a pod, the pod opens a
-  bot session with the controller, and BuildGrid's queue hands it actions. No
-  config change is needed.
+  bot session with the controller, and BuildGrid's queue hands it actions. That
+  is the only automatic part. The USB4 data path is per-peer and manual: each
+  host has a static `ip rule ... to <peer pod CIDR> lookup 40` route over
+  `thunderbolt0`, and `usb4-link-monitor` maps only `ghost` and `exo-0` to
+  peers (any other node exits 1). A new node's cross-node traffic stays on
+  2.5GbE until both are extended.
 - Nodes run at full sustained CPU power: `manifests/node-performance-tuning.yaml`
   holds ACPI `platform_profile=performance` and amd-pstate EPP `performance`
   on every node, re-applying every 60s because reboots, tuned, and
@@ -145,6 +149,15 @@ breaks hermeticity.
   When it is exhausted, clients get `Concurrent RPC limit exceeded`.
 - Queued actions wait in BuildGrid, not in BuildStream or Argo. A deep queue
   with all bots busy means the grid is saturated, not broken.
+- Assignment spreads by remaining capacity. Both scheduler blocks configure
+  `!priority-age-assigner` with `!assign-by-capacity` sampling. Without
+  sampling, BuildGrid leases to the first healthy bot with a free slot, so one
+  node fills all its slots with `-j12` element builds while the other idles.
+  Check the per-run split with
+  `select worker_name, count(*) from jobs where queued_timestamp > '<run start>' group by 1;`.
+  An all-time count hides per-run skew.
+- Workers have no CPU limit: a CFS quota throttles compile bursts even when
+  cores are idle. Their CPU request keeps a fair share against other pods.
 
 ## Operating BuildGrid
 

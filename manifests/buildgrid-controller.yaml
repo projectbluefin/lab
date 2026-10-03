@@ -80,6 +80,24 @@ data:
         # Large element builds (webkit, mozjs, llvm) run for hours.
         max-execution-timeout: 43200
         poll-interval: 0.5
+        # Spread work across nodes. Without sampling, assign-by-capacity leases
+        # to the first healthy bot with a free slot (an unordered LIMIT 1), so
+        # one node takes up to CONCURRENT_JOBS element builds (make -j12 each)
+        # while the other idles. Sampling scores every bot by remaining
+        # capacity; sample-size covers more bots than the lab has. Four threads
+        # keep assignment ahead of recc fan-out on 64+ slots of ~3s actions.
+        assigners:
+          - !priority-age-assigner
+            count: 4
+            interval: 1.0
+            bot-assignment-strategy: !assign-by-capacity
+              sampling: !sampling-config
+                sample-size: 8
+                max-attempts: 3
+                weights: !sampling-weights
+                  priority: -10.0
+                  locality: 5.0
+                  capacity: 1.0
         pruner-job-max-age:
           days: 7
         property-set: !dynamic-property-set
@@ -161,6 +179,24 @@ data:
         # Large element builds (webkit, mozjs, llvm) run for hours.
         max-execution-timeout: 43200
         poll-interval: 0.5
+        # Spread work across nodes. Without sampling, assign-by-capacity leases
+        # to the first healthy bot with a free slot (an unordered LIMIT 1), so
+        # one node takes up to CONCURRENT_JOBS element builds (make -j12 each)
+        # while the other idles. Sampling scores every bot by remaining
+        # capacity; sample-size covers more bots than the lab has. Four threads
+        # keep assignment ahead of recc fan-out on 64+ slots of ~3s actions.
+        assigners:
+          - !priority-age-assigner
+            count: 4
+            interval: 1.0
+            bot-assignment-strategy: !assign-by-capacity
+              sampling: !sampling-config
+                sample-size: 8
+                max-attempts: 3
+                weights: !sampling-weights
+                  priority: -10.0
+                  locality: 5.0
+                  capacity: 1.0
         pruner-job-max-age:
           days: 7
         property-set: !dynamic-property-set
@@ -204,7 +240,7 @@ spec:
         app: buildgrid-controller
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-03-deep-queue"
+        buildgrid-config-revision: "2026-10-03-spread-assign"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller
@@ -272,7 +308,7 @@ spec:
         app: buildgrid-bots
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-03-deep-queue"
+        buildgrid-config-revision: "2026-10-03-spread-assign"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller

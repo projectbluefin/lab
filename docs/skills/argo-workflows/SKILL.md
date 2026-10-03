@@ -181,8 +181,8 @@ The workflow authoring guidance is split by topic:
 - Setting a global Argo `parallelism` / `namespaceParallelism` cap in the workflow-controller-configmap — the real backpressure is Kubernetes pod scheduling (pod resource requests). Remove the cap; let the scheduler self-limit.
 - Using `pr-test-N-` as a workflow generateName prefix — use the repo slug (e.g. `dak-N-`) so k9s and the Argo UI show meaningful names at a glance
 - **GC CronWorkflow using `registry.k8s.io/kubectl`** — distroless, no bash; every run exits with `bash: not found` and the GC step is skipped silently. Pods and orphaned objects accumulate until the cluster fills. Use a digest-pinned `ghcr.io/projectbluefin/lab-runner` release. Symptom: `kubectl get cronworkflow orphan-pod-gc -n argo` shows `LAST SCHEDULE` advancing but pods keep piling up; check the workflow pod logs for `bash: not found`.
-- Any `image:` in `argo/` or `manifests/` referencing `:5000` for the local OCI registry — `:5000` is the container-internal Zot port; use the NodePort `<lab-ip>:30500` so non-hostNetwork pods can reach it
-- Any `image:` referencing a registry not in the allowlist (`ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`, `registry.k8s.io`, `<lab-ip>`, `localhost`) — enforce with the lint gate in `.github/workflows/lint.yaml`
+- Any `image:` in `argo/` or `manifests/` referencing `:5000` for the local OCI registry — kubelet pulls on the host and cannot resolve cluster DNS; use the NodePort `<lab-ip>:30500` for `image:` fields. In-pod clients (skopeo, oras) should push and pull through `registry.local-registry.svc.cluster.local:5000` instead: that path is pod-to-pod over USB4, while the NodePort is a node IP routed over 2.5GbE.
+- Any `image:` referencing a registry not in the allowlist (`ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.k8s.io`, `cgr.dev`, `lscr.io`, `<lab-ip>`, `localhost`) — enforced by the lint gate in `.github/workflows/lint.yaml`
 - `depends: "X.Succeeded"` on a task that follows a conditionally-skippable upstream — if upstream is Skipped, the downstream task is Omitted and the whole DAG may appear to succeed even though the chain broke; use `depends: "(X.Succeeded || X.Skipped)"` when the upstream has its own `when` guard
 - A downstream `when` condition that references `{{tasks.X.outputs.result}}` where task X has its own `when` guard — if X is Skipped its output is undefined and the downstream task silently skips too. Fix: let X always run; handle the bypass inside the script (see [patterns: the when/Skipped output trap](patterns.md#the-whenskipped-output-trap-never-reference-a-skipped-tasks-outputs)).
 - A `force=true` rebuild workflow where only 1–2 nodes appear (DAG + a Skipped check) and no build step ever runs — this is the `when`/Skipped output bug from the previous entry, not a semaphore or mutex issue
@@ -258,8 +258,8 @@ Before marking any WorkflowTemplate change done:
       never a root-backed hostPath
 - [ ] `kubectl get workflowtemplate -n argo` shows no cluster-only templates (not in git) unless they're intentional bootstrap one-shots
 - [ ] No CronWorkflow with a `dry-run` parameter whose default is `"true"` — verify GC jobs actually delete
-- [ ] All local OCI registry references use `:30500` (NodePort), not `:5000` (container-internal)
-- [ ] `grep -rn 'image:' argo/ manifests/` shows only allowlisted registries: `ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.access.redhat.com`, `registry.k8s.io`, `<lab-ip>`, `localhost`
+- [ ] `image:` fields reference the local registry as `<lab-ip>:30500` (NodePort), never `:5000`; in-pod registry clients use `registry.local-registry.svc.cluster.local:5000`
+- [ ] `grep -rn 'image:' argo/ manifests/` shows only allowlisted registries: `ghcr.io`, `quay.io`, `registry.fedoraproject.org`, `registry.k8s.io`, `cgr.dev`, `lscr.io`, `<lab-ip>`, `localhost`
 - [ ] Image pollers update digest state only after QA pipeline success (failed runs must retry on next poll)
 - [ ] Poller state writers depend on the downstream task's `.Succeeded` result and reject stale writes when the stored value changed after admission
 - [ ] After removing `suspend: true` from a CronWorkflow and syncing, live `spec.suspend` confirmed via `kubectl get -o jsonpath` — not assumed from ArgoCD's `Synced` status alone

@@ -66,12 +66,22 @@ spec:
                 sleep 1
               done
               [[ -S /run/casd/casd.sock ]]
+              # --request-timeout=60 bounds the Bots RPCs. The worker hands its
+              # CAS options (--cas-* over the global ones) to every
+              # buildbox-run-bubblewrap as --request-timeout, and that deadline
+              # covers the runner's whole LocalCAS.CaptureTree: casd hashes the
+              # output root and FindMissingBlobs/uploads it to the CAS front
+              # before answering. At 60s a 195k-file element root on exo-0 hit
+              # "LocalCAS.CaptureTree() failed with: 4: Deadline Exceeded
+              # (client timeout)" and failed syncthing-toggle.bst with
+              # DEADLINE_EXCEEDED, so the CAS connection gets its own budget.
               buildbox-worker \
                 --bots-remote="${BOTS_URL}" \
                 --cas-remote=unix:/run/casd/casd.sock \
                 --buildbox-run=/usr/local/bin/buildbox-run-bubblewrap \
                 --concurrent-jobs="${CONCURRENT_JOBS}" \
                 --request-timeout=60 \
+                --cas-request-timeout=600 \
                 --graceful-shutdown-timeout=100 \
                 --platform OSFamily=linux \
                 --platform ISA=x86-64 \

@@ -36,10 +36,11 @@ metadata:
    - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`). Persist fetched sources through the paired BuildBarn Remote Asset index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) and frontend CAS (`type: storage`), both `push: true`; the external artifact/source cache URLs are read-only fallbacks.
    - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
    - build the pinned upstream sources unmodified; never patch elements, junctions, or patch queues to work around the execution sandbox. A sandbox-only failure is a BuildGrid runner bug to fix in the grid.
-   - BuildStream concurrency targets the BuildGrid queue, not a fixed slot
-     count: `scheduler.builders: 32` stays above total worker slots
-     (`CONCURRENT_JOBS` × nodes) and `max-jobs: 12` per action. Adding a node
-     adds a worker with no config change. Do not serialize a healthy
+   - BuildStream concurrency targets the BuildGrid queue: `scheduler.builders: 16`
+     element actions, each fanning out into recc compile actions, with
+     `max-jobs: 12`. Keep `builders` below one node's `CONCURRENT_JOBS` (32) or
+     element actions occupy every slot and starve their own compiles. Adding a
+     node adds a worker with no config change. Do not serialize a healthy
      distributed build or call cache traffic distributed execution.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.

@@ -99,10 +99,11 @@ spec:
               value: http://cas.buildgrid.svc.cluster.local:50051
             - name: BUILDBARN_URL
               value: http://frontend.buildbarn.svc.cluster.local:8980
-            # Element actions run in parallel per node; each runs its own
-            # make/ninja with BuildStream's max-jobs.
+            # Slots per node. Most actions are single-threaded recc compiles; an
+            # element action holds a slot while it waits on its own compiles, so
+            # slots must exceed BuildStream's `builders` cluster-wide.
             - name: CONCURRENT_JOBS
-              value: "4"
+              value: "32"
             - name: CASD_QUOTA
               value: 150G
           # Ready only while casd serves its socket and the bot process runs.

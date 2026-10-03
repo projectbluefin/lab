@@ -55,10 +55,16 @@ data:
         pool-timeout: 30
         max-overflow: 60
 
+    # with-cache-storage makes BuildGrid walk input trees itself; a bare
+    # remote-storage forwards GetTree, which Buildbarn does not implement.
     storages:
-      - !remote-storage &cas-storage
+      - !remote-storage &buildbarn
         url: http://frontend.buildbarn.svc.cluster.local:8980
         instance-name: ''
+      - !with-cache-storage &cas-storage
+        cache: !lru-storage
+          size: 512M
+        fallback: *buildbarn
 
     caches:
       - !remote-action-cache &build-cache
@@ -98,10 +104,12 @@ data:
               - execution
               - operations
 
-    # One thread per streaming Execute RPC: element builds plus every recc
-    # compile in flight across all workers.
-    thread-pool-size: 800
-    maximum-concurrent-rpcs: 800
+    # Every queued or running action holds one streaming Execute RPC (one
+    # thread) until it completes. GNOME recc fans one element out into hundreds
+    # of compile actions at once, so the pool is sized for a deep queue, not for
+    # the number of worker slots.
+    thread-pool-size: 2000
+    maximum-concurrent-rpcs: 2000
 
   bots.yml: |
     server:
@@ -128,10 +136,16 @@ data:
         pool-timeout: 30
         max-overflow: 20
 
+    # with-cache-storage makes BuildGrid walk input trees itself; a bare
+    # remote-storage forwards GetTree, which Buildbarn does not implement.
     storages:
-      - !remote-storage &cas-storage
+      - !remote-storage &buildbarn
         url: http://frontend.buildbarn.svc.cluster.local:8980
         instance-name: ''
+      - !with-cache-storage &cas-storage
+        cache: !lru-storage
+          size: 512M
+        fallback: *buildbarn
 
     caches:
       - !remote-action-cache &build-cache
@@ -190,7 +204,7 @@ spec:
         app: buildgrid-controller
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-03-split-bots"
+        buildgrid-config-revision: "2026-10-03-deep-queue"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller
@@ -258,7 +272,7 @@ spec:
         app: buildgrid-bots
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-03-split-bots"
+        buildgrid-config-revision: "2026-10-03-deep-queue"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller

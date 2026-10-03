@@ -71,7 +71,7 @@ Buildbarn is storage only.
   `buildgrid`. Deployment `controller`
   (`controller.buildgrid.svc.cluster.local:50051`) serves Execution and
   Operations to BuildStream and to nested recc actions; each in-flight action
-  holds a streaming Execute RPC, so its thread pool is 800. Deployment `bots`
+  holds a streaming Execute RPC, so its thread pool is 2000. Deployment `bots`
   (`bots.buildgrid.svc.cluster.local:50051`) serves only the Remote Workers API.
   Keep them separate: with Bots co-located, a recc fan-out exhausts the RPC
   limit, `UpdateBotSession` fails with `Concurrent RPC limit exceeded`, and
@@ -87,7 +87,7 @@ Buildbarn is storage only.
   `buildbox-casd` and `buildbox-worker` in one privileged container. The runner
   is `buildbox-run-bubblewrap`: each action gets a private PID namespace, a
   fresh `/proc`, a `/dev`, and its input root as `/`, staged through FUSE.
-  `--concurrent-jobs` comes from the `CONCURRENT_JOBS` env (4). casd keeps its
+  `--concurrent-jobs` comes from the `CONCURRENT_JOBS` env (32). casd keeps its
   cache on a per-pod generic-ephemeral local-path PVC (200Gi, quota 150G).
 - **Storage:** Buildbarn (`grpc://frontend.buildbarn.svc.cluster.local:8980`,
   two sharded storage replicas, plus `bb-remote-asset`) is the only CAS and
@@ -126,10 +126,16 @@ breaks hermeticity.
 - Adding a node adds a worker: the DaemonSet schedules a pod, the pod opens a
   bot session with the controller, and BuildGrid's queue hands it actions. No
   config change is needed.
-- `scheduler.builders` is 32, deliberately above the total worker slot count
-  (`CONCURRENT_JOBS` × nodes), so BuildStream keeps enough actions queued in
-  BuildGrid for new workers to pick up immediately. `build.max-jobs` is 12 per
-  action.
+- Work spreads by fan-out: with gnome-build-meta's `recc: remote-execution`,
+  each element action submits its compiles as separate actions, so one element
+  can queue hundreds of actions that any worker drains. `scheduler.builders` (16)
+  only bounds element actions in flight; `build.max-jobs` is 12 per action.
+- An element action holds a worker slot while it waits for its own compiles.
+  Keep `builders` below one node's `CONCURRENT_JOBS` (32) so element actions can
+  never occupy every slot; `tests/unit/test_workflow_defaults.py` enforces it.
+- Every queued or running action holds one streaming Execute RPC on the
+  controller, so its thread pool (2000) bounds queue depth, not worker slots.
+  When it is exhausted, clients get `Concurrent RPC limit exceeded`.
 - Queued actions wait in BuildGrid, not in BuildStream or Argo. A deep queue
   with all bots busy means the grid is saturated, not broken.
 
@@ -322,7 +328,7 @@ node and its actions in the BuildGrid `jobs` table with a `worker_name`.
 scheduler:
   network-retries: 8
   fetchers: 8
-  builders: 32
+  builders: 16
   pushers: 4
 build:
   max-jobs: 12

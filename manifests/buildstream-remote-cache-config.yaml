@@ -8,15 +8,17 @@ metadata:
     app.kubernetes.io/component: buildstream
 
 data:
-  # Element builds are BuildGrid actions queued cluster-wide; `builders` is how
-  # many the coordinator keeps in flight. Keep it above the total worker slot
-  # count (buildgrid-worker CONCURRENT_JOBS x nodes) so a newly added node gets
-  # work immediately instead of waiting for this value to change.
+  # Element builds are BuildGrid actions; `builders` is how many the
+  # coordinator keeps in flight. Each element action holds a worker slot while
+  # its GNOME recc compiles run as separate actions, so keep `builders` well
+  # below the worker slots of a single node (buildgrid-worker CONCURRENT_JOBS)
+  # or element actions can occupy every slot and starve their own compiles.
+  # Compile fan-out, not this value, is what spreads work across new nodes.
   dakota-buildstream.conf: |
     scheduler:
       network-retries: 8
       fetchers: 8
-      builders: 32
+      builders: 16
       pushers: 4
     build:
       max-jobs: 12

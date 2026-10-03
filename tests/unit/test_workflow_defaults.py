@@ -33,7 +33,7 @@ def test_execution_and_storage_share_one_cas():
     assert host(remote["action-cache-service"]["url"]) == BUILDBARN_HOST
 
     controller = yaml.load(manifest("buildgrid-controller.yaml")[0]["data"]["controller.yml"], Loader=_Tagged)
-    assert [host(s["url"]) for s in controller["storages"]] == [BUILDBARN_HOST]
+    assert [host(s["url"]) for s in controller["storages"] if "url" in s] == [BUILDBARN_HOST]
     assert [host(c["url"]) for c in controller["caches"]] == [BUILDBARN_HOST]
 
     cas_front = yaml.load(manifest("buildgrid-cas.yaml")[0]["data"]["cas.yml"], Loader=_Tagged)
@@ -69,3 +69,14 @@ def test_controller_and_bots_share_one_scheduler():
     strip = lambda schedulers: [{k: v for k, v in s.items() if k != "sql"} for s in schedulers]
     assert strip(controller["schedulers"]) == strip(bots["schedulers"])
     assert controller["connections"][0]["connection-string"] == bots["connections"][0]["connection-string"]
+
+
+def test_element_builds_cannot_starve_their_own_compiles():
+    # An element action holds a worker slot while its recc compiles queue as
+    # separate actions. If BuildStream can keep as many element actions in
+    # flight as one node has slots, a single-node grid deadlocks.
+    data = manifest("buildstream-remote-cache-config.yaml")[0]["data"]
+    builders = yaml.safe_load(data["dakota-buildstream.conf"])["scheduler"]["builders"]
+    worker = manifest("buildgrid-worker.yaml")[0]["spec"]["template"]["spec"]["containers"][0]
+    slots = int({e["name"]: e.get("value") for e in worker["env"]}["CONCURRENT_JOBS"])
+    assert builders < slots

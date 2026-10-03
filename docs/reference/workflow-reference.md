@@ -57,10 +57,12 @@ template add or rename.
 - **Source fidelity:** builds the exact dakota commit unmodified. The workflow
   applies no element, junction, or patch-queue changes; upstream GNOME `recc`
   defaults apply when the pinned gnome-build-meta declares them.
-- **Capacity:** the coordinator keeps `scheduler.builders: 32` actions in flight
-  with `max-jobs: 12` per action. Actions queue in BuildGrid and run on the
-  `worker` DaemonSet (one per node, `CONCURRENT_JOBS` slots each); a new node
-  adds capacity with no config change. The workflow verifies its generated
+- **Capacity:** the coordinator keeps `scheduler.builders: 16` element actions
+  in flight with `max-jobs: 12` each; GNOME recc fans each element out into
+  compile actions. All actions queue in BuildGrid and run on the `worker`
+  DaemonSet (one per node, `CONCURRENT_JOBS: 32` slots each); `builders` stays
+  below one node's slots so element actions cannot starve their own compiles.
+  A new node adds capacity with no config change. The workflow verifies its generated
   remote-execution configuration before it invokes BuildStream.
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.

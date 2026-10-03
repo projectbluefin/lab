@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from threading import Barrier, Event
 from types import SimpleNamespace
 
 import pytest
@@ -227,6 +228,33 @@ def test_grpc_matches_upstream_wire_schema_and_returns_empty(build_directory, gr
     request = grpc_server.protocol.request_type(temporary_directory="action/tmp")
     assert request.SerializeToString() == b"\x0a\x0aaction/tmp"
     assert request.DESCRIPTOR.full_name == "buildbarn.tmp_installer.InstallTemporaryDirectoryRequest"
+
+
+def test_readiness_saturation_queues_action_installation(build_directory, grpc_server, monkeypatch):
+    action = make_action(build_directory)
+    occupied = Barrier(sandbox.MAX_WORKERS + 1)
+    release = Event()
+
+    def readiness():
+        occupied.wait(timeout=5)
+        assert release.wait(timeout=5)
+
+    monkeypatch.setattr(grpc_server.preparer, "check_readiness", readiness)
+    probes = [grpc_server.readiness.future(b"", timeout=10) for _ in range(sandbox.MAX_WORKERS)]
+    installation = None
+    try:
+        occupied.wait(timeout=5)
+        installation = grpc_server.install.future(b"\x0a\x0aaction/tmp", timeout=10)
+        # All execution threads are busy. The action must wait, not receive
+        # RESOURCE_EXHAUSTED because health probes occupy the RPC limit.
+        with pytest.raises(grpc_server.protocol.grpc.FutureTimeoutError):
+            installation.result(timeout=0.2)
+    finally:
+        release.set()
+    for probe in probes:
+        assert probe.result(timeout=5) == b""
+    assert installation.result(timeout=5) == b""
+    assert mode(action / "root/dev/shm") == 0o1777
 
 
 @pytest.mark.parametrize("payload", [b"", b"\x0a\x06../tmp", b"\x0a\xff"])

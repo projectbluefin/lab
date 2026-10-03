@@ -162,11 +162,16 @@ test pods across whichever nodes are schedulable.
 BuildStream remote execution runs on **BuildGrid** in the `buildgrid` namespace
 (`manifests/buildgrid-*.yaml`):
 
-- `controller` — Deployment, 1 replica, Service
-  `controller.buildgrid.svc.cluster.local:50051` serving Execution, Operations,
-  and Bots.
+- `controller` — Deployment, Service
+  `controller.buildgrid.svc.cluster.local:50051` serving Execution and
+  Operations to BuildStream and nested recc actions.
+- `bots` — Deployment, Service `bots.buildgrid.svc.cluster.local:50051` serving
+  only the Remote Workers API, so worker bot sessions never compete with
+  Execute streams.
+- `cas` — stateless Deployment, Service `cas.buildgrid.svc.cluster.local:50051`:
+  GetTree-capable CAS/ByteStream for worker casd, stored in Buildbarn.
 - `database` — Postgres StatefulSet on a local-path PVC holding scheduler state;
-  NetworkPolicy limits access to controller pods.
+  NetworkPolicy limits access to the controller and bots pods.
 - `worker` — DaemonSet, one privileged pod per node running `buildbox-casd` and
   `buildbox-worker` with `buildbox-run-bubblewrap` (private PID namespace, fresh
   `/proc` per action). Adding a node adds a worker and capacity.

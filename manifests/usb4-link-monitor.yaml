@@ -12,8 +12,10 @@
 # hostNetwork gives the pod the host network namespace, so /sys/class/net
 # shows the host's thunderbolt0 and the TCP probe routes over the tb link.
 #
-# The loop also reconciles two host-level settings that nothing else persists:
+# The loop also reconciles three host-level settings that nothing else persists:
 # - thunderbolt0 TSO stays OFF (it destroys forwarded pod-to-pod throughput)
+# - thunderbolt0 MTU stays 9000 to carry the 9000-byte pod MTU (flannel CNI
+#   conflist on each host, docs/ops/k3s-tuning.md)
 # - DNS (port 53) stays pinned to the main table via ip rule pref 5208
 apiVersion: v1
 kind: ServiceAccount
@@ -125,6 +127,15 @@ spec:
                      | grep -q "^tcp-segmentation-offload: on"; then
                   echo "thunderbolt0: disabling TSO (breaks forwarded pod traffic)"
                   nsenter -t 1 -m -n -- /usr/sbin/ethtool -K thunderbolt0 tso off || true
+                fi
+
+                # Pods run at MTU 9000 (flannel CNI conflist on each host), so the
+                # link that forwards them must carry 9000-byte frames. Measured
+                # host-to-host over thunderbolt0: 5.2 Gb/s at 1500, 8.5 Gb/s at
+                # 9000. NetworkManager resets the MTU on link re-init.
+                if [[ "$(cat ${IF}/mtu 2>/dev/null)" != "9000" && -e "${IF}" ]]; then
+                  echo "thunderbolt0: setting MTU 9000"
+                  nsenter -t 1 -m -n -- /usr/sbin/ip link set thunderbolt0 mtu 9000 || true
                 fi
 
                 # Ensure DNS traffic (UDP/TCP port 53) is ALWAYS routed via Ethernet (main table)

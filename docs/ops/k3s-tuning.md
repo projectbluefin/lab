@@ -158,6 +158,41 @@ the CNI.
 
 ---
 
+## Pod MTU 9000 — both nodes
+
+Cross-node pod traffic (CAS between BuildGrid workers and Buildbarn, Zot pushes)
+is forwarded over `thunderbolt0`. flannel host-gw takes its MTU from the default
+route interface (`enp191s0`, 1500), and thunderbolt-net is packet-rate bound at
+that size. Measured with `thunderbolt0` TSO off:
+
+| Path | MTU 1500 | MTU 9000 |
+|---|---|---|
+| host → host over `thunderbolt0` | 5.2 Gb/s | 8.5 Gb/s |
+| pod → pod over `thunderbolt0` | 4.8 Gb/s | 8.6 Gb/s |
+| host → host over `enp191s0` | 2.4 Gb/s | — |
+
+Each node carries, outside GitOps:
+
+```yaml
+# /etc/rancher/k3s/config.yaml (ghost: k3s, exo-0: k3s-agent)
+flannel-cni-conf: /etc/rancher/k3s/flannel-cni.conflist
+```
+
+`/etc/rancher/k3s/flannel-cni.conflist` is the k3s-generated conflist with
+`"mtu": 9000` added to the flannel `delegate`. `usb4-link-monitor` keeps
+`thunderbolt0` at MTU 9000. Traffic that leaves through `enp191s0` (internet,
+LAN, USB4-down fallback) gets ICMP fragmentation-needed from the host, so TCP
+path-MTU discovery shrinks it to 1500.
+
+Apply without killing running pods: write both files, `systemctl restart k3s`
+(or `k3s-agent`; running containers survive), `ip link set cni0 mtu 9000`,
+then roll only the workloads that should get 9000-byte veths. Pods created
+after the restart get MTU 9000 automatically. Do not use `k3s-killall.sh` for
+this: it kills the control plane, Zot, and BuildGrid's Postgres. A new node
+needs the same two files before it carries pod traffic over USB4.
+
+---
+
 ## Framework Desktop Nodes
 
 When adding Framework laptop or desktop nodes as k3s workers, no changes to this

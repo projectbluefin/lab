@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-performance-tuning
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: node-performance-tuning
+    app.kubernetes.io/component: node-tuning
+    app.kubernetes.io/part-of: bluefin-test-suite
+  annotations:
+    bluefin.io/description: |
+      Holds every build node at maximum sustained CPU performance: ACPI
+      platform_profile=performance (raises the Strix Halo package power limit
+      over the firmware "balanced" default) and amd-pstate EPP=performance on
+      every CPU. Both are runtime sysfs settings that a reboot, tuned, or
+      power-profiles-daemon can reset, so the loop re-applies them every 60s
+      and logs only when it had to change something. Nodes without an ACPI
+      platform profile or EPP control are left untouched.
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-performance-tuning
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: node-performance-tuning
+        app.kubernetes.io/component: node-tuning
+        app.kubernetes.io/part-of: bluefin-test-suite
+    spec:
+      tolerations:
+        # Intentionally exclude unreachable/not-ready so a down node does not
+        # inflate desiredNumberScheduled and break ArgoCD health checks.
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: enforce
+          image: ghcr.io/projectbluefin/lab-runner@sha256:767777acd14e340698f31992e6e2cc9bc1b2009ccb1472dfcfd9c7f6e9d60e29 # 26.08.2
+          command: [bash, -c]
+          args:
+            - |
+              set -uo pipefail
+              SYS=/host-sys
+              set_if() {
+                local file="$1" want="$2" have
+                [[ -w "${file}" ]] || return 0
+                have="$(<"${file}")"
+                if [[ "${have}" != "${want}" ]]; then
+                  echo "${want}" > "${file}" && echo "$(date -u +%FT%TZ) ${file#${SYS}}: ${have} -> ${want}"
+                fi
+              }
+              while true; do
+                set_if "${SYS}/firmware/acpi/platform_profile" performance
+                for epp in "${SYS}"/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+                  set_if "${epp}" performance
+                done
+                sleep 60
+              done
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: host-sys
+              mountPath: /host-sys
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+              ephemeral-storage: 16Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+              ephemeral-storage: 64Mi
+      volumes:
+        - name: host-sys
+          hostPath:
+            path: /sys
+            type: Directory
+      terminationGracePeriodSeconds: 5

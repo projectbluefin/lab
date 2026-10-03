@@ -126,6 +126,13 @@ breaks hermeticity.
 - Adding a node adds a worker: the DaemonSet schedules a pod, the pod opens a
   bot session with the controller, and BuildGrid's queue hands it actions. No
   config change is needed.
+- Nodes run at full sustained CPU power: `manifests/node-performance-tuning.yaml`
+  holds ACPI `platform_profile=performance` and amd-pstate EPP `performance`
+  on every node, re-applying every 60s because reboots, tuned, and
+  power-profiles-daemon reset them. Under the firmware `balanced` profile the
+  Strix Halo nodes run at a lower package power limit. Check with
+  `kubectl -n kube-system logs ds/node-performance-tuning`: it logs only the
+  settings it had to change.
 - Work spreads by fan-out: with gnome-build-meta's `recc: remote-execution`,
   each element action submits its compiles as separate actions, so one element
   can queue hundreds of actions that any worker drains. `scheduler.builders` (16)

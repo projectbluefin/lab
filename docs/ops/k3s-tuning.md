@@ -195,9 +195,16 @@ needs the same two files before it carries pod traffic over USB4.
 
 ## Framework Desktop Nodes
 
-When adding Framework laptop or desktop nodes as k3s workers, no changes to this
-file are required. Workers join via the standard `K3S_URL` / `K3S_TOKEN`
-registration and are immediately schedulable.
+Workers join via the standard `K3S_URL` / `K3S_TOKEN` registration and are
+immediately schedulable, and the BuildGrid worker DaemonSet gives them a bot.
+They are not first-class build nodes until three manual steps are done:
+
+1. The flannel MTU files from [Pod MTU 9000](#pod-mtu-9000--both-nodes).
+   Without them the node mints MTU 1500 pods on a 9000 network.
+2. A static `ip rule ... to <peer pod CIDR> lookup 40` route over
+   `thunderbolt0` on every host pair. Otherwise its cross-node traffic stays on 2.5GbE.
+3. A peer entry in `manifests/usb4-link-monitor.yaml`. Its `case` exits on
+   unknown nodes, so the node never gets a `usb4-link=up` label.
 
 Do not add node selectors to steer workloads toward local disks. Define an
 explicit non-root local-path mapping for the node, then let

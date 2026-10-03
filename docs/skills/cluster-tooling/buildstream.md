@@ -58,15 +58,49 @@ remote-cache-only run is not an acceptable substitute.
   hardware to test NVIDIA runtime execution. The Dakota
   commit poller pins the checkout to the exact GitHub SHA
   it observed.
-- **Buildbarn RE sandbox device nodes**: `bb_runner` with
-  `chrootIntoInputRoot: true` can fail when `/dev/null`, `/dev/zero`,
-  `/dev/random`, and `/dev/urandom` are missing inside the chroot. The cluster-side
-  fix is now in the manifests: `manifests/buildbarn-worker.yaml` creates a
-  minimal `/worker/dev` tree with those nodes, and `manifests/buildbarn-config.yaml`
-  sets `bb_runner.devDirectoryPath` to `/worker/dev`. That removes the old
-  device-node failure mode without requiring a cache-only fallback for this
-  specific issue. A failing RE action must stop the build for repair; never
-  route the work to a local or Ethernet-backed fallback.
+- **Buildbarn RE sandbox device nodes:** with `chrootIntoInputRoot: true`,
+  actions need character devices inside their input root. The supported setting
+  is `worker.jsonnet`'s per-runner `inputRootCharacterDeviceNodes`; `bb_worker`
+  stages `null`, `zero`, `random`, `urandom`, and `tty` into each action's
+  `root/dev` before execution. The init container's `/worker/dev` tree is not
+  the mechanism that populates the action chroot. There is no supported
+  `bb_runner.devDirectoryPath` field in the pinned runner schema.
+- **Per-action POSIX semaphore directory:** `runner.jsonnet` uses the upstream
+  `temporaryDirectoryInstaller` hook over the pod-local
+  `unix:///run/buildbarn/sandbox/preparer.sock`. Before every action, the
+  `sandbox-preparer` validates the relative `<action>/tmp` path and existing
+  sibling `root` before creating `root/dev/shm` with mode `01777`. Traversal of
+  the configured build path and action tree uses dir-fd `O_DIRECTORY|O_NOFOLLOW`
+  opens and relative mkdir operations; escapes, symlinks, and missing layouts
+  fail closed. Only `shm` is chmodded, never `root` or `dev`. A disk-backed directory is
+  sufficient for POSIX named semaphores; no new tmpfs or bind mount is needed.
+  Each action owns its directory, which is removed with the native action tree;
+  host `/dev/shm` and other actions' semaphore files are never shared. This does
+  not change `TMPDIR`, input-root permissions, or the existing 12 action slots.
+  No package/element workaround or BuildGrid migration is part of this fix.
+- **Fail-closed readiness and evidence:** the sidecar readiness probe executes
+  the helper's `--check` CLI, which calls the actual gRPC `CheckReadiness`, not
+  merely a socket-existence check. The pinned runner also calls that RPC during
+  its own readiness check and refuses to execute an action if installation
+  fails. A successful helper probe proves the service/build-directory health
+  only; it does not prove SDK-root execution, semaphore creation inside the
+  chroot, or Dakota image production. After GitOps reconciliation and rollout,
+  require a real RE semaphore smoke action, full SDK-root execution, and a
+  successful distributed Dakota image build before claiming recovery. A failing
+  RE action must stop the build for repair; never route to local or
+  Ethernet-backed fallback. Existing USB4 and admission gates remain.
+
+Supported upstream contract: the worker and runner-installer tag
+`20260722T162832Z-236bcd9` corresponds to bb-remote-execution commit
+`236bcd95eb8fd2136807f8f6b47093639311a9f1`. Use these pinned source references
+when changing the integration (Context7 has no matching Buildbarn library;
+the pinned upstream source is authoritative):
+
+- [Runner configuration schema](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/proto/configuration/bb_runner/bb_runner.proto): `temporary_directory_installer` is a gRPC client configuration.
+- [Temporary-directory runner wrapper](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/runner/temporary_directory_installing_runner.go): installation precedes every `Run`; helper readiness precedes runner readiness.
+- [Installer wire schema](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/proto/tmp_installer/tmp_installer.proto): service `buildbarn.tmp_installer.TemporaryDirectoryInstaller`, request string `temporary_directory = 1`, and `google.protobuf.Empty` replies/readiness request.
+- [Native local executor](https://github.com/buildbarn/bb-remote-execution/blob/236bcd95eb8fd2136807f8f6b47093639311a9f1/pkg/builder/local_build_executor.go): worker stages character devices into `root/dev` and passes the sibling `tmp` path relative to the build directory.
+
 - **Buildbarn RE sandbox has no `/proc` (open)**: device nodes were only half of
   the chroot gap. `bb_runner` does not mount `/proc` into the input root, and
   upstream has no configuration option that does — it is tracked as

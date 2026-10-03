@@ -5,8 +5,9 @@ import io
 import os
 import shutil
 import subprocess
+import sys
+import types
 from pathlib import Path
-
 import pytest
 import yaml
 
@@ -103,7 +104,10 @@ def test_generated_mozjs_patch_handles_optional_cpuinfo(tmp_path, monkeypatch, c
         "  ref: pinned\n- kind: patch\n  path: patches/mozjs/bmo1973993-fix-installed-headers.patch\n"
         "- kind: patch\n  path: patches/mozjs/bmo1973994-fix-os-dependent-headers.patch\n"
         "- kind: patch\n  path: patches/mozjs/python-3.14.patch\n\nbuild-depends:\n"
-        "- (@): include/clang-for-recc.yml\n"
+        "- (@): include/clang-for-recc.yml\n\nvariables:\n  optimize-debug: \"false\"\n\n"
+        "environment:\n  MAXJOBS: '%{max-jobs}'\n\nenvironment-nocache:\n- MAXJOBS\n\n"
+        "config:\n  configure-commands:\n  - |\n    cat >mozconfig <<EOF\n"
+        "    ac_add_options --prefix=\"%{prefix}\"\n"
     )
     (tmp_path / "patches/mozjs").mkdir(parents=True)
     outer = tmp_path / "outer.patch"
@@ -114,7 +118,21 @@ def test_generated_mozjs_patch_handles_optional_cpuinfo(tmp_path, monkeypatch, c
                    check=True, capture_output=True, timeout=10)
     source = tmp_path / "python/mozbuild/mozbuild/telemetry.py"
     source.parent.mkdir(parents=True)
-    source.write_text('''import os
+    source.write_text('''# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+"""
+This file contains functions used for telemetry.
+"""
+
+import os
+import platform
+import sys
+
+import distro
+import mozpack.path as mozpath
+
 
 def cpu_brand_linux():
     """
@@ -125,13 +143,21 @@ def cpu_brand_linux():
             if line.startswith("model name"):
                 _, brand = line.split(": ", 1)
                 return brand.rstrip()
+    # not found?
     return None
 ''')
     subprocess.run(["patch", "--batch", "--fuzz=0", "-p1", "--input",
                     str(tmp_path / "patches/mozjs/proc-cpuinfo.patch")], cwd=tmp_path,
                    check=True, capture_output=True, timeout=10)
     namespace = {}
-    exec(compile(source.read_text(), str(source), "exec"), namespace)
+    with monkeypatch.context() as context:
+        context.setitem(sys.modules, "distro", types.ModuleType("distro"))
+        mozpack = types.ModuleType("mozpack")
+        mozpack_path = types.ModuleType("mozpack.path")
+        mozpack.path = mozpack_path
+        context.setitem(sys.modules, "mozpack", mozpack)
+        context.setitem(sys.modules, "mozpack.path", mozpack_path)
+        exec(compile(source.read_text(), str(source), "exec"), namespace)
     original_exists, original_open = os.path.exists, open
 
     def cpuinfo_exists(path):

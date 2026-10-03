@@ -293,6 +293,11 @@ data:
   runner.jsonnet: |
     {
       buildDirectoryPath: '/worker/build',
+      // Pinned bb_runner calls this helper before each action and during
+      // readiness checks; failures prevent execution without a prepared shm.
+      temporaryDirectoryInstaller: {
+        address: 'unix:///run/buildbarn/sandbox/preparer.sock',
+      },
       grpcServers: [{
         listenPaths: ['/worker/runner'],
         authenticationPolicy: { allow: {} },

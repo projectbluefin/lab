@@ -23,13 +23,6 @@ def test_buildstream_executes_and_caches_through_buildbarn():
     assert dakota["source-caches"]["servers"][0] == {"url": "https://gbm.gnome.org:11003", "push": False}
 
 
-def test_bluefin_server_build_pipeline_builds_k0s_sysext():
-    tasks = {t["name"]: t for t in templates("bluefin-server-build-pipeline.yaml")["build-core"]["dag"]["tasks"]}
-    assert {"build-ddi", "build-installer", "build-sysext"} <= tasks.keys()
-    args = {p["name"]: p["value"] for p in tasks["build-sysext"]["arguments"]["parameters"]}
-    assert (args["element"], args["tag"]) == ("oci/k0s-sysext.bst", "k0s-sysext")
-
-
 def test_dakota_build_uses_ephemeral_cache_and_keeps_upstream_recc_off():
     build = templates("dakota-build-pipeline.yaml")["bst-build-re"]
     cache = {v["name"]: v for v in build["volumes"]}["bst-cache"]

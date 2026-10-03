@@ -31,7 +31,7 @@ spec:
       labels:
         app: worker
       annotations:
-        buildbarn-config-revision: "2026-09-24-no-recc"
+        buildbarn-config-revision: "2026-10-03-action-shm"
         prometheus.io/scrape: "true"
         prometheus.io/port: "9980"
     spec:
@@ -98,6 +98,53 @@ spec:
               name: fuse
             - mountPath: /bb
               name: bb-runner-bin
+        - name: sandbox-preparer
+          image: 192.168.1.102:30500/bst2@sha256:ce272e0ae4b59251680b8a70645740640ced17689e21268ddc037614c755f734
+          imagePullPolicy: IfNotPresent
+          command: [python3, /sandbox/prepare_buildbarn_sandbox.py]
+          args:
+            - --build-directory
+            - /worker/build
+            - --listen
+            - unix:/run/buildbarn/sandbox/preparer.sock
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            privileged: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            seLinuxOptions:
+              type: spc_t
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            exec:
+              command:
+                - python3
+                - /sandbox/prepare_buildbarn_sandbox.py
+                - --build-directory
+                - /worker/build
+                - --listen
+                - unix:/run/buildbarn/sandbox/preparer.sock
+                - --check
+            periodSeconds: 5
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          volumeMounts:
+            - mountPath: /worker
+              name: worker
+            - mountPath: /run/buildbarn/sandbox
+              name: sandbox-socket
+            - mountPath: /sandbox
+              name: sandbox-preparer-script
+              readOnly: true
         - name: runner
           image: cgr.dev/chainguard/wolfi-base@sha256:02dab76bd852a70556b5b2002195c8a5fdab77d323c433bf6642aab080489795
           command: [/bb/bb_runner, /config/runner.jsonnet]
@@ -139,9 +186,21 @@ spec:
               name: fuse
             - mountPath: /bb
               name: bb-runner-bin
+            - mountPath: /run/buildbarn/sandbox
+              name: sandbox-socket
       volumes:
         - name: bb-runner-bin
           emptyDir: {}
+        # Only the preparer and runner share this socket; it is never exposed
+        # on the host or through a Service.
+        - name: sandbox-socket
+          emptyDir: {}
+        - name: sandbox-preparer-script
+          configMap:
+            name: buildbarn-sandbox-preparer
+            items:
+              - key: prepare_buildbarn_sandbox.py
+                path: prepare_buildbarn_sandbox.py
         - name: fuse
           hostPath:
             path: /dev/fuse

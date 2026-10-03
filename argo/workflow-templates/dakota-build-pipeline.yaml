@@ -356,161 +356,182 @@ spec:
                 path: buildstream.conf
               - key: remote-execution.conf
                 path: remote-execution.conf
-      script:
-        image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
-        command: [bash]
-        securityContext:
-          privileged: true
-          seLinuxOptions:
-            type: spc_t
-        env:
-          - name: GRPC_POLL_STRATEGY
-            value: poll
-          - name: GRPC_ENABLE_FORK_SUPPORT
-            value: "1"
-          # The BuildStream image used by this workflow only accepts the
-          # `fuse` and `copy-or-link` staging backends. The unsupported
-          # `copy` backend crashes immediately with a buildbox-casd startup
-          # error, so use `copy-or-link` here.
-          - name: BUILDBOX_STAGER
-            value: copy-or-link
-          - name: XDG_CACHE_HOME
-            value: "/root/.cache"
-        resources:
-          requests:
-            cpu: "2"
-            memory: 4Gi
-            ephemeral-storage: 10Gi
-          limits:
-            cpu: "4"
-            memory: 8Gi
-            ephemeral-storage: 50Gi
+      # One pod, two containers sharing the per-pod CAS PVC: `main` (bst2)
+      # builds and checks the OCI layout out onto the PVC, then `publish`
+      # (distroless fsdk-containers skopeo) copies it straight to Zot. bst2
+      # ships podman but no skopeo, and the podman pull-into-storage + push
+      # round trip cost ~2 minutes per variant.
+      containerSet:
         volumeMounts:
-          - name: fuse
-            mountPath: /dev/fuse
           - name: bst-cache
             mountPath: /root/.cache/buildstream
-          - name: buildstream-config
-            mountPath: /etc/buildstream
-            readOnly: true
-        source: |
-          set -euo pipefail
+        containers:
+          - name: main
+            image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
+            command: [bash, -c]
+            securityContext:
+              privileged: true
+              seLinuxOptions:
+                type: spc_t
+            env:
+              - name: GRPC_POLL_STRATEGY
+                value: poll
+              - name: GRPC_ENABLE_FORK_SUPPORT
+                value: "1"
+              # The BuildStream image used by this workflow only accepts the
+              # `fuse` and `copy-or-link` staging backends. The unsupported
+              # `copy` backend crashes immediately with a buildbox-casd startup
+              # error, so use `copy-or-link` here.
+              - name: BUILDBOX_STAGER
+                value: copy-or-link
+              - name: XDG_CACHE_HOME
+                value: "/root/.cache"
+            resources:
+              requests:
+                cpu: "2"
+                memory: 4Gi
+                ephemeral-storage: 10Gi
+              limits:
+                cpu: "4"
+                memory: 8Gi
+                ephemeral-storage: 50Gi
+            volumeMounts:
+              - name: fuse
+                mountPath: /dev/fuse
+              - name: buildstream-config
+                mountPath: /etc/buildstream
+                readOnly: true
+            args:
+              - |
+                set -euo pipefail
 
-          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
-          BST_CONF=/tmp/buildstream-cluster.conf
-          ELEMENT="{{inputs.parameters.element}}"
-          TAG="{{inputs.parameters.tag}}"
-          IMAGE_TAG="{{inputs.parameters.image-tag}}"
-          REF="{{inputs.parameters.ref}}"
-          REPO="{{inputs.parameters.repo}}"
-          mkdir -p "${XDG_CACHE_HOME}"
-          # Retries can leave stale dulwich lock files; clear them before fetch.
-          find "${XDG_CACHE_HOME}/buildstream/sources/git_repo" -type f -name '*.lock' -delete 2>/dev/null || true
-          echo "=== Cloning dakota @ ${REF} ==="
-          rm -rf /src
-          git clone --depth=1 "${REPO}" /src
-          cd /src
-          COMMIT_SHA="{{inputs.parameters.commit-sha}}"
-          if [[ -n "${COMMIT_SHA}" ]]; then
-            echo "=== Checking out exact GitHub commit ${COMMIT_SHA} ==="
-            git fetch --depth=1 origin "${COMMIT_SHA}"
-            git checkout --detach "${COMMIT_SHA}"
-          else
-            echo "=== Checking out ref ${REF} ==="
-            git fetch --depth=1 origin "${REF}"
-            git checkout --detach FETCH_HEAD
-          fi
+                cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
+                BST_CONF=/tmp/buildstream-cluster.conf
+                ELEMENT="{{inputs.parameters.element}}"
+                TAG="{{inputs.parameters.tag}}"
+                REF="{{inputs.parameters.ref}}"
+                REPO="{{inputs.parameters.repo}}"
 
-          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
-          cat >> /tmp/buildstream-cluster.conf <<EOF
-          projects:
-            ${PROJECT_NAME}:
-              artifacts:
-                override-project-caches: false
-                servers:
-                # BuildStream artifact index and storage are separate BuildBarn
-                # services. Keep both so locally built bootc artifacts are
-                # discoverable by later distributed builds.
-                - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
-                  type: index
-                  push: true
-                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  type: storage
-                  push: true
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-              source-caches:
-                # The deployed bb-remote-asset endpoint cannot FetchBlob
-                # BuildStream URNs. Override junction source-cache entries so
-                # no incompatible source-push server is inherited.
-                override-project-caches: true
-                servers:
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.freedesktop-sdk.io:11001
-                  push: false
-          EOF
+                # Fail before building if the publish container would push to GHCR.
+                _PUSH_DEST="{{inputs.parameters.registry}}"
+                registry_host="${_PUSH_DEST#*://}"
+                registry_host="${registry_host%%/*}"
+                registry_host="${registry_host%%:*}"
+                registry_host="$(printf '%s' "${registry_host}" | tr '[:upper:]' '[:lower:]')"
+                if [[ "${registry_host}" == "ghcr.io" || "${registry_host}" == *.ghcr.io ]]; then
+                  echo "ERROR: GHCR push destination is forbidden: ${_PUSH_DEST}" >&2
+                  exit 1
+                fi
 
-          echo "=== Distributed build: BuildGrid remote execution ==="
-          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
-          if ! grep -q '^        url: http://controller.buildgrid.svc.cluster.local:50051$' /tmp/buildstream-cluster.conf; then
-            echo "BuildStream remote execution is not pointed at the BuildGrid controller" >&2
-            exit 1
-          fi
-          echo "=== Verified BuildStream remote execution configuration ==="
+                mkdir -p "${XDG_CACHE_HOME}"
+                # Retries can leave stale dulwich lock files; clear them before fetch.
+                find "${XDG_CACHE_HOME}/buildstream/sources/git_repo" -type f -name '*.lock' -delete 2>/dev/null || true
+                echo "=== Cloning dakota @ ${REF} ==="
+                rm -rf /src
+                git clone --depth=1 "${REPO}" /src
+                cd /src
+                COMMIT_SHA="{{inputs.parameters.commit-sha}}"
+                if [[ -n "${COMMIT_SHA}" ]]; then
+                  echo "=== Checking out exact GitHub commit ${COMMIT_SHA} ==="
+                  git fetch --depth=1 origin "${COMMIT_SHA}"
+                  git checkout --detach "${COMMIT_SHA}"
+                else
+                  echo "=== Checking out ref ${REF} ==="
+                  git fetch --depth=1 origin "${REF}"
+                  git checkout --detach FETCH_HEAD
+                fi
 
-          # Gaming lanes are the same elements with the `gaming` project
-          # option enabled (dakota project.conf; CI: BUILD_GAMING=true).
-          # Derive from the image tag to keep template plumbing unchanged.
-          GAMING_FLAG=()
-          case "${TAG}" in
-            *gaming*) GAMING_FLAG=(-o gaming true) ;;
-          esac
+                PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
+                cat >> /tmp/buildstream-cluster.conf <<EOF
+                projects:
+                  ${PROJECT_NAME}:
+                    artifacts:
+                      override-project-caches: false
+                      servers:
+                      # BuildStream artifact index and storage are separate BuildBarn
+                      # services. Keep both so locally built bootc artifacts are
+                      # discoverable by later distributed builds.
+                      - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+                        type: index
+                        push: true
+                      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                        type: storage
+                        push: true
+                      - url: https://gbm.gnome.org:11003
+                        push: false
+                      - url: https://cache.freedesktop-sdk.io:11001
+                        push: false
+                    source-caches:
+                      # The deployed bb-remote-asset endpoint cannot FetchBlob
+                      # BuildStream URNs. Override junction source-cache entries so
+                      # no incompatible source-push server is inherited.
+                      override-project-caches: true
+                      servers:
+                      - url: https://gbm.gnome.org:11003
+                        push: false
+                      - url: https://cache.freedesktop-sdk.io:11001
+                        push: false
+                EOF
 
-          echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              --max-jobs 12 \
-              --fetchers 8 \
-              "${GAMING_FLAG[@]}" \
-              build "${ELEMENT}"
+                echo "=== Distributed build: BuildGrid remote execution ==="
+                sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
+                if ! grep -q '^        url: http://controller.buildgrid.svc.cluster.local:50051$' /tmp/buildstream-cluster.conf; then
+                  echo "BuildStream remote execution is not pointed at the BuildGrid controller" >&2
+                  exit 1
+                fi
+                echo "=== Verified BuildStream remote execution configuration ==="
 
-          # `bst artifact checkout` resolves by cache key, and every -o option
-          # is part of that key. The build above runs with the project defaults
-          # (dakota pins x86_64_v3 false, as its Justfile and CI require), so
-          # checking out with `-o x86_64_v3 true` asks for a *different*
-          # artifact than the one just built - stale content at best, a cache
-          # miss at worst. Keep both invocations on the same options.
-          echo "=== Exporting ${ELEMENT} ==="
-          EXPORT_DIR="/tmp/export-$(basename ${ELEMENT} .bst)"
-          mkdir -p "${EXPORT_DIR}"
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              --max-jobs 12 \
-              --fetchers 8 \
-              "${GAMING_FLAG[@]}" \
-              artifact checkout "${ELEMENT}" \
-              --directory "${EXPORT_DIR}"
+                # Gaming lanes are the same elements with the `gaming` project
+                # option enabled (dakota project.conf; CI: BUILD_GAMING=true).
+                # Derive from the image tag to keep template plumbing unchanged.
+                GAMING_FLAG=()
+                case "${TAG}" in
+                  *gaming*) GAMING_FLAG=(-o gaming true) ;;
+                esac
 
-          _PUSH_DEST="{{inputs.parameters.registry}}"
-          registry_host="${_PUSH_DEST#*://}"
-          registry_host="${registry_host%%/*}"
-          registry_host="${registry_host%%:*}"
-          registry_host="$(printf '%s' "${registry_host}" | tr '[:upper:]' '[:lower:]')"
-          if [[ "${registry_host}" == "ghcr.io" || "${registry_host}" == *.ghcr.io ]]; then
-            echo "ERROR: GHCR push destination is forbidden: ${_PUSH_DEST}" >&2
-            exit 1
-          fi
+                echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
+                bst --config "${BST_CONF}" \
+                    --no-interactive \
+                    --max-jobs 12 \
+                    --fetchers 8 \
+                    "${GAMING_FLAG[@]}" \
+                    build "${ELEMENT}"
 
-          echo "=== Pushing to local Zot ==="
-          if command -v skopeo >/dev/null 2>&1; then
-            skopeo copy --dest-tls-verify=false "oci:${EXPORT_DIR}" "docker://{{inputs.parameters.registry}}/${TAG}:${IMAGE_TAG}"
-          else
-            IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:${IMAGE_TAG}" --tls-verify=false
-            podman rmi "${IMAGE_ID}" 2>/dev/null || true
-          fi
-
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:${IMAGE_TAG} ==="
+                # `bst artifact checkout` resolves by cache key, and every -o option
+                # is part of that key. The build above runs with the project defaults
+                # (dakota pins x86_64_v3 false, as its Justfile and CI require), so
+                # checking out with `-o x86_64_v3 true` asks for a *different*
+                # artifact than the one just built - stale content at best, a cache
+                # miss at worst. Keep both invocations on the same options.
+                # The publish container reads this directory from the shared
+                # bst-cache volume after this container exits 0.
+                echo "=== Exporting ${ELEMENT} ==="
+                EXPORT_DIR="${XDG_CACHE_HOME}/buildstream/oci-export"
+                rm -rf "${EXPORT_DIR}"
+                mkdir -p "${EXPORT_DIR}"
+                bst --config "${BST_CONF}" \
+                    --no-interactive \
+                    --max-jobs 12 \
+                    --fetchers 8 \
+                    "${GAMING_FLAG[@]}" \
+                    artifact checkout "${ELEMENT}" \
+                    --directory "${EXPORT_DIR}"
+                echo "=== OCI layout ready for publish ==="
+          - name: publish
+            dependencies: [main]
+            image: ghcr.io/projectbluefin/skopeo@sha256:2e83b66c8ee7d045cb4ba9dacaea2c3a5d9d7a5d8daefd81b895b84f1cfa3258 # 26.08.2
+            command: [skopeo]
+            args:
+              - copy
+              - --dest-tls-verify=false
+              - oci:/root/.cache/buildstream/oci-export
+              - "docker://{{inputs.parameters.registry}}/{{inputs.parameters.tag}}:{{inputs.parameters.image-tag}}"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+                ephemeral-storage: 1Gi
+              limits:
+                cpu: "1"
+                memory: 2Gi
+                ephemeral-storage: 5Gi

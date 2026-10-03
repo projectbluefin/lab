@@ -185,138 +185,166 @@ spec:
         - name: dev-keys
           secret:
             secretName: bluefin-server-dev-boot-keys
-      script:
-        image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
-        command: [bash]
-        securityContext:
-          privileged: true
-          seLinuxOptions:
-            type: spc_t
-        # Element builds run on the BuildGrid workers; this pod only
-        # coordinates, fetches sources and exports the result.
-        resources:
-          requests:
-            cpu: "2"
-            memory: 4Gi
-            ephemeral-storage: 10Gi
-          limits:
-            cpu: "4"
-            memory: 8Gi
-            ephemeral-storage: 50Gi
-        env:
-          - name: GITHUB_TOKEN
-            valueFrom:
-              secretKeyRef:
-                name: github-token
-                key: token
-          - name: GRPC_POLL_STRATEGY
-            value: poll
-          - name: GRPC_ENABLE_FORK_SUPPORT
-            value: "1"
-          # Avoid the FUSE staging backend; BuildStream exits 255 in this lab
-          # environment when the FUSE stager crashes during source staging.
-          - name: BUILDBOX_STAGER
-            value: copy-or-link
+      # One pod, two containers sharing the per-pod CAS PVC: `main` (bst2)
+      # builds and leaves an OCI layout on the PVC, then `publish`
+      # (distroless fsdk-containers skopeo) copies it straight to Zot. bst2
+      # ships podman but no skopeo.
+      containerSet:
         volumeMounts:
-          - name: fuse
-            mountPath: /dev/fuse
           - name: bst-cache
             mountPath: /root/.cache/buildstream
-          - name: buildstream-config
-            mountPath: /etc/buildstream
-            readOnly: true
-          - name: dev-keys
-            mountPath: /dev-keys
-            readOnly: true
-        source: |
-          set -euo pipefail
+        containers:
+          - name: main
+            image: "{{inputs.parameters.registry}}/bst2:64eb0b4930d57a92710822898fb73af6cc1ae35d"
+            command: [bash, -c]
+            securityContext:
+              privileged: true
+              seLinuxOptions:
+                type: spc_t
+            # Element builds run on the BuildGrid workers; this container only
+            # coordinates, fetches sources and exports the result.
+            resources:
+              requests:
+                cpu: "2"
+                memory: 4Gi
+                ephemeral-storage: 10Gi
+              limits:
+                cpu: "4"
+                memory: 8Gi
+                ephemeral-storage: 50Gi
+            env:
+              - name: GITHUB_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: github-token
+                    key: token
+              - name: GRPC_POLL_STRATEGY
+                value: poll
+              - name: GRPC_ENABLE_FORK_SUPPORT
+                value: "1"
+              # Avoid the FUSE staging backend; BuildStream exits 255 in this lab
+              # environment when the FUSE stager crashes during source staging.
+              - name: BUILDBOX_STAGER
+                value: copy-or-link
+            volumeMounts:
+              - name: fuse
+                mountPath: /dev/fuse
+              - name: buildstream-config
+                mountPath: /etc/buildstream
+                readOnly: true
+              - name: dev-keys
+                mountPath: /dev-keys
+                readOnly: true
+            args:
+              - |
+                set -euo pipefail
 
-          ELEMENT="{{inputs.parameters.element}}"
-          TAG="{{inputs.parameters.tag}}"
-          REF="{{inputs.parameters.ref}}"
-          REPO="{{inputs.parameters.repo}}"
+                ELEMENT="{{inputs.parameters.element}}"
+                TAG="{{inputs.parameters.tag}}"
+                REF="{{inputs.parameters.ref}}"
+                REPO="{{inputs.parameters.repo}}"
 
-          echo "=== Cloning bluefin-server @ ${REF} ==="
-          rm -rf /src
-          git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN}@${REPO#https://}" /src
-          cd /src
-          # Lab builds are dev-key builds only; the images are never published.
-          mkdir -p files/boot-keys
-          tar -xzf /dev-keys/keys.tgz -C files/boot-keys
-          echo "=== ${REF} @ $(git rev-parse HEAD), dev keys ==="
-          PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
+                # Fail before building if the publish container would push to GHCR.
+                _PUSH_DEST="{{inputs.parameters.registry}}"
+                registry_host="${_PUSH_DEST#*://}"
+                registry_host="${registry_host%%/*}"
+                registry_host="${registry_host%%:*}"
+                registry_host="$(printf '%s' "${registry_host}" | tr '[:upper:]' '[:lower:]')"
+                if [[ "${registry_host}" == "ghcr.io" || "${registry_host}" == *.ghcr.io ]]; then
+                  echo "ERROR: GHCR push destination is forbidden: ${_PUSH_DEST}" >&2
+                  exit 1
+                fi
 
-          cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
-          BST_CONF=/tmp/buildstream-cluster.conf
-          cat >> /tmp/buildstream-cluster.conf <<EOF
-          projects:
-            ${PROJECT_NAME}:
-              artifacts:
-                override-project-caches: false
-                servers:
-                - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                  push: true
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-              source-caches:
-                # The deployed bb-remote-asset endpoint cannot FetchBlob/FetchDirectory
-                # BuildStream URNs (it treats them as HTTP/URN and returns UNIMPLEMENTED /
-                # PERMISSION_DENIED). Override junction source-cache entries so no
-                # incompatible source-push server is inherited.
-                override-project-caches: true
-                servers:
-                - url: https://gbm.gnome.org:11003
-                  push: false
-                - url: https://cache.projectbluefin.io:11001
-                  push: false
-          EOF
+                echo "=== Cloning bluefin-server @ ${REF} ==="
+                rm -rf /src
+                git clone --depth=1 --branch "${REF}" "https://x-access-token:${GITHUB_TOKEN}@${REPO#https://}" /src
+                cd /src
+                # Lab builds are dev-key builds only; the images are never published.
+                mkdir -p files/boot-keys
+                tar -xzf /dev-keys/keys.tgz -C files/boot-keys
+                echo "=== ${REF} @ $(git rev-parse HEAD), dev keys ==="
+                PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
 
-          echo "=== Distributed build: BuildGrid remote execution ==="
-          sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
-          if ! grep -q '^        url: http://controller.buildgrid.svc.cluster.local:50051$' /tmp/buildstream-cluster.conf; then
-            echo "BuildStream remote execution is not pointed at the BuildGrid controller" >&2
-            exit 1
-          fi
+                cp /etc/buildstream/buildstream.conf /tmp/buildstream-cluster.conf
+                BST_CONF=/tmp/buildstream-cluster.conf
+                cat >> /tmp/buildstream-cluster.conf <<EOF
+                projects:
+                  ${PROJECT_NAME}:
+                    artifacts:
+                      override-project-caches: false
+                      servers:
+                      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                        push: true
+                      - url: https://gbm.gnome.org:11003
+                        push: false
+                      - url: https://cache.projectbluefin.io:11001
+                        push: false
+                    source-caches:
+                      # The deployed bb-remote-asset endpoint cannot FetchBlob/FetchDirectory
+                      # BuildStream URNs (it treats them as HTTP/URN and returns UNIMPLEMENTED /
+                      # PERMISSION_DENIED). Override junction source-cache entries so no
+                      # incompatible source-push server is inherited.
+                      override-project-caches: true
+                      servers:
+                      - url: https://gbm.gnome.org:11003
+                        push: false
+                      - url: https://cache.projectbluefin.io:11001
+                        push: false
+                EOF
 
-          echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              build "${ELEMENT}"
+                echo "=== Distributed build: BuildGrid remote execution ==="
+                sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf
+                if ! grep -q '^        url: http://controller.buildgrid.svc.cluster.local:50051$' /tmp/buildstream-cluster.conf; then
+                  echo "BuildStream remote execution is not pointed at the BuildGrid controller" >&2
+                  exit 1
+                fi
 
-          echo "=== Exporting ${ELEMENT} ==="
-          EXPORT_DIR="/tmp/export-$(basename ${ELEMENT} .bst)"
-          mkdir -p "${EXPORT_DIR}"
-          bst --config "${BST_CONF}" \
-              --no-interactive \
-              artifact checkout "${ELEMENT}" \
-              --directory "${EXPORT_DIR}"
+                echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
+                bst --config "${BST_CONF}" \
+                    --no-interactive \
+                    build "${ELEMENT}"
 
-          _PUSH_DEST="{{inputs.parameters.registry}}"
-          registry_host="${_PUSH_DEST#*://}"
-          registry_host="${registry_host%%/*}"
-          registry_host="${registry_host%%:*}"
-          registry_host="$(printf '%s' "${registry_host}" | tr '[:upper:]' '[:lower:]')"
-          if [[ "${registry_host}" == "ghcr.io" || "${registry_host}" == *.ghcr.io ]]; then
-            echo "ERROR: GHCR push destination is forbidden: ${_PUSH_DEST}" >&2
-            exit 1
-          fi
+                # The publish container copies OCI_DIR from the shared bst-cache
+                # volume after this container exits 0.
+                echo "=== Exporting ${ELEMENT} ==="
+                OCI_DIR=/root/.cache/buildstream/oci-export
+                RAW_DIR=/root/.cache/buildstream/raw-export
+                rm -rf "${OCI_DIR}" "${RAW_DIR}"
+                mkdir -p "${RAW_DIR}"
+                bst --config "${BST_CONF}" \
+                    --no-interactive \
+                    artifact checkout "${ELEMENT}" \
+                    --directory "${RAW_DIR}"
 
-          echo "=== Pushing to local Zot ==="
-          if [ -f "${EXPORT_DIR}/index.json" ] && [ -f "${EXPORT_DIR}/oci-layout" ]; then
-            IMAGE_ID=$(podman pull "oci:${EXPORT_DIR}" | tail -1)
-            podman push "${IMAGE_ID}" "docker://{{inputs.parameters.registry}}/${TAG}:latest" --tls-verify=false
-            podman rmi "${IMAGE_ID}" 2>/dev/null || true
-          else
-            echo "Export is not an OCI layout — wrapping raw files in a scratch OCI image"
-            cat <<EOF > "${EXPORT_DIR}/Containerfile"
-          FROM scratch
-          COPY . /
-          EOF
-            podman build --tls-verify=false -t "localhost/${TAG}:latest" -f "${EXPORT_DIR}/Containerfile" "${EXPORT_DIR}"
-            podman push --tls-verify=false "localhost/${TAG}:latest" "docker://{{inputs.parameters.registry}}/${TAG}:latest"
-            podman rmi "localhost/${TAG}:latest" 2>/dev/null || true
-          fi
-
-          echo "=== Build complete: {{inputs.parameters.registry}}/${TAG}:latest ==="
+                if [ -f "${RAW_DIR}/index.json" ] && [ -f "${RAW_DIR}/oci-layout" ]; then
+                  mv "${RAW_DIR}" "${OCI_DIR}"
+                else
+                  echo "Export is not an OCI layout — wrapping raw files in a scratch OCI image"
+                  cat <<EOF > "${RAW_DIR}/Containerfile"
+                FROM scratch
+                COPY . /
+                EOF
+                  podman build --tls-verify=false -t "localhost/${TAG}:latest" -f "${RAW_DIR}/Containerfile" "${RAW_DIR}"
+                  podman push "localhost/${TAG}:latest" "oci:${OCI_DIR}"
+                  podman rmi "localhost/${TAG}:latest" 2>/dev/null || true
+                  rm -rf "${RAW_DIR}"
+                fi
+                echo "=== OCI layout ready for publish ==="
+          - name: publish
+            dependencies: [main]
+            image: ghcr.io/projectbluefin/skopeo@sha256:2e83b66c8ee7d045cb4ba9dacaea2c3a5d9d7a5d8daefd81b895b84f1cfa3258 # 26.08.2
+            command: [skopeo]
+            args:
+              - copy
+              - --dest-tls-verify=false
+              - oci:/root/.cache/buildstream/oci-export
+              - "docker://{{inputs.parameters.registry}}/{{inputs.parameters.tag}}:latest"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+                ephemeral-storage: 1Gi
+              limits:
+                cpu: "1"
+                memory: 2Gi
+                ephemeral-storage: 5Gi

@@ -64,6 +64,10 @@ template add or rename.
   below one node's slots so element actions cannot starve their own compiles.
   A new node adds capacity with no config change. The workflow verifies its generated
   remote-execution configuration before it invokes BuildStream.
+- **Publish:** `bst-build-re` is a `containerSet`. `main` (`bst2`) builds and
+  checks the OCI layout out onto the pod's CAS volume; `publish` (digest-pinned
+  `ghcr.io/projectbluefin/skopeo`) then runs one `skopeo copy` to Zot. A failed
+  build never starts `publish`.
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.
 - **Who triggers it automatically:** the `dakota-commit-poller`

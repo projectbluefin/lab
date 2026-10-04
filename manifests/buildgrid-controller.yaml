@@ -51,9 +51,11 @@ data:
     connections:
       - !sql-connection &sql
         connection-string: postgresql://bgd@database.buildgrid.svc.cluster.local:5432/bgd
+        # controller (40+30) + bots (10+10) = 90 connections at most, under
+        # Postgres max_connections=100 with room for LISTEN and admin sessions.
         pool-size: 40
         pool-timeout: 30
-        max-overflow: 60
+        max-overflow: 30
 
     # with-cache-storage makes BuildGrid walk input trees itself; a bare
     # remote-storage forwards GetTree, which Buildbarn does not implement.
@@ -156,7 +158,7 @@ data:
         connection-string: postgresql://bgd@database.buildgrid.svc.cluster.local:5432/bgd
         pool-size: 10
         pool-timeout: 30
-        max-overflow: 20
+        max-overflow: 10
 
     # with-cache-storage makes BuildGrid walk input trees itself; a bare
     # remote-storage forwards GetTree, which Buildbarn does not implement.
@@ -312,7 +314,7 @@ spec:
         app: buildgrid-bots
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-03-spread-assign"
+        buildgrid-config-revision: "2026-10-04-controller-6000-rpcs"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller

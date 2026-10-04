@@ -89,3 +89,19 @@ def test_element_builds_cannot_starve_their_own_compiles():
     slots = int({e["name"]: e.get("value") for e in worker["env"]}["CONCURRENT_JOBS"])
     lanes = int(manifest("workflow-semaphores.yaml")[0]["data"]["bst-build"])
     assert lanes * builders < slots
+
+
+# Worst replayed in-flight Execute RPCs per bst-build lane at build.max-jobs 32:
+# the measured 2026-10-03 recc load with every compile submitted at once gave
+# 3716 for two overlapping lanes.
+EXECUTE_RPCS_PER_LANE = 1860
+
+
+def test_controller_accepts_every_lane_execute_stream():
+    # Each queued or running action holds one Execute stream on the controller.
+    # Past maximum-concurrent-rpcs the controller answers RESOURCE_EXHAUSTED,
+    # which recc does not retry, so the compile and its element fail.
+    controller = yaml.load(manifest("buildgrid-controller.yaml")[0]["data"]["controller.yml"], Loader=_Tagged)
+    lanes = int(manifest("workflow-semaphores.yaml")[0]["data"]["bst-build"])
+    assert controller["thread-pool-size"] >= controller["maximum-concurrent-rpcs"]
+    assert controller["maximum-concurrent-rpcs"] >= lanes * EXECUTE_RPCS_PER_LANE

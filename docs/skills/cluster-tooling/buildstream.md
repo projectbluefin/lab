@@ -288,21 +288,28 @@ containers) of Dakota `oci/bluefin.bst` runs:
 | Kernel source fetch | 1.5-3 min | Launchpad git plus ~30 s adding 6385 objects; no lab source cache, so every run that builds the kernel pays it on the critical path |
 | Kernel build | ~8.5 min | one action |
 | initramfs, layers, `oci/bluefin.bst` | ~1 + 1-2.5 + ~3 min | sequential tail after the kernel |
-| Export (`bst artifact checkout`) | casd fetch ~15 s, then a local copy | the OCI layout is one ~10 GB uncompressed layer blob; 2.5 min (4+ min with four exports at once) under `GRPC_POLL_STRATEGY=poll` |
+| Export (`bst artifact checkout`) | 2.5-3 min (4+ min with four exports at once) | the OCI layout is one ~10 GB uncompressed layer blob, read cold from Buildbarn at ~68 MB/s (see below) |
 | Publish (skopeo, 16 CPU) | 15-20 s | compresses to a ~4.3 GB gzip layer |
 
 A fully cached run is pull plus export plus publish. When dakota CI already
 built the commit, the final `oci/*` artifacts come from
 `cache.projectbluefin.io` over the WAN (50 s-3 min) and are pushed to the lab.
 
-The coordinator container must not set `GRPC_POLL_STRATEGY=poll`.
-buildbox-casd inherits the coordinator's environment, and under the `poll`
-poller each of its gRPC streams tops out near 68 MB/s: casd `FetchTree` of the
-10 GB layer took 144 s with `poll` and 15 s without, and a plain Python
-ByteStream read of the same blob from the frontend measured 68 MB/s against
-710 MB/s. Every large blob casd moves (export, big pulls, input-root uploads)
-pays that cap. BuildStream 2 runs jobs in threads and forks plugin helpers
-from a forkserver, so it does not need `poll`.
+Export is bound by Buildbarn's cold-read path, not by the coordinator or the
+network. bb-storage serves every CAS read by copying from one shared `mmap` of
+the 420 GiB `blocks` file. The kernel's per-open-file `mmap_miss` heuristic
+turns off mmap read-around once faults on that file mostly miss the page
+cache, and ordinary build traffic (random small-blob reads against an 8 Gi
+page cache) keeps it off, so a large cold blob is read one 4 KiB page per
+fault: storage-0 showed 16,500 major faults/s and 68 MB/s of disk reads while
+serving the layer, from an NVMe that reads the same file at 2.8 GB/s with
+`O_DIRECT`. Reproduced outside bb-storage: a fresh mapping of `blocks` read
+cold regions sequentially at 2.0 GB/s, the same mapping after 400 random cold
+faults at 259 MB/s, and a new `open()` at 1.7 GB/s again. Warm (cached) parts
+of a blob stream at 0.7-1.2 GB/s. Neither the template nor the BuildStream
+config can change this. It needs a bb-storage change (read large blobs with
+`pread`, or `MADV_SEQUENTIAL` around them); a larger storage page cache
+(the pods' 8 Gi memory limit) raises the hit rate but is unmeasured.
 
 Read these timings from the pod logs; build pipelines keep their pods 2h after
 the workflow ends (`podGC` in the template).

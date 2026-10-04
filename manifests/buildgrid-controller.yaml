@@ -68,10 +68,22 @@ data:
           size: 512M
         fallback: *buildbarn
 
+    # The scheduler writes every ActionResult it records. Failed results (non-zero
+    # exit) in the shared AC are served back for 7-8 days, so a command that
+    # failed because of the grid (OOM, timeout) keeps failing until its inputs
+    # change. with-cache-action-cache drops them before the Buildbarn fallback.
     caches:
-      - !remote-action-cache &build-cache
+      - !remote-action-cache &buildbarn-ac
         url: http://frontend.buildbarn.svc.cluster.local:8980
         instance-name: ''
+      - !lru-action-cache &recent-ac
+        storage: *cas-storage
+        max-cached-refs: 4096
+        cache-failed-actions: no
+      - !with-cache-action-cache &build-cache
+        cache: *recent-ac
+        fallback: *buildbarn-ac
+        cache-failed-actions: no
 
     # Keep this scheduler block identical in controller.yml and bots.yml.
     schedulers:
@@ -171,10 +183,19 @@ data:
           size: 512M
         fallback: *buildbarn
 
+    # Keep identical to controller.yml: failed results never reach the shared AC.
     caches:
-      - !remote-action-cache &build-cache
+      - !remote-action-cache &buildbarn-ac
         url: http://frontend.buildbarn.svc.cluster.local:8980
         instance-name: ''
+      - !lru-action-cache &recent-ac
+        storage: *cas-storage
+        max-cached-refs: 4096
+        cache-failed-actions: no
+      - !with-cache-action-cache &build-cache
+        cache: *recent-ac
+        fallback: *buildbarn-ac
+        cache-failed-actions: no
 
     # Keep this scheduler block identical in controller.yml and bots.yml.
     schedulers:
@@ -246,7 +267,7 @@ spec:
         app: buildgrid-controller
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-04-controller-6000-rpcs"
+        buildgrid-config-revision: "2026-10-04-no-failed-ac"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller
@@ -314,7 +335,7 @@ spec:
         app: buildgrid-bots
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-04-controller-6000-rpcs"
+        buildgrid-config-revision: "2026-10-04-no-failed-ac"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller

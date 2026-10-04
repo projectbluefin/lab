@@ -503,6 +503,24 @@ spec:
     secondsAfterFailure: 604800    # 7d for failed runs (matches controller configmap)
 ```
 
+`OnWorkflowSuccess` deletes a successful run's pods 5 seconds after it ends,
+and with them the only copy of their logs (the lab has no log archive).
+Templates whose pod logs are the evidence — the BuildStream build pipelines,
+whose coordinator log holds the phase timings and a failed action's output —
+keep every pod for a while instead:
+
+```yaml
+spec:
+  podGC:
+    strategy: OnWorkflowCompletion
+    deleteDelayDuration: 2h
+```
+
+Set podGC in the template. A running workflow executes the spec stored at
+submission; patching `spec.podGC` on it afterwards changes nothing.
+`orphan-pod-gc` deletes Failed pods 3h after their last container finished, so
+keep `deleteDelayDuration` under 3h or that sweep wins.
+
 ## When to Use
 
 - Creating or changing an Argo WorkflowTemplate, Workflow, or CronWorkflow.

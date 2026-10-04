@@ -1,7 +1,7 @@
 # CronWorkflow: cleans up orphan pods left by node reboots every 30 minutes.
 # ContainerStatusUnknown pods (running when ghost rebooted) are invisible to
 # Argo's podGC and the k8s TTL controller — they accumulate without this sweep.
-# Also cleans Failed pods older than 1 hour that Argo podGC missed.
+# Also cleans Failed pods that finished more than 3 hours ago and Argo podGC missed.
 apiVersion: argoproj.io/v1alpha1
 kind: CronWorkflow
 metadata:
@@ -54,14 +54,23 @@ spec:
               echo "Deleted ${UNKNOWN} Unknown pods"
             fi
 
-            # 2. Failed pods older than 1 hour that Argo podGC missed
-            #    (e.g. pods from workflows deleted before Argo could GC them).
+            # 2. Failed pods that finished more than 3 hours ago and Argo podGC
+            #    missed (e.g. pods from workflows deleted before Argo could GC
+            #    them). Age counts from the last container's finish, not pod
+            #    creation, and must exceed every template's podGC
+            #    deleteDelayDuration (build pipelines keep pods 2h for their
+            #    logs); a creation-time cutoff deletes the failed pod of any
+            #    build that ran over an hour at the first sweep after it fails.
             NOW=$(date -u +%s)
-            CUTOFF=$((NOW - 3600))
+            CUTOFF=$((NOW - 10800))
             DELETED_FAILED=0
-            while IFS=' ' read -r NS POD CREATED; do
+            while IFS=' ' read -r NS POD CREATED FINISHED; do
               [[ -z "${POD}" ]] && continue
-              CT=$(date -u -d "${CREATED}" +%s 2>/dev/null || echo 0)
+              LAST="${CREATED}"
+              if [[ "${FINISHED}" != "<none>" ]]; then
+                LAST=$(tr ',' '\n' <<<"${FINISHED}" | sort | tail -n 1)
+              fi
+              CT=$(date -u -d "${LAST}" +%s 2>/dev/null || echo 0)
               if [[ "${CT}" -lt "${CUTOFF}" ]]; then
                 kubectl delete pod "${POD}" -n "${NS}" --ignore-not-found 2>/dev/null || true
                 DELETED_FAILED=$((DELETED_FAILED + 1))
@@ -69,9 +78,9 @@ spec:
             done < <(kubectl get pods -A \
               --field-selector=status.phase=Failed \
               --no-headers \
-              -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,CREATED:.metadata.creationTimestamp' \
+              -o custom-columns='NS:.metadata.namespace,NAME:.metadata.name,CREATED:.metadata.creationTimestamp,FINISHED:.status.containerStatuses[*].state.terminated.finishedAt' \
               2>/dev/null || true)
-            echo "Deleted ${DELETED_FAILED} stale Failed pods (>1h)"
+            echo "Deleted ${DELETED_FAILED} stale Failed pods (finished >3h ago)"
 
             # 3. Running/Pending pods belonging to completed or missing workflows
             echo "Checking for running/pending pods from completed/missing workflows..."

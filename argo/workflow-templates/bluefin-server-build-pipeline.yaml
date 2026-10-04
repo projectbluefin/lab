@@ -18,8 +18,11 @@ metadata:
 spec:
   serviceAccountName: argo
   activeDeadlineSeconds: 28800   # 8 hours for cold-cache OS builds + retries
+  # Keep pods (coordinator logs, bst-cache PVC) 2h after completion; see
+  # dakota-build-pipeline.
   podGC:
-    strategy: OnWorkflowSuccess
+    strategy: OnWorkflowCompletion
+    deleteDelayDuration: 2h
   ttlStrategy:
     secondsAfterCompletion: 86400   # keep successful workflows for 24h
     secondsAfterFailure: 604800     # keep failed workflows for 7d

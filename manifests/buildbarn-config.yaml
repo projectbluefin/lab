@@ -183,11 +183,12 @@ data:
           },
         },
       },
-      // fetcher available for any non-pushed assets that need to be resolved from
-      // an external URI while still allowing updates for BuildStream's pushed
-      // assets through the indexed instance.
+      // Lab clients only fetch BuildStream urn: assets they pushed. An index
+      // miss used to fall through to an http fetcher that logged two
+      // "unsupported protocol scheme urn" errors per miss (a fifth of this
+      // log) before answering NOT_FOUND; answer NOT_FOUND directly.
       fetcher: {
-        http: {},
+        'error': { code: 5, message: 'Asset not in the lab index' },
       },
       grpcServers: [{
         listenAddresses: [':8984'],

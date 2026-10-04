@@ -36,12 +36,13 @@ metadata:
    - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`). Persist fetched sources through the paired BuildBarn Remote Asset index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) and frontend CAS (`type: storage`), both `push: true`; the external artifact/source cache URLs are read-only fallbacks.
    - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
    - build the pinned upstream sources unmodified; never patch elements, junctions, or patch queues to work around the execution sandbox. A sandbox-only failure is a BuildGrid runner bug to fix in the grid.
-   - BuildStream concurrency targets the BuildGrid queue: `scheduler.builders: 16`
+   - BuildStream concurrency targets the BuildGrid queue: `scheduler.builders: 12`
      element actions, each fanning out into recc compile actions, with
-     `max-jobs: 12`. Keep `builders` below one node's `CONCURRENT_JOBS` (32) or
-     element actions occupy every slot and starve their own compiles. Adding a
-     node adds a worker with no config change. Do not serialize a healthy
-     distributed build or call cache traffic distributed execution.
+     `max-jobs: 12`. Keep `bst-build` lanes × `builders` below one node's
+     `CONCURRENT_JOBS` (32) or element actions occupy every slot and starve
+     their own compiles. Adding a node adds a worker with no config change. Do
+     not serialize a healthy distributed build or call cache traffic
+     distributed execution.
 4. Validate workflow YAML with `just lint` before push.
 5. Confirm live behavior from workflow logs/config output, not assumptions.
 6. Never use a root filesystem for persistent workload data or a `hostPath` build
@@ -188,11 +189,13 @@ Do not guess flags or chart schema.
   wall-clock savings are lost to retries and partial work. Serialize first;
   parallelize only after the cluster has enough dedicated memory capacity.
 
-- "The semaphore already limits concurrency."  
-  The `bst-build` semaphore (`"1"` in `manifests/workflow-semaphores.yaml`)
-  serializes BST pipelines; letting several coordinators run at once causes
-  collisions and preemptions. Action-level parallelism comes from BuildGrid
-  worker slots, not from raising the semaphore.
+- "Raise the semaphore until the grid is busy."
+  The `bst-build` semaphore (`"2"` in `manifests/workflow-semaphores.yaml`)
+  is capped by grid and namespace capacity, not by idle CPU: each lane can run
+  two coordinators at 20.5 CPU of limits against the 128-CPU `argo-quota`, one
+  lane peaked at 885 in-flight Execute RPCs against the controller's 2000, and
+  lanes × `builders` must stay below one node's 32 slots. Recheck all three
+  before raising it.
 
 ## Red Flags
 
@@ -216,7 +219,7 @@ Do not guess flags or chart schema.
       `kubectl get pod -n argo <pod> -o jsonpath='{.spec.nodeName}'` returns
       a Ready node with adequate allocatable resources.
 - [ ] `kubectl get configmap -n argo workflow-semaphores` shows
-      `bst-build: "1"`.
+      `bst-build: "2"`.
 - [ ] No `Preempted` events appear for the build pod after 10 minutes.
 - [ ] The build progresses past source fetches into artifact pulls/builds.
 - [ ] Workflow reaches `Succeeded`, or if it fails, the failure is a real build

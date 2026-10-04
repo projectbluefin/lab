@@ -52,8 +52,8 @@ remote-cache-only run is not an acceptable substitute.
   ```bash
   kubectl get nodes --show-labels | grep -o 'usb4-link=[a-z]*'
   ```
-  The `bst-build` semaphore in `manifests/workflow-semaphores.yaml` is `"1"`:
-  one BuildStream pipeline owns the execution lane at a time, and its variants
+  The `bst-build` semaphore in `manifests/workflow-semaphores.yaml` is `"2"`:
+  two BuildStream pipelines share the grid at once, and each pipeline's variants
   run in parallel inside it. Workflows use workflow-owned 200Gi
   `local-path` cache PVCs. The distributed workflow builds both `oci/bluefin.bst`
   (`dakota:testing`) and `oci/bluefin-nvidia.bst` (`dakota-nvidia:testing`). NVIDIA
@@ -139,14 +139,17 @@ breaks hermeticity.
   settings it had to change.
 - Work spreads by fan-out: with gnome-build-meta's `recc: remote-execution`,
   each element action submits its compiles as separate actions, so one element
-  can queue hundreds of actions that any worker drains. `scheduler.builders` (16)
+  can queue hundreds of actions that any worker drains. `scheduler.builders` (12)
   only bounds element actions in flight; `build.max-jobs` is 12 per action.
 - An element action holds a worker slot while it waits for its own compiles.
-  Keep `builders` below one node's `CONCURRENT_JOBS` (32) so element actions can
+  Each `bst-build` lane runs at most one coordinator per node, so keep lanes ×
+  `builders` below one node's `CONCURRENT_JOBS` (32) and element actions can
   never occupy every slot; `tests/unit/test_workflow_defaults.py` enforces it.
 - Every queued or running action holds one streaming Execute RPC on the
   controller, so its thread pool (2000) bounds queue depth, not worker slots.
-  When it is exhausted, clients get `Concurrent RPC limit exceeded`.
+  When it is exhausted, clients get `Concurrent RPC limit exceeded`. One lane
+  has peaked at 885 in flight (a single recc element queued 795), which is why
+  `bst-build` stops at two lanes.
 - Queued actions wait in BuildGrid, not in BuildStream or Argo. A deep queue
   with all bots busy means the grid is saturated, not broken.
 - Assignment spreads by remaining capacity. Both scheduler blocks configure
@@ -211,8 +214,8 @@ the image policy remains the long-term goal.
 
 **Worker concurrency.** To change slots per node, edit `CONCURRENT_JOBS` in
 `manifests/buildgrid-worker.yaml` and let GitOps roll the DaemonSet. Keep
-`scheduler.builders` above the new `CONCURRENT_JOBS` × node count, and check
-node CPU/memory headroom against `max-jobs` per action.
+`bst-build` lanes × `scheduler.builders` below the new `CONCURRENT_JOBS`, and
+check node CPU/memory headroom against `max-jobs` per action.
 
 Capacity guard: node memory *requests* must leave room for the BuildGrid
 worker pods and the BuildStream coordinator. Orphaned 8Gi test VMs from
@@ -284,9 +287,10 @@ reverse.
 
 2. **Use verified parallel BST capacity.** Keep independent work concurrent when
 BuildGrid workers and node requests have safe headroom. Respect actual BuildStream
-graph dependencies. Execution parallelism comes from BuildGrid worker slots, not
-from the `bst-build` semaphore, which stays at one pipeline. NVIDIA
-variants are built in parallel with continueOn (non-blocking).
+graph dependencies. The `bst-build` semaphore admits two pipelines; raise it only
+after rechecking `argo-quota` limits, controller Execute RPC headroom, and the
+lanes × `builders` slot bound. NVIDIA variants are built in parallel with
+continueOn (non-blocking).
 
 3. **Clear stale semaphore holders.** The semaphore in
 `manifests/workflow-semaphores.yaml` gates all BST build lanes. Confirm terminal
@@ -348,7 +352,7 @@ node and its actions in the BuildGrid `jobs` table with a `worker_name`.
 scheduler:
   network-retries: 8
   fetchers: 8
-  builders: 16
+  builders: 12
   pushers: 4
 build:
   max-jobs: 12

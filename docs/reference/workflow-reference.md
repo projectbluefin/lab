@@ -57,11 +57,13 @@ template add or rename.
 - **Source fidelity:** builds the exact dakota commit unmodified. The workflow
   applies no element, junction, or patch-queue changes; upstream GNOME `recc`
   defaults apply when the pinned gnome-build-meta declares them.
-- **Capacity:** the coordinator keeps `scheduler.builders: 16` element actions
+- **Capacity:** the coordinator keeps `scheduler.builders: 12` element actions
   in flight with `max-jobs: 12` each; GNOME recc fans each element out into
   compile actions. All actions queue in BuildGrid and run on the `worker`
-  DaemonSet (one per node, `CONCURRENT_JOBS: 32` slots each); `builders` stays
-  below one node's slots so element actions cannot starve their own compiles.
+  DaemonSet (one per node, `CONCURRENT_JOBS: 32` slots each). The `bst-build`
+  semaphore admits two pipelines at once; each runs at most one coordinator per
+  node, so lanes × `builders` stays below one node's slots and element actions
+  cannot starve their own compiles.
   A new node adds capacity with no config change. The workflow verifies its generated
   remote-execution configuration before it invokes BuildStream.
 - **Publish:** `bst-build-re` is a `containerSet`. `main` (`bst2`) builds and
@@ -194,7 +196,8 @@ other BST lane.
   validation path succeed.
 
 The commit CronWorkflows share one implementation. It compares
-the source SHA, defers when two BST workflows are already admitted, invokes the
+the source SHA, defers when every `bst-build` lane is busy and one more BST
+workflow is already waiting (the ceiling is read from `workflow-semaphores`), invokes the
 repository-specific build template, and writes the SHA only after that build
 succeeds. Failed builds therefore remain eligible on the next poll.
 

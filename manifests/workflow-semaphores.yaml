@@ -5,10 +5,27 @@
 #
 # Keys:
 #   bst-build          — Global Dakota/Bluefin Server BuildStream
-#                        execution lane. One pipeline owns the slot; its
-#                        variants still run in parallel, keeping both BuildBarn
-#                        workers busy without stampeding the cache or starving
-#                        lab validation.
+#                        execution lanes: how many pipelines share the
+#                        BuildGrid at once; variants still run in parallel
+#                        inside each. Two lanes is the ceiling the grid and
+#                        namespace support today:
+#                        - argo-quota limits.cpu 128: a coordinator pod is
+#                          20.5 CPU of limits (main 4 + publish 16 + init 0.5)
+#                          and a Dakota pipeline runs two at once (one per
+#                          node), so 2 lanes = 82 CPU; 3 lanes = 123 leaves
+#                          no room for QA pods.
+#                        - BuildGrid controller 2000 Execute RPCs: one lane
+#                          peaked at 885 in flight (one recc element alone
+#                          queued 795), so 2 lanes ~1770; 3 would exceed it.
+#                        - Worker slots (2 x 32): element actions hold a slot
+#                          while their recc compiles run, so 2 lanes x 2
+#                          coordinators x `builders` (12, see
+#                          buildstream-remote-cache-config.yaml) = 48 must
+#                          stay below 64.
+#                        bst-commit-poller reads this value and admits
+#                        lanes + 1 bst-workload workflows (one waits).
+#                        bst-cache-warm runs on top of these lanes; run it
+#                        only while at most one lane is busy.
 #   bst-cache-warm     — Dedicated lane for the bst-cache-warm recovery chain.
 #                        Keeps cache re-seeding from occupying the production
 #                        bst-build slot while still allowing only one warmup
@@ -37,6 +54,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 data:
-  bst-build: "1"
+  bst-build: "2"
   bst-cache-warm: "1"
   ghost-container-qa: "6"

@@ -230,22 +230,31 @@ spec:
             exit 0
           fi
 
+          # Admit one waiting workflow beyond the bst-build lanes: every lane
+          # can execute while one more queues on the semaphore.
+          LANES=$(kubectl get configmap workflow-semaphores \
+            -n argo -o jsonpath='{.data.bst-build}')
+          if [[ ! "${LANES}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "workflow-semaphores bst-build must be a positive integer, got '${LANES}'" >&2
+            exit 1
+          fi
+          CEILING=$(( LANES + 1 ))
           ACTIVE=$(
             kubectl get workflows -n argo \
               -l bluefin.io/bst-workload=true \
               -o json \
               | jq '[.items[] | select(.status.phase == "Running")] | length'
           )
-          if (( ACTIVE >= 2 )); then
-            echo "BST queue full (${ACTIVE} workflows including this poller); deferring ${REPO}:${BRANCH}" >&2
+          if (( ACTIVE >= CEILING )); then
+            echo "BST queue full (${ACTIVE}/${CEILING} workflows including this poller, ${LANES} bst-build lanes); deferring ${REPO}:${BRANCH}" >&2
             echo "false" > /tmp/changed
             exit 0
           fi
 
           if [[ "${FORCE}" == "true" ]]; then
-            echo "Forced rebuild requested; BST queue has capacity (${ACTIVE}/2 admitted)" >&2
+            echo "Forced rebuild requested; BST queue has capacity (${ACTIVE}/${CEILING} admitted)" >&2
           else
-            echo "Commit changed and BST queue has capacity (${ACTIVE}/2 admitted)" >&2
+            echo "Commit changed and BST queue has capacity (${ACTIVE}/${CEILING} admitted)" >&2
           fi
           echo "true" > /tmp/changed
 

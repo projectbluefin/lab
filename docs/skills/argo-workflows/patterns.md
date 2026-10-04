@@ -244,10 +244,11 @@ terminal upstream states when appropriate:
 
 ### Bound BuildStream admission before the semaphore queue
 
-The `bst-build` semaphore limits execution to one pipeline, but a semaphore by
-itself permits an unbounded list of waiting workflows. Automated callers must
-also count active workflows labeled `bluefin.io/bst-workload=true` and defer
-when two are already admitted: one may execute while one waits.
+The `bst-build` semaphore limits execution to its configured lanes, but a
+semaphore by itself permits an unbounded list of waiting workflows. Automated
+callers must also count active workflows labeled `bluefin.io/bst-workload=true`
+and defer once lanes + 1 are admitted: every lane may execute while one waits.
+Read the lane count from `workflow-semaphores` instead of hard-coding it.
 
 Source pollers must persist a new commit
 SHA only after the referenced build succeeds, so deferred or failed work is

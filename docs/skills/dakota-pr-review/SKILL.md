@@ -34,7 +34,7 @@ Dakota PR review is a lab-backed admission process. GitHub Actions status is adv
 2. Do not treat `pr/needs-review`, `automerge`, or `chore/deps` labels as approval. Verify maintainer approval when the repository policy requires it.
 3. Build the exact PR head SHA with `dakota-build-pipeline` in distributed (`re`) mode. Use the live WorkflowTemplate parameters; do not guess them.
 4. Test the resulting image with `dakota-container-qa-pipeline` (image smoke checks) and, when the image supports it, `dakota-qa-pipeline`/`run-container-tests` for the full containerized BDD/GUI suites.
-5. Keep each build serialized by the `bst-build` semaphore. Never start competing Dakota BST builds; queue them and process one PR at a time.
+5. Let the `bst-build` semaphore (two lanes) admit builds. Two PR builds may run at once; submit no more than that and let the next PR wait for a free lane.
 6. Capture Argo workflow names, exact SHAs, build mode, test result, and failure logs. A pass must be tied to the same commit that will be merged.
 7. If build and E2E pass, recheck the PR head and mergeability, then merge directly.
 8. If lab validation fails, do not merge. Classify infrastructure failures separately from source/test failures and rerun only after the blocker is fixed.
@@ -45,7 +45,7 @@ Dakota PR review is a lab-backed admission process. GitHub Actions status is adv
 - Direct merge is allowed only after the exact PR SHA has a successful distributed build and successful required lab E2E/smoke coverage.
 - Merge the current head only; if the PR changes after testing, discard the evidence and rerun.
 - Do not merge a PR with an unresolved source/test failure, a stale result, or an infrastructure run that never reached the test phase.
-- Keep one active Dakota build at a time; QA workflows may run concurrently only when they do not contend for the BST build semaphore.
+- Keep no more active Dakota builds than `bst-build` lanes (two); QA workflows may run concurrently only when they do not contend for the BST build semaphore.
 
 ## Operator Flow
 

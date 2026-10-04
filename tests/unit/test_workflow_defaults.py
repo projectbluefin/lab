@@ -73,10 +73,14 @@ def test_controller_and_bots_share_one_scheduler():
 
 def test_element_builds_cannot_starve_their_own_compiles():
     # An element action holds a worker slot while its recc compiles queue as
-    # separate actions. If BuildStream can keep as many element actions in
-    # flight as one node has slots, a single-node grid deadlocks.
+    # separate actions. Every bst-build lane runs at most one coordinator per
+    # node (per-workflow pod anti-affinity), each keeping `builders` element
+    # actions in flight, against CONCURRENT_JOBS slots per node. If
+    # lanes x builders reaches one node's slots, element actions can hold every
+    # slot on the grid and deadlock waiting for compiles that never schedule.
     data = manifest("buildstream-remote-cache-config.yaml")[0]["data"]
     builders = yaml.safe_load(data["dakota-buildstream.conf"])["scheduler"]["builders"]
     worker = manifest("buildgrid-worker.yaml")[0]["spec"]["template"]["spec"]["containers"][0]
     slots = int({e["name"]: e.get("value") for e in worker["env"]}["CONCURRENT_JOBS"])
-    assert builders < slots
+    lanes = int(manifest("workflow-semaphores.yaml")[0]["data"]["bst-build"])
+    assert lanes * builders < slots

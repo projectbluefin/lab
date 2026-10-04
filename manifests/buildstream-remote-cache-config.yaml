@@ -10,15 +10,18 @@ metadata:
 data:
   # Element builds are BuildGrid actions; `builders` is how many the
   # coordinator keeps in flight. Each element action holds a worker slot while
-  # its GNOME recc compiles run as separate actions, so keep `builders` well
-  # below the worker slots of a single node (buildgrid-worker CONCURRENT_JOBS)
-  # or element actions can occupy every slot and starve their own compiles.
+  # its GNOME recc compiles run as separate actions, so every coordinator that
+  # can run at once must together hold fewer element actions than the grid has
+  # slots, or element actions occupy every slot and starve their own compiles.
+  # Two bst-build lanes x two coordinators (Dakota variants, one per node) x 12
+  # = 48 of 64 slots (2 x buildgrid-worker CONCURRENT_JOBS), leaving 16 for
+  # compiles. Observed element-action concurrency in one lane peaked at 6.
   # Compile fan-out, not this value, is what spreads work across new nodes.
   dakota-buildstream.conf: |
     scheduler:
       network-retries: 8
       fetchers: 8
-      builders: 16
+      builders: 12
       pushers: 4
     build:
       max-jobs: 12

@@ -93,6 +93,17 @@ spec:
         - name: bgd
           image: 192.168.1.102:30500/buildgrid/buildgrid@sha256:9e34bf3745545686a52b368b62ed27fbfcde3522eaa6e2fd4c360e6f38e9f8db
           command: [bgd, server, start, -v, /etc/buildgrid/cas.yml]
+          # glibc raises its mmap threshold to 32 MiB after the first large
+          # free, so the blob bytes that pass through the LRU land in the
+          # 64 MiB per-thread malloc arenas and fragment them: one replica held
+          # ~90 arena mappings (5.3 GiB anon) beside a 2048M LRU and the other
+          # was OOMKilled at the 8Gi limit. A fixed 1 MiB threshold puts every
+          # blob in its own mapping that free() returns to the kernel; in a
+          # 200-thread LRU replay it kept RSS at the LRU size (~0.57 GiB for a
+          # 512 MiB LRU) instead of ~5.2 GiB. MALLOC_ARENA_MAX alone did not.
+          env:
+            - name: MALLOC_MMAP_THRESHOLD_
+              value: "1048576"
           ports:
             - name: grpc
               containerPort: 50051

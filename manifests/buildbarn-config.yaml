@@ -118,8 +118,15 @@ data:
       actionCache: {
         backend: {
           'local': {
+            // One 66-byte record per entry, and this AC also stores the
+            // bb-remote-asset artifact index. A 1 MiB map (15,887 slots) was
+            // full: each shard dropped ~100 entries on insert (put outcome
+            // TooManyAttempts) and gave up ~100-150 lookups in 2.5 hours.
+            // 64 MiB is ~1M slots per shard. Resizing rehashes nothing, so
+            // every existing AC and artifact-index entry becomes unreachable
+            // (storage starts cleanly; the next builds miss once).
             keyLocationMapOnBlockDevice: {
-              file: { path: '/storage-ac/key_location_map', sizeBytes: 1024 * 1024 },
+              file: { path: '/storage-ac/key_location_map', sizeBytes: 64 * 1024 * 1024 },
             },
             keyLocationMapMaximumGetAttempts: 16,
             keyLocationMapMaximumPutAttempts: 64,

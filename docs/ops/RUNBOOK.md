@@ -101,6 +101,24 @@ pods for those PVs. Never mass-delete `Bound` PVs or PVCs merely to stop the
 churn. Confirm that new helper pods are absent and that newly provisioned
 PV paths match the node map.
 
+### Orphaned directories under the local-path base
+
+A `pvc-<uid>_<namespace>_<claim>` directory whose PV object is gone is never
+reclaimed: the provisioner only deletes data through a PV. Find them by diffing
+the base directory against every PV's stored path, then confirm none is mounted
+or open before deleting through a node debug pod:
+
+```bash
+kubectl get pv -o jsonpath='{range .items[*]}{.spec.local.path}{"\n"}{end}' | sort > pv-paths
+# on the node (chroot /host): list the base, then check each orphan
+ls -d /var/mnt/exo0-data/local-path/* | sort > dirs
+comm -23 dirs pv-paths
+grep -l <uid> /proc/[0-9]*/mountinfo; ls -l /proc/[0-9]*/fd | grep <uid>
+```
+
+Delete only directories with no PV, no PVC with that UID, no mount, and no open
+file descriptor.
+
 ## GitOps ownership
 
 | Area | Source of truth | Reconciler |

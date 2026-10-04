@@ -123,11 +123,15 @@ data:
               - operations
 
     # Every queued or running action holds one streaming Execute RPC (one
-    # thread) until it completes. GNOME recc fans one element out into hundreds
-    # of compile actions at once, so the pool is sized for a deep queue, not for
-    # the number of worker slots.
-    thread-pool-size: 2000
-    maximum-concurrent-rpcs: 2000
+    # thread) until it completes. GNOME recc releases its make/ninja jobserver
+    # token while it waits on remote execution, so one element queues as many
+    # compiles as it has ready (gtk submitted 1531), whatever max-jobs is.
+    # Replaying the measured load at max-jobs 32 gives ~1290 in flight for one
+    # bst-build lane and 2750-3700 for two. An Execute rejected at this limit
+    # fails the compile: recc does not retry RESOURCE_EXHAUSTED. Waiting
+    # streams hold no database connection (one LISTEN connection wakes them).
+    thread-pool-size: 6000
+    maximum-concurrent-rpcs: 6000
 
   bots.yml: |
     server:
@@ -240,7 +244,7 @@ spec:
         app: buildgrid-controller
         buildgrid-scheduler-client: "true"
       annotations:
-        buildgrid-config-revision: "2026-10-03-spread-assign"
+        buildgrid-config-revision: "2026-10-04-controller-6000-rpcs"
     spec:
       automountServiceAccountToken: false
       priorityClassName: workflow-controller

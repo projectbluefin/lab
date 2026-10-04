@@ -473,6 +473,14 @@ argo lint --offline argo/bootstrap/
 
 Or use the convenience wrapper: `just lint`
 
+Offline lint needs an `argo` CLI as new as the templates (CI pins v4.1.3 in
+`.github/workflows/lint.yaml`; the controller runs v3.7). A v3.5 CLI rejects
+every template that uses `synchronization.semaphores` with `json: unknown
+field "semaphores"`; fall back to `kubectl apply --dry-run=server -f <file>`
+and create throwaway Workflows with `kubectl create -f`. `argo submit --from
+workflowtemplate/<name>` still works with an old CLI because the server
+expands the template.
+
 ### 12. ArgoCD ownership — never apply manually
 
 `argo/workflow-templates/` is managed by the `lab` ArgoCD Application with `prune: true` and `selfHeal: true`. Manual `kubectl apply` or `argo create workflow-template` for templates in this directory is forbidden — ArgoCD will overwrite or conflict.

@@ -72,7 +72,7 @@ New file to add to the repo?
 # Edit a WorkflowTemplate
 vim argo/workflow-templates/my-template.yaml
 
-# Lint before committing
+# Lint before committing (needs an argo CLI >= v3.6; see argo-workflows/authoring.md)
 argo lint --offline argo/workflow-templates/
 
 # Commit and push — ArgoCD polls or webhooks within ~3 minutes

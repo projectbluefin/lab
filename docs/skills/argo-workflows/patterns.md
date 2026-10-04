@@ -90,11 +90,13 @@ put the GitHub token in a clone URL or command argument; expose it only as
 
 ### Dakota BuildStream publish lane output tags
 
-`dakota-build-pipeline` exports the built `oci/bluefin.bst` artifact to the local Zot
-registry. NVIDIA variants are disabled in the distributed clean-build workflow. The published
-tag must match the projectbluefin/dakota image contract:
+`dakota-build-pipeline` exports `oci/bluefin.bst` and, non-blocking
+(`continueOn`), `oci/bluefin-nvidia.bst` and the gaming variants to the local
+Zot registry. The published tags must match the projectbluefin/dakota image
+contract:
 
 - Base variant → `<lab-ip>:30500/dakota:testing`
+- NVIDIA variant → `<lab-ip>:30500/dakota-nvidia:testing`
 
 Do not publish these as `:latest` from the cluster lane; `:testing` is the testing-branch
 stream and `:stable` is promoted separately from `main`. Keeping the cluster lane on `:testing`

@@ -70,8 +70,9 @@ Buildbarn is storage only.
 - **Scheduler front ends:** `manifests/buildgrid-controller.yaml`, namespace
   `buildgrid`. Deployment `controller`
   (`controller.buildgrid.svc.cluster.local:50051`) serves Execution and
-  Operations to BuildStream and to nested recc actions; each in-flight action
-  holds a streaming Execute RPC, so its thread pool is 2000. Deployment `bots`
+  Operations to BuildStream and to nested recc actions; each queued or
+  running action holds a streaming Execute RPC, so `thread-pool-size` and
+  `maximum-concurrent-rpcs` are 6000. Deployment `bots`
   (`bots.buildgrid.svc.cluster.local:50051`) serves only the Remote Workers API.
   Keep them separate: with Bots co-located, a recc fan-out exhausts the RPC
   limit, `UpdateBotSession` fails with `Concurrent RPC limit exceeded`, and
@@ -162,10 +163,20 @@ breaks hermeticity.
   `builders` below one node's `CONCURRENT_JOBS` (32) and element actions can
   never occupy every slot; `tests/unit/test_workflow_defaults.py` enforces it.
 - Every queued or running action holds one streaming Execute RPC on the
-  controller, so its thread pool (2000) bounds queue depth, not worker slots.
-  When it is exhausted, clients get `Concurrent RPC limit exceeded`. One lane
-  has peaked at 885 in flight (a single recc element queued 795), which is why
-  `bst-build` stops at two lanes.
+  controller, so `maximum-concurrent-rpcs` (6000) bounds queue depth, not
+  worker slots. Past it the controller answers `RESOURCE_EXHAUSTED`
+  (`Concurrent RPC limit exceeded`), which recc does not retry, so the compile
+  and its element fail. recc releases its jobserver token while it waits on
+  the grid, so a recc element queues every ready compile regardless of
+  `max-jobs` (gtk submitted 1531). Replaying that load at `max-jobs` 32 gives
+  up to ~1860 in-flight RPCs per lane; `tests/unit/test_workflow_defaults.py`
+  requires `maximum-concurrent-rpcs >= lanes × 1860`. Waiting streams hold no
+  database connection: the scheduler SQL pools (controller 40+30, bots 10+10)
+  must stay under Postgres `max_connections` (100) regardless of the RPC limit.
+- A worker container's task limit (`pids.max`, derived from systemd
+  `DefaultTasksMax`) also bounds fan-out: a wide recc fan-out exhausted it on
+  ghost, `buildbox-worker` crashed with `EAGAIN`, and actions failed with
+  `bwrap: Can't fork`.
 - Queued actions wait in BuildGrid, not in BuildStream or Argo. A deep queue
   with all bots busy means the grid is saturated, not broken.
 - Assignment spreads by remaining capacity. Both scheduler blocks configure
@@ -212,6 +223,62 @@ configured, then (2) `bst build <targets>` with
 `remote-execution` block, and count the run's `jobs` rows per `worker_name`.
 With gnome-build-meta's default `recc: remote-execution`, one element fans out
 into hundreds of compile actions spread across every worker.
+
+An element action that is answered from the action cache creates no new
+`jobs` row. Element results hit only because the frontend AC uses
+`actionResultExpiring` (see Action cache above); a run that re-executes an
+unchanged element (same `action_digest` in `jobs` twice) means the AC lookup
+missed.
+
+### Diagnosing a failed remote element build
+
+The coordinator pod log is the only place BuildStream prints a remote build's
+output, and only the last `--error-lines` lines of it. The build step passes
+`--error-lines 2000`; at the default 20 a `-j32` failure shows trailing
+warnings and no error. When even 2000 lines are not enough, read the full
+stdout/stderr from Buildbarn. The `jobs.result` column is the digest of the
+`ExecuteResponse`; its `ActionResult` names the stdout and stderr blobs:
+
+```bash
+kubectl -n buildgrid exec database-0 -- psql -U bgd -d bgd -At -c \
+  "select name, worker_name, status_code, result from jobs where stage=4 and queued_timestamp > '<run start>' order by queued_timestamp desc limit 20;"
+kubectl -n buildgrid exec -i deploy/controller -- python3 - <result-digest> <<'EOF'
+import sys, grpc
+from buildgrid._protos.build.bazel.remote.execution.v2 import remote_execution_pb2 as re
+from buildgrid._protos.google.bytestream import bytestream_pb2 as bs, bytestream_pb2_grpc as bsg
+st = bsg.ByteStreamStub(grpc.insecure_channel("frontend.buildbarn.svc.cluster.local:8980"))
+def blob(d):
+    return b"".join(r.data for r in st.Read(bs.ReadRequest(resource_name=f"blobs/{d}")))
+r = re.ExecuteResponse(); r.ParseFromString(blob(sys.argv[1]))
+print("exit", r.result.exit_code, "status", r.status.code, r.status.message)
+for d in (r.result.stdout_digest, r.result.stderr_digest):
+    if d.size_bytes: sys.stdout.write(blob(f"{d.hash}/{d.size_bytes}").decode(errors="replace"))
+EOF
+```
+
+A non-zero `status.code` with exit 0 is a grid failure (4 = deadline, 14 =
+unavailable): read that node's `worker` pod log, not the element. casd logs at
+`info` rotate in roughly 20 minutes, so collect worker evidence immediately.
+
+### recc outside gnome-build-meta
+
+Only gnome-build-meta elements declare `recc: remote-execution`. Do not add
+recc to other elements (for example the kernel) to spread their compiles: it
+measured no wall-time gain over one `-j32` action on a 32-thread node, and its
+fan-out is what exhausts controller RPCs and worker `pids.max`. A non-recc
+element is one action; give it the node's threads through `max-jobs`.
+
+### Deploy windows for grid-restarting changes
+
+Changes that restart BuildGrid (controller, bots, cas, database, worker),
+Buildbarn, or Zot pods kill every in-flight action and fail running builds;
+a worker restart also wipes its casd cache (generic-ephemeral PVC). Land them
+only when `kubectl -n argo get wf -l bluefin.io/bst-workload=true
+--field-selector status.phase=Running` is empty, and batch them into one
+window. WorkflowTemplates, `workflow-semaphores`, the
+`buildstream-remote-cache` ConfigMap, docs, and tests restart no grid pod and
+can land at any time; a running workflow keeps the template snapshot it was
+submitted with.
 
 **Images.** Upstream publishes only `:nightly` for `buildgrid`, `buildbox`, and
 `buildgrid-postgres` at `registry.gitlab.com/buildgrid/buildgrid.hub.docker.com`.

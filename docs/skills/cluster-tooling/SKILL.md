@@ -185,17 +185,17 @@ Do not guess flags or chart schema.
   concurrency budget, then retry; do not pin the pod to a preferred node.
 
 - "Two variants should build in parallel to save time."  
-  Parallel high-memory pods force one onto ghost where it is preempted. The
-  wall-clock savings are lost to retries and partial work. Serialize first;
-  parallelize only after the cluster has enough dedicated memory capacity.
+  They already do: a Dakota pipeline runs its variants in parallel, one
+  coordinator per node (required pod anti-affinity), and the coordinators only
+  orchestrate while BuildGrid executes. Do not add more coordinators per node.
 
 - "Raise the semaphore until the grid is busy."
   The `bst-build` semaphore (`"2"` in `manifests/workflow-semaphores.yaml`)
   is capped by grid and namespace capacity, not by idle CPU: each lane can run
-  two coordinators at 20.5 CPU of limits against the 128-CPU `argo-quota`, one
-  lane peaked at 885 in-flight Execute RPCs against the controller's 2000, and
-  lanes × `builders` must stay below one node's 32 slots. Recheck all three
-  before raising it.
+  two coordinators at 20.5 CPU of limits against the 128-CPU `argo-quota`,
+  each lane can hold ~1860 in-flight Execute RPCs against the controller's
+  `maximum-concurrent-rpcs` (6000), and lanes × `builders` must stay below one
+  node's 32 slots. Recheck all three before raising it.
 
 ## Red Flags
 

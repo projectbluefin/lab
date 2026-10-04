@@ -19,9 +19,14 @@ not active until every writer has migrated.
   attaches `application/vnd.projectbluefin.lab.promotion-evidence.v1+json`.
 - A failed lane does not block another lane from validating or promoting.
 
-Zot retains `:testing`, the ten most recently pushed candidate tags, and the
-ten most recent legacy raw-SHA tags for each Dakota repository. Retention and
-orphan cleanup run on Zot's daily GC interval.
+Zot retention (`manifests/zot-writable.yaml`) applies to `dakota` and
+`dakota-nvidia` and keeps only tags matching `^testing$`,
+`^candidate-<40|64 hex>$` (ten most recently pushed), and `^<40|64 hex>$` (ten
+most recently pushed). Every other tag in those repositories, for example
+`:ubuntu-kernel` or `:pr-123`, is deleted at the next GC after its 24h delay,
+along with untagged manifests and their referrers. To keep a one-off image,
+push it under its commit SHA or to a repository outside the policy. GC runs
+every 24h and at registry start, so a Zot restart applies retention at once.
 
 ## Secret contracts and activation gate
 

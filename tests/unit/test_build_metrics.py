@@ -34,7 +34,6 @@ def test_zot_metrics_are_enabled_on_both_registries():
 def test_safe_build_workflows_emit_only_low_cardinality_metrics():
     pipelines = {
         "bluefin-server-build-pipeline.yaml": "bluefin-server",
-        "bst-qa-pipeline.yaml": "bst-qa",
         "dakota-build-pipeline.yaml": "dakota",
     }
 

@@ -14,7 +14,6 @@ template add or rename.
   - [dakota-build-pipeline](#dakota-build-pipeline)
   - [zot-candidate-lifecycle](#zot-candidate-lifecycle)
   - [bluefin-server-build-pipeline](#bluefin-server-build-pipeline)
-  - [bst-qa-pipeline](#bst-qa-pipeline)
 - [KubeStellar Workflows](#kubestellar-workflows)
 - [Supporting Templates](#supporting-templates)
 - [Distributed Build/RE Grid](#distributed-buildre-grid)
@@ -66,10 +65,13 @@ template add or rename.
   cannot starve their own compiles.
   A new node adds capacity with no config change. The workflow verifies its generated
   remote-execution configuration before it invokes BuildStream.
-- **Publish:** `bst-build-re` is a `containerSet`. `main` (`bst2`) builds and
-  checks the OCI layout out onto the pod's CAS volume; `publish` (digest-pinned
+- **Coordinator:** each variant runs the shared `bst-build-re` WorkflowTemplate
+  (`argo/workflow-templates/bst-build-re.yaml`, `templateRef` template `build`).
+  It is a `containerSet`: `main` (`bst2`) builds and checks the OCI layout out
+  onto the pod's CAS volume; `publish` (digest-pinned
   `ghcr.io/projectbluefin/skopeo`) then runs one `skopeo copy` to Zot. A failed
-  build never starts `publish`.
+  build never starts `publish`. Required per-workflow pod anti-affinity keeps
+  one coordinator per node, so `variants=all` runs in two waves.
 - **Retry:** `bst-build-re` retries once (`retryPolicy: Always`) unless `main`
   exits 3 (`expression: lastRetry.exitCode != "3"`). `main` runs `bst build`
   through `bst-build.sh` from the `buildstream-remote-cache` ConfigMap, which
@@ -111,30 +113,16 @@ before retrying.
   [Zot candidate promotion](../ops/zot-candidate-promotion.md).
 
 ### bluefin-server-build-pipeline
-- **Purpose:** BuildStream compile pipeline for Bluefin Server elements
-  (`oci/bluefin-server-ddi.bst`, `oci/bluefin-server-installer.bst`) and push to local Zot.
-- **Safety guards (aligned with dakota):**
-  `activeDeadlineSeconds: 28800` (workflow), `activeDeadlineSeconds: 10800` (step),
-  `retryStrategy: limit=1` (no retry on exit 3, as in dakota),
-  `GRPC_ENABLE_FORK_SUPPORT=1` (no `GRPC_POLL_STRATEGY=poll`: it caps casd's
-  gRPC streams at ~68 MB/s).
-- **Execution:** element builds run on BuildGrid like every BST lane; the
-  coordinator pod only orchestrates (2-4 CPU, 4-8Gi). No local sandbox is used.
+- **Purpose:** BuildStream compile pipeline for `oci/bluefin-server-image.bst`
+  (the whole release set, built with the fixed dev keys) and push to local Zot
+  as `bluefin-server-image:latest`.
+- **Coordinator:** the same `bst-build-re` template as dakota, with
+  `deadline: 10800` (3h per pod; workflow `activeDeadlineSeconds: 28800`),
+  `clone-token: true`, `dev-keys: true`, and
+  `upstream-cache: https://cache.projectbluefin.io:11001` (replaces
+  `cache.freedesktop-sdk.io` for the toplevel project only). Retry, priority,
+  and execution are identical to dakota.
 - **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts are indexed in `bb-remote-asset` (`:8984`) with the projects' upstream artifact caches as read-only fallbacks. Source caches override the project entries and list only the upstream caches, read-only. See `manifests/buildstream-remote-cache-config.yaml`.
-
-### bst-qa-pipeline
-- **Purpose:** Smoke-tests BuildStream wiring against BuildGrid execution and
-  Buildbarn storage by building a trivial element.
-- **Cache + RE wiring:** element builds go to the BuildGrid controller
-  (`controller.buildgrid.svc.cluster.local:50051`); artifact cache, CAS/AC, and
-  remote asset use the shared Buildbarn frontend and remote-asset service
-  (`frontend.buildbarn.svc.cluster.local:8980` and
-  `bb-remote-asset.buildbarn.svc.cluster.local:8984`). See
-  [Distributed Build/RE Grid](#distributed-buildre-grid).
-- **Known limitation:** the default element (`hello.bst`, an `import` kind)
-  proves config wiring but dispatches no build action. To prove execution, build
-  an element with `build-commands` and confirm a `jobs` row with a `worker_name`
-  in the BuildGrid database.
 
 ## KubeStellar Workflows
 
@@ -160,6 +148,9 @@ ArgoCD parent Application. Each template takes `wec-name` (default `ghost`).
 | --- | --- |
 | `image-poller` | Digest-comparison helpers (`poll-digest`, `update-local`). Flow: fetch upstream digest → compare with `image-polling-digests` → run downstream → persist digest only after downstream success. `image-poll-dakota` routes to `dakota-qa-pipeline`. |
 | `run-container-tests` | Shared container-only runner for Dakota bootc images. Clones `projectbluefin/testsuite`, starts a Wayland session in the target OCI image, runs `behave`, attempts best-effort result publication when `github-token` is available, and writes a summary file for workflow outputs. Publication warnings do not change the suite exit status. |
+| `bst-build-re` | Shared BuildStream coordinator (template `build`): builds one element on BuildGrid and publishes it to Zot. Callers hold the `bst-build` semaphore. |
+| `bst-admission-gate` | `detect-build-mode`: the USB4/BuildGrid admission check each BST pipeline runs before its build tasks. |
+| `bst-cache-warm` | Manual cache re-seed after cache loss: runs the Dakota and Bluefin Server `build-warmup` templates on the `bst-cache-warm` semaphore lane. |
 
 ## Distributed Build/RE Grid
 
@@ -168,8 +159,8 @@ one job:
 
 | Mechanism | What it distributes | Used by |
 | --- | --- | --- |
-| k8s scheduler (no pin) | BuildStream coordinator pods and OCI export/push | `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
-| BuildGrid (`buildgrid` namespace) | Remote-execution actions on `buildbox-run-bubblewrap` workers (private PID namespace, fresh `/proc`) | `dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline` |
+| k8s scheduler (no pin; coordinators prefer `exo-0`) | BuildStream coordinator pods and OCI export/push | `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
+| BuildGrid (`buildgrid` namespace) | Remote-execution actions on `buildbox-run-bubblewrap` workers (private PID namespace, fresh `/proc`) | `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
 | Buildbarn (`buildbarn` namespace) | CAS, action cache, and remote asset only; no execution | same lanes, plus BuildGrid workers' casd |
 
 BuildGrid topology (`manifests/buildgrid-*.yaml`): `controller`
@@ -252,8 +243,8 @@ multi-hour build and loses its progress.
 
 Pod resource requests/limits used by workflow steps:
 
-| Template | CPU req/limit | Memory req/limit |
+| Template / container | CPU req/limit | Memory req/limit |
 | --- | --- | --- |
-| `run-container-tests` | 1 / 2 | 2Gi / 4Gi |
-| `dakota-build-pipeline/bst-build` | 8 / 16 | 16Gi / 32Gi |
-| `bluefin-server-build-pipeline/bst-build` | 6 / 10 | 16Gi / 30Gi |
+| `run-container-tests` | 2 / 4 | 4Gi / 8Gi |
+| `bst-build-re` `main` | 2 / 4 | 4Gi / 8Gi |
+| `bst-build-re` `publish` | 1 / 16 | 256Mi / 2Gi |

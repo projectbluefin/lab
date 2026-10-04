@@ -102,7 +102,7 @@ A new module certificate means one cold kernel build on the next run.
 
 ## Verification
 
-- [ ] `argo get -n argo @latest` shows `bst-build-re` Succeeded and
+- [ ] `argo get -n argo @latest` shows the `build-image` step (`bst-build-re`) Succeeded and
       `bluefin-server-image:latest` pushed.
 - [ ] `skopeo inspect --tls-verify=false docker://<lab-ip>:30500/bluefin-server-image:latest`
       shows the new image, and it contains `bluefin-server-installer_<ver>.raw`.

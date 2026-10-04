@@ -64,7 +64,11 @@ remote-cache-only run is not an acceptable substitute.
   most one coordinator per node per pipeline, so `variants=all` runs in two
   waves on the two-node grid by design. Lane sizing assumes it: `argo-quota`
   limits, and lanes × coordinators × `builders` < 64 worker slots.
-- `bst-build-re` is a `containerSet`: `main` (`bst2`) builds and runs
+- Every coordinator is the shared `bst-build-re` WorkflowTemplate
+  (`argo/workflow-templates/bst-build-re.yaml`, template `build`), called
+  through `templateRef` by both pipelines; per-pipeline differences
+  (deadline, clone token, dev keys, toplevel upstream cache) are its inputs.
+  It is a `containerSet`: `main` (`bst2`) builds and runs
   `bst artifact checkout` into `oci-export/` on the pod's cache volume, then
   `publish` (digest-pinned distroless `ghcr.io/projectbluefin/skopeo`) runs
   `skopeo copy --dest-tls-verify=false oci:<dir> docker://<registry>/<tag>:<image-tag>`
@@ -277,7 +281,7 @@ containers) of Dakota `oci/bluefin.bst` runs:
 
 | Phase | Cost | Notes |
 | --- | --- | --- |
-| Pod start, clone, config | ~25 s | two `detect-build-mode` pods, then a depth-1 clone |
+| Pod start, clone, config | ≤25 s | one `detect-build-mode` admission pod, then a depth-1 clone |
 | Load, resolve, remote init | 13-15 s | junction and plugin sources (gnome-build-meta, freedesktop-sdk, PyPI plugins) are re-fetched every run in ~5 s; not worth caching |
 | Pull, lab cache warm | ~16 s | ~880 artifacts, only protos and Directory blobs |
 | Pull, first run after a junction bump | ~4 min | ~470 artifacts come from `gbm.gnome.org` over the WAN; pulls and source fetches share the 8 `--fetchers` slots, all busy the whole time |

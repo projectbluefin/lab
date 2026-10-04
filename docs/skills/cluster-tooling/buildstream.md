@@ -100,6 +100,15 @@ Buildbarn is storage only.
   the BuildGrid CAS front serves `GetTree` itself and stores every blob in
   Buildbarn. casd forwards nested Execute requests (recc via BuildStream's
   `remote-apis-socket`) to the BuildGrid controller.
+- **Action cache:** BuildStream element actions request
+  `OutputDirectoryFormat` `DIRECTORY_ONLY`, so their results carry
+  `root_directory_digest` and no `tree_digest`. bb-storage's
+  `completenessChecking` rejects that as `malformed digest: No digest provided`,
+  which made every element action re-execute; only recc compiles (output files)
+  hit. The frontend AC therefore uses `actionResultExpiring` (7 days plus up to
+  1 day jitter after `worker_completed_timestamp`) instead, a window that must
+  stay shorter than the CAS retention. Prove an element hit with
+  `GetActionResult` on an element action digest from the BuildGrid `jobs` table.
 - **BuildStream config** (`manifests/buildstream-remote-cache-config.yaml`):
   `execution-service` points at the BuildGrid controller; `storage-service` and
   `action-cache-service` point at the Buildbarn frontend.

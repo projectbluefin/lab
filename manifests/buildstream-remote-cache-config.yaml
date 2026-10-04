@@ -62,17 +62,35 @@ data:
         push: false
       - url: https://cache.freedesktop-sdk.io:11001
         push: false
+    # Sources use the same lab index and storage as artifacts. A build pushes
+    # the sources it fetched (each element's staged sources, plus each source
+    # on its own), so the next build of a changed element pulls them from
+    # Buildbarn instead of the internet; the Ubuntu kernel's Launchpad git
+    # fetch is the largest. Elements whose artifact is pulled fetch no sources
+    # and push none. bb-remote-asset must answer an index miss with NOT_FOUND
+    # (its `error` fetcher): any other error fails the source fetch instead of
+    # falling through to the next server. Project-suggested source caches are
+    # replaced by the explicit upstreams.
+    #
+    # The lab servers must stay LAST. BuildStream's per-source pull
+    # (SourceCache.pull, 2.7 to current master) does not stop at the first
+    # index hit: every later index remote overwrites the result, so a lab hit
+    # followed by an upstream miss counts as a miss and the source is fetched
+    # from the internet again. Per-element pulls do stop at the first hit;
+    # with the lab last they ask the upstream caches first, as before.
     source-caches:
-      # Do not inherit junction/project source-cache entries here: the
-      # deployed bb-remote-asset endpoint cannot FetchBlob BuildStream URNs.
-      # Explicit upstream fallbacks keep cold misses buildable without
-      # sending source pushes to the incompatible endpoint.
       override-project-caches: true
       servers:
       - url: https://gbm.gnome.org:11003
         push: false
       - url: https://cache.freedesktop-sdk.io:11001
         push: false
+      - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+        type: index
+        push: true
+      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        type: storage
+        push: true
     # buildbox-casd keeps its CAS in the Buildbarn frontend (the CAS the
     # BuildGrid workers use) instead of on the coordinator's disk. Pulling an
     # artifact then fetches only its proto and Directory protos, plus any file

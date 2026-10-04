@@ -78,7 +78,8 @@ spec:
           - name: pod-patch
             value: "{}"
           # Second read-only artifact/source cache for the toplevel project,
-          # replacing the ConfigMap's cache.freedesktop-sdk.io there only;
+          # replacing the ConfigMap's cache.freedesktop-sdk.io there only (the
+          # lab servers stay, push: true; last for sources, see the ConfigMap);
           # empty keeps the global servers for every project.
           - name: upstream-cache
             value: ""
@@ -232,6 +233,12 @@ spec:
                         push: false
                       - url: ${UPSTREAM_CACHE}
                         push: false
+                      - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+                        type: index
+                        push: true
+                      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                        type: storage
+                        push: true
                 EOF
                 fi
 

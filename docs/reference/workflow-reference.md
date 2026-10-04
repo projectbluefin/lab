@@ -124,7 +124,7 @@ before retrying.
   `upstream-cache: https://cache.projectbluefin.io:11001` (replaces
   `cache.freedesktop-sdk.io` for the toplevel project only). Retry, priority,
   and execution are identical to dakota.
-- **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts are indexed in `bb-remote-asset` (`:8984`) with the projects' upstream artifact caches as read-only fallbacks. Source caches override the project entries and list only the upstream caches, read-only. See `manifests/buildstream-remote-cache-config.yaml`.
+- **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts and sources are indexed in `bb-remote-asset` (`:8984`) and pushed there, with upstream caches as read-only fallbacks. Source caches override the project entries. See `manifests/buildstream-remote-cache-config.yaml`.
 
 ## KubeStellar Workflows
 

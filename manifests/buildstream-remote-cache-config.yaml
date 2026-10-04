@@ -34,6 +34,13 @@ data:
       pushers: 4
     build:
       max-jobs: 32
+      # Rebuild an element whose failed artifact is cached instead of
+      # replaying the failure. With the storage-service CAS below the replay
+      # cannot read the failed build's log and dies with a BUG
+      # (FileNotFoundError), hiding the real error. A rebuild of a command
+      # failure still fails at once: the failed action result stays in the
+      # Buildbarn action cache.
+      retry-failed: true
 
     # Global, so it applies to every project including the gnome-build-meta
     # and freedesktop-sdk junctions (~900 of a Dakota build's ~1200 elements).
@@ -102,3 +109,40 @@ data:
           retry-limit: 8
           retry-delay: 1000
           request-timeout: 1800
+  # `bst build` wrapper for the bst-build-re pods. Exit 3 means an element's
+  # own commands failed and BuildStream cached that failed artifact: the
+  # inputs are fixed, so a retry fails the same way, and the templates'
+  # retryStrategy does not retry exit 3. Any other failure (BuildGrid or CAS
+  # errors such as a worker "Deadline Exceeded", network, BuildStream bugs)
+  # caches no failed artifact and keeps bst's exit code, which is retried.
+  bst-build.sh: |
+    set -uo pipefail
+
+    log=$(mktemp)
+    bst "$@" 2>&1 | tee "${log}"
+    status=$?
+    if [ "${status}" -eq 0 ]; then
+      exit 0
+    fi
+
+    # A failed element build caches its artifact before reporting failure:
+    # its build task logs `SUCCESS Caching artifact`, then `FAILURE <reason>`,
+    # under one cache key. Lines: [elapsed][key][   build:element] ACTION text
+    failed=$(awk '
+      /^\[[^]]*\]\[[^]]*\]\[ *build:/ {
+        split($0, field, "]")
+        element = field[3]
+        sub(/^\[ *build:/, "", element)
+        sub(/ +$/, "", element)
+        id = field[2] SUBSEP element
+        if (field[4] ~ /^ SUCCESS +Caching artifact/) cached[id] = 1
+        else if (field[4] ~ /^ FAILURE /) failed[id] = element
+      }
+      END { for (id in failed) if (id in cached) print failed[id] }
+    ' "${log}")
+    if [ -n "${failed}" ]; then
+      echo "Element build failed and its failed artifact is cached:" ${failed} >&2
+      echo "Exiting 3 so Argo does not retry: the same inputs fail the same way." >&2
+      exit 3
+    fi
+    exit "${status}"

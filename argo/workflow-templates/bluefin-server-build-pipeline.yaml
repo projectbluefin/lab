@@ -147,9 +147,12 @@ spec:
     - name: bst-build-re
       priorityClassName: bst-build
       activeDeadlineSeconds: 10800   # 3 hours per pod to avoid queue starvation and long tail failures
+      # Retry once, except exit 3 from bst-build.sh: an element's own build
+      # failed and its failed artifact is cached, so a retry fails the same way.
       retryStrategy:
         limit: "1"
         retryPolicy: "Always"
+        expression: 'lastRetry.exitCode != "3"'
       inputs:
         parameters:
           - name: element
@@ -178,6 +181,8 @@ spec:
                 path: buildstream.conf
               - key: remote-execution.conf
                 path: remote-execution.conf
+              - key: bst-build.sh
+                path: bst-build.sh
         # Fixed dev key set (Secret created out of band, see
         # docs/skills/bluefin-server/SKILL.md). Fixed, not per-run: the kernel's
         # cache key includes the module certificate, so a stable dev key keeps
@@ -308,7 +313,10 @@ spec:
                 fi
 
                 echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
-                bst --config "${BST_CONF}" \
+                # bst-build.sh exits 3 for a cached element build failure, which
+                # retryStrategy does not retry.
+                bash /etc/buildstream/bst-build.sh \
+                    --config "${BST_CONF}" \
                     --no-interactive \
                     --error-lines 2000 \
                     build "${ELEMENT}"

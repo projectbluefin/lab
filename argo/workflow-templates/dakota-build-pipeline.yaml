@@ -321,9 +321,14 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: bst-build
       activeDeadlineSeconds: 43200
+      # Retry once, except exit 3 from bst-build.sh: an element's own build
+      # failed and its failed artifact is cached, so a retry would spend
+      # ~20 minutes re-pulling ~900 artifacts to fail the same way. Grid,
+      # CAS, network and pod failures still get the retry.
       retryStrategy:
         limit: "1"
         retryPolicy: "Always"
+        expression: 'lastRetry.exitCode != "3"'
       inputs:
         parameters:
           - name: element
@@ -357,6 +362,8 @@ spec:
                 path: buildstream.conf
               - key: remote-execution.conf
                 path: remote-execution.conf
+              - key: bst-build.sh
+                path: bst-build.sh
       # One pod, two containers sharing the per-pod CAS PVC: `main` (bst2)
       # builds and checks the OCI layout out onto the PVC, then `publish`
       # (distroless fsdk-containers skopeo) copies it straight to Zot. bst2
@@ -468,7 +475,10 @@ spec:
                 # The failed element's log is the only copy of a remote build's
                 # output in the pod log. At the default 20 lines a -j32 kernel
                 # build shows only trailing warnings, not the error.
-                bst --config "${BST_CONF}" \
+                # bst-build.sh exits 3 for a cached element build failure, which
+                # retryStrategy does not retry.
+                bash /etc/buildstream/bst-build.sh \
+                    --config "${BST_CONF}" \
                     --no-interactive \
                     --error-lines 2000 \
                     --fetchers 8 \

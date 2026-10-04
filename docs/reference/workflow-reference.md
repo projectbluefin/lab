@@ -70,6 +70,15 @@ template add or rename.
   checks the OCI layout out onto the pod's CAS volume; `publish` (digest-pinned
   `ghcr.io/projectbluefin/skopeo`) then runs one `skopeo copy` to Zot. A failed
   build never starts `publish`.
+- **Retry:** `bst-build-re` retries once (`retryPolicy: Always`) unless `main`
+  exits 3 (`expression: lastRetry.exitCode != "3"`). `main` runs `bst build`
+  through `bst-build.sh` from the `buildstream-remote-cache` ConfigMap, which
+  exits 3 when an element's own build failed and BuildStream cached the failed
+  artifact: the retry would fail the same way after ~20 minutes of pulls.
+  Grid, CAS, network, and pod failures keep bst's exit code (255) and are
+  retried. `build.retry-failed: true` rebuilds instead of replaying a cached
+  failure. See
+  [BuildStream: Failed builds and Argo retries](../skills/cluster-tooling/buildstream.md#2-buildstream-client-config).
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.
 - **Who triggers it automatically:** the `dakota-commit-poller`
@@ -106,7 +115,7 @@ before retrying.
   (`oci/bluefin-server-ddi.bst`, `oci/bluefin-server-installer.bst`) and push to local Zot.
 - **Safety guards (aligned with dakota):**
   `activeDeadlineSeconds: 28800` (workflow), `activeDeadlineSeconds: 10800` (step),
-  `retryStrategy: limit=1`, `GRPC_POLL_STRATEGY=poll`,
+  `retryStrategy: limit=1` (no retry on exit 3, as in dakota), `GRPC_POLL_STRATEGY=poll`,
   `GRPC_ENABLE_FORK_SUPPORT=1`.
 - **Execution:** element builds run on BuildGrid like every BST lane; the
   coordinator pod only orchestrates (2-4 CPU, 4-8Gi). No local sandbox is used.

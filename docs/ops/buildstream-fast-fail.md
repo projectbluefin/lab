@@ -7,8 +7,11 @@ The lab's BuildStream pipelines should fail fast once a run is known to be unusa
 - Build preflight now runs before the workflow acquires the shared `bst-build` semaphore.
 - A workflow that fails the BuildBarn/USB4 gate exits immediately instead of burning queue time.
 - Build pods now use bounded per-pod deadlines and limited retries so failures
-  surface quickly without killing cache-cold bootstrap builds. Dakota allows
-  one retry.
+  surface quickly without killing cache-cold bootstrap builds. Dakota and
+  Bluefin Server allow one retry, and none when an element's own build failed
+  and BuildStream cached the failure (`bst-build.sh` exit 3): that retry would
+  re-pull ~900 artifacts and fail the same way. See
+  [Failed builds and Argo retries](../skills/cluster-tooling/buildstream.md#2-buildstream-client-config).
 
 ## Why this matters
 

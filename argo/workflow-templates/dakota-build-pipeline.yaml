@@ -465,8 +465,12 @@ spec:
                 esac
 
                 echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
+                # The failed element's log is the only copy of a remote build's
+                # output in the pod log. At the default 20 lines a -j32 kernel
+                # build shows only trailing warnings, not the error.
                 bst --config "${BST_CONF}" \
                     --no-interactive \
+                    --error-lines 2000 \
                     --fetchers 8 \
                     "${GAMING_FLAG[@]}" \
                     build "${ELEMENT}"

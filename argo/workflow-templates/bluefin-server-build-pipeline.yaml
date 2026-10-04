@@ -310,6 +310,7 @@ spec:
                 echo "=== Building ${ELEMENT} through BuildGrid remote execution ==="
                 bst --config "${BST_CONF}" \
                     --no-interactive \
+                    --error-lines 2000 \
                     build "${ELEMENT}"
 
                 # The publish container copies OCI_DIR from the shared bst-cache

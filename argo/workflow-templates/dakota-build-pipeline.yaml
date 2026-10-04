@@ -389,8 +389,12 @@ spec:
               seLinuxOptions:
                 type: spc_t
             env:
-              - name: GRPC_POLL_STRATEGY
-                value: poll
+              # No GRPC_POLL_STRATEGY=poll: buildbox-casd inherits this
+              # environment, and the poll poller caps each of its gRPC streams
+              # at ~68 MB/s, so `bst artifact checkout` of the ~10 GB OCI layer
+              # took 2.5 min instead of 15 s (casd FetchTree A/B on exo-0).
+              # BuildStream 2 runs jobs in threads and forks plugin helpers
+              # from a forkserver, so it needs no poll poller.
               - name: GRPC_ENABLE_FORK_SUPPORT
                 value: "1"
               # The BuildStream image used by this workflow only accepts the

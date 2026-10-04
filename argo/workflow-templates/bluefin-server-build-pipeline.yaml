@@ -226,8 +226,9 @@ spec:
                   secretKeyRef:
                     name: github-token
                     key: token
-              - name: GRPC_POLL_STRATEGY
-                value: poll
+              # No GRPC_POLL_STRATEGY=poll: casd inherits it and the poll
+              # poller caps its gRPC streams at ~68 MB/s; see
+              # dakota-build-pipeline.
               - name: GRPC_ENABLE_FORK_SUPPORT
                 value: "1"
               # Avoid the FUSE staging backend; BuildStream exits 255 in this lab

@@ -241,6 +241,39 @@ An element action that is answered from the action cache creates no new
 unchanged element (same `action_digest` in `jobs` twice) means the AC lookup
 missed.
 
+### Where a build's wall time goes
+
+Phase costs read from `bst-build-re` coordinator logs (`main` and `publish`
+containers) of Dakota `oci/bluefin.bst` runs:
+
+| Phase | Cost | Notes |
+| --- | --- | --- |
+| Pod start, clone, config | ~25 s | two `detect-build-mode` pods, then a depth-1 clone |
+| Load, resolve, remote init | 13-15 s | junction and plugin sources (gnome-build-meta, freedesktop-sdk, PyPI plugins) are re-fetched every run in ~5 s; not worth caching |
+| Pull, lab cache warm | ~16 s | ~880 artifacts, only protos and Directory blobs |
+| Pull, first run after a junction bump | ~4 min | ~470 artifacts come from `gbm.gnome.org` over the WAN; pulls and source fetches share the 8 `--fetchers` slots, all busy the whole time |
+| Kernel source fetch | 1.5-3 min | Launchpad git plus ~30 s adding 6385 objects; no lab source cache, so every run that builds the kernel pays it on the critical path |
+| Kernel build | ~8.5 min | one action |
+| initramfs, layers, `oci/bluefin.bst` | ~1 + 1-2.5 + ~3 min | sequential tail after the kernel |
+| Export (`bst artifact checkout`) | casd fetch ~15 s, then a local copy | the OCI layout is one ~10 GB uncompressed layer blob; 2.5 min (4+ min with four exports at once) under `GRPC_POLL_STRATEGY=poll` |
+| Publish (skopeo, 16 CPU) | 15-20 s | compresses to a ~4.3 GB gzip layer |
+
+A fully cached run is pull plus export plus publish. When dakota CI already
+built the commit, the final `oci/*` artifacts come from
+`cache.projectbluefin.io` over the WAN (50 s-3 min) and are pushed to the lab.
+
+The coordinator container must not set `GRPC_POLL_STRATEGY=poll`.
+buildbox-casd inherits the coordinator's environment, and under the `poll`
+poller each of its gRPC streams tops out near 68 MB/s: casd `FetchTree` of the
+10 GB layer took 144 s with `poll` and 15 s without, and a plain Python
+ByteStream read of the same blob from the frontend measured 68 MB/s against
+710 MB/s. Every large blob casd moves (export, big pulls, input-root uploads)
+pays that cap. BuildStream 2 runs jobs in threads and forks plugin helpers
+from a forkserver, so it does not need `poll`.
+
+Read these timings from the pod logs; build pipelines keep their pods 2h after
+the workflow ends (`podGC` in the template).
+
 ### Diagnosing a failed remote element build
 
 The coordinator pod log is the only place BuildStream prints a remote build's

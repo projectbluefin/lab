@@ -198,7 +198,10 @@ spec:
                   git fetch --depth=1 origin "${REF}"
                   git checkout --detach FETCH_HEAD
                 fi
-                if [[ -f /dev-keys/keys.tgz ]]; then
+                # /dev-keys exists only when the caller's pod-patch mounts the
+                # Secret; then keys.tgz is required and tar fails the build if it is
+                # missing, rather than silently building without the dev keys.
+                if [[ -d /dev-keys ]]; then
                   # Lab builds are dev-key builds only; the images are never published.
                   mkdir -p files/boot-keys
                   tar -xzf /dev-keys/keys.tgz -C files/boot-keys

@@ -54,7 +54,10 @@ spec:
               name: ac
       containers:
         - name: storage
-          image: ghcr.io/buildbarn/bb-storage:20260609T094425Z-10acc76
+          # Upstream 10acc76 plus pread-large-reads.patch (images/bb-storage):
+          # reads larger than one page use pread() instead of faulting the
+          # block-file mmap one 4 KiB page at a time (docs/skills/cluster-tooling/buildstream.md).
+          image: 192.168.1.102:30500/buildbarn/bb-storage@sha256:38e1e79ca5f86a4249bec774d135e569aaf28cec47b841eca82de2fd0966072d # 10acc76-pread
           imagePullPolicy: IfNotPresent
           args:
             - /config/storage.jsonnet

@@ -1,0 +1,180 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Jorge Castro <jorge.castro@gmail.com>
+Date: Sun, 4 Oct 2026 01:32:13 -0400
+Subject: [PATCH] perf(blockdevice): read multi-page ranges with pread()
+ instead of the memory map
+
+Once most faults against a file's memory map miss the page cache, Linux
+stops doing read-around for that file (file_ra_state.mmap_miss). Random
+reads of small objects keep it in that state, so a large object that is
+not cached is then read one 4 KiB page per fault. pread() hands the
+kernel the whole range and keeps its sequential readahead.
+
+Assisted-by: claude-opus-5.5 via GitHub Copilot
+---
+ .../memory_mapped_block_device_unix.go        | 57 +++++++++++++++++--
+ .../new_block_device_from_file_test.go        | 54 ++++++++++++++++++
+ 2 files changed, 105 insertions(+), 6 deletions(-)
+
+diff --git a/pkg/blockdevice/memory_mapped_block_device_unix.go b/pkg/blockdevice/memory_mapped_block_device_unix.go
+index e386101..8f8bafc 100644
+--- a/pkg/blockdevice/memory_mapped_block_device_unix.go
++++ b/pkg/blockdevice/memory_mapped_block_device_unix.go
+@@ -16,8 +16,9 @@ import (
+ )
+ 
+ type memoryMappedBlockDevice struct {
+-	fd   int
+-	data []byte
++	fd       int
++	data     []byte
++	pageSize int
+ }
+ 
+ // newMemoryMappedBlockDevice creates a BlockDevice from a file
+@@ -29,14 +30,13 @@ func newMemoryMappedBlockDevice(fd, sizeBytes int) (BlockDevice, error) {
+ 		return nil, util.StatusWrap(err, "Failed to memory map block device")
+ 	}
+ 	return &memoryMappedBlockDevice{
+-		fd:   fd,
+-		data: data,
++		fd:       fd,
++		data:     data,
++		pageSize: unix.Getpagesize(),
+ 	}, nil
+ }
+ 
+ func (bd *memoryMappedBlockDevice) ReadAt(p []byte, off int64) (n int, err error) {
+-	// Let read actions go through the memory map to prevent system
+-	// call overhead for commonly requested objects.
+ 	if off < 0 {
+ 		return 0, syscall.EINVAL
+ 	}
+@@ -44,6 +44,20 @@ func (bd *memoryMappedBlockDevice) ReadAt(p []byte, off int64) (n int, err error
+ 		return 0, io.EOF
+ 	}
+ 
++	// Reads spanning multiple pages go through the file descriptor.
++	// The kernel stops doing read-around for faults against a
++	// memory map once most of them miss the page cache (mmap_miss),
++	// which random reads of small objects quickly cause. Faulting in
++	// a large object afterwards issues one 4 KiB disk read per page,
++	// while pread() requests the whole range and keeps the file's
++	// sequential readahead.
++	if len(p) > bd.pageSize {
++		return bd.preadAt(p, off)
++	}
++
++	// Let small reads go through the memory map to prevent system
++	// call overhead for commonly requested objects.
++
+ 	// Install a page fault handler, so that I/O errors against the
+ 	// memory map (e.g., due to disk failure) don't cause us to
+ 	// crash.
+@@ -62,6 +76,37 @@ func (bd *memoryMappedBlockDevice) ReadAt(p []byte, off int64) (n int, err error
+ 	return n, err
+ }
+ 
++func (bd *memoryMappedBlockDevice) preadAt(p []byte, off int64) (int, error) {
++	// Don't read past the end of the memory map, so that both read
++	// paths observe the same size.
++	var eof error
++	if remaining := int64(len(bd.data)) - off; int64(len(p)) > remaining {
++		p, eof = p[:remaining], io.EOF
++	}
++
++	// pread() may return fewer bytes than requested, so invoke it
++	// repeatedly.
++	nTotal := 0
++	for len(p) > 0 {
++		n, err := unix.Pread(bd.fd, p, off)
++		if err == unix.EINTR {
++			continue
++		}
++		if err != nil {
++			return nTotal, util.StatusWrapWithCode(err, codes.Internal, "Failed to read from block device")
++		}
++		if n == 0 {
++			// The range lies within the memory map, so the
++			// file shrank underneath us.
++			return nTotal, status.Error(codes.Internal, "Block device ended before the end of its memory map")
++		}
++		nTotal += n
++		p = p[n:]
++		off += int64(n)
++	}
++	return nTotal, eof
++}
++
+ func (bd *memoryMappedBlockDevice) WriteAt(p []byte, off int64) (int, error) {
+ 	// Let write actions go through the file descriptor. Doing so
+ 	// yields better performance, as writes through a memory map
+diff --git a/pkg/blockdevice/new_block_device_from_file_test.go b/pkg/blockdevice/new_block_device_from_file_test.go
+index 101e492..20726a5 100644
+--- a/pkg/blockdevice/new_block_device_from_file_test.go
++++ b/pkg/blockdevice/new_block_device_from_file_test.go
+@@ -1,6 +1,7 @@
+ package blockdevice_test
+ 
+ import (
++	"io"
+ 	"os"
+ 	"path/filepath"
+ 	"runtime"
+@@ -141,3 +142,56 @@ func TestNewBlockDeviceFromFileRelativePath(t *testing.T) {
+ 
+ 	require.NoError(t, os.Chdir(originalWd))
+ }
++
++func TestNewBlockDeviceFromFileMultiPageReads(t *testing.T) {
++	// Reads spanning more than one page may be served through a
++	// different code path than small reads. They should observe the
++	// same contents and the same end of the block device.
++	blockDevicePath := filepath.Join(t.TempDir(), "blockdevice")
++	blockDevice, sectorSizeBytes, sectorCount, err := blockdevice.NewBlockDeviceFromFile(blockDevicePath, 5*os.Getpagesize(), true)
++	require.NoError(t, err)
++	sizeBytes := int64(sectorSizeBytes) * sectorCount
++
++	contents := make([]byte, sizeBytes)
++	for i := range contents {
++		contents[i] = byte(i * 7)
++	}
++	n, err := blockDevice.WriteAt(contents, 0)
++	require.Equal(t, len(contents), n)
++	require.NoError(t, err)
++
++	t.Run("Middle", func(t *testing.T) {
++		b := make([]byte, 2*os.Getpagesize()+3)
++		n, err := blockDevice.ReadAt(b, 1001)
++		require.Equal(t, len(b), n)
++		require.NoError(t, err)
++		require.Equal(t, contents[1001:1001+len(b)], b)
++	})
++
++	t.Run("PastEnd", func(t *testing.T) {
++		b := make([]byte, 3*os.Getpagesize())
++		n, err := blockDevice.ReadAt(b, sizeBytes-100)
++		require.Equal(t, 100, n)
++		require.Equal(t, io.EOF, err)
++		require.Equal(t, contents[sizeBytes-100:], b[:n])
++
++		n, err = blockDevice.ReadAt(b, sizeBytes)
++		require.Equal(t, 0, n)
++		require.Equal(t, io.EOF, err)
++	})
++
++	if runtime.GOOS != "windows" {
++		t.Run("FileShrunk", func(t *testing.T) {
++			// Data missing from the file must not be reported
++			// as a regular end of file, as that would make
++			// objects appear shorter than they are.
++			require.NoError(t, os.Truncate(blockDevicePath, 0))
++			b := make([]byte, 2*os.Getpagesize())
++			n, err := blockDevice.ReadAt(b, 0)
++			require.Equal(t, 0, n)
++			testutil.RequireEqualStatus(t, status.Error(codes.Internal, "Block device ended before the end of its memory map"), err)
++		})
++	}
++
++	require.NoError(t, blockDevice.Close())
++}

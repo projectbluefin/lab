@@ -7,17 +7,17 @@
 #   bst-build          — Global Dakota/Bluefin Server BuildStream
 #                        execution lanes: how many pipelines share the
 #                        BuildGrid at once; variants still run in parallel
-#                        inside each. One lane until the BuildGrid controller
-#                        accepts more than 2000 concurrent Execute RPCs:
-#                        - Controller Execute RPCs: recc releases its make/
-#                          ninja jobserver token while it waits on remote
-#                          execution, so an element's compiles are bounded by
-#                          its ready compile steps, not by max-jobs. One lane
-#                          peaked at 885 in flight at max-jobs 12 (gtk alone
-#                          submitted 1531). Replaying that load at max-jobs 32
-#                          gives ~1290 for one lane but 2750-3700 for two,
-#                          and an Execute rejected at the limit fails the
-#                          compile (recc does not retry RESOURCE_EXHAUSTED).
+#                        inside each. Two lanes, sized by:
+#                        - Controller Execute RPCs (maximum-concurrent-rpcs
+#                          6000): recc releases its make/ninja jobserver token
+#                          while it waits on remote execution, so an element's
+#                          compiles are bounded by its ready compile steps, not
+#                          by max-jobs. One lane peaked at 885 in flight at
+#                          max-jobs 12 (gtk alone submitted 1531). Replaying
+#                          that load at max-jobs 32 gives ~1290 for one lane and
+#                          2750-3700 for two; an Execute rejected at the limit
+#                          fails the compile (recc does not retry
+#                          RESOURCE_EXHAUSTED).
 #                        - argo-quota limits.cpu 128: a coordinator pod is
 #                          20.5 CPU of limits (main 4 + publish 16 + init 0.5)
 #                          and a Dakota pipeline runs two at once (one per
@@ -31,7 +31,8 @@
 #                        bst-commit-poller reads this value and admits
 #                        lanes + 1 bst-workload workflows (one waits).
 #                        bst-cache-warm runs on top of these lanes and adds
-#                        its own Execute RPCs.
+#                        its own Execute RPCs (up to ~1500): two busy lanes plus
+#                        a warmup stays under 6000.
 #   bst-cache-warm     — Dedicated lane for the bst-cache-warm recovery chain.
 #                        Keeps cache re-seeding from occupying the production
 #                        bst-build slot while still allowing only one warmup
@@ -60,6 +61,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: lab
 data:
-  bst-build: "1"
+  bst-build: "2"
   bst-cache-warm: "1"
   ghost-container-qa: "6"

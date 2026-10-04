@@ -161,7 +161,11 @@ and how long repo-server keeps `main` resolved to a cached SHA; a push is live
 within about 5 minutes. A normal refresh reuses the cached SHA, so when you need
 a commit live sooner, request a hard refresh
 (`kubectl -n argocd annotate application <app> argocd.argoproj.io/refresh=hard --overwrite`)
-and check `.status.sync.revision` equals your commit.
+and check `.status.sync.revision` equals your commit. The resolved refs live in
+Redis under `git-refs|https://github.com/projectbluefin/lab|...` with the TTL
+that was in force when they were written, so after lowering
+`timeout.reconciliation` the old entry keeps its longer TTL until it expires
+(check with `redis-cli ttl` in `argocd-redis`).
 
 If a template change is in git but not yet live:
 1. Check `argocd app get testing-lab` — is it Synced?

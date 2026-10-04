@@ -146,10 +146,25 @@ Buildbarn is storage only.
   - Never list the frontend as a combined (`type: all`) artifact server: it has
     no Remote Asset service, so BuildStream drops it (`Failed to initialize
     remote`) and the junctions lose their lab index and push remote.
-  - Source caches are upstream read-only (`override-project-caches: true`):
-    the deployed `bb-remote-asset` cannot handle BuildStream source-key URNs
-    (`FetchDirectory ... PERMISSION_DENIED`), and inherited junction
-    source-cache entries make builds retry a source push for minutes.
+  - Source caches list gbm and fsdk read-only, then the lab index and storage
+    (`push: true`), with `override-project-caches: true`; the `upstream-cache`
+    block in `bst-build-re` repeats them because a
+    `projects.<name>.source-caches` block replaces the global list. A build
+    pushes the sources of every element it fetched: the element's staged
+    sources (`FetchBlob`/`PushBlob` on
+    `urn:fdc:buildstream.build:2020:source:<element sources key>`) and each
+    source on its own (`FetchDirectory`/`PushDirectory` on
+    `...:source:<kind>/<source key>`). The per-source entry still hits when
+    only another source of the element changed (a kernel config script edit
+    keeps the kernel git checkout). Keep the lab servers last: BuildStream's
+    per-source pull (`SourceCache.pull`) does not stop at the first index hit,
+    so any index remote after the lab overwrites a lab hit with its miss.
+    bb-remote-asset must answer an index miss with `NOT_FOUND` (its `error`
+    fetcher): its old `http` fetcher answered `FetchDirectory` misses with
+    `PERMISSION_DENIED` ("HTTP Fetching of directories is not supported!"),
+    which BuildStream treats as a failed fetch rather than a miss. Cache keys
+    come from each plugin's unique key, not the URL (`git_repo` keys on `ref`
+    only), so aliases do not affect source caching.
 
 This matches upstream BuildStream's own CI: `.github/compose/ci.buildgrid.yml`
 runs BuildGrid with `buildbox-worker --buildbox-run=buildbox-run-bubblewrap`,
@@ -285,7 +300,7 @@ containers) of Dakota `oci/bluefin.bst` runs:
 | Load, resolve, remote init | 13-15 s | junction and plugin sources (gnome-build-meta, freedesktop-sdk, PyPI plugins) are re-fetched every run in ~5 s; not worth caching |
 | Pull, lab cache warm | ~16 s | ~880 artifacts, only protos and Directory blobs |
 | Pull, first run after a junction bump | ~4 min | ~470 artifacts come from `gbm.gnome.org` over the WAN; pulls and source fetches share the 8 `--fetchers` slots, all busy the whole time |
-| Kernel source fetch | 1.5-3 min | Launchpad git plus ~30 s adding 6385 objects; no lab source cache, so every run that builds the kernel pays it on the critical path |
+| Kernel source fetch | 1.5-3 min miss, ~1 s hit | a miss is the Launchpad git fetch plus ~30 s adding 6385 objects, on the critical path; the build then pushes it to the lab source cache, and later runs that build the same kernel `ref` pull it from Buildbarn (102,585 files, 1.8 GB) |
 | Kernel build | ~8.5 min | one action |
 | initramfs, layers, `oci/bluefin.bst` | ~1 + 1-2.5 + ~3 min | sequential tail after the kernel |
 | Export (`bst artifact checkout`) | 2.5-3 min (4+ min with four exports at once) | the OCI layout is one ~10 GB uncompressed layer blob, read cold from Buildbarn at ~68 MB/s (see below) |

@@ -34,7 +34,7 @@ metadata:
    (see [buildstream.md](buildstream.md) "BuildStream config"):
    - never configure external cache credentials/keys in cluster workflows
    - artifacts keep `override-project-caches: false` so the projects' own upstream caches (Freedesktop SDK, GNOME OS) stay read-only fallbacks and bootstrap toolchains are never rebuilt; lab writes go to the `bb-remote-asset` index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) plus the frontend CAS (`grpc://frontend.buildbarn.svc.cluster.local:8980`, `type: storage`), both `push: true`.
-   - source caches use `override-project-caches: true` with only the upstream caches, read-only: the deployed `bb-remote-asset` cannot store BuildStream source URNs.
+   - source caches use `override-project-caches: true`: the upstream caches read-only, then the same lab index and frontend storage, `push: true`, kept last (BuildStream's per-source pull lets a later index miss overwrite an earlier hit). bb-remote-asset must keep its `error` fetcher (NOT_FOUND on a miss); any other miss status fails BuildStream's source fetch.
    - build the pinned upstream sources unmodified; never patch elements, junctions, or patch queues to work around the execution sandbox. A sandbox-only failure is a BuildGrid runner bug to fix in the grid.
    - BuildStream concurrency targets the BuildGrid queue: `scheduler.builders: 12`
      element actions, each fanning out into recc compile actions, with

@@ -58,7 +58,7 @@ template add or rename.
   applies no element, junction, or patch-queue changes; upstream GNOME `recc`
   defaults apply when the pinned gnome-build-meta declares them.
 - **Capacity:** the coordinator keeps `scheduler.builders: 12` element actions
-  in flight with `max-jobs: 12` each; GNOME recc fans each element out into
+  in flight with `max-jobs: 32` each; GNOME recc fans each element out into
   compile actions. All actions queue in BuildGrid and run on the `worker`
   DaemonSet (one per node, `CONCURRENT_JOBS: 32` slots each). The `bst-build`
   semaphore admits two pipelines at once; each runs at most one coordinator per

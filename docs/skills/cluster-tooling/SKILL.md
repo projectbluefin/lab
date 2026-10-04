@@ -38,7 +38,7 @@ metadata:
    - build the pinned upstream sources unmodified; never patch elements, junctions, or patch queues to work around the execution sandbox. A sandbox-only failure is a BuildGrid runner bug to fix in the grid.
    - BuildStream concurrency targets the BuildGrid queue: `scheduler.builders: 12`
      element actions, each fanning out into recc compile actions, with
-     `max-jobs: 12`. Keep `bst-build` lanes × `builders` below one node's
+     `max-jobs: 32`. Keep `bst-build` lanes × `builders` below one node's
      `CONCURRENT_JOBS` (32) or element actions occupy every slot and starve
      their own compiles. Adding a node adds a worker with no config change. Do
      not serialize a healthy distributed build or call cache traffic

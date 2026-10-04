@@ -140,7 +140,11 @@ breaks hermeticity.
 - Work spreads by fan-out: with gnome-build-meta's `recc: remote-execution`,
   each element action submits its compiles as separate actions, so one element
   can queue hundreds of actions that any worker drains. `scheduler.builders` (12)
-  only bounds element actions in flight; `build.max-jobs` is 12 per action.
+  only bounds element actions in flight; `build.max-jobs` (32, one node's
+  threads) is the make/cargo parallelism inside each action. A non-recc element
+  such as the kernel is one action, so `max-jobs` caps it to that many threads.
+  The value stays out of cache keys (environment-nocache), so changing it
+  keeps every upstream artifact a cache hit.
 - An element action holds a worker slot while it waits for its own compiles.
   Each `bst-build` lane runs at most one coordinator per node, so keep lanes ×
   `builders` below one node's `CONCURRENT_JOBS` (32) and element actions can
@@ -355,7 +359,7 @@ scheduler:
   builders: 12
   pushers: 4
 build:
-  max-jobs: 12
+  max-jobs: 32
 artifacts:  override-project-caches: false
   servers:
   - url: grpc://frontend.buildbarn.svc.cluster.local:8980

@@ -17,6 +17,15 @@ data:
   # = 48 of 64 slots (2 x buildgrid-worker CONCURRENT_JOBS), leaving 16 for
   # compiles. Observed element-action concurrency in one lane peaked at 6.
   # Compile fan-out, not this value, is what spreads work across new nodes.
+  #
+  # `max-jobs` is the build parallelism inside one element action (make's
+  # MAKEFLAGS, fdsdk's CARGO_BUILD_JOBS/GOMAXPROCS), so it caps a non-recc
+  # element such as the kernel to that many of a node's 32 threads. Those
+  # variables are environment-nocache, so the value does not reach cache keys
+  # (`bst show` gives identical keys for every oci/bluefin.bst dependency at
+  # 12 and 32); an element that writes %{max-jobs} into a command would.
+  # Several big non-recc actions on one node share its 32 threads and the
+  # worker's 56Gi memory limit. The bst build pod reads it only from here.
   dakota-buildstream.conf: |
     scheduler:
       network-retries: 8
@@ -24,7 +33,7 @@ data:
       builders: 12
       pushers: 4
     build:
-      max-jobs: 12
+      max-jobs: 32
 
     artifacts:
       override-project-caches: false

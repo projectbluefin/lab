@@ -65,13 +65,19 @@ spec:
             - name: metrics
               containerPort: 9980
               protocol: TCP
+          # bb-storage mmaps the CAS block file, so its page cache is charged
+          # to this cgroup. At 2Gi the shards sat at the limit (anon ~45 MiB,
+          # file ~1.98 GiB, memory.events max ~0.9M in 2h), re-reading hot
+          # blobs from disk and throttling their own sockets
+          # (memory.events sock_throttled 200k-300k). Page cache is
+          # reclaimable, so the higher limit only lets the hot set stay cached.
           resources:
             requests:
               cpu: 200m
-              memory: 512Mi
+              memory: 1Gi
             limits:
               cpu: "2"
-              memory: 2Gi
+              memory: 8Gi
           volumeMounts:
             - mountPath: /config/
               name: configs

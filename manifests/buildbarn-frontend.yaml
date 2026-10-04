@@ -53,13 +53,22 @@ spec:
               containerPort: 8980
             - name: metrics
               containerPort: 9980
+          # Each in-flight Batch*Blobs call may carry up to
+          # maximumMessageSizeBytes (64 MiB). With 1 GiB, a BuildStream lane
+          # plus the BuildGrid CAS fronts drove both replicas into the limit
+          # together (memory.peak ~1.05 GiB, OOMKilled twice each), failing
+          # every in-flight CAS call. GOMEMLIMIT makes the Go GC collect
+          # before the cgroup limit instead of after it.
+          env:
+            - name: GOMEMLIMIT
+              value: 3GiB
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: "1"
-              memory: 1Gi
+              memory: 4Gi
           volumeMounts:
             - mountPath: /config/
               name: configs

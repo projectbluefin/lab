@@ -317,9 +317,12 @@ element is one action; give it the node's threads through `max-jobs`.
 Changes that restart BuildGrid (controller, bots, cas, database, worker),
 Buildbarn, or Zot pods kill every in-flight action and fail running builds;
 a worker restart also wipes its casd cache (generic-ephemeral PVC). Land them
-only when `kubectl -n argo get wf -l bluefin.io/bst-workload=true
---field-selector status.phase=Running` is empty, and batch them into one
-window. WorkflowTemplates, `workflow-semaphores`, the
+only when `kubectl -n argo get wf -l workflows.argoproj.io/phase=Running`
+lists no BuildStream build (build pipelines and ad-hoc workflows that run
+`bst`), and batch them into one window. Build-pipeline workflows carry no
+`bluefin.io/bst-workload` label (only the pollers do), and `kubectl` rejects
+`--field-selector status.phase` on workflows. WorkflowTemplates,
+`workflow-semaphores`, the
 `buildstream-remote-cache` ConfigMap, docs, and tests restart no grid pod and
 can land at any time; a running workflow keeps the template snapshot it was
 submitted with.

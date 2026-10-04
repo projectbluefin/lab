@@ -288,7 +288,7 @@ containers) of Dakota `oci/bluefin.bst` runs:
 | Kernel source fetch | 1.5-3 min | Launchpad git plus ~30 s adding 6385 objects; no lab source cache, so every run that builds the kernel pays it on the critical path |
 | Kernel build | ~8.5 min | one action |
 | initramfs, layers, `oci/bluefin.bst` | ~1 + 1-2.5 + ~3 min | sequential tail after the kernel |
-| Export (`bst artifact checkout`) | 2.5-3 min (4+ min with four exports at once) | the OCI layout is one ~10 GB uncompressed layer blob, read cold from Buildbarn at ~68 MB/s (see below) |
+| Export (`bst artifact checkout`) | 2.5-3 min on upstream bb-storage (4+ min with four exports at once) | the OCI layout is one ~10 GB uncompressed layer blob, read cold from Buildbarn (see below) |
 | Publish (skopeo, 16 CPU) | 15-20 s | compresses to a ~4.3 GB gzip layer |
 
 A fully cached run is pull plus export plus publish. When dakota CI already
@@ -296,20 +296,29 @@ built the commit, the final `oci/*` artifacts come from
 `cache.projectbluefin.io` over the WAN (50 s-3 min) and are pushed to the lab.
 
 Export is bound by Buildbarn's cold-read path, not by the coordinator or the
-network. bb-storage serves every CAS read by copying from one shared `mmap` of
-the 420 GiB `blocks` file. The kernel's per-open-file `mmap_miss` heuristic
-turns off mmap read-around once faults on that file mostly miss the page
-cache, and ordinary build traffic (random small-blob reads against an 8 Gi
-page cache) keeps it off, so a large cold blob is read one 4 KiB page per
-fault: storage-0 showed 16,500 major faults/s and 68 MB/s of disk reads while
-serving the layer, from an NVMe that reads the same file at 2.8 GB/s with
-`O_DIRECT`. Reproduced outside bb-storage: a fresh mapping of `blocks` read
-cold regions sequentially at 2.0 GB/s, the same mapping after 400 random cold
-faults at 259 MB/s, and a new `open()` at 1.7 GB/s again. Warm (cached) parts
-of a blob stream at 0.7-1.2 GB/s. Neither the template nor the BuildStream
-config can change this. It needs a bb-storage change (read large blobs with
-`pread`, or `MADV_SEQUENTIAL` around them); a larger storage page cache
-(the pods' 8 Gi memory limit) raises the hit rate but is unmeasured.
+network. Upstream bb-storage serves every CAS read by copying from one shared
+`mmap` of the 420 GiB `blocks` file. The kernel's per-open-file `mmap_miss`
+heuristic turns off mmap read-around once faults on that file mostly miss the
+page cache, and ordinary build traffic (random small-blob reads) keeps it off,
+so a large cold blob is read one 4 KiB page per fault: storage-0 showed 16,500
+major faults/s and 68 MB/s of disk reads while serving the layer, from an NVMe
+that reads the same file at 2.8 GB/s with `O_DIRECT`. In two hours of builds
+storage-0 took 28 M major faults (108 GiB in 4 KiB reads). No upstream release
+or config option changes this, so the storage shards run a lab build of
+bb-storage (`images/bb-storage`: the upstream commit plus
+`pread-large-reads.patch`) that reads every range larger than one page with
+`pread()`, which keeps the file's sequential readahead; reads of one page or
+less still use the mmap. On a 24 GiB test file after 400 random cold 4 KiB
+reads, 64 KiB `ReadAt` calls (the ByteStream chunk size) read cold data at
+~100 MB/s upstream and ~3.3 GB/s patched (four streams: ~240 MB/s and
+~2.8 GB/s). Cached reads drop from ~31 to ~15-20 GB/s, still far above the
+~2.3 GB/s at which Go's SHA-256 verifies each blob as it streams. The frontend
+never reads a block device and stays on the upstream image.
+
+A larger storage memory limit does not fix cold reads: of storage-0's 28 M
+major faults only 2.8 M (10%; storage-1 7%) were `workingset_refault_file`,
+pages evicted while still in use. The rest were first reads that no page-cache
+size avoids, and a layer not read since the pod started is always one of them.
 
 Read these timings from the pod logs; build pipelines keep their pods 2h after
 the workflow ends (`podGC` in the template).
@@ -412,6 +421,13 @@ skopeo copy --format oci --dest-tls-verify=false \
 Zot rejects docker v2s2 manifests with `--preserve-digests`, so convert to OCI
 and pin the resulting Zot digest. Moving these images to fsdk-containers per
 the image policy remains the long-term goal.
+
+The Buildbarn storage shards run `192.168.1.102:30500/buildbarn/bb-storage`,
+built locally with `podman build images/bb-storage` (pinned upstream commit,
+Bazel version, and bases; the build runs the patched package's tests) and
+pushed to the same Zot; its Containerfile header has the commands. When
+bumping bb-storage, rebase `pread-large-reads.patch` onto the new commit, or
+drop the image once upstream reads large ranges without the mmap.
 
 **Worker concurrency.** To change slots per node, edit `CONCURRENT_JOBS` in
 `manifests/buildgrid-worker.yaml` and let GitOps roll the DaemonSet. Keep

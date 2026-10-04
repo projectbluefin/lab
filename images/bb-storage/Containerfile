@@ -1,0 +1,53 @@
+# bb-storage with one read-path patch for the Buildbarn storage shards
+#
+# Upstream ghcr.io/buildbarn/bb-storage serves every CAS read by copying from
+# one MAP_SHARED mmap of the blocks file. Once most faults on that file miss
+# the page cache, Linux turns off mmap read-around for it, so a large cold blob
+# is read one 4 KiB page per fault (~100 MB/s from an NVMe that does 3 GB/s).
+# pread-large-reads.patch reads multi-page ranges with pread() instead; reads
+# of one page or less still use the mmap. Upstream has no fix or config knob
+# (checked through main 027bd79); drop this image once it does.
+#
+# Reproducible from the upstream commit the lab ran unpatched plus the patch,
+# built the way upstream CI builds it (Bazel from .bazelversion, linux_amd64,
+# `bazel run --run_under cp //cmd/bb_storage`) on the same distroless/static
+# base its images use (MODULE.bazel `distroless_static`). Build and publish to
+# the lab Zot, then pin manifests/buildbarn-storage.yaml by the pushed digest:
+#
+#   podman build -t 192.168.1.102:30500/buildbarn/bb-storage:10acc76-pread images/bb-storage
+#   podman push --format oci --tls-verify=false --digestfile /tmp/digest \
+#     192.168.1.102:30500/buildbarn/bb-storage:10acc76-pread
+
+# fsdk-containers lab-runner 26.08.2: bash, curl, git, python3, glibc. Bazel
+# brings its own JDK and the module's Go toolchain and prebuilt protoc. There
+# is no C compiler, and bb_storage is a pure Go binary (go_binary pure = "on"),
+# so C++ toolchain autodetection is turned off.
+FROM ghcr.io/projectbluefin/lab-runner@sha256:767777acd14e340698f31992e6e2cc9bc1b2009ccb1472dfcfd9c7f6e9d60e29 AS build
+
+ARG BAZEL_VERSION=9.1.0
+ARG BAZEL_SHA=a667454f3f4f8878df8199136b82c199f6ada8477b337fae3b1ef854f01e4e2f
+RUN curl -sSfL -o /usr/bin/bazel \
+      "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-linux-x86_64" && \
+    echo "${BAZEL_SHA}  /usr/bin/bazel" | sha256sum -c - && \
+    chmod +x /usr/bin/bazel
+
+# The commit behind ghcr.io/buildbarn/bb-storage:20260609T094425Z-10acc76.
+ARG BB_STORAGE_COMMIT=10acc76a8295d86f64baa8485c8e616bce0d53ca
+COPY pread-large-reads.patch /src/
+RUN git clone https://github.com/buildbarn/bb-storage.git /src/bb-storage && \
+    cd /src/bb-storage && \
+    git checkout "${BB_STORAGE_COMMIT}" && \
+    test "$(cat .bazelversion)" = "${BAZEL_VERSION}" && \
+    git apply /src/pread-large-reads.patch
+
+WORKDIR /src/bb-storage
+ARG BAZEL_FLAGS="--repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1"
+# --batch: no Bazel server outlives the RUN step.
+RUN bazel --batch --output_user_root=/tmp/bazel test ${BAZEL_FLAGS} --test_output=errors //pkg/blockdevice/... && \
+    bazel --batch --output_user_root=/tmp/bazel run ${BAZEL_FLAGS} --run_under cp \
+      --platforms=@com_github_buildbarn_bb_storage//tools/platforms:linux_amd64 \
+      //cmd/bb_storage /bb_storage
+
+FROM gcr.io/distroless/static@sha256:3f2b64ef97bd285e36132c684e6b2ae8f2723293d09aae046196cca64251acac
+COPY --from=build /bb_storage /app/bb_storage
+ENTRYPOINT ["/app/bb_storage"]

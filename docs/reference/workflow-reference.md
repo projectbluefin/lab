@@ -78,7 +78,7 @@ template add or rename.
   Grid, CAS, network, and pod failures keep bst's exit code (255) and are
   retried. `build.retry-failed: true` rebuilds instead of replaying a cached
   failure. See
-  [BuildStream: Failed builds and Argo retries](../skills/cluster-tooling/buildstream.md#2-buildstream-client-config).
+  [BuildStream: Failed builds and retries](../skills/cluster-tooling/buildstream.md#failed-builds-and-retries).
 - **Priority:** `priorityClassName: bst-build` keeps the coordinator ahead of
   short-lived lab test workloads.
 - **Who triggers it automatically:** the `dakota-commit-poller`
@@ -120,7 +120,7 @@ before retrying.
   gRPC streams at ~68 MB/s).
 - **Execution:** element builds run on BuildGrid like every BST lane; the
   coordinator pod only orchestrates (2-4 CPU, 4-8Gi). No local sandbox is used.
-- **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts are indexed in `bb-remote-asset` (`:8984`). The current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it. The checked-in `buildstream-remote-cache` config leaves project cache overrides disabled and lists the project's own upstream artifact/source cache URLs as read-only fallbacks.
+- **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts are indexed in `bb-remote-asset` (`:8984`) with the projects' upstream artifact caches as read-only fallbacks. Source caches override the project entries and list only the upstream caches, read-only. See `manifests/buildstream-remote-cache-config.yaml`.
 
 ### bst-qa-pipeline
 - **Purpose:** Smoke-tests BuildStream wiring against BuildGrid execution and
@@ -172,10 +172,11 @@ one job:
 | BuildGrid (`buildgrid` namespace) | Remote-execution actions on `buildbox-run-bubblewrap` workers (private PID namespace, fresh `/proc`) | `dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline` |
 | Buildbarn (`buildbarn` namespace) | CAS, action cache, and remote asset only; no execution | same lanes, plus BuildGrid workers' casd |
 
-BuildGrid topology: one `controller` Deployment
-(`controller.buildgrid.svc.cluster.local:50051`, Execution/Operations/Bots),
-a Postgres `database` StatefulSet, and a `worker` DaemonSet with one
-buildbox-casd + buildbox-worker pod per node (`manifests/buildgrid-*.yaml`).
+BuildGrid topology (`manifests/buildgrid-*.yaml`): `controller`
+(`controller.buildgrid.svc.cluster.local:50051`, Execution/Operations), `bots`
+(Remote Workers API), the stateless `cas` front, a Postgres `database`
+StatefulSet, and a `worker` DaemonSet with one buildbox-casd + buildbox-worker
+pod per node.
 Buildbarn topology: 2 storage shards (spread with `podAntiAffinity`), 2
 frontend replicas, and `bb-remote-asset` (`manifests/buildbarn-*.yaml`). Every
 BST lane requires BuildGrid execution over a fresh USB4 link between `ghost`
@@ -186,7 +187,8 @@ for repair; it must not use an Ethernet, local, or cache-only fallback.
 
 | CronWorkflow | Interval | Triggers | Keeps warm |
 | --- | --- | --- | --- |
-| `dakota-commit-poller` | **suspended** (was every 5 min at minute +2) | shared `bst-commit-poller` → `dakota-build-pipeline` when `dakota:testing` changes | Dakota BuildStream cache/execution path; on-demand via `just force-dakota-poll` |
+| `dakota-commit-poller` | **suspended** | shared `bst-commit-poller` → `dakota-build-pipeline` when `dakota:testing` changes | Dakota BuildStream cache/execution path; on-demand via `just force-dakota-poll` |
+| `server-commit-poller` | every 15 min at :02 | shared `bst-commit-poller` → `bluefin-server-build-pipeline` when `projectbluefin/server` `main` changes | Bluefin Server BuildStream cache/execution path |
 | `image-poll-dakota` | every 10 min at :08 | custom digest DAG with `run-qa=false` | Dakota testing digest freshness; daily QA runs at 03:00 UTC |
 
 Dakota/Bluefin Server/BST lanes execute on BuildGrid and write caches to the
@@ -194,9 +196,9 @@ shared Buildbarn frontend while leaving upstream mirrors read-only. Cold
 runs may fetch from upstream source origins, but cache writes stay in-cluster via
 Buildbarn.
 
-**`bluefin-server-build-pipeline` has no poller at all** — it is manual-trigger
-only and uses the same USB4-gated BuildGrid remote-execution contract as every
-other BST lane.
+Both commit pollers use the same USB4-gated BuildGrid remote-execution
+contract as manual BST runs. `bst-cache-warm` (manual) re-seeds the Dakota and
+Bluefin Server caches after cache loss on its own semaphore lane.
 
 - **`nightly-dakota` does not warm anything** — it's wired to `dakota-qa-pipeline`
   (test runner against pre-built images), not `dakota-build-pipeline` (the actual
@@ -223,7 +225,7 @@ until `run-pipeline.Succeeded`. If the digest is written before QA passes, the
 poller will treat the image as already seen and silently skip the failed lane on
 the next cycle.
 
-**Bandwidth contract (PR #632):** `image-poller` resolves digests by inspecting
+**Bandwidth contract:** `image-poller` resolves digests by inspecting
 the **upstream registry directly** — never through the zot cache. Zot on-demand
 sync copies manifest + all blobs on a tag read, so polling through zot pulled
 every new multi-GB image even when QA was skipped.
@@ -240,12 +242,11 @@ every new multi-GB image even when QA was skipped.
 
 | PriorityClass | Value | Applied to |
 | --- | --- | --- |
-| `lab-test-vm` | 1,000,000, `PreemptLowerPriority` | All explicit VM-backed KubeVirt test VMs (`bluefin-server-boot-test`) |
-| `bst-build` | (see `manifests/bst-build-priorityclass.yaml`) | Heavy/long BuildStream compiles: `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
+| `bst-build` | 1,500,000 (`manifests/bst-build-priorityclass.yaml`) | Long BuildStream coordinators: `dakota-build-pipeline`, `bluefin-server-build-pipeline` |
+| `lab-test-vm` | 1,000,000, `PreemptLowerPriority` | Explicit VM-backed KubeVirt test VMs (`bluefin-server-boot-test`) |
 
-Test VMs are meant to win resource contention over background build workloads —
-`lab-test-vm`'s higher priority value plus `PreemptLowerPriority` enforces this
-against any pod using `bst-build`.
+`bst-build` sits above `lab-test-vm` so a short-lived test VM never preempts a
+multi-hour build and loses its progress.
 
 ## Resource Profiles
 

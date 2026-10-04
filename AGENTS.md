@@ -21,8 +21,8 @@ Three purposes, all on the `ghost`<->`exo-0` USB4 link:
   every node) with Buildbarn CAS/action cache, BST pipelines (dakota,
   bluefin-server), the Zot registry, and the dakota OCI pipeline that makes
   `projectbluefin/dakota` (Dakota QA, boot tests, Zot candidate promotion).
-- **Local LLM inference** — llm-d (llama.cpp on Vulkan on `exo-0`, NodePort
-  30800, OpenAI-compatible `/v1`).
+- **Local LLM inference** — llm-d (llama.cpp on Vulkan, one model per node:
+  `exo-0` NodePort 30800, `ghost` 30801, OpenAI-compatible `/v1`).
 - **Distributed ffmpeg encoding** — plain Workflows from client tools
   (`tools/farm.py` in the video repos), plus `images/video-upscale`.
 
@@ -74,6 +74,7 @@ just lint              # actionlint + argo lint + registry allowlist
 | bluefin-server bootc image | [`docs/skills/bluefin-server/SKILL.md`](docs/skills/bluefin-server/SKILL.md) |
 | Dakota PR review with lab QA | [`docs/skills/dakota-pr-review/SKILL.md`](docs/skills/dakota-pr-review/SKILL.md) |
 | Cluster add-ons, k3s, registries | [`docs/skills/cluster-tooling/SKILL.md`](docs/skills/cluster-tooling/SKILL.md) |
+| BuildStream builds, BuildGrid, Buildbarn | [`docs/skills/cluster-tooling/buildstream.md`](docs/skills/cluster-tooling/buildstream.md) |
 | KubeStellar core, WECs, BindingPolicies | [`docs/skills/kubestellar/SKILL.md`](docs/skills/kubestellar/SKILL.md) |
 | KubeStellar Console deploy/auth/cards | [`docs/skills/console-dashboard/SKILL.md`](docs/skills/console-dashboard/SKILL.md) |
 | Hive contributor on local llm-d models (contribute-on/off) | [`docs/skills/hive-contribute/SKILL.md`](docs/skills/hive-contribute/SKILL.md) |

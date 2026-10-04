@@ -4,8 +4,8 @@
 
 Pair with:
 - [`/docs/reference/agent-cheatsheet.md`](/docs/reference/agent-cheatsheet.md) — canonical command reference
-- [`../AGENTS.md`](/AGENTS.md) — policy + architecture
-- [`../RUNBOOK.md`](/docs/ops/RUNBOOK.md) — timeless architecture + failure modes
+- [`/AGENTS.md`](/AGENTS.md) — policy + architecture
+- [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) — timeless architecture + failure modes
 - [`workflow-reference.md`](/docs/reference/workflow-reference.md) — WorkflowTemplate parameter contracts
 
 
@@ -43,7 +43,7 @@ For Dakota image-poll QA, **bootc OCI images are tested directly as containers**
 
 | Goal | Preferred path |
 |---|---|
-| Submit Dakota distributed BST pipeline (default variant only) | `just run-bst-build [ref=testing]` |
+| Submit Dakota distributed BST pipeline (all variants; `variants=default` for the plain image only) | `just run-bst-build [ref=testing]` |
 
 Rule: if a `just` recipe exists, use it. Otherwise use `argo` or `kubectl`;
 MCP is optional.
@@ -65,16 +65,12 @@ blockers and recover them before judging a PR.
 
 ---
 
-## 3. Repo-owner wrappers vs. agent paths
+## 3. Tooling
 
-The `Justfile` intentionally keeps local `kubectl` / `argo` convenience wrappers for the repo owner.
-Those wrappers are acceptable for Jorge on the workstation, but they are **not** the agent/autonomous path.
-
-For agents and automated systems:
-- Workflow reads / logs / control → Argo MCP
-- Pod, VM, Secret, and node reads / mutations → Kubernetes MCP
-- GitOps changes → edit tracked YAML, push to git, let ArgoCD reconcile
-- No workstation SSH to ghost, exo-0, or any node.
+`just` wrappers come first, then `argo`/`kubectl`; Argo and Kubernetes MCP
+tools are an optional equivalent, never a requirement. GitOps changes are
+always tracked YAML pushed to git and reconciled by ArgoCD. No workstation SSH
+to ghost, exo-0, or any node.
 
 ---
 
@@ -82,15 +78,8 @@ For agents and automated systems:
 
 ### 4.1 Workflow status and logs
 
-Use MCP first:
-- `argo-mcp-list_workflows`
-- `argo-mcp-get_workflow`
-- `argo-mcp-logs_workflow`
-- `argo-mcp-list_workflow_templates`
-
-Repo-owner wrapper when needed:
-- `just logs`
-- `just list-workflows`
+- `just logs` / `just list-workflows`
+- `argo get -n argo <workflow>` / `argo logs -n argo <workflow>`
 
 ### 4.2 Runner artifacts
 
@@ -99,7 +88,7 @@ Use `argo logs` or the Argo UI instead of shelling into pods.
 
 ### 4.4 Updating files without workstation `scp`
 
-If you need to push helper files or test content into the cluster, do **not** `scp` them to ghost or exo-0 from a workstation. Use a ConfigMap plus a short-lived Job created through Kubernetes MCP (`kubernetes-mcp-resources_create_or_update`):
+If you need to push helper files or test content into the cluster, do **not** `scp` them to ghost or exo-0 from a workstation. Use a ConfigMap plus a short-lived Job created through the Kubernetes API (`kubectl create`):
 
 1. Create or update a ConfigMap containing the files.
 2. Create a scheduler-admitted Job that mounts the ConfigMap and writes only to
@@ -127,7 +116,7 @@ Start with the exact workflow that failed.
 
 1. `just logs | grep -n "results.json not found\|Execution failed"`
    - **Expected:** the failing suite appears before the summary line.
-2. `argo-mcp-logs_workflow <workflow-name>`
+2. `argo logs -n argo <workflow-name>`
    - **Expected:** enough detail to identify the broken container lane, suite, or dependency install.
 3. Rerun the relevant container-only workflow after fixing the image or testsuite issue.
 
@@ -157,11 +146,11 @@ Start with the exact workflow that failed.
 ### 5.6 Workflow stuck `Pending`
 
 1. `just list-workflows`
-2. `kubernetes-mcp-nodes_top`
-3. `kubernetes-mcp-pods_list fieldSelector=status.phase=Pending`
-4. `kubernetes-mcp-pods_top all_namespaces=true`
+2. `kubectl top nodes`
+3. `kubectl get pods -A --field-selector=status.phase=Pending`
+4. `kubectl top pods -A`
 5. If orphaned `virt-launcher-*` capacity is the problem:
-   - **Next:** use Kubernetes MCP to create a one-shot Job cloned from `orphan-vm-cleanup`.
+   - **Next:** `argo submit -n argo --from cronworkflow/orphan-vm-cleanup`.
 
 ### 5.7 `outputs.result` contains debug text
 
@@ -172,15 +161,15 @@ Start with the exact workflow that failed.
 
 ### 5.8 VM stuck `Terminating`
 
-1. Use `kubernetes-mcp-pods_list_in_namespace` to find the matching `virt-launcher-*` pod.
-2. Delete that pod with `kubernetes-mcp-pods_delete`.
-3. Re-check the VM with `kubernetes-mcp-resources_get`.
+1. `kubectl get pod -n <namespace> -l kubevirt.io/vm=<name>` to find the matching `virt-launcher-*` pod.
+2. `kubectl delete pod -n <namespace> <virt-launcher-pod>`.
+3. Re-check the VM with `kubectl get vm -n <namespace> <name>`.
 
 ### 5.9 Workflow pod errors immediately
 
-1. `argo-mcp-get_workflow <workflow-name>`
+1. `argo get -n argo <workflow-name>`
    - **Expected:** the failing template or pod name is visible.
-2. `argo-mcp-logs_workflow <workflow-name>`
+2. `argo logs -n argo <workflow-name>`
    - **Expected:** enough detail to identify the bad template field.
 3. If `volumes:` is nested under `container:`:
    - **Next:** move it to template scope in git, push, and run `just lint`.
@@ -189,9 +178,9 @@ Start with the exact workflow that failed.
 
 1. `just logs`
 2. `argo logs -n argo <workflow-name>`
-3. `argo-mcp-get_workflow <workflow-name>`
+3. `argo get -n argo <workflow-name>`
 
-Expected outcome: after step 4 or 5 you should have a concrete failing template, step, or VM phase to route back into one of the branches above.
+Expected outcome: you should now have a concrete failing template, step, or VM phase to route back into one of the branches above.
 
 ---
 
@@ -201,19 +190,19 @@ Expected outcome: after step 4 or 5 you should have a concrete failing template,
 
 | Application | Syncs |
 |---|---|
-| `lab` | `argo/workflow-templates/*.yaml` |
-| `lab-infra` | `manifests/*.yaml` |
+| `testing-lab` | `argo/workflow-templates/*.yaml` |
+| `testing-lab-infra` | `manifests/*.yaml` |
 
 ### 6.2 Decision tree — my template change did not take effect
 
 1. `git log -1 origin/main -- argo/workflow-templates/<file>`
    - **Expected:** the output includes your commit.
 2. `just argocd-status`
-   - **Expected:** `lab` is synced to a revision that matches or post-dates your commit.
+   - **Expected:** `testing-lab` is synced to a revision that matches or post-dates your commit.
    - **If older:** `just argocd-sync`.
 3. `just argocd-status`
-   - **Expected:** `lab` is Healthy.
-4. `argo-mcp-get_workflow_template <name>`
+   - **Expected:** `testing-lab` is Healthy.
+4. `argo template get -n argo <name>`
    - **Expected:** the new value is live.
 5. Submit a **new** workflow.
    - **Expected:** the new run sees the new template snapshot.
@@ -226,10 +215,10 @@ Do **not** `kubectl apply` a rejected WorkflowTemplate.
 
 Use these in order:
 1. `just list-workflows`
-2. `kubernetes-mcp-nodes_top`
-3. `kubernetes-mcp-resources_list apiVersion=kubevirt.io/v1 kind=VirtualMachineInstance`
-4. `kubernetes-mcp-pods_list fieldSelector=status.phase=Pending`
-5. `kubernetes-mcp-pods_top all_namespaces=true`
+2. `kubectl top nodes`
+3. `kubectl get vmi -A`
+4. `kubectl get pods -A --field-selector=status.phase=Pending`
+5. `kubectl top pods -A`
 
 Answer three questions in order:
 1. Are `run-container-tests` or `image-poller` pods saturating ghost CPU or memory?

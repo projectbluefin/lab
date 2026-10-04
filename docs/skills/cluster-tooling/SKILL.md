@@ -30,11 +30,11 @@ metadata:
 2. Prefer `just` recipes, then `kubectl`/`argo` and other API-driven operations.
    Host-level work is private maintainer maintenance; never use workstation SSH
    to `ghost` or `exo-0` from the public agent path.
-3. For BST lanes, configure local and upstream cache fallback in workflow configs:
+3. For BST lanes, the client config is `manifests/buildstream-remote-cache-config.yaml`
+   (see [buildstream.md](buildstream.md) "BuildStream config"):
    - never configure external cache credentials/keys in cluster workflows
-   - set `override-project-caches: false` to allow the project's own upstream caches (for example Freedesktop SDK and GNOME OS) to be used as read-only fallbacks, preventing extremely slow, full OS recompilations of basic bootstrap toolchains.
-   - point artifact writes at the shared in-cluster Buildbarn frontend (`grpc://frontend.buildbarn.svc.cluster.local:8980`). Persist fetched sources through the paired BuildBarn Remote Asset index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) and frontend CAS (`type: storage`), both `push: true`; the external artifact/source cache URLs are read-only fallbacks.
-   - keep `source-caches` and `artifacts` populated with the project cache URLs rather than wiping them out; an empty server list forces BuildStream to rebuild bootstrap toolchains locally.
+   - artifacts keep `override-project-caches: false` so the projects' own upstream caches (Freedesktop SDK, GNOME OS) stay read-only fallbacks and bootstrap toolchains are never rebuilt; lab writes go to the `bb-remote-asset` index (`grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984`, `type: index`) plus the frontend CAS (`grpc://frontend.buildbarn.svc.cluster.local:8980`, `type: storage`), both `push: true`.
+   - source caches use `override-project-caches: true` with only the upstream caches, read-only: the deployed `bb-remote-asset` cannot store BuildStream source URNs.
    - build the pinned upstream sources unmodified; never patch elements, junctions, or patch queues to work around the execution sandbox. A sandbox-only failure is a BuildGrid runner bug to fix in the grid.
    - BuildStream concurrency targets the BuildGrid queue: `scheduler.builders: 12`
      element actions, each fanning out into recc compile actions, with
@@ -97,38 +97,14 @@ permanently removes memory from the OS.
 kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.amd\\.com/gpu,KARGS:.metadata.annotations.lab\\.projectbluefin\\.io/amdgpu-kargs
 ```
 
-## ROCm inference pause
+## llm-d pause
 
-The local `llm-d` inference workload may be intentionally paused in
-`manifests/llm-d.yaml` with `replicas: 0`. Treat that as the expected stopped
-state, not a failed deployment. Do not use `kubectl scale` for a durable pause
-because ArgoCD self-heal restores the declared state; restore `replicas: 1` in
-git to re-enable inference.
-
-That self-heal is fast enough to mislead: a runtime `kubectl scale --replicas=0`
-was measured being reverted in **~1 second**, with a replacement pod already
-Running. An operator who scales and then checks `kubectl get deploy` sees
-`0/1` and concludes it worked.
-
-**The PVC caveat, and when it actually applies.** `manifests/llm-d.yaml` long
-carried the opposite advice — scale at runtime, never commit `replicas: 0` —
-on the grounds that `llm-d-model-cache` is `local-path`, which is
-`WaitForFirstConsumer`, so a PVC with no pod never binds, ArgoCD blocks on it,
-and the Deployment is never created. **That deadlock is real but applies only
-at first creation.** Once the PVC is `Bound` it stays bound;
-`WaitForFirstConsumer` gates the first binding, not the lifetime. So:
-
-| State of `llm-d-model-cache` | Pausing with `replicas: 0` in git |
-|---|---|
-| `Bound` | Safe — this is the durable pause |
-| `Pending` / not yet created | Deadlocks; bring it up at `replicas: 1` first |
-
-Check with `kubectl get pvc -n llm-d` before committing a pause.
-
-If an old ArgoCD operation is still waiting for the pre-pause Deployment,
-terminate only that stale operation before syncing the current revision. Remove
-only explicitly identified stuck workload pods after the Deployment is scaled
-to zero.
+The llm-d model Deployments stay at `replicas: 1` in git so each
+`WaitForFirstConsumer` PVC binds on first sync; `testing-lab-infra` ignores
+their `/spec/replicas`. Pause and resume them at runtime with
+`just contribute-off` / `just contribute-on` (see
+[hive-contribute](../hive-contribute/SKILL.md)); a scaled-to-zero Deployment
+is the expected stopped state, not a failure.
 
 ## Zot notes
 
@@ -176,9 +152,9 @@ Do not guess flags or chart schema.
 ## Common Rationalizations
 
 - "Ghost has 64 GiB, so the build pod will fit."  
-  Fitting is not the same as surviving. VM pods use a higher PriorityClass and
-  will preempt a `bst-build` pod for memory. The pod gets deleted, the workflow
-  retries, and the build never finishes.
+  Admission counts memory *requests*, not free memory. Orphaned test VMs and
+  completed Jobs hold their requests until deleted and can leave no room for
+  the coordinator or the BuildGrid workers.
 
 - "I will just retry the workflow again."  
   Retries do not change the resource envelope. Fix the requests, limits, and
@@ -186,8 +162,10 @@ Do not guess flags or chart schema.
 
 - "Two variants should build in parallel to save time."  
   They already do: a Dakota pipeline runs its variants in parallel, one
-  coordinator per node (required pod anti-affinity), and the coordinators only
-  orchestrate while BuildGrid executes. Do not add more coordinators per node.
+  coordinator per node (required pod anti-affinity), so `variants=all` runs in
+  two waves by design. The coordinators only orchestrate while BuildGrid
+  executes; lane sizing assumes one coordinator per node per pipeline. Do not
+  add more coordinators per node.
 
 - "Raise the semaphore until the grid is busy."
   The `bst-build` semaphore (`"2"` in `manifests/workflow-semaphores.yaml`)
@@ -197,12 +175,14 @@ Do not guess flags or chart schema.
   `maximum-concurrent-rpcs` (6000), and lanes × `builders` must stay below one
   node's 32 slots. Recheck all three before raising it.
 
+- "It only touches cache config, no lint needed."  
+  Run `just lint` for every workflow YAML change.
+
 ## Red Flags
 
 - `argo get` shows `pod deleted` for a BST build step.
 - `kubectl get events --field-selector reason=Preempted` shows BST pods
   displaced by VM pods on `ghost`.
-- Two BST build pods are `Running` at the same time with 14 GiB requests each.
 - Builds repeatedly fail fast (seconds to a few minutes) without a build error
   in the container logs.
 - A Zot sync-prefix change is called verified because `skopeo inspect` timed
@@ -210,11 +190,14 @@ Do not guess flags or chart schema.
   `zot_repo_downloads_total` evidence.
 - A pull failure against the Zot NodePort is reported as a cluster outage
   without first checking whether the workstation is on Tailscale.
+- A BuildStream config sets artifact `override-project-caches: true`, or
+  marks an upstream cache (`gbm.gnome.org:11003`, `cache.freedesktop-sdk.io:11001`)
+  `push: true`.
 
 ## Verification
 
 - [ ] `just lint` passes after any WorkflowTemplate change.
-- [ ] ArgoCD reports `Synced` for `lab` after the push.
+- [ ] ArgoCD reports `Synced` for `testing-lab` after the push.
 - [ ] The submitted build pod is scheduler-admitted without a node selector:
       `kubectl get pod -n argo <pod> -o jsonpath='{.spec.nodeName}'` returns
       a Ready node with adequate allocatable resources.
@@ -266,16 +249,15 @@ box every published Strix Halo guide assumes. Scale all community advice down.
 - Never raise the BIOS UMA carve-out above its 512 MiB minimum; it steals system
   RAM and *shrinks* GTT.
 
-Two cluster-specific traps that cost real time:
+Cluster-specific traps that cost real time:
 
 - **Digest-pinned images cannot be pulled.** Node pulls go through the zot mirror
   (`override_path = true`, no upstream fallback) and zot's on-demand sync only
   triggers on *tag* references. A bare `@sha256:` for an uncached image 404s.
   Pin to an immutable per-build tag instead.
-- **`replicas: 0` + a `WaitForFirstConsumer` PVC deadlocks ArgoCD.** The PVC
-  cannot bind without a pod, ArgoCD blocks its sync waiting for PVC health, and
-  so the Deployment is never created at all. Scale at runtime instead of
-  committing `replicas: 0`.
+- **Model Deployment replicas are runtime state.** Keep `replicas: 1` in git;
+  `replicas: 0` with an unbound `WaitForFirstConsumer` PVC deadlocks ArgoCD's
+  sync. Toggle with `just contribute-on/off` (see "llm-d pause").
 - **TSO on `thunderbolt0` destroys cross-node pod traffic — turn it off.**
   Measured 2026-08-21: pod->pod `10.42.x` throughput was **244 KB/s** with TSO
   on and **379 MB/s** with it off, a ~1,550x collapse from a **15% TCP
@@ -286,7 +268,7 @@ Two cluster-specific traps that cost real time:
   `host-gw` here, so every cross-node pod flow is forwarded and hits this path.
   `gso` and `gro` were measured individually and are innocent; leave them on.
   Reconciled every 15 s by the `usb4-link-monitor` DaemonSet, because `ethtool`
-  state is not persisted by NetworkManager and resets on reboot. Issue #662.
+  state is not persisted by NetworkManager and resets on reboot.
 - **Read TCP stats in the *sending pod*, not on the host.** `/proc/net/snmp` is
   per-netns, so a host-side read shows a healthy stack while the pod is
   retransmitting 15% of its segments. Pair it with per-interface byte counters
@@ -300,23 +282,4 @@ Two cluster-specific traps that cost real time:
 
 - Cluster topology: `/AGENTS.md`
 - Bootstrap procedure: `/docs/ops/bootstrap.md`
-- Recovery: `docs/skills/k3s-cluster-ops` (user skill, load before any cluster recovery)
-
-## Common Rationalizations
-
-- "It only touches cache config, no lint needed." → Wrong; run `just lint` for every workflow YAML change.
-- "Project defaults are fine." → Wrong for this lab; project-defined remotes can re-enable external cache push paths.
-- "Port 443 refused means cache host down." → Wrong; validate actual BST ports (`11001`/`11002`) and latency behavior.
-
-## Red Flags
-
-- BuildStream configs setting `override-project-caches: true` for pipelines that depend on upstream bootstrap artifacts (like Freedesktop SDK and GNOME OS meta), causing extremely slow and completely cold builds of the entire OS.
-- Any BST lane includes external cache host URLs in generated config.
-- Docs describe local-first but YAML still allows project cache remotes.
-
-## Verification
-
-- [ ] Workflow templates align `override-project-caches` to `false` for base fallback coverage.
-- [ ] No external cache host appears in relevant workflow YAML/scripts.
-- [ ] `just lint` passes after edits.
-- [ ] Skill content reflects the current shared Buildbarn cache policy.
+- Recovery: [node-recovery.md](node-recovery.md)

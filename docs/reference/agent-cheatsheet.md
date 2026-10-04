@@ -5,8 +5,12 @@
 >
 > If your task is not in this file, escalate to:
 > - [`/docs/ops/lab-operations.md`](/docs/ops/lab-operations.md) — long-form procedures
-> - [`/docs/reference/workflow-reference.md`](/docs/reference/workflow-reference.md) — WorkflowTemplate parameter contracts
+> - [`/docs/reference/workflow-reference.md`](/docs/reference/workflow-reference.md) — WorkflowTemplate parameter contracts, CronWorkflow schedules
 > - [`/docs/ops/RUNBOOK.md`](/docs/ops/RUNBOOK.md) — architecture + failure-mode index
+> - [`/docs/skills/cluster-tooling/buildstream.md`](/docs/skills/cluster-tooling/buildstream.md) — BuildStream, BuildGrid, Buildbarn
+> - [`/docs/skills/dakota-pr-review/SKILL.md`](/docs/skills/dakota-pr-review/SKILL.md) — Dakota PR review loop
+> - [`/docs/skills/cluster-tooling/SKILL.md`](/docs/skills/cluster-tooling/SKILL.md) — AMD GPU checks; [`hive-contribute`](/docs/skills/hive-contribute/SKILL.md) — llm-d models
+> - [`/docs/ops/k3s-tuning.md`](/docs/ops/k3s-tuning.md) — node onboarding, reboot, offboarding
 > - [`projectbluefin/testsuite`](https://github.com/projectbluefin/testsuite) — writing GUI tests
 > - [`/AGENTS.md`](/AGENTS.md) — hard policy and tenets
 
@@ -22,14 +26,18 @@
 
 | Situation | Run |
 |---|---|
-| Submit Dakota BST build pipeline (default variant only) | `just run-bst-build [ref=testing]` |
-| Run Dakota containerized smoke QA (no VM, works for composefs-oci) | `just run-dakota-container-qa [image-tag=testing] [variant=dakota]` |
+| Submit Dakota BST build pipeline | `just run-bst-build [ref=testing] [repo=…] [variants=all\|default] [commit_sha=…]` |
+| Submit Bluefin Server BST build pipeline | `just run-bluefin-server-build [ref=main]` |
+| Rebuild the current Dakota `testing` SHA through the poller | `just force-dakota-poll` |
+| Run Dakota QA against the published image | `just run-dakota-qa [branch=main] [variant=dakota]` |
+| Run Dakota containerized smoke QA against a lab Zot image | `just run-dakota-container-qa [image-tag=testing] [variant=dakota]` |
+| Promote a Zot candidate | `just run-zot-promotion <lane> <repository> candidate-<sha> sha256:<digest>` |
 | Trigger the Dakota PR batch workflow | `argo submit -n argo --from workflowtemplate/dakota-pr-batch-pipeline -p pr-numbers=<number> --wait` |
 | Tail the most recent workflow's logs | `just logs` |
-| List workflows / VMs | `just list-workflows` · `just list-vms` |
+| List workflows / VMs / CronWorkflows | `just list-workflows` · `just list-vms` · `argo cron list -n argo` |
 | ArgoCD status / force sync | `just argocd-status` · `just argocd-sync` |
 | Lint Argo YAML | `just lint` |
-| Bootstrap repo-owner workstation access | §9 |
+| Fresh cluster access | `just setup-argocd && just argocd-sync` (see [bootstrap](/docs/ops/bootstrap.md)) |
 
 Rule: **if a `just` recipe exists, use it.** Otherwise use `argo`/`kubectl` directly; do not wait for MCP.
 
@@ -39,75 +47,6 @@ cache-backed, Ethernet-backed, automatic-fallback, and remote-cache-only paths
 are prohibited. Confirm the generated BuildStream configuration, Ready
 BuildGrid workers on both nodes, and the run's actions in the BuildGrid `jobs`
 table before calling a run distributed.
-
-## AMD ROCm GPU readiness — quick checks
-
-Both lab nodes are 64 GB Framework Desktop (Strix Halo) machines with an AMD
-iGPU. The device plugin selects nodes via the Node Feature Discovery label
-`feature.node.kubernetes.io/pci-0380_1002.present`, so no hand-applied label is
-needed — a node with an AMD display controller is picked up automatically.
-ArgoCD owns `manifests/`; do not `kubectl apply` these files.
-
-```bash
-# Which nodes advertise a GPU?
-kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.amd\\.com/gpu
-
-kubectl rollout status daemonset/amdgpu-device-plugin -n kube-system --timeout=300s
-```
-
-Expected outcome: every node with an AMD iGPU advertises `1` or more
-`amd.com/gpu` allocatable units, and an `amdgpu-device-plugin` pod is `Running`
-on each.
-
-### GPU-addressable memory
-
-Two independent ceilings apply, and both have bitten this lab:
-
-```bash
-# Per-node GPU memory ceilings (VRAM is BIOS-set, GTT is kernel-set)
-for n in ghost exo-0; do
-  pod=$(kubectl -n kube-system get pod -l app=usb4-link-monitor \
-    -o jsonpath="{.items[?(@.spec.nodeName=='$n')].metadata.name}")
-  echo "== $n"
-  kubectl -n kube-system exec "$pod" -- nsenter -t 1 -m -- sh -c \
-    'cat /sys/class/drm/card1/device/mem_info_vram_total /sys/class/drm/card1/device/mem_info_gtt_total'
-done
-```
-
-- **VRAM** (`mem_info_vram_total`) is the BIOS UMA setting and can only be
-  changed in the Framework Desktop firmware. A node reporting 512 MiB is
-  misconfigured; a correctly configured node reports the full 64 GiB. ROCm
-  allocates device memory from VRAM, so 512 MiB cannot host a large model
-  regardless of quantization.
-- **GTT** (`mem_info_gtt_total`) is capped by `ttm.pages_limit`, which defaults
-  to half of system RAM. `manifests/amdgpu-kargs.yaml` raises it via
-  `rpm-ostree kargs`. Kargs take effect on next boot; check progress with:
-
-```bash
-kubectl get nodes -o custom-columns=NAME:.metadata.name,KARGS:.metadata.annotations.lab\\.projectbluefin\\.io/amdgpu-kargs
-```
-
-`pending-reboot` means the kargs are staged but the node is still running the
-old kernel command line.
-
-## Local LLM deployment — quick checks
-
-The lab also has a repo-managed llama.cpp deployment in `manifests/llm-d.yaml`
-serving `Qwen3-30B-A3B-Instruct-2507` at Q6_K over the Vulkan backend. It is
-pinned to `exo-0` (the only node with the Strix Halo iGPU) and requests one
-`amd.com/gpu`. A preemptive priority class lets it take over the node when
-needed.
-
-```bash
-kubectl -n llm-d get deploy llm-d-modelserver
-kubectl -n llm-d get pods -w
-kubectl -n llm-d get pvc llm-d-model-cache
-kubectl -n llm-d get svc llm-d-modelserver
-kubectl -n llm-d logs -l app.kubernetes.io/name=llm-d-modelserver -c modelserver --tail=100
-```
-
-The endpoint is exposed on NodePort `30800` and can be queried at
-`http://<exo-0-ip>:30800/v1/models` after the pod reaches `Running`.
 
 ## 2. Failure triage — symptom → exact next command
 
@@ -122,6 +61,7 @@ Run `just logs` first. Then match a row. **Dakota QA is container-only** — row
 | `Application "gnome-shell" is running` step fails | Replace it with `* GNOME Shell is accessible via AT-SPI` |
 | All top-bar scenarios fail | Confirm `wait_for_shell.py` is present in the copied suite and that the runner re-asserts `unsafe_mode` |
 | `outputs.result` is `Waiting...` or other debug text | Send debug output to `>&2`; keep stdout for the result only |
+| BST build fails, or its retry is skipped with `retryStrategy.expression evaluated to false` | Follow [Diagnosing a failed remote element build](/docs/skills/cluster-tooling/buildstream.md#diagnosing-a-failed-remote-element-build) and [Failed builds and retries](/docs/skills/cluster-tooling/buildstream.md#failed-builds-and-retries); a cached element failure needs new inputs, not a resubmit. |
 | VM stuck `Terminating` | `kubectl delete pod -n argo $(kubectl get pod -n argo -l kubevirt.io/vm=<name> -o name)` |
 | Workflow stuck `Pending` | Run §3 |
 | Workflow stuck on a `NotReady` node / pod never progresses | `kubectl get nodes`; if the worker is `NotReady`, `argo stop -n argo <workflow>` and submit a fresh run so the scheduler can place it on a healthy node (often `ghost`) |
@@ -149,50 +89,16 @@ If no row matches:
 |---|---|
 | Workflows `Pending` | `kubectl top nodes` to identify the current CPU hog before submitting more work |
 | Node has `DiskPressure` | Do not submit builds. Inspect PV node affinity and `kube-system/local-path-config`; every eligible node needs an explicit non-root data path and there must be no default root-disk fallback. |
-| Many `virt-launcher-*` pods with no corresponding live workflow | `argo submit -n argo --from workflowtemplate/orphan-vm-cleanup` |
+| Many `virt-launcher-*` pods with no corresponding live workflow | `argo submit -n argo --from cronworkflow/orphan-vm-cleanup` |
+| BuildGrid queue deep, all bots busy | The grid is saturated, not broken; see [Scale-out](/docs/skills/cluster-tooling/buildstream.md#scale-out). |
 
-Per-template ceilings live in [`/AGENTS.md`](/AGENTS.md) under **Resource Limits**.
+Per-template requests and limits live in
+[workflow-reference: Resource Profiles](/docs/reference/workflow-reference.md#resource-profiles);
+the namespace ceiling is the `argo-quota` ResourceQuota.
 
 ## 4. ArgoCD — my template change did not take effect
 
-### kubectl handles ALL Argo/ArgoCD resources
-
-**`kubectl get/apply/delete` works for any CRD, including:**
-
-| Resource | apiVersion | kind |
-|---|---|---|
-| ArgoCD Application | `argoproj.io/v1alpha1` | `Application` |
-| Argo Workflow | `argoproj.io/v1alpha1` | `Workflow` |
-| Argo CronWorkflow | `argoproj.io/v1alpha1` | `CronWorkflow` |
-| Argo WorkflowTemplate | `argoproj.io/v1alpha1` | `WorkflowTemplate` |
-
-**Trigger an ArgoCD sync:**
-```bash
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl -n argocd annotate application testing-lab \
-  argocd.argoproj.io/refresh=normal --overwrite
-# or via argocd CLI:
-argocd app sync testing-lab
-```
-
-**If the local ArgoCD port-forward drops**, restart it and verify the health endpoint
-before syncing or resubmitting a workflow:
-```bash
-kubectl -n argocd port-forward svc/argocd-server 18080:80
-curl -sf http://127.0.0.1:18080/healthz
-```
-
-**Read ArgoCD Application state:**
-```bash
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl get application testing-lab-infra -n argocd \
-  -o jsonpath='{.status.sync.status} {.status.health.status}'
-```
-Key fields: `.status.operationState.phase`, `.status.sync.status`, `.status.operationState.message`, `.status.operationState.operation.sync.revision`
-
-**Cancel a stuck operation** (PreSync hook looping):
-```bash
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl patch application testing-lab -n argocd \
-  --type=json -p='[{"op":"remove","path":"/operation"}]'
-```
+`testing-lab` syncs `argo/workflow-templates/`; `testing-lab-infra` syncs `manifests/`.
 
 ```text
 1. git log -1 origin/main -- argo/workflow-templates/<file>
@@ -216,87 +122,23 @@ KUBECONFIG=~/.kube/bluespeed.yaml kubectl patch application testing-lab -n argoc
    -> submit a NEW workflow.
 ```
 
+Without the `argocd` CLI, request a refresh with
+`kubectl -n argocd annotate application testing-lab argocd.argoproj.io/refresh=normal --overwrite`
+and read `kubectl get application testing-lab -n argocd -o jsonpath='{.status.sync.status} {.status.health.status}'`.
+A PreSync hook looping forever is cancelled with
+`kubectl patch application testing-lab -n argocd --type=json -p='[{"op":"remove","path":"/operation"}]'`.
+
 Do **not** `kubectl apply` a rejected WorkflowTemplate.
 
-## 5. CronWorkflow ops — pause / resume / backfill
-
-```bash
-# List all cron workflows
-argo cron list -n argo
-
-# Suspend during a debugging session:
-argo cron suspend nightly-dakota -n argo
-
-# Resume:
-argo cron resume nightly-dakota -n argo
-
-# Backfill / run now:
-argo submit -n argo --from cronworkflow/nightly-dakota
-argo submit -n argo --from cronworkflow/orphan-vm-cleanup
-```
-
-| Name | Schedule (UTC) | Purpose |
-|---|---|---|
-| `nightly-dakota` | 03:00 | `dakota-qa-pipeline` (`testing`) |
-| `orphan-vm-cleanup` | every 30 min | Clean orphan test VMs |
-
-Suspended but runnable on demand via `argo submit -n argo --from cronworkflow/<name>`:
-`dakota-commit-poller`. Full list: `docs/reference/workflow-reference.md`.
-
-Any patch that must survive beyond a short debug session also needs a matching git change under `manifests/`.
-
----
-
-## 6.5. Dakota PR review and repair loop
-
-Use the [Dakota PR review skill](../skills/dakota-pr-review/SKILL.md) for the
-repeatable pre-merge path. Do not rely on the older batch workflow as the merge
-gate when Dakota GHA is unhealthy.
-
-For each open PR:
-
-1. Confirm the current head SHA and mergeability.
-2. Submit `dakota-build-pipeline` with that exact SHA.
-3. Run `dakota-container-qa-pipeline` against the built local registry image,
-   then `dakota-qa-pipeline` for required BDD/GUI coverage.
-4. If a scoped PR defect is found, fix it on the PR branch, push the new SHA,
-   rebuild, and rerun E2E. Old evidence is invalid after a push.
-5. Merge directly only after the fresh lab build and E2E pass.
-
-The older batch workflow remains useful for validation-only runs:
-
-```bash
-argo submit -n argo --from workflowtemplate/dakota-pr-batch-pipeline \
-  -p pr-numbers=<number> \
-  --wait
-```
-
-## 8. Safe cleanup — what you may delete
+## 5. Safe cleanup — what you may delete
 
 | Resource | Safe? |
 |---|---|
-| Test VM with no live workflow | Yes — delete the single VM or run `orphan-vm-cleanup` |
+| Test VM with no live workflow | Yes — `kubectl delete vm -n <namespace> <name>` or run `orphan-vm-cleanup` |
 | `just delete-vms` | Only for full teardown when you intentionally accept that all test VMs in those namespaces will be deleted |
 | Workflows in `argo` | Yes — `just delete-workflows` |
 
-Single-VM deletion:
-
-```bash
-kubectl delete vm -n <namespace> <name>
-```
-
----
-
-## 9. Bootstrap — one-time, fresh cluster access
-
-```bash
-just setup-argocd
-just argocd-sync
-```
-
----
-
-## 10. Self-check before claiming cluster healthy
+## 6. Self-check before claiming cluster healthy
 
 ```bash
 1. just argocd-status
@@ -310,254 +152,3 @@ Expected steady state:
 - all expected CronWorkflows are present
 - no idle test VMs remain after workflows finish
 - the most recent container-only smoke run is green
-
----
-
-## 12. Discover live cluster facts — do not trust stale docs
-
-| Fact | Command |
-|---|---|
-| Live WorkflowTemplate body | `argo template get -n argo <name>` |
-| CronWorkflow schedules | `argo cron list -n argo` |
-| ArgoCD revision in cluster | `just argocd-status` |
-| Pending pods | `kubectl get pods -A --field-selector=status.phase=Pending` |
-
----
-
-## 13. llm-d local inference node
-
-`llm-d` is managed by the `testing-lab-infra` ArgoCD Application (`manifests/llm-d.yaml`).
-The llama.cpp container requests one `amd.com/gpu` device so the device plugin exposes the GPU into the pod.
-
-**Model choice:** the deployment serves `Qwen3-30B-A3B-Instruct-2507` at Q6_K (~25 GB) through llama.cpp on the **Vulkan** backend, on the OpenAI-compatible endpoint at `http://<ghost-ip>:30800/v1`.
-It is a Mixture-of-Experts model with 3B active parameters: `exo-0` is memory-bandwidth bound (~85 GB/s host-to-device), so active parameters set decode speed and a 30B MoE runs ~6x faster than a dense 32B of the same size.
-The pod uses a dedicated preemptive `PriorityClass` so it can evict lower-priority work when needed.
-
-**Check status:**
-```bash
-kubectl -n llm-d get deploy llm-d-modelserver -o jsonpath='{.spec.replicas}{"\n"}'
-kubectl get pods -n llm-d                                                             # expect one Running pod
-kubectl -n llm-d get pvc llm-d-model-cache                                            # expect Bound
-kubectl get node exo-0 -o jsonpath='{.status.allocatable.amd\.com/gpu}{"\n"}'       # expect >= 1
-```
-
-**Temporarily disable:**
-```bash
-kubectl -n llm-d scale deploy/llm-d-modelserver --replicas=0
-```
-
-**Re-enable (restore desired default):**
-```bash
-kubectl -n llm-d scale deploy/llm-d-modelserver --replicas=1
-```
-
-**If pod is stuck Pending:** Check two things:
-1. AMD ROCm device plugin registered: `kubectl get pods -n kube-system | grep amdgpu` — look for `amdgpu-device-plugin`. After a k3s restart the plugin needs a pod delete/respawn to re-register with kubelet. Verify `amd.com/gpu` appears in `kubectl get node ghost -o jsonpath='{.status.allocatable}'`.
-2. Memory fits: ghost has ~62.5Gi allocatable; the manifest requests 16Gi/24Gi and 1 GPU. Check for other large pods consuming RAM if you see `Insufficient memory`.
-
-**If k3s is down** (kubectl returns "connection refused"):
-k3s can stop after host sleep/resume. Do not recover it with workstation SSH.
-Host-service recovery is a private maintainer procedure; escalate through the
-approved operator channel. Once the API returns, delete the
-`amdgpu-device-plugin` pod through Kubernetes so it re-registers with the
-current kubelet socket:
-```bash
-kubectl delete pod -n kube-system -l app.kubernetes.io/name=amdgpu-device-plugin
-```
-
-Verify device-plugin health through the API:
-```bash
-kubectl get daemonset amdgpu-device-plugin -n kube-system
-kubectl get node exo-0 -o jsonpath='{.status.allocatable.amd\.com/gpu}{"\n"}'
-```
-
-**If pod is CrashLoopBackOff:** Check the container logs first:
-```bash
-kubectl logs -n llm-d <pod-name> -c modelserver
-```
-The model is cached on the `llm-d-model-cache` PVC at `/models`, so it survives
-pod restarts and is not re-downloaded.
-
-**If generation dies mid-run after a while:** look for a spurious GPU reset.
-```bash
-kubectl get node exo-0 -o jsonpath='{.metadata.annotations.lab\.projectbluefin\.io/amdgpu-kargs}{"\n"}'   # expect: applied
-```
-`manifests/amdgpu-kargs.yaml` sets `amdgpu.lockup_timeout=20000` because the
-~10s amdgpu default trips a false "device lost" reset under sustained inference
-on gfx1151. If the annotation says `pending-reboot`, the fix is not live yet.
-
-**Key constraints:**
-- The pod is pinned to `exo-0` via a `kubernetes.io/hostname` nodeSelector — it is the only node with the Strix Halo iGPU
-- The Deployment uses `strategy: Recreate`. With one `amd.com/gpu` and an RWO cache PVC, a rolling update would deadlock, so updates cause brief downtime by design
-- The image is pinned to an immutable per-build tag (`server-vulkan-b10290`) so rollback is reproducible. Do not use the floating `:server-vulkan` tag, and do not pin by bare digest — the zot mirror's on-demand sync only triggers on tag references, so a digest reference 404s for an uncached image
-- Rollback is a runtime `kubectl -n llm-d scale deploy/llm-d-modelserver --replicas=0` or a revert; the PVC persists, so re-enabling does not re-download the model. Do not commit `replicas: 0` — with a `WaitForFirstConsumer` PVC that deadlocks ArgoCD's sync
-- `exo-0` is a 64 GB node shared with BuildBarn, KubeVirt and KubeStellar. GTT is system RAM and the kernel OOM-killer cannot reclaim it, so raising `--ctx-size` or the model quant risks the whole node, not just this pod
-- The endpoint has no authentication and permissive CORS; keep it on the trusted LAN
-
----
-
-## 14. Node onboarding — adding a worker to the cluster
-
-> [!CAUTION]
-> Node onboarding is a private maintainer/operator procedure, not a routine
-> agent recipe. Never retrieve a join token with workstation SSH to `ghost` or
-> `exo-0`; a maintainer must provision the token through an approved secure
-> channel. The commands below run on the new node or through the Kubernetes API.
-
-All nodes in this cluster run image-based, atomic operating systems (Bluefin, Dakota, Bazzite — ostree-based).
-`/usr/local/bin` is a symlink to `/var/usrlocal/bin` (the writable overlay). The k3s install
-script must be told to use this path or it fails on a fresh system.
-
-### Provision the join token
-
-The k3s join token is a host secret. A maintainer provisions it through the
-approved private enrollment process; do not copy it from a cluster node with
-workstation SSH.
-
-### Bootstrap a new worker node (run ON the new node, with sudo)
-
-```bash
-# 1. Ensure writable bin directory exists (required on ostree image-based systems)
-sudo mkdir -p /var/usrlocal/bin
-
-# 2. Install k3s agent — joins the cluster immediately
-curl -sfL https://get.k3s.io | \
-  K3S_URL="https://<control-plane-ip>:6443" \
-  K3S_TOKEN="<token from above>" \
-  INSTALL_K3S_BIN_DIR="/var/usrlocal/bin" \
-  sh -s -
-
-# 3. Disable auto-start — nodes opt in to the cluster (see Justfile below)
-sudo systemctl disable k3s-agent
-
-# 4. Install sleep inhibitor (prevents suspend while k3s is active — critical for laptops)
-sudo tee /etc/systemd/system/k3s-sleep-inhibit.service << 'EOF'
-[Unit]
-Description=Inhibit sleep while k3s agent is running
-BindsTo=k3s-agent.service
-After=k3s-agent.service
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/systemd-inhibit --what=sleep:handle-lid-switch --who=k3s --why="k3s running - use just k8s-off before travel" --mode=block sleep infinity
-Restart=on-failure
-RestartSec=5
-EOF
-
-sudo mkdir -p /etc/systemd/system/k3s-agent.service.d
-sudo tee /etc/systemd/system/k3s-agent.service.d/sleep-inhibit.conf << 'EOF'
-[Unit]
-Wants=k3s-sleep-inhibit.service
-EOF
-
-sudo systemctl daemon-reload
-```
-
-### Install the cluster Justfile in the node's home directory
-
-```bash
-cat > ~/Justfile << 'EOF'
-# Cluster controls — opt in/out of the ghost k3s cluster
-# k8s-on  — join the cluster (laptop stays awake while connected)
-# k8s-off — leave the cluster (safe to travel, close lid, suspend)
-
-k8s-on:
-    sudo systemctl enable --now k3s-agent
-    @echo "k3s agent started — sleep/lid inhibited while connected"
-
-k8s-off:
-    sudo systemctl stop k3s-agent
-    sudo systemctl disable k3s-agent
-    @echo "k3s agent stopped — normal sleep restored"
-
-k8s-status:
-    @systemctl is-active k3s-agent 2>/dev/null && echo "k8s: ON (inhibiting sleep)" || echo "k8s: OFF (normal sleep)"
-EOF
-```
-
-### Label the node and verify
-
-```bash
-# From workstation / ghost
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl label node <hostname> \
-  node-role.kubernetes.io/worker=true --overwrite
-
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl get nodes -o wide
-```
-
-Expected: new node appears as `Ready  worker`.
-
-### Passwordless sudo for agents
-
-```bash
-sudo bash -c 'echo -e "Defaults:jorge !requiretty\njorge ALL=(ALL) NOPASSWD: ALL" \
-  > /etc/sudoers.d/zzz-jorge && chmod 440 /etc/sudoers.d/zzz-jorge'
-```
-
-### Node offboarding — removing a worker
-
-```bash
-# 1. Drain node
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl drain <hostname> --ignore-daemonsets --delete-emptydir-data
-
-# 2. Delete from cluster
-KUBECONFIG=~/.kube/bluespeed.yaml kubectl delete node <hostname>
-
-# 3. Clean up node
-sudo /var/usrlocal/bin/k3s-agent-uninstall.sh
-```
-
-### Key facts for atomic OS nodes
-
-- **Binary path:** `/var/usrlocal/bin/k3s` (`INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`)
-- **Flannel backend:** `host-gw` (pure L2 routes, all nodes on `<lab-subnet>/24`)
-- **Upgrades:** managed by system-upgrade-controller via `manifests/k3s-upgrade-plans.yaml`
-- **Version skew:** agents must not be newer than the server (ghost)
-
-### BIOS UMA carve-out — leave at minimum
-
-Measured on exo-0 (2026-08-06). The Framework Desktop UMA setting is a hard
-carve-out from system RAM, not a reallocation, and GTT is sized from what is
-left over:
-
-| BIOS UMA | `mem_info_vram_total` | `MemTotal` | `mem_info_gtt_total` |
-|---|---|---|---|
-| 512 MiB (correct) | 512 MiB | 62.1 GiB | 31.0 GiB |
-| 48 GiB (tested, reverted) | 48.0 GiB | 15.4 GiB | 7.9 GiB |
-
-Raising it cost 47 GiB of system RAM and cut GTT by 4×. Keep the carve-out at
-the minimum and get GPU capacity from `ttm.pages_limit` instead.
-
-### Confirmed good state (2026-08-06, both nodes rebooted)
-
-| | ghost | exo-0 |
-|---|---|---|
-| `amd.com/gpu` | 1 | 1 |
-| `mem_info_gtt_total` | 48 GiB | 48 GiB |
-| `MemTotal` | 62.6 GiB | 62.1 GiB |
-| `amdgpu-kargs` annotation | `applied` | `applied` |
-
-`mem_info_vram_total` differs between the nodes (ghost 64 GiB, exo-0 512 MiB)
-and this is **not** a fault — ghost reports dynamically without carving out RAM.
-GTT is the number that matters; both are at 48 GiB.
-
-### Rebooting for kargs
-
-Kargs only apply on boot. Reboot one node at a time. KubeVirt PDBs will block a
-full drain on this 2-node cluster; that is expected — cordon, drain with a
-timeout, then reboot anyway.
-
-```bash
-kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --force --timeout=150s
-# reboot, wait for Ready, then:
-kubectl uncordon <node>
-```
-
-After any reboot, `zot-cache` restarts cold and serially probes each configured
-upstream per image, so expect a burst of `ErrImagePull` / `ImagePullBackOff`
-that clears on its own. Confirm the mirror is actually healthy before chasing it:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://192.168.1.102:30501/v2/   # expect 200
-kubectl -n local-registry logs deploy/zot-cache --tail=20
-```

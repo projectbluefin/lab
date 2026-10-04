@@ -94,7 +94,7 @@ Both applications use `automated: { prune: true, selfHeal: true }` — resources
 removed from git are removed from the cluster, and manual changes are reverted.
 This is the [recommended Argo CD GitOps model](https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/).
 
-`lab-infra` also creates the `kubestellar-applications` app-of-apps,
+`testing-lab-infra` also creates the `kubestellar-applications` app-of-apps,
 which reconciles PostgreSQL, KubeStellar core, and KubeStellar Console in that
 order. Do not apply the child Applications manually.
 
@@ -112,19 +112,10 @@ public bootstrap steps.
 
 ## 9. Add Worker Nodes (optional)
 
-This cluster uses an opt-in model: worker nodes join the cluster manually and can
-leave at any time (useful for laptops and gaming machines).
-
-**Full onboarding steps: `/docs/reference/agent-cheatsheet.md` section 14.**
-
-Quick summary:
-1. Have a maintainer provision the join token through the approved secure enrollment process; do not retrieve it with workstation SSH.
-2. On the new node: `sudo mkdir -p /var/usrlocal/bin` then run the k3s install script with `INSTALL_K3S_BIN_DIR=/var/usrlocal/bin`
-3. Disable auto-start: `sudo systemctl disable k3s-agent`
-4. Install `~/Justfile` with `just k8s-on/off/status` commands
-5. Label from workstation: `kubectl label node <name> node-role.kubernetes.io/worker=true`
-
-**Flannel backend is `host-gw`** — requires all nodes on `<lab-subnet>/24` flat L2.
+Workers join with the standard k3s agent install and can leave at any time.
+Joining, the four host steps that make a node a first-class build node,
+rebooting, and offboarding are in
+[k3s tuning: Framework Desktop Nodes](k3s-tuning.md#framework-desktop-nodes).
 
 ---
 
@@ -170,16 +161,17 @@ Run them once during initial cluster setup.
 
 ## Hardware Reference (Ghostlab)
 
-The reference implementation runs on a single node:
+The reference implementation runs on two identical Framework Desktop-class
+nodes (`ghost`, `exo-0`) joined by USB4:
 
 | Attribute | Value |
 |---|---|
 | CPU | AMD Ryzen AI MAX+ 395 (Strix Halo) — 16c/32t |
 | RAM | 64GB LPDDR5X |
 | Storage | NVMe |
-| GPU | AMD Radeon 8060S (integrated, gfx1151/RDNA 3.5) + ROCm for LLM inference |
+| GPU | AMD Radeon 8060S (integrated, gfx1151/RDNA 3.5); llama.cpp inference uses Vulkan |
 | OS | Bluefin (bootc atomic, Fedora-based) |
-| Kernel args | `amdgpu.gttsize=49152 ttm.pages_limit=12582912` (48 GiB GTT, applied by `manifests/amdgpu-kargs.yaml`) |
+| Kernel args | `amdgpu.gttsize=49152 ttm.pages_limit=12582912 amdgpu.lockup_timeout=20000` (applied by `manifests/amdgpu-kargs.yaml`) |
 | BIOS UMA carve-out | **minimum (512 MiB)** — raising it steals system RAM and *shrinks* GTT |
 
 `amd_iommu=off` is deliberately **not** set. It measures ~5–12% faster for

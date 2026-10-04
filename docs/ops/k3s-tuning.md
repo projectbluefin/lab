@@ -237,9 +237,34 @@ server threads.
 
 ## Framework Desktop Nodes
 
-Workers join via the standard `K3S_URL` / `K3S_TOKEN` registration and are
-immediately schedulable, and the BuildGrid worker DaemonSet gives them a bot.
-They are not first-class build nodes until four manual steps are done:
+### Joining
+
+The k3s join token is a host secret: a maintainer provisions it through the
+approved private enrollment process, never by copying it from a node over
+workstation SSH. On the new node (image-based OS, where `/usr/local/bin` is a
+symlink into `/var/usrlocal/bin`):
+
+```bash
+sudo mkdir -p /var/usrlocal/bin
+curl -sfL https://get.k3s.io | \
+  K3S_URL="https://<control-plane-ip>:6443" K3S_TOKEN="<token>" \
+  INSTALL_K3S_BIN_DIR="/var/usrlocal/bin" sh -s -
+```
+
+Then label it from the workstation and wait for `Ready`:
+
+```bash
+kubectl label node <hostname> node-role.kubernetes.io/worker=true --overwrite
+kubectl get nodes -o wide
+```
+
+Agents must not be newer than the server (`ghost`); system-upgrade-controller
+upgrades them through `manifests/k3s-upgrade-plans.yaml`. flannel runs
+`host-gw`, so every node must sit on the same flat L2 subnet.
+
+A joined node is immediately schedulable and the BuildGrid worker DaemonSet
+gives it a bot, but it is not a first-class build node until four manual steps
+are done:
 
 1. The flannel MTU files from [Pod MTU 9000](#pod-mtu-9000--both-nodes).
    Without them the node mints MTU 1500 pods on a 9000 network.
@@ -251,7 +276,50 @@ They are not first-class build nodes until four manual steps are done:
    [Container task limit](#container-task-limit--both-nodes). Without it the
    BuildGrid worker dies at 15% of the node's tasks during a recc fan-out.
 
-Do not add node selectors to steer workloads toward local disks. Define an
-explicit non-root local-path mapping for the node, then let
-`WaitForFirstConsumer` and the Kubernetes scheduler co-locate the PVC consumer
-with its selected volume.
+It also needs an explicit non-root mapping in `manifests/local-path-config.yaml`
+before it can host PVCs. Do not add node selectors to steer workloads toward
+local disks; `WaitForFirstConsumer` and the scheduler co-locate the PVC
+consumer with its selected volume.
+
+### Opt-in nodes (laptops)
+
+A machine that should leave the cluster when it travels disables
+`k3s-agent` auto-start (`sudo systemctl disable k3s-agent`) and joins with
+`sudo systemctl enable --now k3s-agent`. While the agent runs, block suspend
+with a unit bound to it:
+
+```ini
+# /etc/systemd/system/k3s-sleep-inhibit.service
+[Unit]
+Description=Inhibit sleep while k3s agent is running
+BindsTo=k3s-agent.service
+After=k3s-agent.service
+
+[Service]
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:handle-lid-switch --who=k3s --why="k3s running" --mode=block sleep infinity
+Restart=on-failure
+RestartSec=5
+```
+
+plus a `k3s-agent.service.d/sleep-inhibit.conf` drop-in with
+`[Unit] Wants=k3s-sleep-inhibit.service`, then `sudo systemctl daemon-reload`.
+
+### Rebooting and leaving
+
+Reboot one node at a time (kargs from `manifests/amdgpu-kargs.yaml` apply only
+on boot). KubeVirt PDBs block a full drain on this two-node cluster, so drain
+with a timeout and reboot anyway:
+
+```bash
+kubectl drain <node> --ignore-daemonsets --delete-emptydir-data --force --timeout=150s
+# reboot, wait for Ready, then:
+kubectl uncordon <node>
+```
+
+After a reboot `zot-cache` restarts cold and probes each upstream serially, so
+expect a burst of `ErrImagePull` that clears on its own; confirm with
+`curl -s -o /dev/null -w "%{http_code}\n" http://192.168.1.102:30501/v2/`
+(expect 200) before chasing it.
+
+To remove a node: drain it as above, `kubectl delete node <hostname>`, then run
+`sudo /var/usrlocal/bin/k3s-agent-uninstall.sh` on the node.

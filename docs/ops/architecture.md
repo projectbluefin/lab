@@ -2,10 +2,7 @@
 
 > This document describes the **current, physically-verified** Ghost Lab hardware and
 > network topology. Only `ghost` and `exo-0` have a live point-to-point USB4 link today.
-> Any multi-node daisy-chain mesh, ZFS storage tier, or Remote Execution grid described
-> in earlier drafts of this document was aspirational and did not match deployed hardware
-> — it has been removed. Extend this doc only after physically verifying new links/nodes
-> (see /docs/ops/RUNBOOK.md for the incident this caused previously).
+> Extend this doc only after physically verifying new links/nodes.
 
 ## Hardware
 
@@ -122,11 +119,7 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
   `ethtool -K thunderbolt0 tso off` on the same 15-second loop as the DNS rules.
 
   Verify with `ethtool -k thunderbolt0 | grep tcp-segmentation-offload` on both
-  nodes — it must read `off`. Tracked in issue #662.
-
-
----
-
+  nodes — it must read `off`.
 
 ---
 
@@ -137,12 +130,12 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 - `nvme1n1` — system disk, btrfs (ostree/bootc root + `/var` + `/var/home`)
 - `nvme0n1` ("ghost-data", 3.7T) — workload/scratch storage, formatted **XFS** (migrated
   from btrfs 2026-07-03; XFS chosen for lower per-file metadata overhead on the CAS
-  workload below, and to avoid btrfs COW/checksum overhead on data that doesn't need it)
+  workload, and to avoid btrfs COW/checksum overhead on data that doesn't need it)
   - `zot-local/` — Zot registry local image store (durable; backed up before any reformat)
-  - `local-path/` — k3s `local-path-provisioner` PVC scratch storage, including the
-    BuildStream `buildbox-casd` CAS cache (~1.3M small objects, sharded `00`-`ff`) — the
-    only `local-path` content treated as durable; other PVCs here are disposable
-    build-job scratch data and are not backed up
+  - `local-path/` — k3s `local-path-provisioner` PVCs. The durable ones are the
+    Buildbarn storage shards (`cas`/`ac` per `storage` ordinal) and the BuildGrid
+    Postgres database; BuildStream coordinator caches and BuildGrid worker casd
+    caches are per-pod generic-ephemeral PVCs and are disposable.
 
 ### exo-0 / other workers
 
@@ -189,10 +182,9 @@ A Buildbarn deployment in the `buildbarn` namespace provides storage only
 - `bb-remote-asset` — Deployment, source-cache Remote Asset index at
   `bb-remote-asset.buildbarn.svc.cluster.local:8984`.
 
-BuildStream jobs (`dakota-build-pipeline`,
-`bluefin-server-build-pipeline`, `bst-qa-pipeline`) send execution to the
-BuildGrid controller and artifact/CAS traffic to the Buildbarn frontend, so build
-actions are distributed across the BuildGrid `worker` pods on both
-`ghost` and `exo-0` rather than executing locally on a single node. The `bst-build` client
-pod itself also carries a required podAntiAffinity so concurrent builds spread across
-nodes instead of stacking on one.
+BuildStream jobs (`dakota-build-pipeline`, `bluefin-server-build-pipeline`)
+send execution to the BuildGrid controller and artifact/CAS traffic to the
+Buildbarn frontend, so build actions are distributed across the BuildGrid
+`worker` pods on both `ghost` and `exo-0` rather than executing locally on a
+single node. A pipeline's variant coordinators carry a required per-workflow
+podAntiAffinity, so at most one coordinator per pipeline runs on each node.

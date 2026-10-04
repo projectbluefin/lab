@@ -10,16 +10,18 @@ Git push / image digest change / manual submit
         ▼
 Argo Workflow (argo namespace)
         │
+        ├─ dakota/bluefin-server build pipelines ─► BuildStream coordinators; actions run on BuildGrid, caches in Buildbarn, images to Zot
         ├─ dakota-qa-pipeline   ─► run-container-tests inside the published OCI image
         └─ explicit VM lanes    ─► provision, run, and tear down ephemeral KubeVirt VMs
 ```
 
-Two steady-state execution paths exist:
+Three steady-state execution paths exist:
 
 | Path | Purpose | Persistent state |
 |---|---|---|
+| BuildStream build lanes | Dakota and Bluefin Server images | Buildbarn CAS/AC shards, Zot registry; see [buildstream.md](../skills/cluster-tooling/buildstream.md) |
 | Container-only Dakota path | Image and PR QA | No persistent VM or host-disk state |
-| Explicit VM-backed lanes | Dakota and bluefin-server boot tests | Ephemeral KubeVirt resources |
+| Explicit VM-backed lanes | bluefin-server boot tests | Ephemeral KubeVirt resources |
 
 ### Container-only QA contract
 
@@ -103,16 +105,16 @@ PV paths match the node map.
 
 | Area | Source of truth | Reconciler |
 |---|---|---|
-| WorkflowTemplates | `argo/workflow-templates/*.yaml` | ArgoCD application `lab` |
-| Cluster infra and CronWorkflows | `manifests/*.yaml` | ArgoCD application `lab-infra` |
-| Operator entrypoints | `Justfile` | Local operator / MCP tooling |
+| WorkflowTemplates | `argo/workflow-templates/*.yaml` | ArgoCD application `testing-lab` |
+| Cluster infra and CronWorkflows | `manifests/*.yaml` | ArgoCD application `testing-lab-infra` |
+| Operator entrypoints | `Justfile` | Local operator |
 
 The repo is intentionally GitOps-first: cluster state should converge from git, not from manual template applies or node SSH.
 
 ## Operator access model
 
-- Use Kubernetes MCP and Argo MCP for workstation-side cluster reads and mutations.
-- Prefer the `just` entrypoints when they exist; they are the human-facing wrappers around the same API-driven workflow.
+- Use `just` entrypoints when they exist, then `argo`/`kubectl`; MCP tools are
+  optional and never required.
 - Do not SSH from a workstation into `ghost` or `exo-0` for inspection, recovery, or file transfer.
 - In-workflow access to explicit test VMs remains valid because it originates
   inside the cluster and is part of the test harness, not node administration.
@@ -132,7 +134,7 @@ The repo is intentionally GitOps-first: cluster state should converge from git, 
 |---|---|
 | `run-container-tests` | Run Dakota GUI and contract suites inside the target OCI image |
 | `git-sync` initContainer | Clone the requested repo ref into the runner pod |
-| `qecore-headless` | Start the Wayland GNOME session inside the VM |
+| `qecore-headless` | Start the Wayland GNOME session inside the target image |
 | `dogtail` | Traverse and interact with the AT-SPI tree |
 | `gnome-ponytail-daemon` | Translate AT-SPI coordinates into Wayland input |
 | `Shell.Eval` | Handle GNOME Shell 50 top-bar interactions that AT-SPI cannot drive reliably |
@@ -162,7 +164,7 @@ The repo is intentionally GitOps-first: cluster state should converge from git, 
 | Container QA scenarios fail with `RuntimeError: User 'bluefin-test' does not have write permissions for '/dev/uinput'` even though the user is in `input` | Podman gives the nested target its own tmpfs `/dev` — a different device and inode from both the pod's and the node's — and materializes `uinput` there as mode `0600 root:root` with **no group**. Group membership can never grant access to a node that has no group bit set | The nested provisioning now runs `chgrp input /dev/uinput && chmod 0660 /dev/uinput` after creating the test user. The node is lane-local, so this cannot affect concurrent lanes or ghost itself. Verify with `podman exec bluefin-qa-target ls -l /dev/uinput` |
 | Every container QA scenario logs `ModuleNotFoundError: No module named 'pkg_resources'` from `qecore/sandbox.py` | qecore's `_attach_version_status_to_report()` imports `pkg_resources`, which ships only with setuptools, was dropped in setuptools 81, and is not seeded into fresh Python 3.12+ environments. `@non_critical_execution` catches it, so scenarios still run — this is lost version reporting and log noise, not a failure cause | The nested provisioning installs `setuptools<81` alongside `qecore dogtail behave`. Do not read a drop in this count as a drop in scenario failures; the two are independent |
 | Container QA scenarios fail with `Cannot reach VM at 127.0.0.1 over SSH after 5 attempts: rc=255` | The scenario drives a device under test over SSH, but a container lane runs behave *inside* the target and has no sshd. This is a suite-selection defect, not a lane defect | Fix in `projectbluefin/testsuite`: tag the scenario `@vm_only`, which the suite hooks skip when `/run/.containerenv` is present. Never add an sshd to the nested target to make these pass |
-| `lab-infra` sync wedged "waiting for healthy state of DaemonSet/..." | A DaemonSet pod is unhealthy on some node (e.g. hostPath missing on that host), blocking every subsequent manifests/ change | Fix or scope the DaemonSet (capability-label nodeSelector), then terminate the stuck operation so ArgoCD retries: `kubectl patch application lab-infra -n argocd --type=merge -p '{"status":{"operationState":{"phase":"Terminating"}}}'` |
+| `testing-lab-infra` sync wedged "waiting for healthy state of DaemonSet/..." | A DaemonSet pod is unhealthy on some node (e.g. hostPath missing on that host), blocking every subsequent manifests/ change | Fix or scope the DaemonSet (capability-label nodeSelector), then terminate the stuck operation so ArgoCD retries: `kubectl patch application testing-lab-infra -n argocd --type=merge -p '{"status":{"operationState":{"phase":"Terminating"}}}'` |
 | KubeStellar app sync stuck at kubeflex-controller-manager | Postgres hook deadlock under ArgoCD | Keep `installPostgreSQL: false` + separate `kubestellar-postgres` app; see `docs/skills/kubestellar/SKILL.md` |
 | `kubeflex-controller-manager` consumes sustained host RX and repeats ControlPlane reconciliation about once per second | KubeFlex v0.9.1's status writes race across infrastructure, PostCreateHook, and final-readiness phases. The same controller unconditionally creates a `wds1` Ingress with `ingressClassName: nginx` even though the lab has no external WEC endpoint; the Ingress is outside PostCreateHook templates, has no address, and [upstream Kubernetes freezes the Ingress API in favor of Gateway](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/). The [Ingress NGINX retirement statement](https://kubernetes.io/blog/2026/01/29/ingress-nginx-statement/) says the controller receives no further fixes or security patches | Upgrade `argocd/kubestellar-app.yaml` to core-chart 0.30.0 (KubeFlex v0.9.3), reconcile through ArgoCD, and verify the controller logs. Do not install ingress-nginx, add an IngressClass, or introduce a Gateway controller solely to claim this unused artifact. If external reachability is needed later, use the [Gateway API getting-started path](https://gateway-api.sigs.k8s.io/guides/getting-started/). If the status-conflict loop survives v0.9.3, escalate it as an upstream KubeFlex controller defect; deleting the generated Ingress alone will not persist |
 | `test-lane` nodes sit `Pending` for tens of minutes with no pods created, and `kubectl get wf <name> -o json \| jq .status.synchronization` shows `waiting` on `ghost-container-qa` | A single QA pipeline held most of the 6 semaphore slots. `spec.parallelism` is not inherited through `templateRef`, so poller-dispatched runs fanned out every `withItems` lane at once | The `pipeline` templates now carry template-level `parallelism: 2`, which survives `templateRef`. Never fix this by raising `ghost-container-qa`; that only moves the threshold. Verify with `pytest tests/unit/test_semaphore_topology.py` and see [patterns: semaphore topology](../skills/argo-workflows/patterns.md#semaphore-topology-hold-the-key-at-one-level-cap-every-fan-out) |
@@ -180,8 +182,4 @@ See `docs/skills/kubestellar/SKILL.md` (downsync, WEC join, RBAC) and
 Upgrade order: KubeFlex/postgres -> core-chart -> Console; rerun
 `kubestellar-smoke-test` after every core upgrade.
 
-## Historical notes
-
-Date-stamped iteration lessons were removed in the ponytail audit (commit
-81f0cc6f); recover them from git history if needed.
 Keep this file timeless: architecture, topology, and durable failure modes only.

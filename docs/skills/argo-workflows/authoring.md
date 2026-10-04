@@ -483,7 +483,7 @@ expands the template.
 
 ### 12. ArgoCD ownership — never apply manually
 
-`argo/workflow-templates/` is managed by the `lab` ArgoCD Application with `prune: true` and `selfHeal: true`. Manual `kubectl apply` or `argo create workflow-template` for templates in this directory is forbidden — ArgoCD will overwrite or conflict.
+`argo/workflow-templates/` is managed by the `testing-lab` ArgoCD Application with `prune: true` and `selfHeal: true`. Manual `kubectl apply` or `argo create workflow-template` for templates in this directory is forbidden — ArgoCD will overwrite or conflict.
 
 `argo/bootstrap/` is **not** ArgoCD managed. Apply manually once:
 ```bash

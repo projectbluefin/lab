@@ -12,8 +12,8 @@ Clients on the LAN submit work as Argo Workflows (`http://192.168.1.102:32746`).
 
 | Purpose | What runs | USB4 role | Status |
 |---|---|---|---|
-| **BuildStream build farm** | BuildBarn (`buildbarn` ns) plus the dakota OCI pipeline: `dakota-build-pipeline` / `bluefin-server-build-pipeline` build through BuildBarn, publish to the Zot registry (`:30500`), run Dakota QA and boot tests, and promote Zot candidates. Makes `projectbluefin/dakota`. | Hard admission gate: remote-execution actions and CAS transfers run pod-to-pod over the link; no Ethernet or local fallback. | Live |
-| **Local LLM inference** | llama.cpp on Vulkan on `exo-0` (`manifests/llm-d.yaml`). OpenAI-compatible API at `http://192.168.1.102:30800/v1`. | Carries client and in-cluster traffic to the model server on `exo-0`. | Live |
+| **BuildStream build farm** | BuildGrid remote execution (`buildgrid` ns) with Buildbarn CAS/action cache (`buildbarn` ns), plus the dakota OCI pipeline: `dakota-build-pipeline` / `bluefin-server-build-pipeline` execute on BuildGrid, publish to the Zot registry (`:30500`), run Dakota QA and boot tests, and promote Zot candidates. Makes `projectbluefin/dakota`. | Hard admission gate: remote-execution actions and CAS transfers run pod-to-pod over the link; no Ethernet or local fallback. | Live |
+| **Local LLM inference** | llama.cpp on Vulkan, one model per node (`manifests/llm-d.yaml`): worker on `exo-0` (NodePort `30800`), advisor on `ghost` (`30801`), OpenAI-compatible `/v1`. | Carries client and in-cluster traffic to the model servers. | Live |
 | **Distributed ffmpeg encoding** | Plain Workflows from client tools (`tools/farm.py` in the video repos): frame-grid segments, parallel ffmpeg, `concat -c copy` join, ffprobe verify. | Chunk exchange between the two nodes' pods. | Live per node; cross-node chunking over USB4 not built yet |
 
 ## Stack
@@ -38,7 +38,8 @@ Clients on the LAN submit work as Argo Workflows (`http://192.168.1.102:32746`).
 |---|---|
 | `argo` | Argo Workflows |
 | `argocd` | ArgoCD controller |
-| `buildbarn` | BuildBarn remote execution + CAS |
+| `buildgrid` | BuildGrid remote execution (controller, bots, CAS front, Postgres, one worker per node) |
+| `buildbarn` | Buildbarn CAS, action cache, and remote asset (storage only) |
 | `llm-d` | Local LLM inference (llama.cpp on Vulkan) |
 | `local-registry` | Zot writable registry (30500) + pull-through cache (30501) |
 
@@ -46,8 +47,8 @@ Clients on the LAN submit work as Argo Workflows (`http://192.168.1.102:32746`).
 
 | Application | Syncs path | Namespace |
 |---|---|---|
-| `lab` | `argo/workflow-templates/` | argo |
-| `lab-infra` | `manifests/` | argo (+ others) |
+| `testing-lab` | `argo/workflow-templates/` | argo |
+| `testing-lab-infra` | `manifests/` | argo (+ others) |
 
 1. Edit `argo/workflow-templates/` or `manifests/` → push to `main` → ArgoCD reconciles.
 2. **Never** `kubectl apply` or `argo create workflow-template` for tracked resources — ArgoCD overwrites them.
@@ -60,7 +61,7 @@ See [docs/ops/bootstrap.md](/docs/ops/bootstrap.md) for full setup.
 ```bash
 just setup-argocd                 # once
 just argocd-sync
-just run-bst-build                # dakota BST build via BuildBarn
+just run-bst-build                # dakota BST build on BuildGrid
 just run-dakota-qa                # Dakota QA
 just run-bluefin-server-build     # bluefin-server BST build
 just run-zot-promotion ...        # promote a Zot candidate
@@ -73,7 +74,7 @@ just list-workflows
 `just list-vms` shows zero VMs when no boot test is running.
 
 **API-only operator model** — cluster reads and mutations go through the
-Kubernetes API (MCP tools or `just` wrappers). No SSH to cluster nodes.
+`just` wrappers or `argo`/`kubectl`. No SSH to cluster nodes.
 
 **One administration pane** — KubeStellar Console. No Grafana or parallel
 dashboard framework.

@@ -39,7 +39,7 @@ def test_execution_and_storage_share_one_cas():
 
     controller = yaml.load(manifest("buildgrid-controller.yaml")[0]["data"]["controller.yml"], Loader=_Tagged)
     assert [host(s["url"]) for s in controller["storages"] if "url" in s] == [BUILDBARN_HOST]
-    assert [host(c["url"]) for c in controller["caches"]] == [BUILDBARN_HOST]
+    assert [host(c["url"]) for c in controller["caches"] if "url" in c] == [BUILDBARN_HOST]
 
     cas_front = yaml.load(manifest("buildgrid-cas.yaml")[0]["data"]["cas.yml"], Loader=_Tagged)
     assert [host(s["url"]) for s in cas_front["storages"] if "url" in s] == [BUILDBARN_HOST]

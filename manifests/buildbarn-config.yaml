@@ -31,8 +31,19 @@ data:
             },
           },
         },
+        // BuildStream asks for OutputDirectoryFormat DIRECTORY_ONLY, so element
+        // actions store OutputDirectory.root_directory_digest without a
+        // tree_digest. completenessChecking derives tree_digest unconditionally
+        // and answers NOT_FOUND ("malformed digest: No digest provided"), so
+        // every element action re-executed. Expire results instead: entries
+        // are served for 7-8 days after worker_completed_timestamp, well inside
+        // the CAS retention (each 420GiB shard had 212GiB written in 16 days),
+        // so their outputs are still stored. Remote Asset records carry no
+        // worker_completed_timestamp and never expire; without the blob check
+        // a stale index entry makes BuildStream fall through to the next
+        // artifact server instead of failing.
         actionCache: {
-          completenessChecking: {
+          actionResultExpiring: {
             backend: {
               sharding: {
                 shards: {
@@ -47,7 +58,10 @@ data:
                 },
               },
             },
-            maximumTotalTreeSizeBytes: 64 * 1024 * 1024,
+            minimumValidity: '604800s',
+            maximumValidityJitter: '86400s',
+            // Required by bb-storage; raise it to drop a poisoned AC.
+            minimumTimestamp: '1970-01-01T00:00:00Z',
           },
         },
       },

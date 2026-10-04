@@ -193,11 +193,53 @@ needs the same two files before it carries pod traffic over USB4.
 
 ---
 
+## Container task limit — both nodes
+
+k3s runs kubelet and containerd with the systemd cgroup driver, so every
+container is a transient `cri-containerd-<id>.scope` under its pod slice.
+Kubernetes sets no pids limit, so systemd gives each scope `DefaultTasksMax`:
+15% of `min(kernel.pid_max, kernel.threads-max)`, 76549 on ghost and 76120 on
+exo-0. That is the only binding limit: the pod slice is `max`, `kubepods.slice`
+is `threads-max`, and the k3s unit's `TasksMax` does not cover pods. A GNOME
+recc fan-out holds one casd thread per in-flight RPC plus every recc and
+compiler process in the BuildGrid worker container; it reached the limit,
+`buildbox-worker` died with `Resource temporarily unavailable`, and all 32
+running actions on the node failed.
+
+A kubelet `podPidsLimit` cannot raise this (it sets the pod slice, not the
+scope), and the manifest has no field for it. A prefix drop-in for the
+container scopes raises the per-container limit to half of the node's task
+budget, leaving the other half for the host and the desktop session:
+
+```bash
+# On each node (ghost, exo-0); no k3s restart, no pod restart.
+sudo install -d -m 0755 /etc/systemd/system/cri-containerd-.scope.d
+printf '[Scope]\nTasksMax=50%%\n' | sudo tee /etc/systemd/system/cri-containerd-.scope.d/50-tasks-max.conf
+sudo systemctl daemon-reload
+```
+
+`daemon-reload` applies the drop-in to running containers as well as new
+ones; the percentage is relative to the same `min(pid_max, threads-max)`.
+Verify on the node that every container scope picked it up:
+
+```bash
+systemctl list-units --plain --no-legend 'cri-containerd-*.scope' | awk '{print $1}' \
+  | xargs systemctl show -p TasksMax | grep TasksMax | sort | uniq -c
+# ghost: TasksMax=255164, exo-0: TasksMax=253736 (was 76549 / 76120)
+```
+
+buildbox has no option that caps this from inside the pod: `--concurrent-jobs`
+bounds actions, not the recc compiles one action fans out, and casd's
+`--num-io-threads`/`--num-digest-threads` size fixed pools, not its per-RPC
+server threads.
+
+---
+
 ## Framework Desktop Nodes
 
 Workers join via the standard `K3S_URL` / `K3S_TOKEN` registration and are
 immediately schedulable, and the BuildGrid worker DaemonSet gives them a bot.
-They are not first-class build nodes until three manual steps are done:
+They are not first-class build nodes until four manual steps are done:
 
 1. The flannel MTU files from [Pod MTU 9000](#pod-mtu-9000--both-nodes).
    Without them the node mints MTU 1500 pods on a 9000 network.
@@ -205,6 +247,9 @@ They are not first-class build nodes until three manual steps are done:
    `thunderbolt0` on every host pair. Otherwise its cross-node traffic stays on 2.5GbE.
 3. A peer entry in `manifests/usb4-link-monitor.yaml`. Its `case` exits on
    unknown nodes, so the node never gets a `usb4-link=up` label.
+4. The container task limit drop-in from
+   [Container task limit](#container-task-limit--both-nodes). Without it the
+   BuildGrid worker dies at 15% of the node's tasks during a recc fan-out.
 
 Do not add node selectors to steer workloads toward local disks. Define an
 explicit non-root local-path mapping for the node, then let

@@ -35,10 +35,21 @@ data:
     build:
       max-jobs: 32
 
+    # Global, so it applies to every project including the gnome-build-meta
+    # and freedesktop-sdk junctions (~900 of a Dakota build's ~1200 elements).
+    # The index and storage are separate Buildbarn services: the frontend has
+    # no Remote Asset service, so listing it as a combined server disables it
+    # entirely ("Failed to initialize remote"), leaving junction elements with
+    # no lab index to pull from and no push remote, and every run re-pulled
+    # them from gbm.gnome.org over the WAN.
     artifacts:
       override-project-caches: false
       servers:
+      - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+        type: index
+        push: true
       - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        type: storage
         push: true
       - url: https://gbm.gnome.org:11003
         push: false
@@ -55,10 +66,26 @@ data:
         push: false
       - url: https://cache.freedesktop-sdk.io:11001
         push: false
+    # buildbox-casd keeps its CAS in the Buildbarn frontend (the CAS the
+    # BuildGrid workers use) instead of on the coordinator's disk. Pulling an
+    # artifact then fetches only its proto and Directory protos, plus any file
+    # blob the lab CAS lacks; remote build outputs are not downloaded back;
+    # `bst artifact checkout` fetches file blobs on demand. The
+    # remote-execution block below must not set its own storage-service:
+    # BuildStream then downloads every build's outputs to the coordinator.
+    cache:
+      storage-service:
+        url: grpc://frontend.buildbarn.svc.cluster.local:8980
+        connection-config:
+          keepalive-time: 60
+          retry-limit: 8
+          retry-delay: 1000
+          request-timeout: 1800
   # Per-project remote-execution snippet body. Pipelines append this under
   # projects.<name> (indented). Execution goes to BuildGrid (bubblewrap
-  # workers); CAS and the action cache stay in Buildbarn, which the BuildGrid
-  # controller and workers use as their CAS too.
+  # workers); the action cache stays in Buildbarn, and the CAS is the
+  # `cache.storage-service` above, which the BuildGrid controller and workers
+  # use as their CAS too.
   remote-execution.conf: |
     remote-execution:
       execution-service:
@@ -67,13 +94,6 @@ data:
           keepalive-time: 60
           retry-limit: 8
           retry-delay: 1000
-      storage-service:
-        url: grpc://frontend.buildbarn.svc.cluster.local:8980
-        connection-config:
-          keepalive-time: 60
-          retry-limit: 8
-          retry-delay: 1000
-          request-timeout: 1800
       action-cache-service:
         url: grpc://frontend.buildbarn.svc.cluster.local:8980
         push: true

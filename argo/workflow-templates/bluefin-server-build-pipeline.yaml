@@ -273,7 +273,15 @@ spec:
                     artifacts:
                       override-project-caches: false
                       servers:
+                      # Index and storage are separate Buildbarn services; the
+                      # frontend alone has no Remote Asset service and listing it
+                      # as a combined server disables it. Junction projects use the
+                      # same lab servers from the ConfigMap's global `artifacts`.
+                      - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+                        type: index
+                        push: true
                       - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                        type: storage
                         push: true
                       - url: https://gbm.gnome.org:11003
                         push: false

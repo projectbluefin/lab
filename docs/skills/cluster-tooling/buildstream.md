@@ -110,8 +110,11 @@ Buildbarn is storage only.
   stay shorter than the CAS retention. Prove an element hit with
   `GetActionResult` on an element action digest from the BuildGrid `jobs` table.
 - **BuildStream config** (`manifests/buildstream-remote-cache-config.yaml`):
-  `execution-service` points at the BuildGrid controller; `storage-service` and
-  `action-cache-service` point at the Buildbarn frontend.
+  `execution-service` points at the BuildGrid controller and
+  `action-cache-service` at the Buildbarn frontend. The CAS is the global
+  `cache.storage-service` (Buildbarn frontend); `remote-execution` sets no
+  `storage-service` of its own, because one there makes BuildStream download
+  every remote build's outputs to the coordinator.
 
 This matches upstream BuildStream's own CI: `.github/compose/ci.buildgrid.yml`
 runs BuildGrid with `buildbox-worker --buildbox-run=buildbox-run-bubblewrap`,
@@ -359,8 +362,8 @@ node and its actions in the BuildGrid `jobs` table with a `worker_name`.
 - **Deployment**: Frontend (2 replicas), sharded storage (2 replicas), and `bb-remote-asset` are defined under `manifests/buildbarn-*.yaml` and run in the `buildbarn` namespace
 
 ### 2. BuildStream client config
-  The build pods generate a deterministic `buildstream.conf` from `manifests/buildstream-remote-cache-config.yaml` that keeps upstream source caches read-only and pushes artifacts to the shared Buildbarn frontend first:
- 
+  The build pods generate a deterministic `buildstream.conf` from `manifests/buildstream-remote-cache-config.yaml`. Its artifact servers are global, so the `gnome-build-meta` and `freedesktop-sdk` junction projects (most of a Dakota build) pull from and push to the lab first:
+
 ```yaml
 scheduler:
   network-retries: 8
@@ -369,15 +372,18 @@ scheduler:
   pushers: 4
 build:
   max-jobs: 32
-artifacts:  override-project-caches: false
+artifacts:
+  override-project-caches: false
   servers:
-  - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+  - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+    type: index
     push: true
-  - url: https://cache.projectbluefin.io:11001
+  - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+    type: storage
+    push: true
+  - url: https://gbm.gnome.org:11003
     push: false
   - url: https://cache.freedesktop-sdk.io:11001
-    push: false
-  - url: https://gbm.gnome.org:11003
     push: false
 source-caches:
   override-project-caches: true
@@ -386,9 +392,14 @@ source-caches:
     push: false
   - url: https://cache.freedesktop-sdk.io:11001
     push: false
+cache:
+  storage-service:
+    url: grpc://frontend.buildbarn.svc.cluster.local:8980
 ```
 
-Repeat the same override and server ordering at the project level so the primary project uses the same cache policy as the top-level config.
+- **Never list the frontend as a combined (`type: all`) artifact server.** It has no Remote Asset service, so BuildStream drops it entirely (`WARNING Failed to initialize remote grpc://frontend...: Configured remote does not implement the Remote Asset Fetch service`). Any project left with only that entry has no lab index and no push remote: before this was fixed, every Dakota run re-pulled ~900 junction artifacts from gbm.gnome.org at ~1/s and logged `Push Queue: skipped 923`.
+- **`cache.storage-service`** makes buildbox-casd keep content in Buildbarn rather than on the coordinator's disk: an artifact pull fetches the artifact and Directory protos plus only the file blobs Buildbarn lacks, remote build outputs are not downloaded back, and `bst artifact checkout` fetches file blobs on demand. Measured on 149 freedesktop-sdk artifacts (2.0 GB): 134 s from gbm with the old config, 17 s from the lab without `storage-service`, 13 s with it (68 MB written locally). Checkout through it measured the same as a local-CAS pull plus checkout (9.4 GB bluefin OCI layout: 139 s vs 153 s; 3,629-file python3: 3 s vs 1 s plus its pull).
+- A project-level `projects.<name>.artifacts` block replaces the global list for that project only, so do not use one to reach the lab cache: junction projects never see it.
 
 **Lab-wide source-cache rule:** the deployed `bb-remote-asset` image (`ghcr.io/buildbarn/bb-remote-asset:20241031T230517Z-4926e8e`) cannot handle BuildStream source-key URNs. Pushing sources to `grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984` (`type: index`) produces `FetchDirectory ... PERMISSION_DENIED` / `HTTP Fetching of directories is not supported!` and, because the remote-asset asset cache reads through the unsharded storage headless Service, `could not get action from action cache: Object not found`. Until the endpoint is upgraded/configured for URNs, **every** lab BuildStream pipeline (`dakota-build-pipeline`, `bluefin-server-build-pipeline`, `bst-qa-pipeline`) must set `source-caches.override-project-caches: true` and list only the upstream read-only source caches. Leaving it `false` inherits junction source-cache entries and causes the build to spend minutes retrying a source push before failing. Artifact and action-cache writes still use the Buildbarn frontend.
 

@@ -110,7 +110,7 @@ before retrying.
   `GRPC_ENABLE_FORK_SUPPORT=1`.
 - **Execution:** element builds run on BuildGrid like every BST lane; the
   coordinator pod only orchestrates (2-4 CPU, 4-8Gi). No local sandbox is used.
-- **Cache policy:** CAS and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); the current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it. The checked-in `buildstream-remote-cache` config leaves project cache overrides disabled and lists the project's own upstream artifact/source cache URLs as read-only fallbacks.
+- **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts are indexed in `bb-remote-asset` (`:8984`). The current BuildStream image in this cluster does not accept the legacy `remoteasset:` config block, so the config omits it. The checked-in `buildstream-remote-cache` config leaves project cache overrides disabled and lists the project's own upstream artifact/source cache URLs as read-only fallbacks.
 
 ### bst-qa-pipeline
 - **Purpose:** Smoke-tests BuildStream wiring against BuildGrid execution and

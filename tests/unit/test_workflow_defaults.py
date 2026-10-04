@@ -23,14 +23,19 @@ _Tagged.add_multi_constructor("!", lambda loader, _tag, node: loader.construct_m
 
 
 def test_execution_and_storage_share_one_cas():
-    # BuildStream uploads input roots to its storage-service and the BuildGrid
-    # controller and workers read them from their own CAS. If these diverge,
-    # every remote action fails with missing blobs.
+    # BuildStream uploads input roots to its CAS and the BuildGrid controller
+    # and workers read them from their own CAS. If these diverge, every remote
+    # action fails with missing blobs.
     data = manifest("buildstream-remote-cache-config.yaml")[0]["data"]
     remote = yaml.safe_load(data["remote-execution.conf"])["remote-execution"]
     assert host(remote["execution-service"]["url"]) == BUILDGRID_HOST
-    assert host(remote["storage-service"]["url"]) == BUILDBARN_HOST
     assert host(remote["action-cache-service"]["url"]) == BUILDBARN_HOST
+    # The CAS is casd's storage-service. A separate remote-execution
+    # storage-service makes BuildStream download every build's outputs to the
+    # coordinator.
+    assert "storage-service" not in remote
+    cache = yaml.safe_load(data["dakota-buildstream.conf"])["cache"]
+    assert host(cache["storage-service"]["url"]) == BUILDBARN_HOST
 
     controller = yaml.load(manifest("buildgrid-controller.yaml")[0]["data"]["controller.yml"], Loader=_Tagged)
     assert [host(s["url"]) for s in controller["storages"] if "url" in s] == [BUILDBARN_HOST]

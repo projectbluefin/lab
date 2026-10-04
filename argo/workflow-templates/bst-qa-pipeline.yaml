@@ -163,7 +163,13 @@ spec:
               artifacts:
                 override-project-caches: false
                 servers:
+                # Index and storage are separate Buildbarn services; the
+                # frontend alone has no Remote Asset service.
+                - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
+                  type: index
+                  push: true
                 - url: grpc://frontend.buildbarn.svc.cluster.local:8980
+                  type: storage
                   push: true
                 - url: https://gbm.gnome.org:11003
                   push: false
@@ -180,11 +186,11 @@ spec:
                   push: false
                 - url: https://cache.projectbluefin.io:11001
                   push: false
+              # The CAS is the ConfigMap's cache.storage-service; a separate
+              # storage-service here would download every output to this pod.
               remote-execution:
                 execution-service:
                   url: ${REMOTE_EXECUTION_SERVICE}
-                storage-service:
-                  url: grpc://frontend.buildbarn.svc.cluster.local:8980
                 action-cache-service:
                   url: grpc://frontend.buildbarn.svc.cluster.local:8980
                   push: true

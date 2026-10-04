@@ -442,37 +442,11 @@ spec:
                   git checkout --detach FETCH_HEAD
                 fi
 
+                # Artifact/source cache servers are global in the ConfigMap so the
+                # gnome-build-meta and freedesktop-sdk junction projects use the lab
+                # cache too; only remote execution is per (toplevel) project.
                 PROJECT_NAME=$(awk -F': *' '/^name:/{print $2; exit}' project.conf | tr -d '\r')
-                cat >> /tmp/buildstream-cluster.conf <<EOF
-                projects:
-                  ${PROJECT_NAME}:
-                    artifacts:
-                      override-project-caches: false
-                      servers:
-                      # BuildStream artifact index and storage are separate BuildBarn
-                      # services. Keep both so locally built bootc artifacts are
-                      # discoverable by later distributed builds.
-                      - url: grpc://bb-remote-asset.buildbarn.svc.cluster.local:8984
-                        type: index
-                        push: true
-                      - url: grpc://frontend.buildbarn.svc.cluster.local:8980
-                        type: storage
-                        push: true
-                      - url: https://gbm.gnome.org:11003
-                        push: false
-                      - url: https://cache.freedesktop-sdk.io:11001
-                        push: false
-                    source-caches:
-                      # The deployed bb-remote-asset endpoint cannot FetchBlob
-                      # BuildStream URNs. Override junction source-cache entries so
-                      # no incompatible source-push server is inherited.
-                      override-project-caches: true
-                      servers:
-                      - url: https://gbm.gnome.org:11003
-                        push: false
-                      - url: https://cache.freedesktop-sdk.io:11001
-                        push: false
-                EOF
+                printf 'projects:\n  %s:\n' "${PROJECT_NAME}" >> /tmp/buildstream-cluster.conf
 
                 echo "=== Distributed build: BuildGrid remote execution ==="
                 sed 's/^/    /' /etc/buildstream/remote-execution.conf >> /tmp/buildstream-cluster.conf

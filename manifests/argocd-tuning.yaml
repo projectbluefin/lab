@@ -30,9 +30,19 @@ metadata:
 spec:
   replicas: 0
 ---
-# timeout.reconciliation: reduce git polling from 3 min (default) to 1 h.
-# Push triggers and manual syncs handle day-to-day reconciliation; the
-# background poll is a safety net only.
+# timeout.reconciliation: how stale a pushed commit may look to ArgoCD. The
+# lab has no inbound GitHub webhook, so polling is the only push trigger.
+# The value feeds two places through ARGOCD_RECONCILIATION_TIMEOUT:
+#   - repo-server --revision-cache-expiration: how long `main` stays resolved
+#     to a cached SHA. A normal refresh reuses that SHA; only a hard refresh
+#     bypasses it. At 1h, pushes sat undeployed for up to an hour while the
+#     controller kept "refreshing" against the old SHA.
+#   - application-controller --app-resync (plus the default 60s jitter).
+# 2m matches the controller's built-in default, the cadence it already ran at
+# (compare_app_state about 0.1-0.7s per app, a few millicores of CPU). The
+# three lab Applications share one repo URL, so this is one `git ls-remote`
+# per 2 minutes; manifests are cached per SHA and only regenerate on a new
+# commit. Worst case push-to-sync is about 5 minutes.
 #
 # resource.exclusions: stop ArgoCD watching Workflow instances and bare Pods.
 # These are high-churn transient objects managed entirely by Argo Workflows,
@@ -45,7 +55,7 @@ metadata:
   namespace: argocd
 data:
   admin.enabled: "false"
-  timeout.reconciliation: 1h
+  timeout.reconciliation: 2m
   resource.customizations.health.argoproj.io_Application: |
     hs = {}
     hs.status = "Progressing"
@@ -130,6 +140,12 @@ spec:
                   name: argocd-cmd-params-cm
                   key: controller.repo.server.timeout.seconds
                   optional: true
+            - name: ARGOCD_RECONCILIATION_TIMEOUT
+              valueFrom:
+                configMapKeyRef:
+                  name: argocd-cm
+                  key: timeout.reconciliation
+                  optional: true
           resources:
             requests:
               cpu: 100m
@@ -167,6 +183,11 @@ spec:
             limits:
               cpu: "2"
               memory: 4Gi
+    metadata:
+      annotations:
+        # repo-server reads timeout.reconciliation from argocd-cm only at
+        # startup. Keep this equal to argocd-cm so a change rolls the pod.
+        lab.projectbluefin.io/timeout-reconciliation: 2m
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -155,6 +155,14 @@ just argocd-sync
 argocd app sync testing-lab testing-lab-infra --timeout 120
 ```
 
+GitHub webhooks cannot reach the lab, so ArgoCD polls. `timeout.reconciliation`
+in `manifests/argocd-tuning.yaml` (2m) sets both the controller resync period
+and how long repo-server keeps `main` resolved to a cached SHA; a push is live
+within about 5 minutes. A normal refresh reuses the cached SHA, so when you need
+a commit live sooner, request a hard refresh
+(`kubectl -n argocd annotate application <app> argocd.argoproj.io/refresh=hard --overwrite`)
+and check `.status.sync.revision` equals your commit.
+
 If a template change is in git but not yet live:
 1. Check `argocd app get testing-lab` — is it Synced?
 2. If OutOfSync, run `just argocd-sync`
@@ -162,7 +170,7 @@ If a template change is in git but not yet live:
 
 #### Diagnosing a repo-specific reconciliation stall (not a full ArgoCD outage)
 
-A merged PR can sit unsynced for 10+ minutes even though ArgoCD itself is
+A merged PR can sit unsynced for more than 10 minutes even though ArgoCD itself is
 healthy. Don't assume the whole controller is down — check whether the stall
 is scoped to one repo:
 

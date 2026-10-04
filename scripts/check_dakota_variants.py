@@ -108,7 +108,7 @@ def main(path):
     if not gated:
         failures.append("no optional variant is gated; variants=all would build one image")
 
-    failures += check_build_export_options(path)
+    failures += check_build_export_options(path.with_name("bst-build-re.yaml"))
     failures += check_just_recipes()
 
     return report(failures, len(build_tasks), gated)

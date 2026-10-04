@@ -5,10 +5,10 @@ metadata:
   namespace: argo
   annotations:
     description: |
-      Controlled BuildStream/BuildBarn cache re-warm. Verifies the same USB4
-      and BuildBarn admission gates used by Dakota/Bluefin Server
-      builds before serially invoking those templates to repopulate BuildBarn
-      action and artifact caches. Triggered manually.
+      Controlled BuildStream/BuildBarn cache re-warm. Serially invokes the
+      Dakota and Bluefin Server build templates, whose own admission gate
+      checks USB4 and BuildGrid first, to repopulate BuildBarn action
+      and artifact caches. Triggered manually.
   labels:
     app.kubernetes.io/component: bst-cache-warm
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -61,10 +61,6 @@ spec:
     - name: warmup
       dag:
         tasks:
-          - name: admission-gate
-            templateRef:
-              name: bst-admission-gate
-              template: detect-build-mode
           # The production build templates each hold the global bst-build
           # semaphore. Chain the warmup lanes so Dakota and Bluefin
           # Server never hold that semaphore at the same time within a single
@@ -72,7 +68,6 @@ spec:
           # bst-cache-warm semaphore instead, isolating re-seeding from the
           # production build lane.
           - name: warm-dakota
-            depends: admission-gate.Succeeded
             templateRef:
               name: dakota-build-pipeline
               template: build-warmup

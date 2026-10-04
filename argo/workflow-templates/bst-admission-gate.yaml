@@ -8,7 +8,7 @@ metadata:
       Shared USB4/BuildGrid admission gate for BuildStream lanes. Requires a
       fresh usb4-link=up observation and a Ready node and BuildGrid worker on
       both ghost and exo-0, plus a Ready BuildGrid controller. Workers on any
-      additional node add capacity without changing this gate. Outputs mode=re.
+      additional node add capacity without changing this gate.
   labels:
     app.kubernetes.io/component: bst-admission-gate
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -16,11 +16,6 @@ spec:
   serviceAccountName: argo
   templates:
     - name: detect-build-mode
-      outputs:
-        parameters:
-          - name: mode
-            valueFrom:
-              path: /tmp/mode
       script:
         image: ghcr.io/projectbluefin/lab-runner@sha256:767777acd14e340698f31992e6e2cc9bc1b2009ccb1472dfcfd9c7f6e9d60e29 # 26.08.2
         command: [bash]
@@ -68,4 +63,3 @@ spec:
           fi
 
           echo "USB4-backed BuildGrid remote execution admitted ($(grep -c 'ready=true$' <<<"${WORKERS}") workers)"
-          printf '%s' re > /tmp/mode

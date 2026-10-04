@@ -42,6 +42,13 @@ spec:
               topologyKey: kubernetes.io/hostname
       priorityClassName: bst-build
       activeDeadlineSeconds: "{{inputs.parameters.deadline}}"
+      # Secrets exist only in pods that use them. The coordinator runs
+      # third-party build code (junction integration commands), so a Dakota
+      # pod must not carry the GitHub token or the Bluefin Server boot keys.
+      # Callers that need a Secret pass it in `pod-patch` (strategic-merge
+      # patch; default `{}` adds nothing). Argo does not evaluate `{{= }}`
+      # expressions here, so the patch arrives as a plain parameter.
+      podSpecPatch: '{{inputs.parameters.pod-patch}}'
       # Retry once, except exit 3 from bst-build.sh: an element's own build
       # failed and its failed artifact is cached, so a retry would spend
       # ~20 minutes re-pulling ~900 artifacts to fail the same way. Grid,
@@ -64,13 +71,12 @@ spec:
             value: "latest"
           - name: deadline
             value: "43200"
-          # "true" clones with the github-token Secret.
-          - name: clone-token
-            value: "false"
-          # "true" unpacks the bluefin-server-dev-boot-keys Secret into
-          # files/boot-keys before building.
-          - name: dev-keys
-            value: "false"
+          # Strategic-merge pod patch. bluefin-server-build-pipeline uses it to
+          # add the github-token env and the bluefin-server-dev-boot-keys
+          # Secret mount; the build clones with GITHUB_TOKEN when it is set and
+          # unpacks /dev-keys/keys.tgz when it exists.
+          - name: pod-patch
+            value: "{}"
           # Second read-only artifact/source cache for the toplevel project,
           # replacing the ConfigMap's cache.freedesktop-sdk.io there only;
           # empty keeps the global servers for every project.
@@ -102,14 +108,6 @@ spec:
                 path: remote-execution.conf
               - key: bst-build.sh
                 path: bst-build.sh
-        # Fixed dev key set (Secret created out of band, see
-        # docs/skills/bluefin-server/SKILL.md). Fixed, not per-run: the kernel's
-        # cache key includes the module certificate, so a stable dev key keeps
-        # the kernel and everything signed with it in the BuildBarn CAS.
-        - name: dev-keys
-          secret:
-            secretName: bluefin-server-dev-boot-keys
-            optional: true
       # One pod, two containers sharing the per-pod CAS PVC: `main` (bst2)
       # builds and checks the OCI layout out onto the PVC, then `publish`
       # (distroless fsdk-containers skopeo) copies it straight to Zot. bst2
@@ -128,12 +126,6 @@ spec:
               seLinuxOptions:
                 type: spc_t
             env:
-              - name: GITHUB_TOKEN
-                valueFrom:
-                  secretKeyRef:
-                    name: github-token
-                    key: token
-                    optional: true
               # No GRPC_POLL_STRATEGY=poll: buildbox-casd inherits this
               # environment, and the poll poller caps each of its gRPC streams
               # at ~68 MB/s, so `bst artifact checkout` of the ~10 GB OCI layer
@@ -167,9 +159,6 @@ spec:
               - name: buildstream-config
                 mountPath: /etc/buildstream
                 readOnly: true
-              - name: dev-keys
-                mountPath: /dev-keys
-                readOnly: true
             args:
               - |
                 set -euo pipefail
@@ -198,7 +187,7 @@ spec:
                 # Retries can leave stale dulwich lock files; clear them before fetch.
                 find "${XDG_CACHE_HOME}/buildstream/sources/git_repo" -type f -name '*.lock' -delete 2>/dev/null || true
                 echo "=== Cloning ${REPO} @ ${REF} ==="
-                if [[ "{{inputs.parameters.clone-token}}" == true ]]; then
+                if [[ -n "${GITHUB_TOKEN:-}" ]]; then
                   REPO="https://x-access-token:${GITHUB_TOKEN}@${REPO#https://}"
                 fi
                 rm -rf /src
@@ -213,7 +202,7 @@ spec:
                   git fetch --depth=1 origin "${REF}"
                   git checkout --detach FETCH_HEAD
                 fi
-                if [[ "{{inputs.parameters.dev-keys}}" == true ]]; then
+                if [[ -f /dev-keys/keys.tgz ]]; then
                   # Lab builds are dev-key builds only; the images are never published.
                   mkdir -p files/boot-keys
                   tar -xzf /dev-keys/keys.tgz -C files/boot-keys

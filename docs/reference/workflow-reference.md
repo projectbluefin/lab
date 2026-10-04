@@ -118,7 +118,9 @@ before retrying.
   as `bluefin-server-image:latest`.
 - **Coordinator:** the same `bst-build-re` template as dakota, with
   `deadline: 10800` (3h per pod; workflow `activeDeadlineSeconds: 28800`),
-  `clone-token: true`, `dev-keys: true`, and
+  a `pod-patch` that adds the `github-token` env and the
+  `bluefin-server-dev-boot-keys` Secret mount (dakota passes none, so its pods
+  carry neither Secret), and
   `upstream-cache: https://cache.projectbluefin.io:11001` (replaces
   `cache.freedesktop-sdk.io` for the toplevel project only). Retry, priority,
   and execution are identical to dakota.

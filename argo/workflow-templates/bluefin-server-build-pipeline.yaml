@@ -100,10 +100,10 @@ spec:
                   value: "{{inputs.parameters.registry}}"
                 - name: deadline
                   value: "10800"   # 3h per pod to avoid queue starvation and long tail failures
-                - name: clone-token
-                  value: "true"
-                - name: dev-keys
-                  value: "true"
+                # The only build that needs Secrets: a private repo and the
+                # fixed dev boot keys. bst-build-re mounts nothing by default.
+                - name: pod-patch
+                  value: '{"containers":[{"name":"main","env":[{"name":"GITHUB_TOKEN","valueFrom":{"secretKeyRef":{"name":"github-token","key":"token"}}}],"volumeMounts":[{"name":"dev-keys","mountPath":"/dev-keys","readOnly":true}]}],"volumes":[{"name":"dev-keys","secret":{"secretName":"bluefin-server-dev-boot-keys"}}]}'
                 - name: upstream-cache
                   value: "https://cache.projectbluefin.io:11001"
 

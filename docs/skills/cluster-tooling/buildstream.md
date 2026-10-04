@@ -88,7 +88,10 @@ Buildbarn is storage only.
   is `buildbox-run-bubblewrap`: each action gets a private PID namespace, a
   fresh `/proc`, a `/dev`, and its input root as `/`, staged through FUSE.
   `--concurrent-jobs` comes from the `CONCURRENT_JOBS` env (32). casd keeps its
-  cache on a per-pod generic-ephemeral local-path PVC (200Gi, quota 150G).
+  cache on a per-pod generic-ephemeral local-path PVC (200Gi, quota 150G) and
+  logs at `warning` (at `info` it logs every RPC and pushes worker failures out
+  of `kubectl logs` within minutes). The container's task limit is host-level:
+  see `docs/ops/k3s-tuning.md` "Container task limit".
 - **Storage:** Buildbarn (`grpc://frontend.buildbarn.svc.cluster.local:8980`,
   two sharded storage replicas, plus `bb-remote-asset`) is the only CAS and
   action cache. Worker casd uses Buildbarn AC directly but reaches CAS through
@@ -201,6 +204,14 @@ Sandbox smoke test: submit a throwaway Workflow that builds a `manual` element
 whose `build-commands` read `/proc/cpuinfo`, `readlink /proc/self/exe`,
 `ls /dev/fd`, and compile a file with `gcc`, then confirm the action ran
 remotely in the `jobs` table.
+
+The controller logs `Unable to get action input size` with `RESOURCE_EXHAUSTED
+... Received message larger than max (N vs. 4194304)` for large element input
+roots. It is a metrics walk after the job is queued; the exception is caught
+and the Execute succeeds. `channel-options` on `!remote-storage` and
+`!remote-action-cache` parse but do not fix it: BuildGrid (0.8.13 and current
+master) stores them and never passes them to `setup_channel`, so the client
+keeps gRPC's 4 MiB receive limit.
 
 Cache hits are not execution. An unmodified dakota commit that dakota CI has
 already built resolves `oci/bluefin.bst` from `cache.projectbluefin.io`

@@ -51,13 +51,18 @@ spec:
             - |
               set -euo pipefail
               mkdir -p /var/lib/buildbox/casd /run/casd
+              # casd logs every RPC at info (~96% of this container's log
+              # lines), and `kubectl logs` reads only kubelet's current 10 MiB
+              # file, so worker failures rotated out of view within ~20 minutes.
+              # casd keeps its warnings and errors; buildbox-worker and the
+              # runners stay at info, which is where action failures are logged.
               buildbox-casd \
                 --bind=unix:/run/casd/casd.sock \
                 --cas-remote="${CAS_URL}" \
                 --ac-remote="${BUILDBARN_URL}" \
                 --exec-remote="${BUILDGRID_URL}" \
                 --quota-high="${CASD_QUOTA}" \
-                --log-level=info \
+                --log-level=warning \
                 /var/lib/buildbox/casd &
               CASD_PID=$!
               for _ in $(seq 1 60); do

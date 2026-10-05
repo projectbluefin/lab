@@ -11,9 +11,9 @@ metadata:
       Shell with a virtual monitor, GDM autologin, test-user linger), driven by
       qecore-headless --session-type wayland. The application (and Goose's
       Electron window) run with GDK_BACKEND=wayland and DISPLAY unset. On x86_64 it
-      then installs Enhanced Troubleshooting's packages through the target's
-      Homebrew and checks that Goose desktop launched in ChairLift's profile
-      writes nothing outside that profile.
+      then installs Enhanced Troubleshooting's packages through ChairLift's own
+      troubleshoot.Setup, with no Homebrew on PATH, and checks that Goose
+      desktop launched in ChairLift's profile writes nothing outside it.
   labels:
     app.kubernetes.io/component: test-runner
     app.kubernetes.io/part-of: bluefin-test-suite
@@ -123,7 +123,7 @@ spec:
         # navjson: the page and shortcut inventories the Go gate
         # (test/e2e/atspi_behave_test.go) hands the suite, from the one
         # authority, internal/navigation.
-        mkdir -p build/lane/navjson build/lane/gooseprofile
+        mkdir -p build/lane/navjson build/lane/troubleshootcheck
         cat >build/lane/navjson/main.go <<'GO'
         package main
 
@@ -169,35 +169,76 @@ spec:
         	}
         }
         GO
-        # gooseprofile: writes Enhanced Troubleshooting's Goose profile with
-        # the branch's own internal/troubleshoot, and reads back which
-        # extensions a config.yaml leaves enabled.
-        cat >build/lane/gooseprofile/main.go <<'GO'
+        # troubleshootcheck: drives the branch's own internal/troubleshoot.
+        #   setup         troubleshoot.Setup(troubleshoot.Detect(), progress):
+        #                 the tap and the three installs, through
+        #                 internal/homebrew exactly as the app runs them.
+        #   command-path  the PATH troubleshoot.Command hands the launch.
+        #   write         troubleshoot.ProfileAt(dir).Write(server).
+        #   enabled       the extensions a config.yaml leaves enabled.
+        cat >build/lane/troubleshootcheck/main.go <<'GO'
         package main
 
         import (
         	"fmt"
         	"os"
         	"sort"
+        	"strings"
 
         	"github.com/projectbluefin/chairlift/internal/troubleshoot"
         	"gopkg.in/yaml.v3"
         )
 
+        func fail(err error) {
+        	fmt.Fprintln(os.Stderr, err)
+        	os.Exit(1)
+        }
+
+        func printState(s troubleshoot.State) {
+        	fmt.Printf("supported=%t\nserver=%s\ndesktop=%s\nllmman=%s\n", s.Supported, s.ServerPath, s.DesktopPath, s.LLMManPath)
+        }
+
         func main() {
         	switch {
+        	case len(os.Args) == 2 && os.Args[1] == "setup":
+        		fmt.Println("PATH=" + os.Getenv("PATH"))
+        		state, err := troubleshoot.Setup(troubleshoot.Detect(), func(step string) {
+        			fmt.Println("progress: " + step)
+        		})
+        		printState(state)
+        		if err != nil {
+        			fail(err)
+        		}
+        		if !state.Installed() {
+        			fail(fmt.Errorf("setup returned without every package installed"))
+        		}
+        	case len(os.Args) == 3 && os.Args[1] == "command-path":
+        		state := troubleshoot.Detect()
+        		// llmman is Agent Mode's install, not this feature's; any
+        		// absolute executable satisfies Ready for an environment read.
+        		if state.LLMManPath == "" {
+        			state.LLMManPath = "/usr/bin/true"
+        		}
+        		cmd, err := troubleshoot.Command(state, troubleshoot.ProfileAt(os.Args[2]), "bluefin-active")
+        		if err != nil {
+        			fail(err)
+        		}
+        		fmt.Println("argv=" + strings.Join(cmd.Args, " "))
+        		for _, kv := range cmd.Env {
+        			if strings.HasPrefix(kv, "PATH=") || strings.HasPrefix(kv, "GOOSE_PATH_ROOT=") || strings.HasPrefix(kv, "XDG_CONFIG_HOME=") {
+        				fmt.Println(kv)
+        			}
+        		}
         	case len(os.Args) == 4 && os.Args[1] == "write":
         		profile := troubleshoot.ProfileAt(os.Args[2])
         		if err := profile.Write(os.Args[3]); err != nil {
-        			fmt.Fprintln(os.Stderr, err)
-        			os.Exit(1)
+        			fail(err)
         		}
         		fmt.Println(profile.ConfigPath())
         	case len(os.Args) == 3 && os.Args[1] == "enabled":
         		data, err := os.ReadFile(os.Args[2])
         		if err != nil {
-        			fmt.Fprintln(os.Stderr, err)
-        			os.Exit(1)
+        			fail(err)
         		}
         		var cfg struct {
         			Extensions map[string]struct {
@@ -205,8 +246,7 @@ spec:
         			} `yaml:"extensions"`
         		}
         		if err := yaml.Unmarshal(data, &cfg); err != nil {
-        			fmt.Fprintln(os.Stderr, err)
-        			os.Exit(1)
+        			fail(err)
         		}
         		var names []string
         		for name, ext := range cfg.Extensions {
@@ -219,13 +259,13 @@ spec:
         			fmt.Println(name)
         		}
         	default:
-        		fmt.Fprintln(os.Stderr, "usage: gooseprofile write <data-home> <linux-mcp-server> | enabled <config.yaml>")
+        		fmt.Fprintln(os.Stderr, "usage: troubleshootcheck setup | command-path <data-home> | write <data-home> <linux-mcp-server> | enabled <config.yaml>")
         		os.Exit(2)
         	}
         }
         GO
         CGO_ENABLED=0 go build -o /workspace/lane/bin/navjson ./build/lane/navjson
-        CGO_ENABLED=0 go build -o /workspace/lane/bin/gooseprofile ./build/lane/gooseprofile
+        CGO_ENABLED=0 go build -o /workspace/lane/bin/troubleshootcheck ./build/lane/troubleshootcheck
         /workspace/lane/bin/navjson /workspace/lane/inventory
         cat /workspace/lane/inventory/navigation.json; echo
         chmod -R a+rX /workspace
@@ -685,31 +725,33 @@ spec:
           exit 0
         fi
         BREW="$(cat "${G}/brew-path.txt")"
-        export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1
-        # The environment ChairLift's desktop entry gives brew: chairlift-wrapper
-        # evaluates `brew shellenv`. The goose-linux cask's preflight runs a
-        # bare `rpm2cpio | cpio`, which finds neither without Homebrew's bin
-        # on PATH (observed: exit 127 from the session's own PATH).
-        eval "$("${BREW}" shellenv)"
-        GRC=0
-        {
-          echo "+ brew tap ublue-os/tap" && "${BREW}" tap ublue-os/tap &&
-          echo "+ brew install ublue-os/tap/linux-mcp-server" && "${BREW}" install ublue-os/tap/linux-mcp-server &&
-          echo "+ brew install cpio" && "${BREW}" install cpio &&
-          echo "+ brew install --cask ublue-os/tap/goose-linux" && "${BREW}" install --cask ublue-os/tap/goose-linux
-        } >"${G}/brew-install.log" 2>&1 || GRC=$?
-        echo "brew install exit ${GRC}" >>"${G}/brew-install.log"
-        if [ "${GRC}" -ne 0 ]; then
-          echo "brew-install-failed" >"${G}/rc.txt"
-          exit 0
-        fi
-        BIN="$(dirname "${BREW}")"
-        SERVER="${BIN}/linux-mcp-server"
-        DESKTOP="${BIN}/goose-desktop"
         DATA=/home/bluefin-test/goose-isolation
         PROFILE="${DATA}/chairlift/troubleshooting"
+        # The install goes through ChairLift itself — troubleshoot.Setup over
+        # internal/homebrew — with a PATH that deliberately lacks Homebrew's
+        # bin and no `brew shellenv`, which is how a direct `chairlift` launch
+        # runs it. ChairLift has to find brew through its fallback and hand
+        # brew's children Homebrew's bin itself: the goose-linux cask's
+        # preflight runs a bare `rpm2cpio | cpio` (exit 127 without it).
+        # Auto-update is off only to bound the lane's time.
+        BARE_ENV=(env -u HOMEBREW_PREFIX -u HOMEBREW_CELLAR -u HOMEBREW_REPOSITORY
+          PATH=/usr/bin:/bin HOMEBREW_NO_AUTO_UPDATE=1)
+        SRC=0
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" setup >"${G}/setup.log" 2>&1 || SRC=$?
+        echo "${SRC}" >"${G}/setup-rc.txt"
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" command-path "${DATA}" >"${G}/command-env.txt" 2>&1 || true
+        {
+          "${BREW}" list --versions linux-mcp-server cpio rpm2cpio
+          "${BREW}" list --cask --versions goose-linux
+        } >"${G}/brew-installed.txt" 2>&1 || true
+        if [ "${SRC}" -ne 0 ]; then
+          echo "setup-failed" >"${G}/rc.txt"
+          exit 0
+        fi
+        SERVER="$(sed -n 's/^server=//p' "${G}/setup.log")"
+        DESKTOP="$(sed -n 's/^desktop=//p' "${G}/setup.log")"
         ls -la "${HOME}/.config" >"${G}/home-config-before.txt" 2>&1
-        "${LANE}/bin/gooseprofile" write "${DATA}" "${SERVER}" >"${G}/profile-write.txt" 2>&1 || { echo "profile-write-failed" >"${G}/rc.txt"; exit 0; }
+        "${LANE}/bin/troubleshootcheck" write "${DATA}" "${SERVER}" >"${G}/profile-write.txt" 2>&1 || { echo "profile-write-failed" >"${G}/rc.txt"; exit 0; }
         cp "${PROFILE}/goose/config/config.yaml" "${G}/config.before.yaml"
 
         (
@@ -737,7 +779,7 @@ spec:
         wait "${GOOSE_PID}" 2>/dev/null
 
         cp "${PROFILE}/goose/config/config.yaml" "${G}/config.after.yaml" 2>/dev/null
-        "${LANE}/bin/gooseprofile" enabled "${PROFILE}/goose/config/config.yaml" >"${G}/enabled-extensions.txt" 2>&1
+        "${LANE}/bin/troubleshootcheck" enabled "${PROFILE}/goose/config/config.yaml" >"${G}/enabled-extensions.txt" 2>&1
         find "${PROFILE}" -maxdepth 4 \( -name 'Cache*' -o -name 'GPUCache' \) -prune -o -print | sort >"${G}/profile-tree.txt"
         for d in "${HOME}/.config/goose" "${HOME}/.config/Goose" "${HOME}/.local/share/goose" "${HOME}/.local/state/goose"; do
           if [ -e "${d}" ]; then echo "PRESENT ${d}"; find "${d}" -maxdepth 3 | head -50; else echo "ABSENT ${d}"; fi
@@ -825,7 +867,10 @@ spec:
           echo '{"status":"skipped"}' >"${G}/verdict.json"
         else
           echo "=== Goose isolation (${GOOSE_STATE}) ===" >&2
-          cat "${G}/brew-install.log" >&2 2>/dev/null || true
+          for f in setup.log setup-rc.txt command-env.txt brew-installed.txt; do
+            echo "--- ${f}" >&2
+            cat "${G}/${f}" >&2 2>/dev/null || true
+          done
           GOOSE_STATE="${GOOSE_STATE}" python3 - <<'PY' || GOOSE_RC=$?
         import json, os, sys
         g = "/tmp/results/goose"
@@ -840,8 +885,18 @@ spec:
         paths = read("home-goose-paths.txt")
         tree = read("profile-tree.txt").splitlines()
         root = "/home/bluefin-test/goose-isolation/chairlift/troubleshooting/goose"
+        def kv(name):
+            return dict(line.split("=", 1) for line in read(name).splitlines() if "=" in line)
+        setup = kv("setup.log")
+        command_path = kv("command-env.txt").get("PATH", "")
+        brew_bin = os.path.dirname(read("brew-path.txt").strip())
         checks = {
-            "brew_install_succeeded": state == "done",
+            "setup_ran_without_brew_on_path": setup.get("PATH") == "/usr/bin:/bin",
+            "chairlift_setup_exit_zero": read("setup-rc.txt").strip() == "0",
+            "isolation_run_completed": state == "done",
+            "goose_desktop_resolves_after_setup": setup.get("desktop") == os.path.join(brew_bin, "goose-desktop"),
+            "command_env_path_has_brew_bin_first": command_path.split(":")[0] == brew_bin
+            and command_path.split(":")[1:] == ["/usr/bin", "/bin"],
             "goose_was_running_at_35s": lock.get("alive") == "yes",
             "singleton_lock_in_profile": lock.get("profile_lock", "ABSENT") != "ABSENT",
             "no_singleton_lock_in_home_config": lock.get("home_lock", "ABSENT") == "ABSENT",

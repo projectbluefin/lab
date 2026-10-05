@@ -62,6 +62,9 @@ def test_builds_the_requested_branch_with_the_e2e_target():
     assert 'git clone --depth 1 --branch "${CHAIRLIFT_BRANCH}" "${CHAIRLIFT_REPO}"' in script
     assert "CGO_ENABLED=0 make build-e2e schemas" in script
     assert "troubleshoot.ProfileAt(os.Args[2])" in script
+    # The install goes through ChairLift's own Setup, not hand-written brew.
+    assert "troubleshoot.Setup(troubleshoot.Detect()," in script
+    assert "troubleshoot.Command(state," in script
     assert "navigation.Items()" in script
     _bash_parses(script)
 
@@ -116,12 +119,13 @@ def test_fails_closed_and_cleans_up():
 
 def test_goose_check_asserts_profile_isolation():
     runner = _heredoc(_runner(), "RUNNER")
-    for command in (
-        '"${BREW}" install ublue-os/tap/linux-mcp-server',
-        '"${BREW}" install cpio',
-        '"${BREW}" install --cask ublue-os/tap/goose-linux',
-    ):
-        assert command in runner, command
+    # ChairLift installs the packages itself, with no Homebrew on PATH and
+    # no `brew shellenv`, the way a direct launch runs it.
+    assert "PATH=/usr/bin:/bin" in runner
+    assert '"${LANE}/bin/troubleshootcheck" setup' in runner
+    assert '"${LANE}/bin/troubleshootcheck" command-path' in runner
+    assert 'eval "$("${BREW}" shellenv)"' not in runner
+    assert '"${BREW}" install' not in runner
     for setting in (
         'GOOSE_PATH_ROOT="${PROFILE}/goose"',
         'XDG_CONFIG_HOME="${PROFILE}/desktop"',
@@ -132,6 +136,10 @@ def test_goose_check_asserts_profile_isolation():
         assert setting in runner, setting
     source = _runner()
     for check in (
+        "setup_ran_without_brew_on_path",
+        "chairlift_setup_exit_zero",
+        "goose_desktop_resolves_after_setup",
+        "command_env_path_has_brew_bin_first",
         "singleton_lock_in_profile",
         "no_singleton_lock_in_home_config",
         "only_linux_tools_and_bluefin_knowledge_enabled",

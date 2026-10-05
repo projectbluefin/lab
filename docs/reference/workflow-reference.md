@@ -137,7 +137,9 @@ before retrying.
 - **Shape:** a `golang:1.26` init container clones the branch and runs
   `make build-e2e schemas`, plus two lane tools built inside the module:
   `navjson` (the page/shortcut inventory the Go gate normally passes) and
-  `gooseprofile` (`troubleshoot.ProfileAt(dir).Write`, and a config reader).
+  `troubleshootcheck` (drives the branch's `internal/troubleshoot`:
+  `Setup(Detect(), …)`, the PATH `Command` hands the launch,
+  `ProfileAt(dir).Write`, and a config reader).
   The runner then boots `run-container-tests`' nested systemd/GDM target —
   headless GNOME Shell drop-in, linger, `lastchg`, resolver bind — with
   `/usr/share/chairlift` masked and `/proc/cmdline` blanked like
@@ -152,11 +154,20 @@ before retrying.
   activates it through `Shell.Eval` (needs `--unsafe-mode`). Dakota's
   `brew-preinstall.service` and brew timers are masked so they cannot hold
   Homebrew's locks during the Goose check.
+- **Goose check:** ChairLift installs the packages itself
+  (`troubleshoot.Setup`: tap, `linux-mcp-server`, `cpio`, the `goose-linux`
+  cask) with `PATH=/usr/bin:/bin` and no `brew shellenv`, as a direct
+  `chairlift` launch would; the cask's bare `rpm2cpio | cpio` preflight
+  exits 127 unless ChairLift puts Homebrew's bin on brew's PATH. The check
+  then asserts `goose-desktop` resolves, `Command`'s PATH starts with
+  Homebrew's bin, and Goose launched in the profile keeps its lock, data,
+  state, and config there with only `linux-tools` and `bluefin-knowledge`
+  enabled.
 - **Verdicts:** fails when behave fails, when 0 scenarios executed, or when
   any Goose check fails. Outputs `result`, `failed-scenarios`, and
   `goose-isolation` (JSON). Everything under `/tmp/results` (behave log,
   JUnit, per-scenario `chairlift.log`, `tree.txt`, `screen.png`; Goose
-  `brew-install.log`, lock evidence, config, screenshot) is persisted to
+  `setup.log`, `command-env.txt`, lock evidence, config, screenshot) is persisted to
   ghost's result store under `<workflow>/chairlift-wayland/`.
 - **Submit:** not deployed until merged; until then submit the template
   file as a Workflow (`kind: Workflow`, `generateName`) with `argo submit`.

@@ -608,6 +608,9 @@ spec:
           systemctl mask --runtime brew-update.timer brew-upgrade.timer >/dev/null 2>&1 || true
 
           loginctl enable-linger bluefin-test
+          # logind sizes the user slice's TasksMax from the container's pids
+          # budget; a desktop has orders of magnitude more headroom.
+          systemctl set-property --runtime user-1000.slice TasksMax=infinity || true
           for _ in $(seq 1 30); do [ -S /run/user/1000/bus ] && break; sleep 1; done
           if [ ! -S /run/user/1000/bus ]; then
             echo "user@1000.service did not create /run/user/1000/bus after enable-linger" >&2
@@ -843,9 +846,15 @@ spec:
         # brew's children Homebrew's bin itself: the goose-linux cask's
         # preflight runs a bare `rpm2cpio | cpio` (exit 127 without it).
         # Auto-update is off only to bound the lane's time.
-        BARE_ENV=(systemd-run --user --wait --pipe --quiet --collect --slice=app.slice
+        # TasksMax: the user manager's default is a share of the container's
+        # pids budget, far below a desktop's; brew's download threads hit it
+        # ("can't create Thread", chairlift-wayland-lane-dsjsw).
+        BARE_ENV=(systemd-run --user --wait --pipe --quiet --collect --slice=app.slice -p TasksMax=infinity
           -p "UnsetEnvironment=HOMEBREW_PREFIX HOMEBREW_CELLAR HOMEBREW_REPOSITORY"
           --setenv=PATH=/usr/bin:/bin --setenv=HOMEBREW_NO_AUTO_UPDATE=1)
+        systemctl --user set-property --runtime app.slice TasksMax=infinity 2>/dev/null || true
+        for unit in user-1000.slice; do systemctl show "${unit}" -p TasksMax -p TasksCurrent; done >"${G}/tasks-limits.txt" 2>&1
+        systemctl --user show app.slice -p TasksMax -p TasksCurrent >>"${G}/tasks-limits.txt" 2>&1
         SRC=0
         "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" setup >"${G}/setup.log" 2>&1 </dev/null || SRC=$?
         echo "${SRC}" >"${G}/setup-rc.txt"

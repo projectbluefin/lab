@@ -543,11 +543,11 @@ spec:
             fi
             printf '%s\n' "$1" >>/etc/group
           }
-          # wheel: Bluefin's first user is an administrator, and the distro's
-          # flatpak polkit rules let wheel install system Flatpaks without a
-          # prompt. Agent Mode's Brewfile installs Jan that way; without wheel
-          # it failed with "Flatpak system operation Deploy not allowed for
-          # user" (chairlift-wayland-lane-q5xpf), which no desktop user sees.
+          # wheel: Bluefin's first user is an administrator. Dakota's
+          # org.freedesktop.Flatpak.rules lets an active, local wheel member
+          # install system Flatpaks without a prompt, and Agent Mode's
+          # Brewfile installs Jan that way ("Flatpak system operation Deploy
+          # not allowed for user" without it, chairlift-wayland-lane-q5xpf).
           for group in video render input wheel; do
             if ! grep -q "^${group}:" /etc/group; then
               if ! groupadd -r "${group}" 2>/dev/null; then
@@ -832,6 +832,10 @@ spec:
         BREW="$(cat "${G}/brew-path.txt")"
         DATA=/home/bluefin-test/goose-isolation
         PROFILE="${DATA}/chairlift/troubleshooting"
+        # Every ChairLift step runs the way GNOME runs an app it launched: a
+        # transient unit in the user manager's app.slice, inside the user's
+        # logind context. (This script itself sits in podman's exec cgroup,
+        # outside any session, so polkit would treat it as inactive.)
         # The install goes through ChairLift itself — troubleshoot.Setup over
         # internal/homebrew — with a PATH that deliberately lacks Homebrew's
         # bin and no `brew shellenv`, which is how a direct `chairlift` launch
@@ -839,10 +843,11 @@ spec:
         # brew's children Homebrew's bin itself: the goose-linux cask's
         # preflight runs a bare `rpm2cpio | cpio` (exit 127 without it).
         # Auto-update is off only to bound the lane's time.
-        BARE_ENV=(env -u HOMEBREW_PREFIX -u HOMEBREW_CELLAR -u HOMEBREW_REPOSITORY
-          PATH=/usr/bin:/bin HOMEBREW_NO_AUTO_UPDATE=1)
+        BARE_ENV=(systemd-run --user --wait --pipe --quiet --collect --slice=app.slice
+          -p "UnsetEnvironment=HOMEBREW_PREFIX HOMEBREW_CELLAR HOMEBREW_REPOSITORY"
+          --setenv=PATH=/usr/bin:/bin --setenv=HOMEBREW_NO_AUTO_UPDATE=1)
         SRC=0
-        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" setup >"${G}/setup.log" 2>&1 || SRC=$?
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" setup >"${G}/setup.log" 2>&1 </dev/null || SRC=$?
         echo "${SRC}" >"${G}/setup-rc.txt"
         # (`command-path` runs after Agent Mode, once llmman really resolves.)
         {
@@ -863,8 +868,24 @@ spec:
         # `llmman serve --pull-only`, the user unit, readiness on
         # /llmman/node. Nothing here trusts anything on ChairLift's behalf.
         # Then the smallest Qwen3 through the alias path.
+        # Where this process stands with logind and polkit: Agent Mode's Jan
+        # Flatpak is a system install, which Dakota's flatpak rule allows
+        # only for an active, local wheel member.
+        {
+          id
+          echo "cgroup: $(cat /proc/self/cgroup)"
+          loginctl list-sessions --no-legend
+          loginctl show-user "$(id -u)" -p Display -p Sessions -p State
+          for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do
+            loginctl show-session "${s}" -p Id -p Name -p Seat -p Type -p Class -p Active -p Remote -p State
+          done
+          echo "pkcheck (this script, podman exec):"
+          pkcheck --action-id org.freedesktop.Flatpak.app-install --process "${BASHPID}" 2>&1; echo "rc=$?"
+          echo "pkcheck (app unit, as ChairLift's steps run):"
+          "${BARE_ENV[@]}" bash -c 'cat /proc/self/cgroup; pkcheck --action-id org.freedesktop.Flatpak.app-install --process "${BASHPID}" 2>&1; echo rc=$?' </dev/null 2>&1
+        } >"${G}/polkit-session.txt" 2>&1
         ARC=0
-        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" agent-mode >"${G}/agent-mode.log" 2>&1 || ARC=$?
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" agent-mode >"${G}/agent-mode.log" 2>&1 </dev/null || ARC=$?
         echo "${ARC}" >"${G}/agent-mode-rc.txt"
         # What Homebrew now trusts: the formula, not the whole tap.
         "${BREW}" tap-info --json llmmanorg/tap >"${G}/tap-info.json" 2>"${G}/tap-info.err" || true
@@ -879,17 +900,17 @@ spec:
         LLMMAN="$(sed -n 's/^llmman=//p' "${G}/agent-mode.log")"
         MODEL_REPOS=(unsloth/Qwen3-0.6B-GGUF unsloth/Qwen3-1.7B-GGUF)
         MRC=0
-        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[0]}" >"${G}/model-1.log" 2>&1 || MRC=$?
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[0]}" >"${G}/model-1.log" 2>&1 </dev/null || MRC=$?
         if [ "${MRC}" -ne 0 ]; then
           echo "model-failed" >"${G}/rc.txt"
           exit 0
         fi
-        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" command-path "${DATA}" >"${G}/command-env.txt" 2>&1 || true
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" command-path "${DATA}" >"${G}/command-env.txt" 2>&1 </dev/null || true
 
         # The real launch: troubleshoot.Command(Detect(), profile, alias),
         # i.e. `llmman launch goose-desktop --model bluefin-active` in the
         # profile, from a PATH without Homebrew, no Electron hints.
-        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" launch "${DATA}" >"${G}/launch.log" 2>&1 &
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" launch "${DATA}" >"${G}/launch.log" 2>&1 </dev/null &
         LAUNCH_PID=$!
         sleep 45
         # Evidence while it runs: SingletonLock is removed on clean exit.
@@ -961,7 +982,7 @@ spec:
           if [ "${attempt}" -eq 2 ]; then
             grep -q '"linux_tools_called": true' "${G}/tool-calls-1.json" 2>/dev/null \
               && grep -q '"search_knowledge_called": true' "${G}/tool-calls-1.json" 2>/dev/null && break
-            "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[1]}" >"${G}/model-2.log" 2>&1 || break
+            "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[1]}" >"${G}/model-2.log" 2>&1 </dev/null || break
           fi
           CRC=0
           env GOOSE_PATH_ROOT="${PROFILE}/goose" XDG_CONFIG_HOME="${PROFILE}/desktop" \
@@ -1063,7 +1084,7 @@ spec:
           echo '{"status":"skipped"}' >"${G}/verdict.json"
         else
           echo "=== Goose isolation (${GOOSE_STATE}) ===" >&2
-          for f in setup.log setup-rc.txt brew-installed.txt tap-info.json tap-info.err trust-state.txt \
+          for f in setup.log setup-rc.txt brew-installed.txt tap-info.json tap-info.err trust-state.txt polkit-session.txt \
               agent-mode.log agent-mode-rc.txt llmman-unit.txt \
               model-1.log model-2.log command-env.txt launch.log lock.txt goose-environ.txt goose-cmdline.txt \
               cli-1-rc.txt cli-1.log tool-calls-1.json cli-2-rc.txt cli-2.log tool-calls-2.json; do

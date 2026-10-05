@@ -295,7 +295,9 @@ spec:
         			fail(err)
         		}
         		fmt.Println("active=" + active)
-        		if active != ref {
+        		// llmman answers with the registry-qualified name it stored the
+        		// model under (hf.co/<ref>), observed in chairlift-wayland-lane-r5vxf.
+        		if active != ref && !strings.HasSuffix(active, "/"+ref) {
         			fail(fmt.Errorf("alias %s reads %q, want %q", aistack.ActiveModelAlias, active, ref))
         		}
         	case len(os.Args) == 3 && os.Args[1] == "command-path":
@@ -1297,7 +1299,7 @@ spec:
             "llmman_formula_trusted": "llmmanorg/tap/llmman" in read("trust-state.txt"),
             "llmmanorg_tap_not_trusted": tap_trusted is False,
             "pullmodel_succeeded_and_alias_set": read("model-1-rc.txt").strip() == "0"
-            and bool(model.get("ref")) and model.get("active") == model.get("ref"),
+            and bool(model.get("ref")) and model.get("active", "") in (model["ref"], "hf.co/" + model["ref"]),
             "command_env_path_has_brew_bin_first": command_path.split(":")[0] == brew_bin,
             **ask_checks,
             **menu_checks,

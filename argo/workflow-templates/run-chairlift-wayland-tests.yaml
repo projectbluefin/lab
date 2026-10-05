@@ -960,7 +960,9 @@ spec:
           echo "home_lock=$(readlink "${HOME}/.config/Goose/SingletonLock" 2>/dev/null || echo ABSENT)"
         } >"${G}/lock.txt"
         if [ -n "${GOOSE_MAIN}" ]; then
-          tr '\0' '\n' <"/proc/${GOOSE_MAIN}/environ" \
+          # The Electron browser process's environ read back empty as the
+          # test user (chairlift-wayland-lane-jhxkh); read it through sudo.
+          sudo -n cat "/proc/${GOOSE_MAIN}/environ" | tr '\0' '\n' \
             | grep -E '^(GOOSE_[A-Z_]*|OPENAI_HOST|OPENAI_BASE_PATH|XDG_CONFIG_HOME|PATH|WAYLAND_DISPLAY|DISPLAY)=' >"${G}/goose-environ.txt"
           tr '\0' ' ' <"/proc/${GOOSE_MAIN}/cmdline" >"${G}/goose-cmdline.txt"
         fi

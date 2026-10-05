@@ -610,6 +610,16 @@ spec:
             systemctl status user@1000.service --no-pager --full >&2 || true
             exit 1
           fi
+          # GNOME Shell's first-login "Welcome to Bluefin / Take Tour" dialog
+          # is a Shell modal: while it is up it takes every key, so the
+          # suite's input reaches no window even though the window holds
+          # focus (observed: a whole run of keyboard steps failed behind
+          # it). Mark it shown in the test user's own dconf before any
+          # session starts.
+          sudo -u bluefin-test env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+            gsettings set org.gnome.shell welcome-dialog-last-shown-version "'999'"
+          sudo -u bluefin-test env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+            gsettings get org.gnome.shell welcome-dialog-last-shown-version >&2
 
           # qecore-headless (system interpreter; the target is disposable).
           python3 -m pip --version >/dev/null 2>&1 || python3 -m ensurepip --default-pip >&2
@@ -733,6 +743,20 @@ spec:
           echo "GNOME Shell never answered Shell.Eval" >&2
           echo 3 >"${OUT}/behave-rc.txt"
           exit 3
+        fi
+        # No Shell modal may hold the keyboard when the suite starts.
+        for attempt in $(seq 1 30); do
+          gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+            --method org.gnome.Shell.Eval 'Main.modalCount' 2>/dev/null | grep -q "(true, '0')" && break
+          sleep 1
+        done
+        if ! gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+            --method org.gnome.Shell.Eval 'Main.modalCount' 2>/dev/null | grep -q "(true, '0')"; then
+          echo "a GNOME Shell modal is still holding the keyboard" >&2
+          gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+            --method org.gnome.Shell.Screenshot.Screenshot false false "${OUT}/shell-modal.png" >&2 || true
+          echo 6 >"${OUT}/behave-rc.txt"
+          exit 6
         fi
         pgrep -u "$(id -u)" -f gnome-ponytail-daemon >/dev/null || { /usr/libexec/gnome-ponytail-daemon & sleep 2; }
 

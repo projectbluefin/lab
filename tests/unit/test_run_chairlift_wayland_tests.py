@@ -98,6 +98,14 @@ def test_wayland_only_never_x11():
     _bash_parses(runner)
 
 
+def test_no_shell_modal_holds_the_keyboard():
+    source = _runner()
+    setup = _heredoc(source, "NESTED_SETUP")
+    assert "gsettings set org.gnome.shell welcome-dialog-last-shown-version" in setup
+    runner = _heredoc(source, "RUNNER")
+    assert "'Main.modalCount'" in runner
+
+
 def test_suite_isolation_matches_the_fixture_harness():
     source = _runner()
     runner = _heredoc(source, "RUNNER")

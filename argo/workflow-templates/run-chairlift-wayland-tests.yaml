@@ -1,0 +1,865 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: run-chairlift-wayland-tests
+  namespace: argo
+  annotations:
+    description: |
+      Builds ChairLift from a branch and runs its behave + dogtail AT-SPI suite
+      (test/e2e/features) inside a live GNOME Wayland session: the nested,
+      systemd-booted Dakota target run-container-tests boots (headless GNOME
+      Shell with a virtual monitor, GDM autologin, test-user linger), driven by
+      qecore-headless --session-type wayland. No X server is started; the
+      application runs with GDK_BACKEND=wayland and DISPLAY unset. On x86_64 it
+      then installs Enhanced Troubleshooting's packages through the target's
+      Homebrew and checks that Goose desktop launched in ChairLift's profile
+      writes nothing outside that profile.
+  labels:
+    app.kubernetes.io/component: test-runner
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  entrypoint: run-chairlift-wayland-tests
+  podGC:
+    strategy: OnWorkflowSuccess
+  ttlStrategy:
+    secondsAfterSuccess: 604800
+    secondsAfterFailure: 2592000
+  arguments:
+    parameters:
+    - name: chairlift-repo
+      value: "https://github.com/projectbluefin/chairlift"
+    - name: chairlift-branch
+      value: "main"
+    - name: image
+      value: "ghcr.io/projectbluefin/dakota"
+    - name: image-tag
+      value: "testing"
+    - name: behave-tags
+      value: ""
+    - name: goose-isolation-check
+      value: "true"
+  templates:
+  - name: run-chairlift-wayland-tests
+    # Same placement as run-container-tests: ghost is the only node with a
+    # graphical seat and the canonical local-path result store.
+    nodeSelector:
+      node-role.kubernetes.io/control-plane: "true"
+      kubernetes.io/hostname: ghost
+    # Build (~5m) + pull (≤34m worst case, normally minutes) + boot and pip
+    # (~5m) + one application launch per scenario (~25m, the suite's own
+    # budget) + the Goose check's network installs (~10m).
+    activeDeadlineSeconds: 5400
+    # Leaf template holding the shared ghost QA capacity key, like
+    # run-container-tests: each run boots one nested GNOME target.
+    synchronization:
+      semaphores:
+      - configMapKeyRef:
+          name: workflow-semaphores
+          key: ghost-container-qa
+    inputs:
+      parameters:
+      - name: chairlift-repo
+        value: "{{workflow.parameters.chairlift-repo}}"
+      - name: chairlift-branch
+        value: "{{workflow.parameters.chairlift-branch}}"
+      - name: image
+        value: "{{workflow.parameters.image}}"
+      - name: image-tag
+        value: "{{workflow.parameters.image-tag}}"
+      - name: behave-tags
+        value: "{{workflow.parameters.behave-tags}}"
+      - name: goose-isolation-check
+        value: "{{workflow.parameters.goose-isolation-check}}"
+    outputs:
+      parameters:
+      - name: result
+        valueFrom:
+          path: /tmp/results/result-summary.txt
+          default: "No results generated"
+      - name: failed-scenarios
+        valueFrom:
+          path: /tmp/results/failed-scenarios.json
+          default: "[]"
+      - name: goose-isolation
+        valueFrom:
+          path: /tmp/results/goose/verdict.json
+          default: "{}"
+    initContainers:
+    # The Go build happens in the pod, before the target exists, so the
+    # suite runs the branch's own chairlift_e2e binary and nothing else.
+    # Schemas are compiled later inside the Dakota target, whose
+    # glib-compile-schemas is the one the application will read them with;
+    # `make schemas` skips cleanly here because the builder lacks it.
+    - name: build-chairlift
+      image: golang:1.26
+      resources:
+        requests:
+          cpu: "2"
+          memory: 2Gi
+        limits:
+          cpu: "4"
+          memory: 4Gi
+      volumeMounts:
+      - mountPath: /workspace
+        name: workspace
+      env:
+      - name: CHAIRLIFT_REPO
+        value: "{{inputs.parameters.chairlift-repo}}"
+      - name: CHAIRLIFT_BRANCH
+        value: "{{inputs.parameters.chairlift-branch}}"
+      command: [bash, -c]
+      args:
+      - |
+        set -euo pipefail
+        # A missing branch must fail: never report results from other code.
+        git clone --depth 1 --branch "${CHAIRLIFT_BRANCH}" "${CHAIRLIFT_REPO}" /workspace/chairlift
+        cd /workspace/chairlift
+        mkdir -p /workspace/lane/bin /workspace/lane/inventory
+        git rev-parse HEAD | tee /workspace/lane/chairlift-commit
+        CGO_ENABLED=0 make build-e2e schemas
+
+        # Lane tools live inside the module so they may import internal/.
+        # navjson: the page and shortcut inventories the Go gate
+        # (test/e2e/atspi_behave_test.go) hands the suite, from the one
+        # authority, internal/navigation.
+        mkdir -p build/lane/navjson build/lane/gooseprofile
+        cat >build/lane/navjson/main.go <<'GO'
+        package main
+
+        import (
+        	"encoding/json"
+        	"os"
+        	"path/filepath"
+
+        	"github.com/projectbluefin/chairlift/internal/branding"
+        	"github.com/projectbluefin/chairlift/internal/navigation"
+        )
+
+        type item struct {
+        	Name  string `json:"name"`
+        	Title string `json:"title"`
+        }
+
+        func write(dir, name string, value any) {
+        	data, err := json.Marshal(value)
+        	if err != nil {
+        		panic(err)
+        	}
+        	if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+        		panic(err)
+        	}
+        }
+
+        func main() {
+        	dir := os.Args[1]
+        	items := navigation.Items()
+        	nav := make([]item, 0, len(items))
+        	for _, it := range items {
+        		nav = append(nav, item{Name: it.Name, Title: it.Title})
+        	}
+        	var shortcuts []string
+        	for _, s := range navigation.Shortcuts(items) {
+        		shortcuts = append(shortcuts, s.Title)
+        	}
+        	write(dir, "navigation.json", nav)
+        	write(dir, "shortcuts.json", shortcuts)
+        	if err := os.WriteFile(filepath.Join(dir, "app-name.txt"), []byte(branding.AppName), 0o644); err != nil {
+        		panic(err)
+        	}
+        }
+        GO
+        # gooseprofile: writes Enhanced Troubleshooting's Goose profile with
+        # the branch's own internal/troubleshoot, and reads back which
+        # extensions a config.yaml leaves enabled.
+        cat >build/lane/gooseprofile/main.go <<'GO'
+        package main
+
+        import (
+        	"fmt"
+        	"os"
+        	"sort"
+
+        	"github.com/projectbluefin/chairlift/internal/troubleshoot"
+        	"gopkg.in/yaml.v3"
+        )
+
+        func main() {
+        	switch {
+        	case len(os.Args) == 4 && os.Args[1] == "write":
+        		profile := troubleshoot.ProfileAt(os.Args[2])
+        		if err := profile.Write(os.Args[3]); err != nil {
+        			fmt.Fprintln(os.Stderr, err)
+        			os.Exit(1)
+        		}
+        		fmt.Println(profile.ConfigPath())
+        	case len(os.Args) == 3 && os.Args[1] == "enabled":
+        		data, err := os.ReadFile(os.Args[2])
+        		if err != nil {
+        			fmt.Fprintln(os.Stderr, err)
+        			os.Exit(1)
+        		}
+        		var cfg struct {
+        			Extensions map[string]struct {
+        				Enabled bool `yaml:"enabled"`
+        			} `yaml:"extensions"`
+        		}
+        		if err := yaml.Unmarshal(data, &cfg); err != nil {
+        			fmt.Fprintln(os.Stderr, err)
+        			os.Exit(1)
+        		}
+        		var names []string
+        		for name, ext := range cfg.Extensions {
+        			if ext.Enabled {
+        				names = append(names, name)
+        			}
+        		}
+        		sort.Strings(names)
+        		for _, name := range names {
+        			fmt.Println(name)
+        		}
+        	default:
+        		fmt.Fprintln(os.Stderr, "usage: gooseprofile write <data-home> <linux-mcp-server> | enabled <config.yaml>")
+        		os.Exit(2)
+        	}
+        }
+        GO
+        CGO_ENABLED=0 go build -o /workspace/lane/bin/navjson ./build/lane/navjson
+        CGO_ENABLED=0 go build -o /workspace/lane/bin/gooseprofile ./build/lane/gooseprofile
+        /workspace/lane/bin/navjson /workspace/lane/inventory
+        cat /workspace/lane/inventory/navigation.json; echo
+        chmod -R a+rX /workspace
+        ls -l build/e2e/chairlift /workspace/lane/bin
+    script:
+      image: ghcr.io/projectbluefin/arc-runner:latest
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        # Podman needs a writable cgroup hierarchy to boot the nested systemd host.
+        privileged: true
+        runAsUser: 0
+        allowPrivilegeEscalation: true
+      resources:
+        requests:
+          cpu: "2"
+          memory: 4Gi
+          ephemeral-storage: 12Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          ephemeral-storage: 24Gi
+      env:
+      - name: IMAGE_REPO
+        value: "{{inputs.parameters.image}}"
+      - name: IMAGE_TAG
+        value: "{{inputs.parameters.image-tag}}"
+      - name: BEHAVE_TAGS
+        value: "{{inputs.parameters.behave-tags}}"
+      - name: GOOSE_CHECK
+        value: "{{inputs.parameters.goose-isolation-check}}"
+      volumeMounts:
+      - mountPath: /workspace
+        name: workspace
+      - mountPath: /tmp/results
+        name: results
+      - mountPath: /var/lib/containers
+        name: containers-storage
+      - mountPath: /run/containers
+        name: containers-runroot
+      - mountPath: /run/udev
+        name: udev
+      - mountPath: /var/mnt/ghost-data/test-results
+        name: results-store
+      - mountPath: /var/cache/bluefin-qa-pip
+        name: pip-cache
+      command: [bash]
+      source: |
+        set -euo pipefail
+        TARGET_NAME="chairlift-wayland-target"
+        RESULT_DIR="/var/mnt/ghost-data/test-results/{{workflow.name}}/chairlift-wayland"
+        mkdir -p /tmp/results "${RESULT_DIR}" /opt/qa-wheels /var/cache/bluefin-qa-pip
+
+        persist_results() {
+          mkdir -p "${RESULT_DIR}"
+          cp -a /tmp/results/. "${RESULT_DIR}/" || {
+            echo "ERROR: failed to persist results to ${RESULT_DIR}" >&2
+            return 1
+          }
+          touch "${RESULT_DIR}/.complete"
+        }
+        cleanup_target() {
+          podman rm --force "${TARGET_NAME}" >/dev/null 2>&1 || true
+        }
+        on_exit() {
+          local rc=$?
+          local persist_rc=0
+          persist_results || persist_rc=$?
+          cleanup_target
+          if [[ "${persist_rc}" -ne 0 && "${rc}" -eq 0 ]]; then
+            rc="${persist_rc}"
+          fi
+          return "${rc}"
+        }
+        trap on_exit EXIT
+        # activeDeadlineSeconds and `argo stop` arrive as signals; an untrapped
+        # SIGTERM would skip the EXIT trap and leave the privileged target up.
+        trap 'exit 143' TERM
+        trap 'exit 130' INT
+
+        command -v podman >/dev/null || {
+          echo "Podman is required for nested systemd QA" >&2
+          exit 1
+        }
+        echo "ChairLift commit: $(cat /workspace/lane/chairlift-commit)" | tee /tmp/results/chairlift-commit.txt >&2
+
+        # --- target image: through the local Zot pull-through cache --------
+        zot_image() {
+          case "$1" in
+            ghcr.io/*) printf '192.168.1.102:30501/ghcr/%s' "${1#ghcr.io/}" ;;
+            quay.io/*) printf '192.168.1.102:30501/quay/%s' "${1#quay.io/}" ;;
+            docker.io/*) printf '192.168.1.102:30501/docker/%s' "${1#docker.io/}" ;;
+            *) printf '%s' "$1" ;;
+          esac
+        }
+        ZOT_IMAGE_REPO=$(zot_image "${IMAGE_REPO}")
+        PULL_TLS_ARGS=()
+        case "${ZOT_IMAGE_REPO}" in
+          192.168.1.102:*|localhost:*|127.0.0.1:*)
+            mkdir -p /etc/containers/registries.conf.d
+            printf '%s\n' '[[registry]]' 'location = "192.168.1.102:30501"' 'insecure = true' \
+              >/etc/containers/registries.conf.d/bluefin-local-zot.conf
+            PULL_TLS_ARGS=(--tls-verify=false)
+            ;;
+        esac
+        DIGEST=$(timeout 120 skopeo inspect "${PULL_TLS_ARGS[@]}" --no-tags \
+          --format '{{.Digest}}' "docker://${ZOT_IMAGE_REPO}:${IMAGE_TAG}" 2>/dev/null || true)
+        if [[ -n "${DIGEST}" ]]; then
+          TARGET_IMAGE="${ZOT_IMAGE_REPO}@${DIGEST}"
+        else
+          echo "Warning: could not resolve a digest for ${IMAGE_REPO}:${IMAGE_TAG}; using the tag." >&2
+          TARGET_IMAGE="${ZOT_IMAGE_REPO}:${IMAGE_TAG}"
+        fi
+        echo "${IMAGE_REPO}:${IMAGE_TAG} ${DIGEST:-unresolved}" | tee /tmp/results/target-image.txt >&2
+        cat >/tmp/storage.conf <<'EOF'
+        [storage]
+        driver = "overlay"
+        graphroot = "/var/lib/containers/storage"
+        runroot = "/run/containers/storage"
+        EOF
+        export CONTAINERS_STORAGE_CONF=/tmp/storage.conf
+        # Bounded attempts: the Zot cache occasionally stalls mid-blob, and
+        # podman keeps finished blobs across attempts (see run-container-tests).
+        pull_ok=false
+        for attempt in 1 2 3 4; do
+          echo "Pulling ${TARGET_IMAGE} (attempt ${attempt}/4)..." >&2
+          if timeout 480 podman pull "${PULL_TLS_ARGS[@]}" "${TARGET_IMAGE}" >/dev/null; then
+            pull_ok=true
+            break
+          fi
+          sleep 30
+        done
+        [[ "${pull_ok}" == true ]] || { echo "Giving up on ${TARGET_IMAGE}" >&2; exit 1; }
+
+        # --- boot the nested systemd/GDM target ----------------------------
+        # /usr/share/chairlift and /etc/chairlift are masked: a shipped
+        # config.yml outranks every configuration fixture, and the suite's
+        # before_all refuses to run against it. /proc/cmdline is blanked so a
+        # composefs host's command line cannot send the real bootc reader to
+        # host state (the same isolation test/e2e/dakota_atspi.sh applies).
+        podman run --detach --systemd=always --network host --privileged \
+          --cgroupns=host \
+          --security-opt seccomp=unconfined \
+          --tmpfs /run:rw,nosuid,nodev,mode=755,size=256m \
+          --tmpfs /usr/share/chairlift:ro,notmpcopyup \
+          --tmpfs /etc/chairlift:ro,notmpcopyup \
+          --mount type=bind,source=/dev/null,destination=/proc/cmdline,ro \
+          --name "${TARGET_NAME}" \
+          --pull=never \
+          --mount type=bind,source=/sys,destination=/sys,ro,bind-propagation=rprivate \
+          --mount type=bind,source=/run/udev,destination=/run/udev,ro,bind-propagation=rprivate \
+          --volume /workspace:/workspace:ro \
+          --volume /tmp/results:/tmp/results \
+          --volume /opt/qa-wheels:/var/opt/qa-wheels:ro \
+          --volume /var/cache/bluefin-qa-pip:/var/cache/bluefin-qa-pip:rw \
+          --volume /etc/resolv.conf:/etc/resolv.conf:ro \
+          "${TARGET_IMAGE}" /sbin/init >/dev/null
+
+        ready=false
+        for i in $(seq 1 60); do
+          state=$(podman exec "${TARGET_NAME}" systemctl is-system-running 2>/dev/null || true)
+          dbus_active=$(podman exec "${TARGET_NAME}" systemctl is-active dbus 2>/dev/null || true)
+          logind_active=$(podman exec "${TARGET_NAME}" systemctl is-active systemd-logind 2>/dev/null || true)
+          can_graphical=$(podman exec "${TARGET_NAME}" loginctl show-seat seat0 --property=CanGraphical 2>/dev/null || true)
+          echo "systemd readiness probe ${i}: state=${state:-unknown} dbus=${dbus_active:-unknown} logind=${logind_active:-unknown} seat0=${can_graphical:-unknown}"
+          if [[ "${state}" == "running" || "${state}" == "degraded" ]] \
+            && [[ "${dbus_active}" == "active" ]] \
+            && [[ "${logind_active}" == "active" ]] \
+            && [[ "${can_graphical}" == "CanGraphical=yes" ]]; then
+            ready=true
+            break
+          fi
+          sleep 2
+        done
+        if [[ "${ready}" != true ]]; then
+          echo "Nested systemd host did not reach a usable session state" >&2
+          podman exec "${TARGET_NAME}" journalctl --no-pager -n 300 || true
+          exit 1
+        fi
+
+        echo "Provisioning nested target..." >&2
+        # Fed over stdin through a quoted heredoc, never `bash -c '...'`
+        # (see run-container-tests: an inner apostrophe truncates the latter).
+        setup_rc=0
+        podman exec -i --env GOOSE_CHECK="${GOOSE_CHECK}" "${TARGET_NAME}" bash -s <<'NESTED_SETUP' || setup_rc=$?
+          set -euo pipefail
+          mkdir -p /run/dbus /run/systemd/seats /run/systemd/users
+          systemctl stop gdm || true
+          rm -rf /run/gdm /var/log/gdm
+          mkdir -p /run/gdm /var/log/gdm
+          getent group gdm >/dev/null 2>&1 || groupadd -r gdm
+          id -u gdm >/dev/null 2>&1 || useradd -r -g gdm -d /var/lib/gdm -s /usr/sbin/nologin gdm
+          chown -R gdm:gdm /run/gdm /var/log/gdm
+          chmod 755 /run/gdm
+          chmod 750 /var/log/gdm
+
+          # Local group entries for the device groups; NSS-only groups are
+          # materialised because useradd accepts only /etc/group entries.
+          append_group_line() {
+            if [ -s /etc/group ] && [ "$(tail -c 1 /etc/group | wc -l)" -eq 0 ]; then
+              printf '\n' >>/etc/group
+            fi
+            printf '%s\n' "$1" >>/etc/group
+          }
+          for group in video render input; do
+            if ! grep -q "^${group}:" /etc/group; then
+              if ! groupadd -r "${group}" 2>/dev/null; then
+                nss_entry=$(getent group "${group}" || true)
+                if [ -n "${nss_entry}" ]; then
+                  append_group_line "${nss_entry}"
+                else
+                  case "${group}" in video) gid=39 ;; render) gid=989 ;; *) gid=999 ;; esac
+                  append_group_line "${group}:x:${gid}:"
+                fi
+              fi
+            fi
+            grep -q "^${group}:" /etc/group || { echo "Failed to create local group ${group}" >&2; exit 1; }
+          done
+          if ! id bluefin-test >/dev/null 2>&1; then
+            useradd -m -u 1000 -G video,render,input bluefin-test
+          else
+            usermod -aG video,render,input bluefin-test
+          fi
+          # Synthetic input: the container's own /dev/uinput, given to the
+          # lane-local input group (see run-container-tests).
+          [ -e /dev/uinput ] || modprobe uinput 2>/dev/null || true
+          if [ -e /dev/uinput ]; then
+            chgrp input /dev/uinput && chmod 0660 /dev/uinput
+          else
+            echo "WARNING: /dev/uinput is absent" >&2
+          fi
+          # GDM PAM autologin needs a non-expired shadow lastchg.
+          if command -v chage >/dev/null 2>&1; then
+            chage -d "$(date +%Y-%m-%d)" bluefin-test
+          else
+            today=$(( $(date +%s) / 86400 ))
+            sed -i "s/^bluefin-test:!*/bluefin-test:!:${today}:0:99999:7:::/" /etc/shadow
+          fi
+          mkdir -p /etc/sudoers.d
+          echo "bluefin-test ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/bluefin-test
+          chmod 0440 /etc/sudoers.d/bluefin-test
+          mkdir -p /etc/gdm
+          printf "%s\n" "[daemon]" "AutomaticLoginEnable=True" "AutomaticLogin=bluefin-test" \
+            "InitialSetupEnable=False" >/etc/gdm/custom.conf
+          mkdir -p /tmp/results/atspi /tmp/results/goose
+          chown -R 1000:1000 /home/bluefin-test /tmp/results
+
+          # Headless shell, never DRM master; --unsafe-mode must be repeated
+          # because this ExecStart= reset overrides qecore's own edit.
+          mkdir -p /etc/systemd/user/org.gnome.Shell@.service.d
+          printf "%s\n" "[Service]" "ExecStart=" \
+            "ExecStart=/usr/bin/gnome-shell --mode=%i --unsafe-mode --headless --virtual-monitor 1920x1080" \
+            >/etc/systemd/user/org.gnome.Shell@.service.d/10-headless.conf
+
+          # Dakota's session pulls in brew-preinstall.service (a user unit
+          # that installs the preinstall.d Brewfiles over the network), and
+          # its brew-update/upgrade timers run against the same prefix. None
+          # is under test, and each would contend with the Goose check's
+          # installs for Homebrew's locks. Masked before any user manager
+          # starts, since a manager reads unit files only at start.
+          systemctl --global mask brew-preinstall.service >/dev/null 2>&1 || true
+          systemctl mask --runtime brew-update.timer brew-upgrade.timer >/dev/null 2>&1 || true
+
+          loginctl enable-linger bluefin-test
+          for _ in $(seq 1 30); do [ -S /run/user/1000/bus ] && break; sleep 1; done
+          if [ ! -S /run/user/1000/bus ]; then
+            echo "user@1000.service did not create /run/user/1000/bus after enable-linger" >&2
+            loginctl show-user bluefin-test >&2 || true
+            systemctl status user@1000.service --no-pager --full >&2 || true
+            exit 1
+          fi
+
+          # qecore-headless (system interpreter; the target is disposable).
+          python3 -m pip --version >/dev/null 2>&1 || python3 -m ensurepip --default-pip >&2
+          export PIP_CACHE_DIR=/var/cache/bluefin-qa-pip
+          pip_args=(--disable-pip-version-check --no-input --cache-dir "${PIP_CACHE_DIR}")
+          if python3 -m pip install --help 2>/dev/null | grep -q -- --break-system-packages; then
+            pip_args+=(--break-system-packages)
+          fi
+          # setuptools<81: qecore imports pkg_resources (see run-container-tests).
+          qa_dependencies=("setuptools<81" qecore)
+          pip_ok=false
+          for attempt in 1 2 3; do
+            if python3 -m pip install "${pip_args[@]}" --find-links /var/opt/qa-wheels \
+                "${qa_dependencies[@]}" >/tmp/pip-install.log 2>&1; then
+              pip_ok=true
+              break
+            fi
+            echo "pip install attempt ${attempt}/3 failed:" >&2
+            tail -n 40 /tmp/pip-install.log >&2
+            sleep 10
+          done
+          [ "${pip_ok}" = true ] || { cat /tmp/pip-install.log >&2; exit 1; }
+          # python-uinput is qecore's uinput probe; Wayland input goes through
+          # gnome-ponytail-daemon, so a failed build here is a warning only.
+          python3 -m pip install "${pip_args[@]}" --find-links /var/opt/qa-wheels python-uinput \
+            >/tmp/pip-uinput.log 2>&1 || { echo "WARNING: python-uinput did not install" >&2; tail -n 20 /tmp/pip-uinput.log >&2; }
+          # qecore-headless dconf ownership TOCTOU (see run-container-tests).
+          headless_script=$(command -v qecore-headless || true)
+          [ -n "${headless_script}" ] || { echo "qecore-headless not found" >&2; exit 1; }
+          if ! grep -q 'dconf/user || true"' "${headless_script}"; then
+            matches=$(grep -c '/dconf/user"$' "${headless_script}" || true)
+            [ "${matches}" = "1" ] || { echo "Unexpected qecore-headless layout (${matches})" >&2; exit 1; }
+            sed -i 's#/dconf/user"$#/dconf/user || true"#' "${headless_script}"
+          fi
+          python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "${headless_script}"
+
+          # The suite's own interpreter: a venv over the system site-packages
+          # (PyGObject, pyatspi, ponytail come from the image) with ChairLift's
+          # hash-pinned behave and dogtail, exactly as dakota_atspi.sh builds it.
+          python3 -m venv --system-site-packages /home/bluefin-test/atspi-venv
+          /home/bluefin-test/atspi-venv/bin/python -m pip install -q --disable-pip-version-check \
+            --require-hashes -r /workspace/chairlift/test/e2e/requirements-atspi.txt
+          # Compile the branch's GSettings schemas with the image's own tool.
+          mkdir -p /home/bluefin-test/chairlift-schemas
+          cp /workspace/chairlift/data/*.gschema.xml /home/bluefin-test/chairlift-schemas/
+          glib-compile-schemas /home/bluefin-test/chairlift-schemas
+          chown -R 1000:1000 /home/bluefin-test
+
+          # The Goose check installs through the image's Homebrew, which
+          # brew-setup.service extracts on first boot. Assert the binary, not
+          # the unit's exit code (a satisfied Condition* also exits 0).
+          if [ "${GOOSE_CHECK}" = "true" ] && [ "$(uname -m)" = "x86_64" ]; then
+            brew_bin=""
+            for candidate in /home/linuxbrew/.linuxbrew/bin/brew /var/home/linuxbrew/.linuxbrew/bin/brew; do
+              [ -x "${candidate}" ] && brew_bin="${candidate}" && break
+            done
+            if [ -z "${brew_bin}" ]; then
+              systemctl unmask --runtime brew-setup.service || true
+              brew_setup_rc=0
+              systemctl start brew-setup.service || brew_setup_rc=$?
+              for candidate in /home/linuxbrew/.linuxbrew/bin/brew /var/home/linuxbrew/.linuxbrew/bin/brew; do
+                [ -x "${candidate}" ] && brew_bin="${candidate}" && break
+              done
+              if [ -z "${brew_bin}" ]; then
+                echo "No Homebrew after brew-setup.service (start exit ${brew_setup_rc})" >&2
+                systemctl status brew-setup.service --no-pager --full >&2 || true
+                exit 1
+              fi
+            fi
+            echo "${brew_bin}" >/tmp/results/goose/brew-path.txt
+            ls -ld "$(dirname "$(dirname "$(dirname "${brew_bin}")")")" "$(dirname "$(dirname "${brew_bin}")")" >&2
+          fi
+
+          systemctl start gdm || { systemctl status gdm --no-pager --full >&2 || true; exit 1; }
+          echo "Nested target provisioning complete." >&2
+        NESTED_SETUP
+        if [ "${setup_rc}" -ne 0 ]; then
+          echo "Nested target provisioning failed (rc=${setup_rc})" >&2
+          podman exec "${TARGET_NAME}" journalctl --no-pager -n 200 >&2 || true
+          exit 1
+        fi
+        for _ in $(seq 1 60); do
+          podman exec "${TARGET_NAME}" pgrep -u 1000 -f gnome-session >/dev/null && break
+          sleep 2
+        done
+        podman exec "${TARGET_NAME}" pgrep -u 1000 -f gnome-session >/dev/null || {
+          echo "GDM did not start a GNOME session for bluefin-test" >&2
+          podman exec "${TARGET_NAME}" journalctl --no-pager -u gdm >&2 || true
+          podman exec "${TARGET_NAME}" journalctl --no-pager _COMM=gnome-shell >&2 || true
+          exit 1
+        }
+
+        echo "=== nested target environment snapshot ===" >&2
+        podman exec "${TARGET_NAME}" bash -c 'tr "\0" " " </proc/$(pgrep -u 1000 -f "gnome-shell --mode" | head -1)/cmdline; echo' >&2 || true
+        podman exec "${TARGET_NAME}" bash -c 'ls /run/user/1000; ls -l /dev/uinput; ls /usr/libexec/gnome-ponytail-daemon; python3 -c "import ponytail.ponytail; print(\"ponytail module ok\")"; cat /usr/lib/os-release | head -3' >&2 || true
+        echo "=== end environment snapshot ===" >&2
+
+        # behave tags reach the in-session script through a file:
+        # qecore-headless replaces its environment with the session's.
+        printf '%s' "${BEHAVE_TAGS}" >/workspace/lane/behave-tags
+        printf '%s' "${GOOSE_CHECK}" >/workspace/lane/goose-check
+        cat >/workspace/lane/run-chairlift.sh <<'RUNNER'
+        #!/bin/bash
+        # Runs inside the bluefin-test GNOME Wayland session (qecore-headless).
+        set -uo pipefail
+        OUT=/tmp/results/atspi
+        LANE=/workspace/lane
+        echo "session: XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-} XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-} DISPLAY=${DISPLAY:-}"
+
+        # Shell ready = Shell.Eval answers (needs --unsafe-mode) with a panel.
+        shell_ready=false
+        for attempt in $(seq 1 60); do
+          if gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
+              --method org.gnome.Shell.Eval 'Main.panel ? true : false' 2>/dev/null | grep -q "(true, 'true')"; then
+            shell_ready=true
+            break
+          fi
+          sleep 2
+        done
+        if [ "${shell_ready}" != true ]; then
+          echo "GNOME Shell never answered Shell.Eval" >&2
+          echo 3 >"${OUT}/behave-rc.txt"
+          exit 3
+        fi
+        pgrep -u "$(id -u)" -f gnome-ponytail-daemon >/dev/null || { /usr/libexec/gnome-ponytail-daemon & sleep 2; }
+
+        # Wayland only: the window must reach the session's compositor, and
+        # there is no X server for it to fall back to.
+        [ -n "${WAYLAND_DISPLAY:-}" ] || { echo "session has no WAYLAND_DISPLAY" >&2; echo 4 >"${OUT}/behave-rc.txt"; exit 4; }
+        export XDG_SESSION_TYPE=wayland GDK_BACKEND=wayland
+        unset DISPLAY XAUTHORITY
+        # The same isolation run_atspi.sh applies, minus the display: memory
+        # GSettings, no portals, the accessibility bridge on.
+        export LANG=C LC_ALL=C GSETTINGS_BACKEND=memory GDK_DEBUG=no-portals GTK_A11Y=atspi
+        unset NO_AT_BRIDGE
+        export GSETTINGS_SCHEMA_DIR=/home/bluefin-test/chairlift-schemas
+        export CHAIRLIFT_REQUIRE_ATSPI=1
+        export CHAIRLIFT_ATSPI_APP=/workspace/chairlift/build/e2e/chairlift
+        export CHAIRLIFT_ATSPI_OUT="${OUT}"
+        CHAIRLIFT_NAVIGATION="$(cat "${LANE}/inventory/navigation.json")"
+        CHAIRLIFT_SHORTCUTS="$(cat "${LANE}/inventory/shortcuts.json")"
+        CHAIRLIFT_APP_NAME="$(cat "${LANE}/inventory/app-name.txt")"
+        export CHAIRLIFT_NAVIGATION CHAIRLIFT_SHORTCUTS CHAIRLIFT_APP_NAME
+        PY=/home/bluefin-test/atspi-venv/bin/python
+
+        # CHAIRLIFT_REQUIRE_ATSPI: a missing stack fails, it never skips.
+        if ! "${PY}" -c 'from dogtail.config import config; import behave, pyatspi, gi; gi.require_version("Gtk", "3.0"); gi.require_version("Gdk", "3.0"); import ponytail.ponytail'; then
+          echo "accessibility stack is unavailable in the Wayland session" >&2
+          echo 5 >"${OUT}/behave-rc.txt"
+          exit 5
+        fi
+
+        TAG_ARGS=()
+        TAGS="$(cat "${LANE}/behave-tags")"
+        [ -n "${TAGS}" ] && TAG_ARGS=(--tags "${TAGS}")
+        cd /tmp/results
+        BEHAVE_RC=0
+        timeout 2700 "${PY}" -m behave /workspace/chairlift/test/e2e/features \
+          --no-capture --no-capture-stderr \
+          --format pretty --outfile "${OUT}/behave.log" \
+          --format json.pretty --outfile "${OUT}/results.json" \
+          --format progress \
+          --junit --junit-directory "${OUT}/junit" \
+          "${TAG_ARGS[@]}" || BEHAVE_RC=$?
+        echo "${BEHAVE_RC}" >"${OUT}/behave-rc.txt"
+
+        # ---- Goose desktop profile isolation (x86_64 only) ----------------
+        G=/tmp/results/goose
+        if [ "$(cat "${LANE}/goose-check")" != "true" ] || [ "$(uname -m)" != "x86_64" ]; then
+          echo skipped >"${G}/rc.txt"
+          exit 0
+        fi
+        BREW="$(cat "${G}/brew-path.txt")"
+        export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+        GRC=0
+        {
+          echo "+ brew tap ublue-os/tap" && "${BREW}" tap ublue-os/tap &&
+          echo "+ brew install ublue-os/tap/linux-mcp-server" && "${BREW}" install ublue-os/tap/linux-mcp-server &&
+          echo "+ brew install cpio" && "${BREW}" install cpio &&
+          echo "+ brew install --cask ublue-os/tap/goose-linux" && "${BREW}" install --cask ublue-os/tap/goose-linux
+        } >"${G}/brew-install.log" 2>&1 || GRC=$?
+        echo "brew install exit ${GRC}" >>"${G}/brew-install.log"
+        if [ "${GRC}" -ne 0 ]; then
+          echo "brew-install-failed" >"${G}/rc.txt"
+          exit 0
+        fi
+        BIN="$(dirname "${BREW}")"
+        SERVER="${BIN}/linux-mcp-server"
+        DESKTOP="${BIN}/goose-desktop"
+        DATA=/home/bluefin-test/goose-isolation
+        PROFILE="${DATA}/chairlift/troubleshooting"
+        ls -la "${HOME}/.config" >"${G}/home-config-before.txt" 2>&1
+        "${LANE}/bin/gooseprofile" write "${DATA}" "${SERVER}" >"${G}/profile-write.txt" 2>&1 || { echo "profile-write-failed" >"${G}/rc.txt"; exit 0; }
+        cp "${PROFILE}/goose/config/config.yaml" "${G}/config.before.yaml"
+
+        (
+          export GOOSE_PATH_ROOT="${PROFILE}/goose" XDG_CONFIG_HOME="${PROFILE}/desktop"
+          export GOOSE_PROVIDER=openai OPENAI_HOST=http://127.0.0.1:9 OPENAI_API_KEY=x GOOSE_MODEL=bluefin-active
+          export ELECTRON_OZONE_PLATFORM_HINT=wayland
+          exec "${DESKTOP}" --ozone-platform=wayland
+        ) >"${G}/goose-desktop.log" 2>&1 &
+        GOOSE_PID=$!
+        sleep 35
+        # Evidence while it runs: SingletonLock is removed on clean exit.
+        {
+          echo "alive=$(kill -0 "${GOOSE_PID}" 2>/dev/null && echo yes || echo no)"
+          echo "profile_lock=$(readlink "${PROFILE}/desktop/Goose/SingletonLock" 2>/dev/null || echo ABSENT)"
+          echo "home_lock=$(readlink "${HOME}/.config/Goose/SingletonLock" 2>/dev/null || echo ABSENT)"
+        } >"${G}/lock.txt"
+        ps -eo pid,args | grep -i -E 'goose|electron' | grep -v grep >"${G}/processes.txt" || true
+        gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+          --method org.gnome.Shell.Screenshot.Screenshot false false "${G}/goose-window.png" >"${G}/screenshot.txt" 2>&1 || true
+        sleep 5
+        pkill -TERM -P "${GOOSE_PID}" 2>/dev/null; kill -TERM "${GOOSE_PID}" 2>/dev/null
+        pkill -TERM -u "$(id -u)" -f 'goose-desktop|goosed|Goose' 2>/dev/null
+        sleep 5
+        pkill -KILL -u "$(id -u)" -f 'goose-desktop|goosed|Goose' 2>/dev/null
+        wait "${GOOSE_PID}" 2>/dev/null
+
+        cp "${PROFILE}/goose/config/config.yaml" "${G}/config.after.yaml" 2>/dev/null
+        "${LANE}/bin/gooseprofile" enabled "${PROFILE}/goose/config/config.yaml" >"${G}/enabled-extensions.txt" 2>&1
+        find "${PROFILE}" -maxdepth 4 \( -name 'Cache*' -o -name 'GPUCache' \) -prune -o -print | sort >"${G}/profile-tree.txt"
+        for d in "${HOME}/.config/goose" "${HOME}/.config/Goose" "${HOME}/.local/share/goose" "${HOME}/.local/state/goose"; do
+          if [ -e "${d}" ]; then echo "PRESENT ${d}"; find "${d}" -maxdepth 3 | head -50; else echo "ABSENT ${d}"; fi
+        done >"${G}/home-goose-paths.txt"
+        echo done >"${G}/rc.txt"
+        exit 0
+        RUNNER
+        chmod 0755 /workspace/lane/run-chairlift.sh
+
+        echo "Running ChairLift's behave suite in the nested Wayland session..." >&2
+        QECORE_RC=0
+        # The user's name, not 1000:1000, so supplementary groups survive.
+        podman exec \
+          --user bluefin-test \
+          --env USER=bluefin-test \
+          --env HOME=/home/bluefin-test \
+          --env XDG_RUNTIME_DIR=/run/user/1000 \
+          --env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+          --env AT_SPI_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+          --env XDG_SESSION_TYPE=wayland \
+          --env XDG_SESSION_DESKTOP=gnome \
+          --env LIBGL_ALWAYS_SOFTWARE=1 \
+          --env GALLIUM_DRIVER=llvmpipe \
+          "${TARGET_NAME}" \
+          qecore-headless \
+          --session-type wayland \
+          --session-desktop gnome \
+          /workspace/lane/run-chairlift.sh || QECORE_RC=$?
+        echo "qecore-headless exit ${QECORE_RC}" >&2
+
+        # ---- verdicts ------------------------------------------------------
+        BEHAVE_RC=$(cat /tmp/results/atspi/behave-rc.txt 2>/dev/null || printf '%s' "${QECORE_RC}")
+        SUITE_RC=0
+        python3 - <<'PY' || SUITE_RC=$?
+        import json, os, re, sys
+        out = "/tmp/results"
+        path = os.path.join(out, "atspi", "results.json")
+        if not os.path.exists(path):
+            open(os.path.join(out, "result-summary.txt"), "w").write("Execution failed: no behave results")
+            sys.exit(1)
+        data = json.load(open(path, encoding="utf-8"))
+        counts = {"passed": 0, "failed": 0, "skipped": 0, "other": 0}
+        failed = []
+        per_feature = {}
+        safe = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,:;()/_+'\"—-]{0,159}$")
+        for feature in data:
+            fc = per_feature.setdefault(feature.get("name", "?"), {"passed": 0, "failed": 0, "skipped": 0, "other": 0})
+            for scenario in feature.get("elements", []):
+                if scenario.get("type") == "background":
+                    continue
+                status = scenario.get("status", "other")
+                key = status if status in counts else "other"
+                counts[key] += 1
+                fc[key] += 1
+                if status == "failed" and safe.fullmatch(scenario.get("name", "")):
+                    failed.append(scenario["name"])
+        executed = counts["passed"] + counts["failed"] + counts["other"]
+        summary = f"{counts['passed']}/{executed} executed scenarios passed ({counts['failed']} failed, {counts['skipped']} skipped, {counts['other']} other)"
+        open(os.path.join(out, "result-summary.txt"), "w").write(summary)
+        json.dump(failed[:20], open(os.path.join(out, "failed-scenarios.json"), "w"), separators=(",", ":"))
+        json.dump({"counts": counts, "features": per_feature, "failed": failed},
+                  open(os.path.join(out, "scenario-counts.json"), "w"), indent=1)
+        print(summary)
+        for name, fc in per_feature.items():
+            print(f"  {name}: {fc}")
+        if executed == 0:
+            print("ERROR: 0 scenarios executed; a run with no executed tests cannot pass", file=sys.stderr)
+            sys.exit(1)
+        PY
+
+        # Failed scenarios: the accessibility tree and the log tail, since
+        # Argo logs are the only view of a container lane.
+        for dir in /tmp/results/atspi/scenarios/*/; do
+          [ -f "${dir}tree.txt" ] || continue
+          echo "=== failed scenario: $(basename "${dir}") ===" >&2
+          ls -l "${dir}" >&2
+          head -n 120 "${dir}tree.txt" >&2
+          tail -n 40 "${dir}chairlift.log" >&2 2>/dev/null || true
+        done
+
+        GOOSE_RC=0
+        G=/tmp/results/goose
+        GOOSE_STATE=$(cat "${G}/rc.txt" 2>/dev/null || echo not-run)
+        if [[ "${GOOSE_STATE}" == "skipped" ]]; then
+          echo '{"status":"skipped"}' >"${G}/verdict.json"
+        else
+          echo "=== Goose isolation (${GOOSE_STATE}) ===" >&2
+          cat "${G}/brew-install.log" >&2 2>/dev/null || true
+          GOOSE_STATE="${GOOSE_STATE}" python3 - <<'PY' || GOOSE_RC=$?
+        import json, os, sys
+        g = "/tmp/results/goose"
+        def read(name):
+            try:
+                return open(os.path.join(g, name), encoding="utf-8", errors="replace").read()
+            except OSError:
+                return ""
+        state = os.environ["GOOSE_STATE"]
+        lock = dict(line.split("=", 1) for line in read("lock.txt").split() if "=" in line)
+        enabled = sorted(read("enabled-extensions.txt").split())
+        paths = read("home-goose-paths.txt")
+        tree = read("profile-tree.txt").splitlines()
+        root = "/home/bluefin-test/goose-isolation/chairlift/troubleshooting/goose"
+        checks = {
+            "brew_install_succeeded": state == "done",
+            "goose_was_running_at_35s": lock.get("alive") == "yes",
+            "singleton_lock_in_profile": lock.get("profile_lock", "ABSENT") != "ABSENT",
+            "no_singleton_lock_in_home_config": lock.get("home_lock", "ABSENT") == "ABSENT",
+            "only_linux_tools_and_bluefin_knowledge_enabled": enabled == ["bluefin-knowledge", "linux-tools"],
+            "goose_data_or_state_under_path_root": any(p.startswith(root + "/data/") or p.startswith(root + "/state/") for p in tree),
+            "nothing_in_home_config_goose": "ABSENT /home/bluefin-test/.config/goose" in paths,
+        }
+        verdict = {"status": "pass" if all(checks.values()) else "fail", "state": state,
+                   "checks": checks, "lock": lock, "enabled": enabled}
+        json.dump(verdict, open(os.path.join(g, "verdict.json"), "w"), indent=1)
+        print(json.dumps(verdict, indent=1))
+        print(paths)
+        sys.exit(0 if verdict["status"] == "pass" else 1)
+        PY
+          tail -n 60 "${G}/goose-desktop.log" >&2 2>/dev/null || true
+        fi
+
+        echo "behave exit ${BEHAVE_RC}; suite verdict ${SUITE_RC}; goose verdict ${GOOSE_RC}" >&2
+        if [[ "${BEHAVE_RC}" != "0" || "${SUITE_RC}" != "0" || "${GOOSE_RC}" != "0" ]]; then
+          exit 1
+        fi
+    volumes:
+    - name: workspace
+      emptyDir: {}
+    - name: results
+      emptyDir: {}
+    - name: containers-storage
+      emptyDir: {}
+    - name: containers-runroot
+      emptyDir: {}
+    - name: udev
+      hostPath:
+        path: /run/udev
+        type: Directory
+    - name: results-store
+      hostPath:
+        path: /var/mnt/ghost-data/local-path
+        type: Directory
+    - name: pip-cache
+      hostPath:
+        path: /var/cache/bluefin-qa-pip
+        type: DirectoryOrCreate

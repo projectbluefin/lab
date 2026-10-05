@@ -9,8 +9,8 @@ metadata:
       (test/e2e/features) inside a live GNOME Wayland session: the nested,
       systemd-booted Dakota target run-container-tests boots (headless GNOME
       Shell with a virtual monitor, GDM autologin, test-user linger), driven by
-      qecore-headless --session-type wayland. No X server is started; the
-      application runs with GDK_BACKEND=wayland and DISPLAY unset. On x86_64 it
+      qecore-headless --session-type wayland. The application (and Goose's
+      Electron window) run with GDK_BACKEND=wayland and DISPLAY unset. On x86_64 it
       then installs Enhanced Troubleshooting's packages through the target's
       Homebrew and checks that Goose desktop launched in ChairLift's profile
       writes nothing outside that profile.
@@ -622,9 +622,25 @@ spec:
         fi
         pgrep -u "$(id -u)" -f gnome-ponytail-daemon >/dev/null || { /usr/libexec/gnome-ponytail-daemon & sleep 2; }
 
-        # Wayland only: the window must reach the session's compositor, and
-        # there is no X server for it to fall back to.
-        [ -n "${WAYLAND_DISPLAY:-}" ] || { echo "session has no WAYLAND_DISPLAY" >&2; echo 4 >"${OUT}/behave-rc.txt"; exit 4; }
+        # Wayland only: the window must reach the session's compositor
+        # natively, never through the session's on-demand Xwayland.
+        # qecore-headless hands the script gnome-session's environment, which
+        # predates the compositor; gnome-shell exports WAYLAND_DISPLAY to the
+        # user manager once its socket is up, so read it from there.
+        if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+          WAYLAND_DISPLAY=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^WAYLAND_DISPLAY=//p')
+        fi
+        case "${WAYLAND_DISPLAY:-}" in
+          /*) WAYLAND_SOCKET="${WAYLAND_DISPLAY}" ;;
+          *) WAYLAND_SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-}" ;;
+        esac
+        if [ -z "${WAYLAND_DISPLAY:-}" ] || [ ! -S "${WAYLAND_SOCKET}" ]; then
+          echo "the session exposes no Wayland socket (WAYLAND_DISPLAY='${WAYLAND_DISPLAY:-}')" >&2
+          echo 4 >"${OUT}/behave-rc.txt"
+          exit 4
+        fi
+        export WAYLAND_DISPLAY
+        echo "Wayland socket: ${WAYLAND_SOCKET}"
         export XDG_SESSION_TYPE=wayland GDK_BACKEND=wayland
         unset DISPLAY XAUTHORITY
         # The same isolation run_atspi.sh applies, minus the display: memory
@@ -670,6 +686,11 @@ spec:
         fi
         BREW="$(cat "${G}/brew-path.txt")"
         export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+        # The environment ChairLift's desktop entry gives brew: chairlift-wrapper
+        # evaluates `brew shellenv`. The goose-linux cask's preflight runs a
+        # bare `rpm2cpio | cpio`, which finds neither without Homebrew's bin
+        # on PATH (observed: exit 127 from the session's own PATH).
+        eval "$("${BREW}" shellenv)"
         GRC=0
         {
           echo "+ brew tap ublue-os/tap" && "${BREW}" tap ublue-os/tap &&

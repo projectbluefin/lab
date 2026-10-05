@@ -14,6 +14,7 @@ template add or rename.
   - [dakota-build-pipeline](#dakota-build-pipeline)
   - [zot-candidate-lifecycle](#zot-candidate-lifecycle)
   - [bluefin-server-build-pipeline](#bluefin-server-build-pipeline)
+  - [run-chairlift-wayland-tests](#run-chairlift-wayland-tests)
 - [KubeStellar Workflows](#kubestellar-workflows)
 - [Supporting Templates](#supporting-templates)
 - [Distributed Build/RE Grid](#distributed-buildre-grid)
@@ -125,6 +126,40 @@ before retrying.
   `cache.freedesktop-sdk.io` for the toplevel project only). Retry, priority,
   and execution are identical to dakota.
 - **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts and sources are indexed in `bb-remote-asset` (`:8984`) and pushed there, with upstream caches as read-only fallbacks. Source caches override the project entries. See `manifests/buildstream-remote-cache-config.yaml`.
+
+### run-chairlift-wayland-tests
+- **Purpose:** ChairLift's behave + dogtail AT-SPI suite
+  (`test/e2e/features`) in a live GNOME **Wayland** session, plus an
+  Enhanced Troubleshooting Goose-profile isolation check on x86_64.
+- **Parameters:** `chairlift-repo`, `chairlift-branch`, `image`
+  (`ghcr.io/projectbluefin/dakota`), `image-tag` (`testing`), `behave-tags`
+  (empty = every scenario), `goose-isolation-check` (`true`).
+- **Shape:** a `golang:1.26` init container clones the branch and runs
+  `make build-e2e schemas`, plus two lane tools built inside the module:
+  `navjson` (the page/shortcut inventory the Go gate normally passes) and
+  `gooseprofile` (`troubleshoot.ProfileAt(dir).Write`, and a config reader).
+  The runner then boots `run-container-tests`' nested systemd/GDM target —
+  headless GNOME Shell drop-in, linger, `lastchg`, resolver bind — with
+  `/usr/share/chairlift` masked and `/proc/cmdline` blanked like
+  `dakota_atspi.sh`, and runs behave from a hash-pinned venv under
+  `qecore-headless --session-type wayland`, with `GDK_BACKEND=wayland` and
+  `DISPLAY` unset, so neither the app nor Goose can fall back to the
+  session's on-demand Xwayland. Xvfb is never used.
+- **Wayland traps:** qecore hands the script gnome-session's environment,
+  which has no `WAYLAND_DISPLAY`; the script reads it from
+  `systemctl --user show-environment`. Mutter's focus-stealing prevention
+  leaves each new window unfocused, so ChairLift's `environment.py`
+  activates it through `Shell.Eval` (needs `--unsafe-mode`). Dakota's
+  `brew-preinstall.service` and brew timers are masked so they cannot hold
+  Homebrew's locks during the Goose check.
+- **Verdicts:** fails when behave fails, when 0 scenarios executed, or when
+  any Goose check fails. Outputs `result`, `failed-scenarios`, and
+  `goose-isolation` (JSON). Everything under `/tmp/results` (behave log,
+  JUnit, per-scenario `chairlift.log`, `tree.txt`, `screen.png`; Goose
+  `brew-install.log`, lock evidence, config, screenshot) is persisted to
+  ghost's result store under `<workflow>/chairlift-wayland/`.
+- **Submit:** not deployed until merged; until then submit the template
+  file as a Workflow (`kind: Workflow`, `generateName`) with `argo submit`.
 
 ## KubeStellar Workflows
 
@@ -248,5 +283,7 @@ Pod resource requests/limits used by workflow steps:
 | Template / container | CPU req/limit | Memory req/limit |
 | --- | --- | --- |
 | `run-container-tests` | 2 / 4 | 4Gi / 8Gi |
+| `run-chairlift-wayland-tests` `main` | 2 / 4 | 4Gi / 8Gi |
+| `run-chairlift-wayland-tests` `build-chairlift` | 2 / 4 | 2Gi / 4Gi |
 | `bst-build-re` `main` | 2 / 4 | 4Gi / 8Gi |
 | `bst-build-re` `publish` | 1 / 16 | 256Mi / 2Gi |

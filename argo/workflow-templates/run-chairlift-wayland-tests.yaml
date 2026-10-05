@@ -744,10 +744,12 @@ spec:
           echo 3 >"${OUT}/behave-rc.txt"
           exit 3
         fi
-        # No Shell modal may hold the keyboard when the suite starts.
+        # No Shell modal may hold the keyboard when the suite starts. The
+        # session opens in the overview, which is itself a modal, so leave
+        # it first; what remains (the welcome dialog, a prompt) is a fault.
         for attempt in $(seq 1 30); do
           gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \
-            --method org.gnome.Shell.Eval 'Main.modalCount' 2>/dev/null | grep -q "(true, '0')" && break
+            --method org.gnome.Shell.Eval 'Main.overview.hide(); Main.modalCount' 2>/dev/null | grep -q "(true, '0')" && break
           sleep 1
         done
         if ! gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell \

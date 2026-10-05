@@ -960,10 +960,17 @@ spec:
           echo "home_lock=$(readlink "${HOME}/.config/Goose/SingletonLock" 2>/dev/null || echo ABSENT)"
         } >"${G}/lock.txt"
         if [ -n "${GOOSE_MAIN}" ]; then
-          # The Electron browser process's environ read back empty as the
-          # test user (chairlift-wayland-lane-jhxkh); read it through sudo.
-          sudo -n cat "/proc/${GOOSE_MAIN}/environ" | tr '\0' '\n' \
-            | grep -E '^(GOOSE_[A-Z_]*|OPENAI_HOST|OPENAI_BASE_PATH|XDG_CONFIG_HOME|PATH|WAYLAND_DISPLAY|DISPLAY)=' >"${G}/goose-environ.txt"
+          # The Electron browser process's environ came back without any of
+          # these names, also through sudo (chairlift-wayland-lane-jhxkh, -t54w6);
+          # record what it does hold, and read the environment the app
+          # hands its own `goose serve` backend, which is what talks to the
+          # model.
+          sudo -n cat "/proc/${GOOSE_MAIN}/environ" | tr '\0' '\n' | cut -c1-120 | head -40 >"${G}/goose-main-environ-raw.txt"
+          GOOSED="$(pgrep -u "$(id -u)" -f '/usr/lib/Goose/resources/bin/goose serve' | head -1)"
+          echo "goosed_pid=${GOOSED}" >>"${G}/lock.txt"
+          [ -n "${GOOSED}" ] && tr '\0' '\n' <"/proc/${GOOSED}/environ" \
+            | grep -E '^(GOOSE_[A-Z_]*|OPENAI_HOST|OPENAI_BASE_PATH|XDG_CONFIG_HOME|PATH|WAYLAND_DISPLAY|DISPLAY)=' \
+            | grep -v -E '^GOOSE_SERVER__SECRET_KEY=' >"${G}/goose-environ.txt"
           tr '\0' ' ' <"/proc/${GOOSE_MAIN}/cmdline" >"${G}/goose-cmdline.txt"
         fi
         ps -eo pid,args | grep -i -E 'goose|electron|llmman' | grep -v grep | cut -c1-400 >"${G}/processes.txt" || true
@@ -1127,7 +1134,7 @@ spec:
           echo "=== Goose isolation (${GOOSE_STATE}) ===" >&2
           for f in setup.log setup-rc.txt brew-installed.txt tap-info.json tap-info.err trust-state.txt polkit-session.txt \
               agent-mode.log agent-mode-rc.txt llmman-unit.txt flatpaks.txt node.json llmman-ls.txt alias-1.log alias-2.log \
-              model-1.log model-2.log command-env.txt launch.log lock.txt goose-environ.txt goose-cmdline.txt \
+              model-1.log model-2.log command-env.txt launch.log lock.txt goose-environ.txt goose-main-environ-raw.txt goose-cmdline.txt \
               cli-1-rc.txt cli-1.log tool-calls-1.json cli-2-rc.txt cli-2.log tool-calls-2.json; do
             echo "--- ${f}" >&2
             cat "${G}/${f}" >&2 2>/dev/null || true

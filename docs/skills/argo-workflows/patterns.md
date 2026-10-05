@@ -159,6 +159,23 @@ ghost:
 Screenshots come from `org.gnome.Shell.Screenshot.Screenshot`, which
 `--unsafe-mode` also opens to the test user; there is no root window for `xwd`.
 
+Two more traps, from driving the app's own privileged-adjacent paths:
+
+- **`podman exec` is not in the user's session.** A process started with
+  `podman exec` sits in the target's exec cgroup, so logind assigns it to no
+  session and polkit answers `auth_admin` to actions it allows an active
+  local `wheel` member without a prompt (a system Flatpak install, for one).
+  Run app-side steps the way GNOME starts an app:
+  `systemd-run --user --wait --pipe --slice=app.slice`. `pkcheck` from each
+  context is the evidence. To hand `pkcheck` a PID, read it from
+  `/proc/self/stat`. `systemd-run` expands `${VAR}` in its command line
+  itself, and in the qecore-launched script `$$` reached `pkcheck` as a bare
+  `$` (the cause was not isolated).
+- **The user slice's `TasksMax` is container-sized.** Inside a unit, brew's
+  download threads failed with "can't create Thread: Resource temporarily
+  unavailable". Lift `TasksMax` on `user-1000.slice`, `app.slice`, and the
+  unit itself.
+
 ## Concurrency and scheduling
 
 ### VM concurrency: k8s native scheduling, no semaphores

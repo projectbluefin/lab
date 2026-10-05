@@ -154,15 +154,39 @@ before retrying.
   activates it through `Shell.Eval` (needs `--unsafe-mode`). Dakota's
   `brew-preinstall.service` and brew timers are masked so they cannot hold
   Homebrew's locks during the Goose check.
-- **Goose check:** ChairLift installs the packages itself
-  (`troubleshoot.Setup`: tap, `linux-mcp-server`, `cpio`, the `goose-linux`
-  cask) with `PATH=/usr/bin:/bin` and no `brew shellenv`, as a direct
-  `chairlift` launch would; the cask's bare `rpm2cpio | cpio` preflight
-  exits 127 unless ChairLift puts Homebrew's bin on brew's PATH. The check
-  then asserts `goose-desktop` resolves, `Command`'s PATH starts with
-  Homebrew's bin, and Goose launched in the profile keeps its lock, data,
-  state, and config there with only `linux-tools` and `bluefin-knowledge`
-  enabled.
+- **Goose check (end to end, ChairLift's own code throughout):**
+  1. `troubleshoot.Setup` installs the tap, `linux-mcp-server`, `cpio`, and
+     the `goose-linux` cask with `PATH=/usr/bin:/bin` and no
+     `brew shellenv`, as a direct `chairlift` launch would. The cask's bare
+     `rpm2cpio | cpio` preflight exits 127 unless ChairLift puts Homebrew's
+     bin on brew's PATH.
+  2. `aistack.Enable` turns Agent Mode on, on the stock host. The check
+     records that `brew trust` covers the `llmman` formula and not
+     `llmmanorg/tap`.
+  3. The smallest Qwen3 is resolved through aistack's live resolver, pulled,
+     and set as the `bluefin-active` alias. The lane also records
+     `/llmman/node` and `llmman ls`.
+  4. The real `troubleshoot.Command` launch
+     (`llmman launch goose-desktop`) runs in the Wayland session. The check
+     reads the Goose process's environment (`GOOSE_PATH_ROOT`,
+     `XDG_CONFIG_HOME`, `GOOSE_PROVIDER=openai`, `OPENAI_HOST` on
+     `127.0.0.1:17434`, `GOOSE_MODEL`), checks where its lock is, and takes
+     a screenshot.
+  5. `llmman launch goose -- run --text …`, run in the same profile, must
+     call a `linux-tools__*` tool and `bluefin-knowledge__search_knowledge`,
+     read back from `data/sessions/sessions.db`. If the 0.6B model will not
+     call tools, the lane retries once with the next size up.
+
+  Throughout, the profile's lock, data, state, and config must stay inside
+  it, and only `linux-tools` and `bluefin-knowledge` may be enabled.
+- **ChairLift runs as an app unit:** every ChairLift step runs through
+  `systemd-run --user --slice=app.slice`, the way GNOME starts an app. The
+  script itself runs in podman's exec cgroup, outside any logind session,
+  where polkit answers `auth_admin` to the system Flatpak install Agent Mode
+  does; inside an app unit, an active `wheel` member gets `yes`. The test
+  user joins `wheel`, as Bluefin's first user does. `TasksMax` is lifted on
+  the user slice and on the units, because brew's download threads hit the
+  container-sized default.
 - **Verdicts:** fails when behave fails, when 0 scenarios executed, or when
   any Goose check fails. Outputs `result`, `failed-scenarios`, and
   `goose-isolation` (JSON). Everything under `/tmp/results` (behave log,

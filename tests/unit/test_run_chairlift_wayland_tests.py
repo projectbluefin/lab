@@ -53,7 +53,7 @@ def test_runs_on_ghost_behind_the_container_qa_semaphore():
     assert template["nodeSelector"]["kubernetes.io/hostname"] == "ghost"
     keys = [s["configMapKeyRef"]["key"] for s in template["synchronization"]["semaphores"]]
     assert keys == ["ghost-container-qa"]
-    assert template["activeDeadlineSeconds"] <= 5400
+    assert template["activeDeadlineSeconds"] <= 7200
 
 
 def test_builds_the_requested_branch_with_the_e2e_target():
@@ -61,11 +61,16 @@ def test_builds_the_requested_branch_with_the_e2e_target():
     script = build["args"][0]
     assert 'git clone --depth 1 --branch "${CHAIRLIFT_BRANCH}" "${CHAIRLIFT_REPO}"' in script
     assert "CGO_ENABLED=0 make build-e2e schemas" in script
+    # ChairLift's whole CI gate runs on the untouched checkout, with the
+    # golangci-lint CI pins, verified by checksum, before any lane tool exists.
+    assert script.index("make ci >") < script.index("build/lane/navjson")
+    assert 'echo "${LINT_SHA256}  /tmp/${LINT_TGZ}" | sha256sum -c -' in script
     assert "troubleshoot.ProfileAt(os.Args[2])" in script
     # The install goes through ChairLift's own Setup, not hand-written brew.
     assert "troubleshoot.Setup(troubleshoot.Detect()," in script
-    assert "troubleshoot.Command(state," in script
     assert "navigation.Items()" in script
+    # Installed the way the Homebrew cask lays ChairLift out.
+    assert "install -m 0755 data/chairlift-wrapper.sh /workspace/lane/install/chairlift-wrapper" in script
     _bash_parses(script)
 
 
@@ -127,7 +132,7 @@ def test_fails_closed_and_cleans_up():
     assert "sys.exit(1)" in source
 
 
-def test_goose_check_asserts_profile_isolation():
+def test_engine_check_runs_chairlifts_own_paths():
     runner = _heredoc(_runner(), "RUNNER")
     # ChairLift installs the packages itself, with no Homebrew on PATH and
     # no `brew shellenv`, the way a direct launch runs it.
@@ -136,42 +141,57 @@ def test_goose_check_asserts_profile_isolation():
     assert '"${LANE}/bin/troubleshootcheck" command-path' in runner
     assert 'eval "$("${BREW}" shellenv)"' not in runner
     assert '"${BREW}" install' not in runner
-    # Agent Mode, the model, and the launch are ChairLift's own code paths.
-    for step in ("agent-mode", 'model "${MODEL_REPOS[0]}"', 'launch "${DATA}"'):
-        assert f'"${{LANE}}/bin/troubleshootcheck" {step}' in runner, step
-    assert "/usr/bin/true" not in _template()["initContainers"][0]["args"][0]
+    assert '"${LANE}/bin/troubleshootcheck" agent-mode' in runner
+    assert '"${LANE}/bin/troubleshootcheck" model' in runner
+    # No lane fallbacks: PullModel must succeed, and nothing is trusted or
+    # aliased on ChairLift's behalf.
+    for fallback in ("troubleshootcheck alias", "not found in daemon stored models", '"${BREW}" trust', "brew trust"):
+        assert fallback not in runner, fallback
+    build = _template()["initContainers"][0]["args"][0]
+    assert "/usr/bin/true" not in build
+    for call in ("aistack.Enable(ctx)", "aistack.WaitHealthy(", "aistack.PullModel(", "aistack.ConfigureActiveModel("):
+        assert call in build, call
+    # Goose is launched by ChairLift itself: a cold --ask-bluefin, and the
+    # distro menu's exact command, both with GNOME Shell's environment.
+    assert 'observe_launch askbluefin "${BIN}/chairlift" --ask-bluefin' in runner
+    assert 'observe_launch menu bash -c "${BIN}/chairlift-wrapper --ask-bluefin"' in runner
+    assert 'env -i "${SHELL_ENV[@]}" PATH="${MENU_PATH}"' in runner
+    assert "grep -v linuxbrew" in runner
     # Nothing fakes the provider: llmman hands Goose its environment.
     for fake in ("GOOSE_PROVIDER=openai", "OPENAI_HOST=http://127.0.0.1:9", "OPENAI_API_KEY=x"):
         assert fake not in runner, fake
     assert 'launch goose --model bluefin-active -- run --text' in runner
-    # Agent Mode must work on the stock host: the lane trusts nothing itself.
-    assert '"${BREW}" trust' not in runner and "brew trust" not in runner
-    build = _template()["initContainers"][0]["args"][0]
-    for call in ("aistack.Enable(ctx)", "aistack.WaitHealthy(", "aistack.PullModel(", "aistack.ConfigureActiveModel(",
-                 "troubleshoot.Command(state, profile, aistack.ActiveModelAlias)"):
-        assert call in build, call
+    assert "systemctl --failed --no-legend --plain" in runner
     source = _runner()
     for check in (
         "setup_ran_without_brew_on_path",
         "chairlift_setup_exit_zero",
         "goose_desktop_resolves_after_setup",
-        "command_env_path_has_brew_bin_first",
         "agent_mode_enabled_on_stock_host",
         "llmman_formula_trusted",
         "llmmanorg_tap_not_trusted",
-        "model_pulled_and_alias_set",
-        "llmman_launch_not_refused",
-        "environ_goose_path_root",
-        "environ_xdg_config_home",
-        "environ_goose_provider_openai",
-        "environ_openai_host_agent_mode",
-        "environ_goose_model_is_resolved_ref",
+        "pullmodel_succeeded_and_alias_set",
+        "command_env_path_has_brew_bin_first",
+        "_launcher_exit_zero",
+        "_env_goose_path_root",
+        "_env_openai_host_agent_mode",
+        "_lock_in_profile",
+        "menu_same_goose_env_as_ask_bluefin",
         "linux_tools_tool_called",
         "search_knowledge_tool_called",
-        "singleton_lock_in_profile",
-        "no_singleton_lock_in_home_config",
         "only_linux_tools_and_bluefin_knowledge_enabled",
         "goose_data_or_state_under_path_root",
         "nothing_in_home_config_goose",
     ):
         assert check in source, check
+
+
+def test_screenshots_use_chairlifts_own_wayland_capture():
+    source = _runner()
+    assert "/workspace/chairlift/test/e2e/wayland_session.sh" in source
+    assert "/workspace/chairlift/test/e2e/capture_walkthrough.sh" in source
+    assert "CHAIRLIFT_WAYLAND_SIZE=900x700" in source
+    assert "views: reset group built" in source
+    # Byproducts stay behind; only the page PNGs are deliverable.
+    assert "-name '[0-9]-*.png'" in source
+    assert 'CI_RC}" != "0"' in source

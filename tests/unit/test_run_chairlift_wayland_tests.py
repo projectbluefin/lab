@@ -42,6 +42,7 @@ def test_parameters_are_the_lane_contract():
         "image-tag",
         "behave-tags",
         "goose-isolation-check",
+        "answer-quality",
     ]
     defaults = {p["name"]: p["value"] for p in _doc()["spec"]["arguments"]["parameters"]}
     assert defaults["image"] == "ghcr.io/projectbluefin/dakota"
@@ -195,3 +196,13 @@ def test_screenshots_use_chairlifts_own_wayland_capture():
     # Byproducts stay behind; only the page PNGs are deliverable.
     assert "-name '[0-9]-*.png'" in source
     assert 'CI_RC}" != "0"' in source
+
+
+def test_relaunch_while_goose_runs_reuses_the_session():
+    runner = _heredoc(_runner(), "RUNNER")
+    assert 'KEEP_GOOSE=1 observe_launch askbluefin "${BIN}/chairlift" --ask-bluefin' in runner
+    assert 'bash -c "${BIN}/chairlift-wrapper --ask-bluefin"' in runner
+    assert "mains_before=" in runner and "mains_after=" in runner
+    source = _runner()
+    for check in ("relaunch_while_running_exit_zero", "relaunch_no_second_goose", "relaunch_goose_window_exists"):
+        assert check in source, check

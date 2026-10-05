@@ -39,6 +39,9 @@ spec:
       value: ""
     - name: goose-isolation-check
       value: "true"
+    # false: only the smallest model's tool-call check, no larger models.
+    - name: answer-quality
+      value: "true"
   templates:
   - name: run-chairlift-wayland-tests
     # Same placement as run-container-tests: ghost is the only node with a
@@ -72,6 +75,8 @@ spec:
         value: "{{workflow.parameters.behave-tags}}"
       - name: goose-isolation-check
         value: "{{workflow.parameters.goose-isolation-check}}"
+      - name: answer-quality
+        value: "{{workflow.parameters.answer-quality}}"
     outputs:
       parameters:
       - name: result
@@ -378,6 +383,8 @@ spec:
         value: "{{inputs.parameters.behave-tags}}"
       - name: GOOSE_CHECK
         value: "{{inputs.parameters.goose-isolation-check}}"
+      - name: ANSWER_QUALITY
+        value: "{{inputs.parameters.answer-quality}}"
       volumeMounts:
       - mountPath: /workspace
         name: workspace
@@ -737,6 +744,7 @@ spec:
         # qecore-headless replaces its environment with the session's.
         printf '%s' "${BEHAVE_TAGS}" >/workspace/lane/behave-tags
         printf '%s' "${GOOSE_CHECK}" >/workspace/lane/goose-check
+        printf '%s' "${ANSWER_QUALITY}" >/workspace/lane/answer-quality
         cat >/workspace/lane/run-chairlift.sh <<'RUNNER'
         #!/bin/bash
         # Runs inside the bluefin-test GNOME Wayland session (qecore-headless).
@@ -989,17 +997,52 @@ spec:
           ps -eo pid,ppid,args | grep -i -E 'goose|electron|llmman|chairlift' | grep -v grep | cut -c1-400 >"${G}/${tag}-processes.txt" || true
           gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
             --method org.gnome.Shell.Screenshot.Screenshot false false "${G}/${tag}.png" >"${G}/${tag}-screenshot.txt" 2>&1 || true
-          pkill -TERM -u "$(id -u)" -f '/usr/lib/Goose/Goose' 2>/dev/null
-          sleep 5
-          pkill -KILL -u "$(id -u)" -f '/usr/lib/Goose/Goose' 2>/dev/null
+          [ "${KEEP_GOOSE:-0}" = 1 ] || stop_goose
           if [ "${rc}" = running ]; then
             pkill -TERM -u "$(id -u)" -x chairlift 2>/dev/null
             wait "${launcher}" 2>/dev/null
           fi
+        }
+        stop_goose() {
+          pkill -TERM -u "$(id -u)" -f '/usr/lib/Goose/Goose' 2>/dev/null
+          sleep 5
+          pkill -KILL -u "$(id -u)" -f '/usr/lib/Goose/Goose' 2>/dev/null
           for _ in $(seq 1 20); do [ -L "${PROFILE}/desktop/Goose/SingletonLock" ] || break; sleep 0.5; done
         }
-        # (3) A cold `chairlift --ask-bluefin`.
-        observe_launch askbluefin "${BIN}/chairlift" --ask-bluefin
+        goose_mains() {
+          local pid
+          for pid in $(pgrep -u "$(id -u)" -f '/usr/lib/Goose/Goose'); do
+            tr '\0' ' ' <"/proc/${pid}/cmdline" 2>/dev/null | grep -q -- '--type=' || echo "${pid}"
+          done
+        }
+        goose_windows() {
+          gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval \
+            "let ws = global.get_window_actors().map(a => a.meta_window).filter(w => /goose/i.test(w.get_wm_class() || '')); let f = global.display.focus_window; JSON.stringify({windows: ws.length, minimized: ws.filter(w => w.minimized).length, focused: !!f && /goose/i.test(f.get_wm_class() || '')})" 2>&1
+        }
+        # (3) A cold `chairlift --ask-bluefin`; Goose is left running.
+        KEEP_GOOSE=1 observe_launch askbluefin "${BIN}/chairlift" --ask-bluefin
+        # (6) The menu again while that session runs: Goose's single-instance
+        # lock must bring the running window forward rather than start a
+        # second Goose. The window is minimized first, so "brought forward"
+        # is visible as unminimized and focused.
+        {
+          echo "mains_before=$(goose_mains | paste -sd, -)"
+          gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval \
+            "global.get_window_actors().map(a => a.meta_window).filter(w => /goose/i.test(w.get_wm_class() || '')).forEach(w => w.minimize()); true" >/dev/null 2>&1
+          sleep 1
+          echo "windows_before=$(goose_windows)"
+          RRC=0
+          timeout 60 systemd-run --user --scope --quiet --collect --slice=app.slice -p TasksMax=infinity \
+            env -i "${SHELL_ENV[@]}" PATH="${MENU_PATH}" bash -c "${BIN}/chairlift-wrapper --ask-bluefin" \
+            >"${G}/relaunch.log" 2>&1 </dev/null || RRC=$?
+          echo "relaunch_exit=${RRC}"
+          sleep 10
+          echo "mains_after=$(goose_mains | paste -sd, -)"
+          echo "windows_after=$(goose_windows)"
+        } >"${G}/relaunch-state.txt" 2>&1
+        gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
+          --method org.gnome.Shell.Screenshot.Screenshot false false "${G}/relaunch.png" >/dev/null 2>&1 || true
+        stop_goose
         # (5) Exactly what the distro's Custom Command Menu entry runs.
         observe_launch menu bash -c "${BIN}/chairlift-wrapper --ask-bluefin"
 
@@ -1080,6 +1123,7 @@ spec:
         SEEN=()
         for n in 1 2 3; do
           if [ "${n}" -gt 1 ]; then
+            [ "$(cat "${LANE}/answer-quality")" = "true" ] || break
             # Answer quality: stop at the first model after the smallest
             # that names every failed unit systemd reports.
             if [ "${n}" -gt 2 ] && grep -q '^quality=correct' "${G}/answer-$((n - 1)).txt" 2>/dev/null; then
@@ -1232,7 +1276,7 @@ spec:
               agent-mode.log agent-mode-rc.txt flatpaks.txt model-1.log model-1-rc.txt node-1.json llmman-ls-1.txt \
               command-env.txt shell-env.txt \
               askbluefin.log askbluefin-lock.txt askbluefin-environ.txt askbluefin-cmdline.txt askbluefin-processes.txt \
-              menu.log menu-lock.txt menu-environ.txt menu-cmdline.txt menu-processes.txt \
+              menu.log menu-lock.txt menu-environ.txt menu-cmdline.txt menu-processes.txt relaunch-state.txt relaunch.log \
               failed-units-truth.txt \
               model-2.log model-2-rc.txt model-3.log model-3-rc.txt \
               cli-1-rc.txt cli-1.log answer-1.txt cli-2-rc.txt cli-2.log answer-2.txt cli-3-rc.txt cli-3.log answer-3.txt \
@@ -1290,6 +1334,20 @@ spec:
             }, lock, env
 
         ask_checks, ask_lock, ask_env = launch_checks("askbluefin")
+        relaunch = kv("relaunch-state.txt")
+        def shell_json(value):
+            match = re.search(r"'(\{.*\})'", value or "")
+            try:
+                return json.loads(match.group(1)) if match else {}
+            except ValueError:
+                return {}
+        windows_after = shell_json(relaunch.get("windows_after"))
+        relaunch_checks = {
+            "relaunch_while_running_exit_zero": relaunch.get("relaunch_exit") == "0",
+            "relaunch_no_second_goose": bool(relaunch.get("mains_before"))
+            and relaunch.get("mains_after") == relaunch.get("mains_before"),
+            "relaunch_goose_window_exists": windows_after.get("windows", 0) >= 1,
+        }
         menu_checks, menu_lock, menu_env = launch_checks("menu")
         checks = {
             "setup_ran_without_brew_on_path": setup.get("PATH") == "/usr/bin:/bin",
@@ -1303,6 +1361,7 @@ spec:
             "command_env_path_has_brew_bin_first": command_path.split(":")[0] == brew_bin,
             **ask_checks,
             **menu_checks,
+            **relaunch_checks,
             "menu_same_goose_env_as_ask_bluefin": bool(ask_env) and all(
                 ask_env.get(k) == menu_env.get(k)
                 for k in ("GOOSE_PATH_ROOT", "XDG_CONFIG_HOME", "GOOSE_PROVIDER", "OPENAI_HOST", "GOOSE_MODEL")),
@@ -1323,7 +1382,9 @@ spec:
                               "tool_calls": [c.get("name") for c in json.loads(read(f"tool-calls-{n}.json") or "{}").get("tool_calls", [])]}
         verdict = {"status": "pass" if all(checks.values()) else "fail", "state": state, "checks": checks,
                    "model": model, "askbluefin": {"lock": ask_lock, "env": ask_env},
-                   "menu": {"lock": menu_lock, "env": menu_env}, "enabled": enabled, "answers": answers}
+                   "menu": {"lock": menu_lock, "env": menu_env}, "enabled": enabled, "answers": answers,
+                   "relaunch": {"state": relaunch, "windows_before": shell_json(relaunch.get("windows_before")),
+                                "windows_after": windows_after}}
         json.dump(verdict, open(os.path.join(g, "verdict.json"), "w"), indent=1)
         print(json.dumps(verdict, indent=1))
         sys.exit(0 if verdict["status"] == "pass" else 1)

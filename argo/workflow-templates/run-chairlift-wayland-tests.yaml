@@ -1336,9 +1336,14 @@ spec:
         ask_checks, ask_lock, ask_env = launch_checks("askbluefin")
         relaunch = kv("relaunch-state.txt")
         def shell_json(value):
-            match = re.search(r"'(\{.*\})'", value or "")
+            # Shell.Eval returns the stringified result as a JS string, inside
+            # a GVariant string: (true, '"{\\"windows\\":1,…}"').
+            match = re.search(r"\(true, '(.*)'\)\s*$", value or "")
+            if not match:
+                return {}
             try:
-                return json.loads(match.group(1)) if match else {}
+                decoded = json.loads(match.group(1).replace("\\\\", "\\"))
+                return json.loads(decoded) if isinstance(decoded, str) else decoded
             except ValueError:
                 return {}
         windows_after = shell_json(relaunch.get("windows_after"))
@@ -1347,6 +1352,7 @@ spec:
             "relaunch_no_second_goose": bool(relaunch.get("mains_before"))
             and relaunch.get("mains_after") == relaunch.get("mains_before"),
             "relaunch_goose_window_exists": windows_after.get("windows", 0) >= 1,
+            "relaunch_goose_window_raised": windows_after.get("minimized", 1) == 0 and windows_after.get("focused") is True,
         }
         menu_checks, menu_lock, menu_env = launch_checks("menu")
         checks = {

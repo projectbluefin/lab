@@ -204,5 +204,6 @@ def test_relaunch_while_goose_runs_reuses_the_session():
     assert 'bash -c "${BIN}/chairlift-wrapper --ask-bluefin"' in runner
     assert "mains_before=" in runner and "mains_after=" in runner
     source = _runner()
-    for check in ("relaunch_while_running_exit_zero", "relaunch_no_second_goose", "relaunch_goose_window_exists"):
+    for check in ("relaunch_while_running_exit_zero", "relaunch_no_second_goose", "relaunch_goose_window_exists",
+                  "relaunch_goose_window_raised"):
         assert check in source, check

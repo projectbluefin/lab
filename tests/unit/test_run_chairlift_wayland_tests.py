@@ -91,7 +91,9 @@ def test_wayland_only_never_x11():
     runner = _heredoc(_runner(), "RUNNER")
     assert "GDK_BACKEND=wayland" in runner
     assert "unset DISPLAY XAUTHORITY" in runner
-    assert "ELECTRON_OZONE_PLATFORM_HINT=wayland" in runner
+    # Goose's window comes up exactly as ChairLift launches it: no Electron
+    # platform hint, and no DISPLAY to fall back to (unset above).
+    assert "ELECTRON_OZONE_PLATFORM_HINT" not in runner
     assert "org.gnome.Shell.Screenshot" in runner
     _bash_parses(runner)
 
@@ -126,20 +128,34 @@ def test_goose_check_asserts_profile_isolation():
     assert '"${LANE}/bin/troubleshootcheck" command-path' in runner
     assert 'eval "$("${BREW}" shellenv)"' not in runner
     assert '"${BREW}" install' not in runner
-    for setting in (
-        'GOOSE_PATH_ROOT="${PROFILE}/goose"',
-        'XDG_CONFIG_HOME="${PROFILE}/desktop"',
-        "GOOSE_PROVIDER=openai",
-        "OPENAI_HOST=http://127.0.0.1:9",
-        "GOOSE_MODEL=bluefin-active",
-    ):
-        assert setting in runner, setting
+    # Agent Mode, the model, and the launch are ChairLift's own code paths.
+    for step in ("agent-mode", 'model "${MODEL_REPOS[0]}"', 'launch "${DATA}"'):
+        assert f'"${{LANE}}/bin/troubleshootcheck" {step}' in runner, step
+    assert "/usr/bin/true" not in _template()["initContainers"][0]["args"][0]
+    # Nothing fakes the provider: llmman hands Goose its environment.
+    for fake in ("GOOSE_PROVIDER=openai", "OPENAI_HOST=http://127.0.0.1:9", "OPENAI_API_KEY=x"):
+        assert fake not in runner, fake
+    assert 'launch goose --model bluefin-active -- run --text' in runner
+    build = _template()["initContainers"][0]["args"][0]
+    for call in ("aistack.Enable(ctx)", "aistack.WaitHealthy(", "aistack.PullModel(", "aistack.ConfigureActiveModel(",
+                 "troubleshoot.Command(state, profile, aistack.ActiveModelAlias)"):
+        assert call in build, call
     source = _runner()
     for check in (
         "setup_ran_without_brew_on_path",
         "chairlift_setup_exit_zero",
         "goose_desktop_resolves_after_setup",
         "command_env_path_has_brew_bin_first",
+        "agent_mode_enabled_and_healthy",
+        "model_pulled_and_alias_set",
+        "llmman_launch_not_refused",
+        "environ_goose_path_root",
+        "environ_xdg_config_home",
+        "environ_goose_provider_openai",
+        "environ_openai_host_agent_mode",
+        "environ_goose_model_is_resolved_ref",
+        "linux_tools_tool_called",
+        "search_knowledge_tool_called",
         "singleton_lock_in_profile",
         "no_singleton_lock_in_home_config",
         "only_linux_tools_and_bluefin_knowledge_enabled",

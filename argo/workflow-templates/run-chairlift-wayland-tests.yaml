@@ -173,18 +173,28 @@ spec:
         #   setup         troubleshoot.Setup(troubleshoot.Detect(), progress):
         #                 the tap and the three installs, through
         #                 internal/homebrew exactly as the app runs them.
+        #   agent-mode    aistack.Enable, then aistack.WaitHealthy.
+        #   model <repo>  resolves <repo> through aistack's live resolver,
+        #                 ranks it, then aistack.PullModel and
+        #                 aistack.ConfigureActiveModel (the alias path).
         #   command-path  the PATH troubleshoot.Command hands the launch.
+        #   launch <dir>  writes the profile and runs the real
+        #                 troubleshoot.Command(Detect(), profile, alias).
         #   write         troubleshoot.ProfileAt(dir).Write(server).
         #   enabled       the extensions a config.yaml leaves enabled.
         cat >build/lane/troubleshootcheck/main.go <<'GO'
         package main
 
         import (
+        	"context"
+        	"errors"
         	"fmt"
         	"os"
         	"sort"
         	"strings"
+        	"time"
 
+        	"github.com/projectbluefin/chairlift/internal/aistack"
         	"github.com/projectbluefin/chairlift/internal/troubleshoot"
         	"gopkg.in/yaml.v3"
         )
@@ -212,14 +222,78 @@ spec:
         		if !state.Installed() {
         			fail(fmt.Errorf("setup returned without every package installed"))
         		}
-        	case len(os.Args) == 3 && os.Args[1] == "command-path":
-        		state := troubleshoot.Detect()
-        		// llmman is Agent Mode's install, not this feature's; any
-        		// absolute executable satisfies Ready for an environment read.
-        		if state.LLMManPath == "" {
-        			state.LLMManPath = "/usr/bin/true"
+        	case len(os.Args) == 2 && os.Args[1] == "agent-mode":
+        		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
+        		defer cancel()
+        		fmt.Println("PATH=" + os.Getenv("PATH"))
+        		start := time.Now()
+        		if err := aistack.Enable(ctx); err != nil {
+        			fmt.Printf("enable_seconds=%.0f\n", time.Since(start).Seconds())
+        			fail(err)
         		}
-        		cmd, err := troubleshoot.Command(state, troubleshoot.ProfileAt(os.Args[2]), "bluefin-active")
+        		fmt.Printf("enable_seconds=%.0f\nllmman=%s\n", time.Since(start).Seconds(), aistack.Executable())
+        		if !aistack.WaitHealthy(ctx, 3*time.Minute) {
+        			fail(errors.New("llmman never answered /llmman/node"))
+        		}
+        		node, err := aistack.FetchNodeStatus(ctx)
+        		if err != nil {
+        			fail(err)
+        		}
+        		fmt.Printf("healthy=true\nnode_memory=%d\n", node.Memory)
+        	case len(os.Args) == 3 && os.Args[1] == "model":
+        		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+        		defer cancel()
+        		node, err := aistack.FetchNodeStatus(ctx)
+        		if err != nil {
+        			fail(err)
+        		}
+        		live, err := aistack.ResolveFamilyLive(ctx, aistack.FamilyQwen, os.Args[2], aistack.DefaultFetch)
+        		if err != nil {
+        			fail(err)
+        		}
+        		ranked := aistack.RankCandidateModels(aistack.FilterEligibleModels(live, node.Memory))
+        		if len(ranked) == 0 {
+        			fail(fmt.Errorf("no eligible file in %s for %d bytes of memory", os.Args[2], node.Memory))
+        		}
+        		choice := ranked[0]
+        		ref := choice.ModelRef()
+        		fmt.Printf("ref=%s\nfile=%s\nquant=%s\nsize_bytes=%d\n", ref, choice.File, choice.Quant, choice.SizeBytes)
+        		start := time.Now()
+        		if err := aistack.PullModel(ctx, ref); err != nil {
+        			fail(err)
+        		}
+        		fmt.Printf("pull_seconds=%.0f\n", time.Since(start).Seconds())
+        		if err := aistack.ConfigureActiveModel(ctx, ref); err != nil {
+        			fail(err)
+        		}
+        		active, err := aistack.ReadActiveModel(ctx)
+        		if err != nil {
+        			fail(err)
+        		}
+        		fmt.Println("active=" + active)
+        		if active != ref {
+        			fail(fmt.Errorf("alias %s reads %q, want %q", aistack.ActiveModelAlias, active, ref))
+        		}
+        	case len(os.Args) == 3 && os.Args[1] == "launch":
+        		state := troubleshoot.Detect()
+        		printState(state)
+        		profile := troubleshoot.ProfileAt(os.Args[2])
+        		if err := profile.Write(state.ServerPath); err != nil {
+        			fail(err)
+        		}
+        		cmd, err := troubleshoot.Command(state, profile, aistack.ActiveModelAlias)
+        		if err != nil {
+        			fail(err)
+        		}
+        		fmt.Println("argv=" + strings.Join(cmd.Args, " "))
+        		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+        		err = cmd.Run()
+        		fmt.Printf("launch_exit=%v\n", err)
+        		if err != nil {
+        			os.Exit(1)
+        		}
+        	case len(os.Args) == 3 && os.Args[1] == "command-path":
+        		cmd, err := troubleshoot.Command(troubleshoot.Detect(), troubleshoot.ProfileAt(os.Args[2]), aistack.ActiveModelAlias)
         		if err != nil {
         			fail(err)
         		}
@@ -739,7 +813,7 @@ spec:
         SRC=0
         "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" setup >"${G}/setup.log" 2>&1 || SRC=$?
         echo "${SRC}" >"${G}/setup-rc.txt"
-        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" command-path "${DATA}" >"${G}/command-env.txt" 2>&1 || true
+        # (`command-path` runs after Agent Mode, once llmman really resolves.)
         {
           "${BREW}" list --versions linux-mcp-server cpio rpm2cpio
           "${BREW}" list --cask --versions goose-linux
@@ -749,34 +823,118 @@ spec:
           exit 0
         fi
         SERVER="$(sed -n 's/^server=//p' "${G}/setup.log")"
-        DESKTOP="$(sed -n 's/^desktop=//p' "${G}/setup.log")"
         ls -la "${HOME}/.config" >"${G}/home-config-before.txt" 2>&1
         "${LANE}/bin/troubleshootcheck" write "${DATA}" "${SERVER}" >"${G}/profile-write.txt" 2>&1 || { echo "profile-write-failed" >"${G}/rc.txt"; exit 0; }
         cp "${PROFILE}/goose/config/config.yaml" "${G}/config.before.yaml"
 
-        (
-          export GOOSE_PATH_ROOT="${PROFILE}/goose" XDG_CONFIG_HOME="${PROFILE}/desktop"
-          export GOOSE_PROVIDER=openai OPENAI_HOST=http://127.0.0.1:9 OPENAI_API_KEY=x GOOSE_MODEL=bluefin-active
-          export ELECTRON_OZONE_PLATFORM_HINT=wayland
-          exec "${DESKTOP}" --ozone-platform=wayland
-        ) >"${G}/goose-desktop.log" 2>&1 &
-        GOOSE_PID=$!
-        sleep 35
+        # Agent Mode for real, through ChairLift's aistack: brew bundle,
+        # `llmman serve --pull-only`, the user unit, readiness on
+        # /llmman/node. Then the smallest Qwen3 through the alias path.
+        ARC=0
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" agent-mode >"${G}/agent-mode.log" 2>&1 || ARC=$?
+        echo "${ARC}" >"${G}/agent-mode-rc.txt"
+        systemctl --user status chairlift-llmman.service --no-pager >"${G}/llmman-unit.txt" 2>&1 || true
+        if [ "${ARC}" -ne 0 ]; then
+          echo "agent-mode-failed" >"${G}/rc.txt"
+          exit 0
+        fi
+        LLMMAN="$(sed -n 's/^llmman=//p' "${G}/agent-mode.log")"
+        MODEL_REPOS=(unsloth/Qwen3-0.6B-GGUF unsloth/Qwen3-1.7B-GGUF)
+        MRC=0
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[0]}" >"${G}/model-1.log" 2>&1 || MRC=$?
+        if [ "${MRC}" -ne 0 ]; then
+          echo "model-failed" >"${G}/rc.txt"
+          exit 0
+        fi
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" command-path "${DATA}" >"${G}/command-env.txt" 2>&1 || true
+
+        # The real launch: troubleshoot.Command(Detect(), profile, alias),
+        # i.e. `llmman launch goose-desktop --model bluefin-active` in the
+        # profile, from a PATH without Homebrew, no Electron hints.
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" launch "${DATA}" >"${G}/launch.log" 2>&1 &
+        LAUNCH_PID=$!
+        sleep 45
         # Evidence while it runs: SingletonLock is removed on clean exit.
+        GOOSE_MAIN=""
+        for pid in $(pgrep -u "$(id -u)" -f '/usr/lib/Goose/Goose'); do
+          tr '\0' ' ' <"/proc/${pid}/cmdline" 2>/dev/null | grep -q -- '--type=' || { GOOSE_MAIN="${pid}"; break; }
+        done
         {
-          echo "alive=$(kill -0 "${GOOSE_PID}" 2>/dev/null && echo yes || echo no)"
+          echo "alive=$( [ -n "${GOOSE_MAIN}" ] && kill -0 "${GOOSE_MAIN}" 2>/dev/null && echo yes || echo no)"
+          echo "goose_main_pid=${GOOSE_MAIN}"
           echo "profile_lock=$(readlink "${PROFILE}/desktop/Goose/SingletonLock" 2>/dev/null || echo ABSENT)"
           echo "home_lock=$(readlink "${HOME}/.config/Goose/SingletonLock" 2>/dev/null || echo ABSENT)"
         } >"${G}/lock.txt"
-        ps -eo pid,args | grep -i -E 'goose|electron' | grep -v grep >"${G}/processes.txt" || true
+        if [ -n "${GOOSE_MAIN}" ]; then
+          tr '\0' '\n' <"/proc/${GOOSE_MAIN}/environ" \
+            | grep -E '^(GOOSE_[A-Z_]*|OPENAI_HOST|OPENAI_BASE_PATH|XDG_CONFIG_HOME|PATH|WAYLAND_DISPLAY|DISPLAY)=' >"${G}/goose-environ.txt"
+          tr '\0' ' ' <"/proc/${GOOSE_MAIN}/cmdline" >"${G}/goose-cmdline.txt"
+        fi
+        ps -eo pid,args | grep -i -E 'goose|electron|llmman' | grep -v grep | cut -c1-400 >"${G}/processes.txt" || true
         gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot \
           --method org.gnome.Shell.Screenshot.Screenshot false false "${G}/goose-window.png" >"${G}/screenshot.txt" 2>&1 || true
+        pkill -TERM -u "$(id -u)" -f '/usr/lib/Goose/Goose' 2>/dev/null
         sleep 5
-        pkill -TERM -P "${GOOSE_PID}" 2>/dev/null; kill -TERM "${GOOSE_PID}" 2>/dev/null
-        pkill -TERM -u "$(id -u)" -f 'goose-desktop|goosed|Goose' 2>/dev/null
-        sleep 5
-        pkill -KILL -u "$(id -u)" -f 'goose-desktop|goosed|Goose' 2>/dev/null
-        wait "${GOOSE_PID}" 2>/dev/null
+        pkill -KILL -u "$(id -u)" -f '/usr/lib/Goose/Goose' 2>/dev/null
+        wait "${LAUNCH_PID}" 2>/dev/null
+
+        # A real answer with tools: the goose CLI through llmman in the same
+        # profile, so the same extensions and hints.
+        cat >"${G}/extract.py" <<'PYX'
+        import json, os, re, sqlite3, sys
+        root, out = sys.argv[1], sys.argv[2]
+        calls, responses, seen = [], [], set()
+        def walk(o):
+            if isinstance(o, dict):
+                kind = o.get("type")
+                if kind in ("toolRequest", "tool_request"):
+                    call = o.get("toolCall") or o.get("tool_call") or {}
+                    value = call.get("value", call) if isinstance(call, dict) else {}
+                    key = (o.get("id"), json.dumps(value, sort_keys=True, default=str))
+                    if key not in seen:
+                        seen.add(key)
+                        calls.append({"id": o.get("id"), "name": value.get("name"), "arguments": value.get("arguments")})
+                if kind in ("toolResponse", "tool_response"):
+                    responses.append({"id": o.get("id"), "result": json.dumps(o.get("toolResult") or o.get("tool_result"), default=str)[:600]})
+                for v in o.values():
+                    walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+        db = os.path.join(root, "data", "sessions", "sessions.db")
+        con = sqlite3.connect(db)
+        tables = [r[0] for r in con.execute("select name from sqlite_master where type='table'")]
+        for table in tables:
+            for row in con.execute(f'select * from "{table}"'):
+                for cell in row:
+                    if isinstance(cell, str) and re.search(r"tool_?[Rr]e(quest|sponse)", cell):
+                        try:
+                            walk(json.loads(cell))
+                        except ValueError:
+                            pass
+        names = [c["name"] or "" for c in calls]
+        json.dump({"tables": tables, "tool_calls": calls, "tool_responses": responses,
+                   "linux_tools_called": any(n.startswith("linux-tools__") for n in names),
+                   "search_knowledge_called": "bluefin-knowledge__search_knowledge" in names},
+                  open(out, "w"), indent=1, default=str)
+        PYX
+        PROMPT="Use the linux-tools extension to list failed systemd units on this machine, then use search_knowledge to search the Project Bluefin knowledge base for 'bootc update'. Report both results."
+        for attempt in 1 2; do
+          if [ "${attempt}" -eq 2 ]; then
+            grep -q '"linux_tools_called": true' "${G}/tool-calls-1.json" 2>/dev/null \
+              && grep -q '"search_knowledge_called": true' "${G}/tool-calls-1.json" 2>/dev/null && break
+            "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[1]}" >"${G}/model-2.log" 2>&1 || break
+          fi
+          CRC=0
+          env GOOSE_PATH_ROOT="${PROFILE}/goose" XDG_CONFIG_HOME="${PROFILE}/desktop" \
+            PATH="$(dirname "${BREW}"):/usr/bin:/bin" \
+            timeout 900 "${LLMMAN}" launch goose --model bluefin-active -- run --text "${PROMPT}" \
+            >"${G}/cli-${attempt}.log" 2>&1 </dev/null || CRC=$?
+          echo "${CRC}" >"${G}/cli-${attempt}-rc.txt"
+          python3 "${G}/extract.py" "${PROFILE}/goose" "${G}/tool-calls-${attempt}.json" >"${G}/extract-${attempt}.log" 2>&1 || true
+          latest="$(ls -t "${PROFILE}/goose/state/logs/cli"/*/* "${PROFILE}/goose/state/logs/cli"/* 2>/dev/null | grep -v '/$' | head -1)"
+          [ -n "${latest}" ] && [ -f "${latest}" ] && cp "${latest}" "${G}/cli-${attempt}-goose.log"
+        done
 
         cp "${PROFILE}/goose/config/config.yaml" "${G}/config.after.yaml" 2>/dev/null
         "${LANE}/bin/troubleshootcheck" enabled "${PROFILE}/goose/config/config.yaml" >"${G}/enabled-extensions.txt" 2>&1
@@ -867,12 +1025,14 @@ spec:
           echo '{"status":"skipped"}' >"${G}/verdict.json"
         else
           echo "=== Goose isolation (${GOOSE_STATE}) ===" >&2
-          for f in setup.log setup-rc.txt command-env.txt brew-installed.txt; do
+          for f in setup.log setup-rc.txt brew-installed.txt agent-mode.log agent-mode-rc.txt llmman-unit.txt \
+              model-1.log model-2.log command-env.txt launch.log lock.txt goose-environ.txt goose-cmdline.txt \
+              cli-1-rc.txt cli-1.log tool-calls-1.json cli-2-rc.txt cli-2.log tool-calls-2.json; do
             echo "--- ${f}" >&2
             cat "${G}/${f}" >&2 2>/dev/null || true
           done
           GOOSE_STATE="${GOOSE_STATE}" python3 - <<'PY' || GOOSE_RC=$?
-        import json, os, sys
+        import json, os, re, sys
         g = "/tmp/results/goose"
         def read(name):
             try:
@@ -890,28 +1050,51 @@ spec:
         setup = kv("setup.log")
         command_path = kv("command-env.txt").get("PATH", "")
         brew_bin = os.path.dirname(read("brew-path.txt").strip())
+        agent = kv("agent-mode.log")
+        model = kv("model-2.log") if read("model-2.log") else kv("model-1.log")
+        desktop_model = kv("model-1.log")
+        environ = kv("goose-environ.txt")
+        attempt = "2" if read("cli-2-rc.txt") else "1"
+        try:
+            tools = json.loads(read(f"tool-calls-{attempt}.json"))
+        except ValueError:
+            tools = {}
+        profile = "/home/bluefin-test/goose-isolation/chairlift/troubleshooting"
         checks = {
             "setup_ran_without_brew_on_path": setup.get("PATH") == "/usr/bin:/bin",
             "chairlift_setup_exit_zero": read("setup-rc.txt").strip() == "0",
             "isolation_run_completed": state == "done",
             "goose_desktop_resolves_after_setup": setup.get("desktop") == os.path.join(brew_bin, "goose-desktop"),
+            "agent_mode_enabled_and_healthy": read("agent-mode-rc.txt").strip() == "0" and agent.get("healthy") == "true",
+            "model_pulled_and_alias_set": bool(desktop_model.get("ref")) and desktop_model.get("active") == desktop_model.get("ref"),
             "command_env_path_has_brew_bin_first": command_path.split(":")[0] == brew_bin
             and command_path.split(":")[1:] == ["/usr/bin", "/bin"],
-            "goose_was_running_at_35s": lock.get("alive") == "yes",
+            "llmman_launch_not_refused": lock.get("alive") == "yes"
+            and not re.search(r"^(Error|\[llmman\].*refus)", read("launch.log"), re.M),
+            "environ_goose_path_root": environ.get("GOOSE_PATH_ROOT") == profile + "/goose",
+            "environ_xdg_config_home": environ.get("XDG_CONFIG_HOME") == profile + "/desktop",
+            "environ_goose_provider_openai": environ.get("GOOSE_PROVIDER") == "openai",
+            "environ_openai_host_agent_mode": "127.0.0.1:17434" in environ.get("OPENAI_HOST", ""),
+            "environ_goose_model_is_resolved_ref": environ.get("GOOSE_MODEL") == desktop_model.get("ref"),
             "singleton_lock_in_profile": lock.get("profile_lock", "ABSENT") != "ABSENT",
             "no_singleton_lock_in_home_config": lock.get("home_lock", "ABSENT") == "ABSENT",
+            "cli_exit_zero": read(f"cli-{attempt}-rc.txt").strip() == "0",
+            "linux_tools_tool_called": tools.get("linux_tools_called") is True,
+            "search_knowledge_tool_called": tools.get("search_knowledge_called") is True,
             "only_linux_tools_and_bluefin_knowledge_enabled": enabled == ["bluefin-knowledge", "linux-tools"],
             "goose_data_or_state_under_path_root": any(p.startswith(root + "/data/") or p.startswith(root + "/state/") for p in tree),
             "nothing_in_home_config_goose": "ABSENT /home/bluefin-test/.config/goose" in paths,
         }
         verdict = {"status": "pass" if all(checks.values()) else "fail", "state": state,
-                   "checks": checks, "lock": lock, "enabled": enabled}
+                   "checks": checks, "lock": lock, "enabled": enabled, "cli_attempt": attempt,
+                   "model": model, "desktop_model": desktop_model, "environ": environ,
+                   "tool_calls": [c.get("name") for c in tools.get("tool_calls", [])]}
         json.dump(verdict, open(os.path.join(g, "verdict.json"), "w"), indent=1)
         print(json.dumps(verdict, indent=1))
         print(paths)
         sys.exit(0 if verdict["status"] == "pass" else 1)
         PY
-          tail -n 60 "${G}/goose-desktop.log" >&2 2>/dev/null || true
+          tail -n 60 "${G}/launch.log" >&2 2>/dev/null || true
         fi
 
         echo "behave exit ${BEHAVE_RC}; suite verdict ${SUITE_RC}; goose verdict ${GOOSE_RC}" >&2

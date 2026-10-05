@@ -144,6 +144,8 @@ def test_goose_check_asserts_profile_isolation():
     for fake in ("GOOSE_PROVIDER=openai", "OPENAI_HOST=http://127.0.0.1:9", "OPENAI_API_KEY=x"):
         assert fake not in runner, fake
     assert 'launch goose --model bluefin-active -- run --text' in runner
+    # Agent Mode must work on the stock host: the lane trusts nothing itself.
+    assert '"${BREW}" trust' not in runner and "brew trust" not in runner
     build = _template()["initContainers"][0]["args"][0]
     for call in ("aistack.Enable(ctx)", "aistack.WaitHealthy(", "aistack.PullModel(", "aistack.ConfigureActiveModel(",
                  "troubleshoot.Command(state, profile, aistack.ActiveModelAlias)"):
@@ -154,7 +156,9 @@ def test_goose_check_asserts_profile_isolation():
         "chairlift_setup_exit_zero",
         "goose_desktop_resolves_after_setup",
         "command_env_path_has_brew_bin_first",
-        "agent_mode_enabled_and_healthy",
+        "agent_mode_enabled_on_stock_host",
+        "llmman_formula_trusted",
+        "llmmanorg_tap_not_trusted",
         "model_pulled_and_alias_set",
         "llmman_launch_not_refused",
         "environ_goose_path_root",

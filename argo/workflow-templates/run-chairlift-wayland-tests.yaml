@@ -543,14 +543,19 @@ spec:
             fi
             printf '%s\n' "$1" >>/etc/group
           }
-          for group in video render input; do
+          # wheel: Bluefin's first user is an administrator, and the distro's
+          # flatpak polkit rules let wheel install system Flatpaks without a
+          # prompt. Agent Mode's Brewfile installs Jan that way; without wheel
+          # it failed with "Flatpak system operation Deploy not allowed for
+          # user" (chairlift-wayland-lane-q5xpf), which no desktop user sees.
+          for group in video render input wheel; do
             if ! grep -q "^${group}:" /etc/group; then
               if ! groupadd -r "${group}" 2>/dev/null; then
                 nss_entry=$(getent group "${group}" || true)
                 if [ -n "${nss_entry}" ]; then
                   append_group_line "${nss_entry}"
                 else
-                  case "${group}" in video) gid=39 ;; render) gid=989 ;; *) gid=999 ;; esac
+                  case "${group}" in video) gid=39 ;; render) gid=989 ;; wheel) gid=10 ;; *) gid=999 ;; esac
                   append_group_line "${group}:x:${gid}:"
                 fi
               fi
@@ -558,9 +563,9 @@ spec:
             grep -q "^${group}:" /etc/group || { echo "Failed to create local group ${group}" >&2; exit 1; }
           done
           if ! id bluefin-test >/dev/null 2>&1; then
-            useradd -m -u 1000 -G video,render,input bluefin-test
+            useradd -m -u 1000 -G video,render,input,wheel bluefin-test
           else
-            usermod -aG video,render,input bluefin-test
+            usermod -aG video,render,input,wheel bluefin-test
           fi
           # Synthetic input: the container's own /dev/uinput, given to the
           # lane-local input group (see run-container-tests).
@@ -853,26 +858,19 @@ spec:
         "${LANE}/bin/troubleshootcheck" write "${DATA}" "${SERVER}" >"${G}/profile-write.txt" 2>&1 || { echo "profile-write-failed" >"${G}/rc.txt"; exit 0; }
         cp "${PROFILE}/goose/config/config.yaml" "${G}/config.before.yaml"
 
-        # Agent Mode for real, through ChairLift's aistack: brew bundle,
+        # Agent Mode for real, through ChairLift's aistack on the stock host:
+        # tap llmmanorg/tap, trust only the llmman formula, brew bundle,
         # `llmman serve --pull-only`, the user unit, readiness on
-        # /llmman/node. Then the smallest Qwen3 through the alias path.
-        SARC=0
-        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" agent-mode >"${G}/agent-mode-stock.log" 2>&1 || SARC=$?
-        echo "${SARC}" >"${G}/agent-mode-stock-rc.txt"
-        cp "${G}/agent-mode-stock.log" "${G}/agent-mode.log"
-        ARC="${SARC}"
-        if [ "${SARC}" -ne 0 ] && grep -q 'untrusted tap llmmanorg/tap' "${G}/agent-mode-stock.log"; then
-          # Observed on stock Dakota: Homebrew refuses llmmanorg/tap, and
-          # ChairLift offers no way to trust a tap nothing is installed from
-          # yet. That failure stays recorded (agent_mode_enabled_on_stock_host)
-          # and fails the check. To still exercise everything after it, do
-          # what brew's own message tells the user to do in a terminal, then
-          # turn Agent Mode on again through ChairLift.
-          "${BREW}" trust llmmanorg/tap >"${G}/user-trust.log" 2>&1 || true
-          ARC=0
-          "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" agent-mode >"${G}/agent-mode.log" 2>&1 || ARC=$?
-        fi
+        # /llmman/node. Nothing here trusts anything on ChairLift's behalf.
+        # Then the smallest Qwen3 through the alias path.
+        ARC=0
+        "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" agent-mode >"${G}/agent-mode.log" 2>&1 || ARC=$?
         echo "${ARC}" >"${G}/agent-mode-rc.txt"
+        # What Homebrew now trusts: the formula, not the whole tap.
+        "${BREW}" tap-info --json llmmanorg/tap >"${G}/tap-info.json" 2>"${G}/tap-info.err" || true
+        find "${HOME}" -maxdepth 3 -name trust.json -path '*homebrew*' 2>/dev/null | while read -r f; do
+          echo "== ${f}"; cat "${f}"; echo
+        done >"${G}/trust-state.txt"
         systemctl --user status chairlift-llmman.service --no-pager >"${G}/llmman-unit.txt" 2>&1 || true
         if [ "${ARC}" -ne 0 ]; then
           echo "agent-mode-failed" >"${G}/rc.txt"
@@ -1065,7 +1063,7 @@ spec:
           echo '{"status":"skipped"}' >"${G}/verdict.json"
         else
           echo "=== Goose isolation (${GOOSE_STATE}) ===" >&2
-          for f in setup.log setup-rc.txt brew-installed.txt agent-mode-stock.log agent-mode-stock-rc.txt user-trust.log \
+          for f in setup.log setup-rc.txt brew-installed.txt tap-info.json tap-info.err trust-state.txt \
               agent-mode.log agent-mode-rc.txt llmman-unit.txt \
               model-1.log model-2.log command-env.txt launch.log lock.txt goose-environ.txt goose-cmdline.txt \
               cli-1-rc.txt cli-1.log tool-calls-1.json cli-2-rc.txt cli-2.log tool-calls-2.json; do
@@ -1100,14 +1098,20 @@ spec:
             tools = json.loads(read(f"tool-calls-{attempt}.json"))
         except ValueError:
             tools = {}
+        try:
+            tap_info = json.loads(read("tap-info.json"))
+            tap_trusted = tap_info[0].get("trusted") if tap_info else None
+        except (ValueError, IndexError, AttributeError):
+            tap_trusted = None
         profile = "/home/bluefin-test/goose-isolation/chairlift/troubleshooting"
         checks = {
             "setup_ran_without_brew_on_path": setup.get("PATH") == "/usr/bin:/bin",
             "chairlift_setup_exit_zero": read("setup-rc.txt").strip() == "0",
             "isolation_run_completed": state == "done",
             "goose_desktop_resolves_after_setup": setup.get("desktop") == os.path.join(brew_bin, "goose-desktop"),
-            "agent_mode_enabled_on_stock_host": read("agent-mode-stock-rc.txt").strip() == "0",
-            "agent_mode_enabled_and_healthy": read("agent-mode-rc.txt").strip() == "0" and agent.get("healthy") == "true",
+            "agent_mode_enabled_on_stock_host": read("agent-mode-rc.txt").strip() == "0" and agent.get("healthy") == "true",
+            "llmman_formula_trusted": "llmmanorg/tap/llmman" in read("trust-state.txt"),
+            "llmmanorg_tap_not_trusted": tap_trusted is False,
             "model_pulled_and_alias_set": bool(desktop_model.get("ref")) and desktop_model.get("active") == desktop_model.get("ref"),
             "command_env_path_has_brew_bin_first": command_path.split(":")[0] == brew_bin
             and command_path.split(":")[1:] == ["/usr/bin", "/bin"],

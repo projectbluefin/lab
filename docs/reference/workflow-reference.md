@@ -135,18 +135,28 @@ before retrying.
   (`ghcr.io/projectbluefin/dakota`), `image-tag` (`testing`), `behave-tags`
   (empty = every scenario), `goose-isolation-check` (`true`).
 - **Shape:** a `golang:1.26` init container clones the branch and runs
-  `make build-e2e schemas`, plus two lane tools built inside the module:
-  `navjson` (the page/shortcut inventory the Go gate normally passes) and
-  `troubleshootcheck` (drives the branch's `internal/troubleshoot`:
-  `Setup(Detect(), …)`, the PATH `Command` hands the launch,
-  `ProfileAt(dir).Write`, and a config reader).
-  The runner then boots `run-container-tests`' nested systemd/GDM target —
-  headless GNOME Shell drop-in, linger, `lastchg`, resolver bind — with
-  `/usr/share/chairlift` masked and `/proc/cmdline` blanked like
-  `dakota_atspi.sh`, and runs behave from a hash-pinned venv under
-  `qecore-headless --session-type wayland`, with `GDK_BACKEND=wayland` and
-  `DISPLAY` unset, so neither the app nor Goose can fall back to the
-  session's on-demand Xwayland. Xvfb is never used.
+  ChairLift's `make ci` on the untouched checkout. It fetches golangci-lint
+  v2.12.2, the version CI pins, by checksum, and records the result, which
+  the verdict gates on. It then runs `make build-e2e schemas`, stages
+  `chairlift` and `chairlift-wrapper` the way the Homebrew cask installs
+  them, and builds two lane tools inside the module: `navjson` (the
+  page/shortcut inventory the Go gate normally passes) and
+  `troubleshootcheck`. `troubleshootcheck` drives the branch's
+  `internal/troubleshoot` and `internal/aistack`: Setup, Agent Mode, the
+  model alias path, the PATH `Command` hands the launch, and a config
+  reader.
+  The runner then boots `run-container-tests`' nested systemd/GDM target:
+  headless GNOME Shell drop-in, linger, `lastchg`, and the resolver bind.
+  `/usr/share/chairlift` is masked and `/proc/cmdline` blanked, as the fixture
+  harness does. Behave runs from a hash-pinned venv under
+  `qecore-headless --session-type wayland`, with `GDK_BACKEND=wayland`, an
+  absolute `WAYLAND_DISPLAY`, and `DISPLAY` unset. Keys go through dogtail's
+  Mutter RemoteDesktop backend. Xvfb is never used.
+- **Screenshots:** ChairLift's own `capture_walkthrough.sh` runs under its
+  `wayland_session.sh` (headless Mutter at 900x700, frames from Mutter's
+  ScreenCast) inside the target, on a private bus beside the GDM session.
+  Only the page PNGs are kept, in `screenshots/`; the byproducts stay in
+  `screenshots-raw/`.
 - **Wayland traps:** qecore hands the script gnome-session's environment,
   which has no `WAYLAND_DISPLAY`; the script reads it from
   `systemctl --user show-environment`. Mutter's focus-stealing prevention
@@ -163,19 +173,25 @@ before retrying.
   2. `aistack.Enable` turns Agent Mode on, on the stock host. The check
      records that `brew trust` covers the `llmman` formula and not
      `llmmanorg/tap`.
-  3. The smallest Qwen3 is resolved through aistack's live resolver, pulled,
-     and set as the `bluefin-active` alias. The lane also records
-     `/llmman/node` and `llmman ls`.
-  4. The real `troubleshoot.Command` launch
-     (`llmman launch goose-desktop`) runs in the Wayland session. The check
-     reads the Goose process's environment (`GOOSE_PATH_ROOT`,
+  3. The smallest Qwen3 is resolved through aistack's live resolver, pulled
+     with `aistack.PullModel` (which must succeed on its own), and set as the
+     `bluefin-active` alias. llmman reports the alias as the
+     registry-qualified `hf.co/<ref>`. The lane also records `/llmman/node`
+     and `llmman ls`.
+  4. Two launches run with GNOME Shell's own environment and a PATH without
+     Homebrew, in an app.slice scope. The first is a cold
+     `chairlift --ask-bluefin`. The second is the distro menu's exact
+     command, `bash -c '…/chairlift-wrapper --ask-bluefin'`. Each must
+     exit 0 with Goose running through llmman. The lane reads the
+     environment Goose hands its `goose serve` backend (`GOOSE_PATH_ROOT`,
      `XDG_CONFIG_HOME`, `GOOSE_PROVIDER=openai`, `OPENAI_HOST` on
-     `127.0.0.1:17434`, `GOOSE_MODEL`), checks where its lock is, and takes
-     a screenshot.
+     `127.0.0.1:17434`, `GOOSE_MODEL`); the two launches must agree on it.
+     It also checks that the lock is in the profile and takes a screenshot.
   5. `llmman launch goose -- run --text …`, run in the same profile, must
      call a `linux-tools__*` tool and `bluefin-knowledge__search_knowledge`,
-     read back from `data/sessions/sessions.db`. If the 0.6B model will not
-     call tools, the lane retries once with the next size up.
+     read back from `data/sessions/sessions.db`. The answer is compared
+     with `systemctl --failed` for 0.6B, 1.7B, and then 4B, and recorded.
+     Answer quality does not gate the run.
 
   Throughout, the profile's lock, data, state, and config must stay inside
   it, and only `linux-tools` and `bluefin-knowledge` may be enabled.
@@ -187,8 +203,14 @@ before retrying.
   user joins `wheel`, as Bluefin's first user does. `TasksMax` is lifted on
   the user slice and on the units, because brew's download threads hit the
   container-sized default.
-- **Verdicts:** fails when behave fails, when 0 scenarios executed, or when
-  any Goose check fails. Outputs `result`, `failed-scenarios`, and
+- **Verdicts:** the run fails if any of these happens:
+  - `make ci` fails;
+  - behave fails, or executes 0 scenarios;
+  - any engine check fails;
+  - the screenshot capture does not produce every page and the
+    reset-group marker.
+
+  Outputs `result`, `failed-scenarios`, and
   `goose-isolation` (JSON). Everything under `/tmp/results` (behave log,
   JUnit, per-scenario `chairlift.log`, `tree.txt`, `screen.png`; Goose
   `setup.log`, `command-env.txt`, lock evidence, config, screenshot) is persisted to

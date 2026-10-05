@@ -274,6 +274,17 @@ spec:
         		if active != ref {
         			fail(fmt.Errorf("alias %s reads %q, want %q", aistack.ActiveModelAlias, active, ref))
         		}
+        	case len(os.Args) == 3 && os.Args[1] == "alias":
+        		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+        		defer cancel()
+        		if err := aistack.ConfigureActiveModel(ctx, os.Args[2]); err != nil {
+        			fail(err)
+        		}
+        		active, err := aistack.ReadActiveModel(ctx)
+        		if err != nil {
+        			fail(err)
+        		}
+        		fmt.Println("active=" + active)
         	case len(os.Args) == 3 && os.Args[1] == "launch":
         		state := troubleshoot.Detect()
         		printState(state)
@@ -891,7 +902,7 @@ spec:
           echo "pkcheck (this script, podman exec):"
           pkcheck --action-id org.freedesktop.Flatpak.app-install --process "${BASHPID}" 2>&1; echo "rc=$?"
           echo "pkcheck (app unit, as ChairLift's steps run):"
-          "${BARE_ENV[@]}" bash -c 'cat /proc/self/cgroup; pkcheck --action-id org.freedesktop.Flatpak.app-install --process "${BASHPID}" 2>&1; echo rc=$?' </dev/null 2>&1
+          "${BARE_ENV[@]}" bash -c 'cat /proc/self/cgroup; pkcheck --action-id org.freedesktop.Flatpak.app-install --process "$(cut -d" " -f4 /proc/self/stat)" 2>&1; echo rc=$?' </dev/null 2>&1
         } >"${G}/polkit-session.txt" 2>&1
         ARC=0
         "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" agent-mode >"${G}/agent-mode.log" 2>&1 </dev/null || ARC=$?
@@ -910,9 +921,24 @@ spec:
         MODEL_REPOS=(unsloth/Qwen3-0.6B-GGUF unsloth/Qwen3-1.7B-GGUF)
         MRC=0
         "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[0]}" >"${G}/model-1.log" 2>&1 </dev/null || MRC=$?
+        # What llmman actually stored, whatever the step above concluded.
+        curl -s --max-time 5 http://127.0.0.1:17434/llmman/node >"${G}/node.json" 2>&1 || true
+        "${LLMMAN}" ls >"${G}/llmman-ls.txt" 2>&1 || true
+        flatpak list --app --columns=application,installation >"${G}/flatpaks.txt" 2>&1 || true
         if [ "${MRC}" -ne 0 ]; then
-          echo "model-failed" >"${G}/rc.txt"
-          exit 0
+          if ! grep -q 'not found in daemon stored models' "${G}/model-1.log"; then
+            echo "model-failed" >"${G}/rc.txt"
+            exit 0
+          fi
+          # The pull itself completed; only aistack's stored-model check
+          # disagreed with llmman (model_pulled_and_alias_set stays false and
+          # fails the check). Set the alias through ChairLift's own
+          # ConfigureActiveModel so the launch and tool checks still run.
+          REF="$(sed -n 's/^ref=//p' "${G}/model-1.log")"
+          "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" alias "${REF}" >"${G}/alias-1.log" 2>&1 </dev/null || {
+            echo "model-failed" >"${G}/rc.txt"
+            exit 0
+          }
         fi
         "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" command-path "${DATA}" >"${G}/command-env.txt" 2>&1 </dev/null || true
 
@@ -991,7 +1017,11 @@ spec:
           if [ "${attempt}" -eq 2 ]; then
             grep -q '"linux_tools_called": true' "${G}/tool-calls-1.json" 2>/dev/null \
               && grep -q '"search_knowledge_called": true' "${G}/tool-calls-1.json" 2>/dev/null && break
-            "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[1]}" >"${G}/model-2.log" 2>&1 </dev/null || break
+            if ! "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" model "${MODEL_REPOS[1]}" >"${G}/model-2.log" 2>&1 </dev/null; then
+              grep -q 'not found in daemon stored models' "${G}/model-2.log" || break
+              "${BARE_ENV[@]}" "${LANE}/bin/troubleshootcheck" alias "$(sed -n 's/^ref=//p' "${G}/model-2.log")" \
+                >"${G}/alias-2.log" 2>&1 </dev/null || break
+            fi
           fi
           CRC=0
           env GOOSE_PATH_ROOT="${PROFILE}/goose" XDG_CONFIG_HOME="${PROFILE}/desktop" \
@@ -1094,7 +1124,7 @@ spec:
         else
           echo "=== Goose isolation (${GOOSE_STATE}) ===" >&2
           for f in setup.log setup-rc.txt brew-installed.txt tap-info.json tap-info.err trust-state.txt polkit-session.txt \
-              agent-mode.log agent-mode-rc.txt llmman-unit.txt \
+              agent-mode.log agent-mode-rc.txt llmman-unit.txt flatpaks.txt node.json llmman-ls.txt alias-1.log alias-2.log \
               model-1.log model-2.log command-env.txt launch.log lock.txt goose-environ.txt goose-cmdline.txt \
               cli-1-rc.txt cli-1.log tool-calls-1.json cli-2-rc.txt cli-2.log tool-calls-2.json; do
             echo "--- ${f}" >&2

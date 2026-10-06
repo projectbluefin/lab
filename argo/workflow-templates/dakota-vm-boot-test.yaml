@@ -1,0 +1,164 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: dakota-vm-boot-test
+  namespace: argo
+  annotations:
+    description: |
+      Plain-root direct kernel boot verification for Dakota images in a privileged pod.
+
+      Runs inside an ephemeral privileged pod whose container image is the Dakota image under
+      test (shipping qemu-system-x86_64, qemu-img, podman, ssh, ssh-keygen, skopeo, and e2fsprogs).
+      Unpacks the image layers directly into an ext4 root filesystem on raw disk via `mkfs.ext4 -d`
+      (no loop devices required), injects root SSH authorized keys, boots the guest kernel under
+      QEMU/KVM with host CPU passthrough (`-machine q35,accel=kvm -cpu host`), and executes
+      in-VM runtime evidence commands over SSH.
+  labels:
+    app.kubernetes.io/component: qa-pipeline
+    app.kubernetes.io/part-of: bluefin-test-suite
+spec:
+  serviceAccountName: argo
+  entrypoint: boot-test
+
+  arguments:
+    parameters:
+      - name: image
+        value: "192.168.1.102:30500/dakota:testing"
+      - name: commands
+        value: |
+          set -x
+          grep -E '^(PRETTY_NAME|IMAGE_VERSION|VERSION_ID)=' /etc/os-release
+          uname -r
+          systemctl is-system-running --wait || true
+          systemctl --failed --no-legend
+          sudo bootc status --booted 2>/dev/null | grep -iE 'image|digest' | head -4
+
+  templates:
+    - name: boot-test
+      activeDeadlineSeconds: 1800
+      synchronization:
+        semaphores:
+          - configMapKeyRef:
+              name: workflow-semaphores
+              key: dakota-vm-boot
+      inputs:
+        parameters:
+          - name: image
+            default: "{{workflow.parameters.image}}"
+          - name: commands
+            default: "{{workflow.parameters.commands}}"
+      outputs:
+        parameters:
+          - name: evidence
+            valueFrom:
+              path: /work/evidence.log
+          - name: serial-tail
+            valueFrom:
+              path: /work/serial-tail.log
+      script:
+        image: "{{inputs.parameters.image}}"
+        command: [bash]
+        env:
+          - name: IMG
+            value: "{{inputs.parameters.image}}"
+          - name: IN_VM_COMMANDS
+            value: "{{inputs.parameters.commands}}"
+        securityContext:
+          privileged: true
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: "6"
+            memory: 12Gi
+            ephemeral-storage: 40Gi
+          limits:
+            cpu: "8"
+            memory: 14Gi
+            ephemeral-storage: 80Gi
+        volumeMounts:
+          - name: dev
+            mountPath: /dev
+          - name: work
+            mountPath: /work
+        source: |
+          set -euo pipefail
+          IMG="${IMG:?}"
+          W=/work; cd "$W"
+
+          cleanup() {
+            local exit_code=$?
+            echo "Cleaning up VM resources (exit code ${exit_code})..."
+            if [ -f /work/qemu.pid ]; then
+              kill "$(cat /work/qemu.pid 2>/dev/null)" 2>/dev/null || true
+            fi
+            if [ -f /work/serial.log ]; then
+              tail -n 200 /work/serial.log > /work/serial-tail.log 2>/dev/null || true
+            else
+              echo "No serial log generated" > /work/serial-tail.log
+            fi
+            if [ ! -f /work/evidence.log ]; then
+              echo "No evidence log generated (exit code ${exit_code})" > /work/evidence.log
+            fi
+          }
+          trap cleanup EXIT
+
+          log() { echo; echo "######## $*"; }
+
+          log "unpack ${IMG} rootfs into an ext4 disk (no bootc install)"
+          skopeo copy -q --src-tls-verify=false --dest-decompress "docker://${IMG}" oci:/work/oci:img
+          mkdir -p /work/root
+          MANI=$(python3 -c 'import json;i=json.load(open("/work/oci/index.json"));print(i["manifests"][0]["digest"].split(":")[1])' 2>/dev/null || jq -r '.manifests[0].digest' /work/oci/index.json | cut -d: -f2)
+          for L in $(jq -r '.layers[].digest' "/work/oci/blobs/sha256/$MANI" | cut -d: -f2); do
+            tar -xpf "/work/oci/blobs/sha256/$L" -C /work/root --xattrs --xattrs-include='*' --numeric-owner
+          done
+          rm -rf /work/oci
+          R=/work/root
+          KVER=$(ls "$R/usr/lib/modules/" | head -1)
+          cp "$R/usr/lib/modules/$KVER/vmlinuz" vmlinuz
+          cp "$R/usr/lib/modules/$KVER/initramfs.img" initramfs.img
+
+          ssh-keygen -q -t ed25519 -f key -N ""
+          mkdir -p "$R/etc/systemd/system/multi-user.target.wants" "$R/var/roothome/.ssh"
+          ln -sf /usr/lib/systemd/system/sshd.service "$R/etc/systemd/system/multi-user.target.wants/sshd.service"
+          ssh-keygen -A -f "$R" >/dev/null 2>&1 || true
+          cp key.pub "$R/var/roothome/.ssh/authorized_keys"
+          chmod 700 "$R/var/roothome/.ssh"
+          chmod 600 "$R/var/roothome/.ssh/authorized_keys"
+
+          truncate -s 40G disk.raw
+          mkfs.ext4 -q -L root -d "$R" disk.raw
+          rm -rf "$R"
+
+          OPTS="root=/dev/vda rw systemd.firstboot=no"
+          log "boot kernel ${KVER} under QEMU/KVM"
+          qemu-system-x86_64 -machine q35,accel=kvm -cpu host -m 8192 -smp 6 \
+            -kernel vmlinuz -initrd initramfs.img -append "${OPTS} console=ttyS0,115200" \
+            -drive if=none,id=disk,file=disk.raw,format=raw,cache=unsafe \
+            -device virtio-blk-pci,drive=disk \
+            -netdev user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22 -device virtio-net-pci,netdev=net0 \
+            -display none -serial file:serial.log -daemonize -pidfile qemu.pid
+
+          SSH="ssh -i key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=3 -p 2222 root@127.0.0.1"
+          for i in $(seq 1 120); do
+            $SSH true 2>/dev/null && break
+            sleep 5
+          done
+
+          if ! $SSH true 2>/dev/null; then
+            echo "ERROR: SSH never came up after ~$((i*5))s" >&2
+            cat serial.log >&2 || true
+            exit 1
+          fi
+          echo "SSH up after ~$((i*5))s"
+
+          log "VM evidence"
+          $SSH 'bash -s' <<< "${IN_VM_COMMANDS}" | tee evidence.log
+          tail -n 200 serial.log > serial-tail.log
+
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        - name: work
+          emptyDir:
+            sizeLimit: 80Gi

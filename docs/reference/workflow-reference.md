@@ -11,6 +11,7 @@ template add or rename.
 ## Table of Contents
 - [Pipelines](#pipelines)
   - [dakota-qa-pipeline](#dakota-qa-pipeline)
+  - [dakota-vm-boot-test](#dakota-vm-boot-test)
   - [dakota-build-pipeline](#dakota-build-pipeline)
   - [zot-candidate-lifecycle](#zot-candidate-lifecycle)
   - [bluefin-server-build-pipeline](#bluefin-server-build-pipeline)
@@ -39,6 +40,24 @@ template add or rename.
   `system`) through `run-container-tests`, filtered by `suites`.
 - **Just recipe:** `run-dakota-qa`.
 - **PR review:** use the [Dakota PR review skill](../skills/dakota-pr-review/SKILL.md). Build the exact PR SHA first, then run smoke and required E2E suites against the resulting image. If lab validation identifies a scoped PR defect, repair the PR branch, rebuild from its new SHA, rerun E2E, and merge directly only after a fresh pass.
+
+### dakota-vm-boot-test
+- **Purpose:** Direct kernel boot verification for Dakota images in a privileged pod.
+  Unpacks image layers directly into an ext4 raw disk via `mkfs.ext4 -d` (no loop devices
+  or bootc install), injects root SSH authorized keys, boots the guest kernel under QEMU/KVM
+  with host CPU passthrough (`-machine q35,accel=kvm -cpu host`), and executes in-VM runtime
+  evidence commands over SSH.
+- **When to use:** Validating image contents, kernel boot, systemd initialization,
+  gVisor (`runsc`), `krun`/`libkrun` microVMs, and userspace filesystem tooling (`fuse2fs`,
+  `gocryptfs`) against published or PR candidate Dakota images.
+- **Parameters:** `image` (default `192.168.1.102:30500/dakota:testing`),
+  `commands` (default: `/etc/os-release`, `uname -r`, `systemctl is-system-running`,
+  `systemctl --failed`, `bootc status`).
+- **Admission & Resources:** Admitted through the `dakota-vm-boot` semaphore in
+  `manifests/workflow-semaphores.yaml`. Requests 6 CPUs, 12Gi memory, 40Gi ephemeral-storage
+  (limits 8 CPUs, 14Gi memory, 80Gi ephemeral-storage), hostPath `/dev`, and emptyDir `/work` (80Gi).
+- **Outputs:** Captured evidence log (`evidence`), serial log tail (`serial-tail`), and pod logs.
+- **Just recipe:** `run-dakota-vm-boot [image="..."]`.
 
 ### dakota-build-pipeline
 - **Purpose:** The actual BuildStream compile step for Dakota — builds

@@ -103,24 +103,26 @@ stream and `:stable` is promoted separately from `main`. Keeping the cluster lan
 prevents accidental overwrites of the stable/production stream and makes the artifact identity
 obvious to downstream lab jobs.
 
-### Dakota verification: containerized QA when the VM path is blocked
+### Dakota verification: containerized QA and VM boot test pod
 
-Dakota images are built from a composefs-oci backend that declares `bootloader = "systemd"` but
-does not ship a UKI. The lab's standard VM QA path (containerDisk → `bootc install to-disk`
-→ KubeVirt VM) therefore fails with `bootupd is required for ostree-based installs` because bootc
-1.16.2 bails for systemd-boot ostree installs when no UKI is present. Until Dakota ships a UKI
-(or bootc gains a composefs-oci install path), VM-boot verification is blocked.
+Dakota images are built from a composefs-oci backend that declares `bootloader = "systemd"` and
+ships no pre-baked UKI. While KubeVirt containerDisk builds require UKI/bootupd integration,
+two testing lanes exist for Dakota:
 
-WorkflowTemplate: `dakota-container-qa-pipeline`
+1. **Containerized smoke checks (`dakota-container-qa-pipeline`)**:
+   Runs image-level checks directly inside a pod built from the target OCI image without provisioning a VM.
+   Verifies Dakota identity (`/etc/os-release`), presence of key binaries (`podman`, `flatpak`,
+   `gnome-shell`, `bootc`), bootc install config, and valid `bootc status` JSON.
 
-- Runs image-level smoke checks directly inside a pod built from the target OCI image.
-- Verifies Dakota identity (`/etc/os-release`), presence of key binaries (`podman`, `flatpak`,
-  `gnome-shell`, `bootc`), bootc install config, and valid `bootc status` JSON.
-- Requires no `bootc install` and no containerDisk.
-- GUI behave suites (`smoke`/`developer` via `qecore-headless`) cannot run inside a pod because
-  `qecore-headless` requires a full systemd/GDM session.
+2. **Dakota VM boot test pod (`dakota-vm-boot-test`)**:
+   Runs an ephemeral privileged pod using the Dakota image under test. Inside the pod, image layers
+   are unpacked directly into a raw ext4 disk via `mkfs.ext4 -d` (no loop devices required), extracting
+   kernel/initramfs, injecting root SSH credentials, and booting QEMU/KVM with host CPU passthrough
+   (`-machine q35,accel=kvm -cpu host`). Once SSH is ready, it runs in-VM evidence commands (e.g. gVisor
+   `runsc`, `krun`/`libkrun` microVMs, `fuse2fs`, `gocryptfs`). Admitted via the `dakota-vm-boot: "1"`
+   semaphore in `manifests/workflow-semaphores.yaml`.
 
-Default invocation for a fresh `dakota:testing` build:
+Default invocation for containerized QA:
 
 ```bash
 argo submit --from workflowtemplate/dakota-container-qa-pipeline \
@@ -128,6 +130,12 @@ argo submit --from workflowtemplate/dakota-container-qa-pipeline \
   -p image-tag=testing \
   -p variant=dakota \
   -n argo --watch
+```
+
+Default invocation for VM boot testing:
+
+```bash
+just run-dakota-vm-boot image="<lab-ip>:30500/dakota:testing"
 ```
 
 NVIDIA image builds are disabled for this clean distributed-build path.

@@ -68,7 +68,7 @@ just lint              # actionlint + argo lint + registry allowlist
 | Task | Where to go |
 |---|---|
 | Authoring Argo workflow templates (YAML) | [`docs/skills/argo-workflows/SKILL.md`](docs/skills/argo-workflows/SKILL.md) |
-| KubeVirt VM provisioning / boot failures | [`docs/skills/kubevirt-vms/SKILL.md`](docs/skills/kubevirt-vms/SKILL.md) |
+| VM provisioning, Dakota VM boot test, or boot failures | [`docs/skills/kubevirt-vms/SKILL.md`](docs/skills/kubevirt-vms/SKILL.md) |
 | ArgoCD sync, GitOps rules, bootstrap vs managed | [`docs/skills/gitops-argocd/SKILL.md`](docs/skills/gitops-argocd/SKILL.md) |
 | GitHub Actions workflows | [`docs/skills/ci-tooling/SKILL.md`](docs/skills/ci-tooling/SKILL.md) |
 | bluefin-server bootc image | [`docs/skills/bluefin-server/SKILL.md`](docs/skills/bluefin-server/SKILL.md) |

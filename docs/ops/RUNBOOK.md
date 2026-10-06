@@ -21,6 +21,7 @@ Three steady-state execution paths exist:
 |---|---|---|
 | BuildStream build lanes | Dakota and Bluefin Server images | Buildbarn CAS/AC shards, Zot registry; see [buildstream.md](../skills/cluster-tooling/buildstream.md) |
 | Container-only Dakota path | Image and PR QA | No persistent VM or host-disk state |
+| Dakota VM boot test lane | Full kernel boot, ostree deployment, systemd, and runtime evidence | Ephemeral privileged pod running QEMU/KVM; no host-disk state |
 | Explicit VM-backed lanes | bluefin-server boot tests | Ephemeral KubeVirt resources |
 
 ### Container-only QA contract
@@ -34,6 +35,16 @@ publication warning does not change the suite exit status.
 The Dakota digest poller runs at minute `:08` of each ten-minute interval for
 freshness tracking, but its QA trigger is disabled (`run-qa: "false"`). Daily
 suite coverage comes from `nightly-dakota` at 03:00 UTC.
+
+### Dakota VM boot test lane
+
+`dakota-vm-boot-test` boots a published Dakota image as a hardware-accelerated
+QEMU/KVM virtual machine inside an ephemeral privileged pod. The pod unpacks the
+target image directly into a raw ext4 disk via `mkfs.ext4 -d` (without loop devices
+or bootc-install constraints), injects root SSH credentials and systemd configurations,
+boots QEMU with host CPU passthrough, and executes in-VM evidence commands over SSH.
+The run is admitted through the `dakota-vm-boot: "1"` semaphore and leaves no residual
+loop devices or persistent state.
 
 ## Cluster topology
 

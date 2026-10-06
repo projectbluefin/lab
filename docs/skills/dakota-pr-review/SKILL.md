@@ -33,7 +33,7 @@ Dakota PR review is a lab-backed admission process. GitHub Actions status is adv
 1. Confirm the PR number, target branch, head SHA, and that it is still open and mergeable.
 2. Do not treat `pr/needs-review`, `automerge`, or `chore/deps` labels as approval. Verify maintainer approval when the repository policy requires it.
 3. Build the exact PR head SHA with `dakota-build-pipeline` in distributed (`re`) mode. Use the live WorkflowTemplate parameters; do not guess them.
-4. Test the resulting image with `dakota-container-qa-pipeline` (image smoke checks) and, when the image supports it, `dakota-qa-pipeline`/`run-container-tests` for the full containerized BDD/GUI suites.
+4. Test the resulting image with `dakota-container-qa-pipeline` (image smoke checks) and, when the image supports it, `dakota-qa-pipeline`/`run-container-tests` for the full containerized BDD/GUI suites. When runtime, virtualization, or kernel evidence is required (e.g. gVisor `runsc`, `krun`/`libkrun` microVMs, filesystem drivers), run `just run-dakota-vm-boot image="<image>"` (`dakota-vm-boot-test`).
 5. Let the `bst-build` semaphore (two lanes) admit builds. Two PR builds may run at once; submit no more than that and let the next PR wait for a free lane.
 6. Capture Argo workflow names, exact SHAs, build mode, test result, and failure logs. A pass must be tied to the same commit that will be merged.
 7. If build and E2E pass, recheck the PR head and mergeability, then merge directly.
@@ -52,7 +52,7 @@ Dakota PR review is a lab-backed admission process. GitHub Actions status is adv
 1. List open Dakota PRs and group them by base branch; process oldest/queue-ready first.
 2. For each PR, inspect the current head SHA and changed paths, then dispatch the distributed build from the exact branch/ref.
 3. Wait for `dakota-build-pipeline` to complete. A parent workflow marked successful with failed child nodes is not a clean pass; inspect the node summary and logs.
-4. Run `dakota-container-qa-pipeline` against the built local registry image. Run the full `dakota-qa-pipeline` suites when the PR needs GUI/BDD coverage.
+4. Run `dakota-container-qa-pipeline` against the built local registry image. Run the full `dakota-qa-pipeline` suites when the PR needs GUI/BDD coverage. For kernel, runtime, or virtualization validation, run `just run-dakota-vm-boot image="192.168.1.102:30500/dakota:<tag>"` (`dakota-vm-boot-test`).
 5. Record pass/fail evidence and stop on infrastructure failures such as BuildBarn storage/DNS or BuildGrid worker loss; recover the lab before retrying.
 6. On a clean pass, re-read the PR head SHA, confirm it remains mergeable, and merge directly.
 7. After merge, verify the merge commit and watch the next build/publish workflow; do not report success merely because the merge API accepted the operation.

@@ -16,6 +16,7 @@ metadata:
 ## When to Use
 
 - Editing `bluefin-server-boot-test.yaml` or other boot-test VM templates
+- Running or debugging the Dakota VM boot test pod (`dakota-vm-boot-test.yaml`)
 - Debugging VM boot timeouts
 - Enabling a new KubeVirt feature gate
 - Understanding why a VM is stuck `Terminating`
@@ -28,6 +29,43 @@ metadata:
 ## Core Process
 
 - [VM lifecycle](vm-lifecycle.md) — disks, scheduling, teardown.
+
+## Dakota VM boot test pod (plain-root lane)
+
+The Dakota image under test cannot boot through KubeVirt containerDisk or standard `bootc install to-disk` due to upstream bootc/composefs splitstream limitations. Instead, `dakota-vm-boot-test.yaml` runs direct QEMU/KVM kernel boot inside an ephemeral privileged Kubernetes pod whose container image is the Dakota image under test.
+
+The Dakota container ships all required tooling: `qemu-system-x86_64`, `qemu-img`, `skopeo`, `ssh`, `ssh-keygen`, and `e2fsprogs` (`mkfs.ext4`).
+
+### When to Use
+- Validating Dakota image contents and runtime services (kernel, systemd, networking, gVisor `runsc`, `krun`/`libkrun` microVMs, `fuse2fs`, `gocryptfs`).
+- Testing PR images built by `just run-bst-build <ref>` and pushed to the local Zot registry (`192.168.1.102:30500/dakota:<tag>`).
+- Submitting on-demand via `just run-dakota-vm-boot image="192.168.1.102:30500/dakota:<tag>"`.
+
+### Architecture & Mechanics
+1. **Unpack without loop devices**:
+   - `skopeo copy --src-tls-verify=false --dest-decompress docker://$IMG oci:/work/oci:img`
+   - Unpack every layer from the OCI manifest into `/work/root` using `tar -xpf ... --xattrs --xattrs-include='*' --numeric-owner`.
+   - Populate an ext4 disk image directly from `/work/root` via `truncate -s 40G disk.raw; mkfs.ext4 -q -L root -d /work/root disk.raw`. This populates the filesystem cleanly without kernel loop devices or partition tables.
+2. **Credential and service injection**:
+   - Enable `sshd.service` via symlink in `/etc/systemd/system/multi-user.target.wants/`.
+   - Generate host keys (`ssh-keygen -A -f root`) and root keypair (`ssh-keygen -t ed25519 -f key -N ""`).
+   - Inject root public key into `/var/roothome/.ssh/authorized_keys` (mode 0600).
+3. **Direct kernel boot under QEMU/KVM**:
+   - Copy `vmlinuz` and `initramfs.img` from `/usr/lib/modules/<version>/`.
+   - Boot QEMU with `-machine q35,accel=kvm -cpu host -m 8192 -smp 6`, `-kernel vmlinuz -initrd initramfs.img -append "root=/dev/vda rw systemd.firstboot=no console=ttyS0,115200"`.
+   - Forward host port 2222 to guest port 22 (`-netdev user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22 -device virtio-net-pci,netdev=net0`).
+4. **Execution & Evidence**:
+   - Poll SSH readiness on `127.0.0.1:2222` as `root` (typically ready in ~20 seconds).
+   - Stream evidence commands into the VM over SSH and capture outputs.
+   - Expected degradation: `systemctl is-system-running` reports `degraded` solely because `ublue-boot-timeout.service` fails due to the absence of a systemd-boot ESP on a plain-root disk. This is expected and normal for this test lane.
+
+### Failure Modes and Invariants (Timeless)
+- **Plain-root runtime scope**: This lane validates image *contents and runtime behavior*, not the bootloader or ostree deployment update mechanics.
+- **`bootc install to-disk` ostree backend failure**: Standard ostree installation fails with `bootupd is required for ostree-based installs` because bootc requires bootupd for systemd-boot ostree setups. Furthermore, no BLS entries or boot symlinks are created; even with synthetic symlinks, systemd detects `Running in initrd` post-switch-root and loops until service start limits force emergency mode. Not viable for Dakota.
+- **`bootc install to-disk --composefs-backend` failure**: Dakota's native composefs installation path (bootc 1.16.13) fails with `Pulling image into composefs repository: Unexpected EOF in splitstream` across docker, containers-storage, and decompressed OCI layouts on both ext4 and btrfs (upstream: `bootc-dev/bootc#1703` and `composefs/composefs-rs#210`). The plain-root lane is the supported path until upstream resolves splitstream composefs import.
+- **`bcvk ephemeral` dependency gap**: `bcvk ephemeral` requires host `virtiofsd`. The Dakota image does not ship `virtiofsd` and upstream publishes no standalone binary releases, preventing in-pod bcvk use without external package layering.
+- **Nested KVM acceleration**: Lab nodes (AMD) run with `kvm_amd nested=1`. QEMU requires `-cpu host` to expose virtualization flags to the guest, enabling nested microVM runtimes like `libkrun`/`krun` and gVisor `runsc` inside the VM.
+- **Script delivery**: Feeding long shell scripts via `kubectl run -i` stdin races against container startup. Workflows must inline scripts into Argo templates or mount them from ConfigMaps.
 
 ## Console-driven VM control (imperative path)
 

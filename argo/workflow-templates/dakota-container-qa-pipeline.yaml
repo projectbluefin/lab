@@ -11,9 +11,10 @@ metadata:
       composefs-oci backend currently cannot satisfy (no UKI/bootupd).
     notes: |
       Use this pipeline to verify dakota:testing and dakota-nvidia:testing
-      while the VM-based dakota-qa-pipeline remains blocked on UKI/bootupd
-      support (projectbluefin/lab#272). GUI behave suites cannot run inside
-      a pod because qecore-headless requires a full systemd/GDM session.
+      for fast container-level QA. For full VM boot and hardware virtualization
+      evidence, use dakota-vm-boot-test. GUI behave suites cannot run inside
+      a standard container pod because qecore-headless requires a full systemd/GDM
+      session.
   labels:
     app.kubernetes.io/component: qa-pipeline
     app.kubernetes.io/part-of: dakota-test-suite

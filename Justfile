@@ -115,6 +115,14 @@ run-dakota-container-qa image-tag="testing" variant="dakota":
       -p variant={{ variant }} \
       -n {{ argo_ns }} --watch
 
+# Run Dakota VM boot test in an ephemeral privileged pod.
+# Usage: just run-dakota-vm-boot
+# Usage: just run-dakota-vm-boot image="192.168.1.102:30500/dakota:pr-1577-gvisor"
+run-dakota-vm-boot image="192.168.1.102:30500/dakota:testing":
+    argo submit --from workflowtemplate/dakota-vm-boot-test \
+      -p image={{ image }} \
+      -n {{ argo_ns }} --watch
+
 # Promote one immutable Zot candidate to :testing after its lane passes QA.
 # Usage: just run-zot-promotion dakota-testing dakota candidate-<sha> sha256:<digest>
 run-zot-promotion lane repository candidate_tag expected_digest:

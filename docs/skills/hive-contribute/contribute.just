@@ -4,11 +4,12 @@
 export KUBECONFIG := env("KUBECONFIG", home_directory() / ".kube/bluespeed.yaml")
 
 # Start both local models and the Hive contributor, then attach to it.
-contribute-on:
+contribute-on: contribute-learning-save
     #!/usr/bin/env bash
     set -euo pipefail
     reg="${HIVE_CONTRIBUTE_REGISTRATION:-$HOME/.config/hive/contributor.bluefin.env}"
-    omp="${HIVE_CONTRIBUTE_OMP_CONFIG:-$HOME/.omp/agent/config.yml}"
+    profile="$HOME/.omp/profiles/ghost/agent"
+    omp="${HIVE_CONTRIBUTE_OMP_CONFIG:-$profile/config.yml}"
     tok="$(mktemp)"; trap 'rm -f "$tok"' EXIT
     printf %s "$(gh auth token)" > "$tok"
     # Refresh the Hive registration token with the gh identity (upstream's contribute-move call),
@@ -17,10 +18,13 @@ contribute-on:
     new="$(curl -fsS --max-time 20 -X POST "${http}/api/contribute/reissue-token" -H "Authorization: Bearer $(cat "$tok")" | jq -er .registration_token)"
     sed -i "s|^HIVE_REGISTRATION_TOKEN=.*|HIVE_REGISTRATION_TOKEN=${new}|" "$reg"
     # Ship your config.yml with the roles pinned to the lab models, so Hive and OMP both see the truth.
-    cfg="$(mktemp)"; trap 'rm -f "$tok" "$cfg"' EXIT
+    cfg="$(mktemp)"; bundle="$(mktemp)"; trap 'rm -f "$tok" "$cfg" "$bundle"' EXIT
+    mkdir -p "$profile/managed-skills"
+    tar -czf "$bundle" -C "$profile" skills managed-skills APPEND_SYSTEM.md
     yq '.modelRoles = {"default": "lab-worker/ornith", "smol": "lab-worker/ornith", "advisor": "lab-advisor/qwen-advisor"}' "$omp" > "$cfg"
     kubectl -n contribute create secret generic contribute \
       --from-file=GH_TOKEN="$tok" --from-file=contributor.env="$reg" --from-file=config.yml="$cfg" \
+      --from-file=ghost-context.tgz="$bundle" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     kubectl -n llm-d scale deploy/llm-d-modelserver deploy/llm-d-advisor --replicas=1 >/dev/null
     kubectl -n contribute scale deploy/contribute --replicas=1 >/dev/null
@@ -37,7 +41,7 @@ contribute-attach:
     kubectl -n contribute exec -it deploy/contribute -- env TERM=xterm-256color COLORTERM=truecolor tmux attach -t contributor
 
 # Stop the contributor and free both GPUs.
-contribute-off:
+contribute-off: contribute-learning-save
     kubectl -n contribute scale deploy/contribute --replicas=0
     kubectl -n llm-d scale deploy/llm-d-modelserver deploy/llm-d-advisor --replicas=0
 
@@ -45,3 +49,20 @@ contribute-off:
 contribute-status:
     kubectl -n llm-d get deploy,pods -o wide
     kubectl -n contribute get deploy,pods -o wide
+
+# Save lessons before a normal stop/restart; review before capturing with chezmoi.
+contribute-learning-save pod="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pod="{{pod}}"
+    if [ -z "$pod" ]; then
+      pod="$(kubectl -n contribute get pods -l app.kubernetes.io/name=contribute --field-selector=status.phase=Running -o jsonpath='{.items[*].metadata.name}')"
+    fi
+    [ -n "$pod" ] || exit 0
+    [[ "$pod" != *" "* ]] || { echo "More than one contributor pod; specify one." >&2; exit 1; }
+    dest="$HOME/.omp/profiles/ghost/agent/managed-skills"
+    mkdir -p "$dest"
+    kubectl -n contribute exec -c contribute "$pod" -- mkdir -p /home/hive/.omp/agent/managed-skills
+    # ponytail: additive capture; prune obsolete lessons during review.
+    kubectl -n contribute cp -c contribute "$pod:/home/hive/.omp/agent/managed-skills/." "$dest"
+    printf 'Saved learned skills to %s; review before chezmoi add.\n' "$dest"

@@ -16,9 +16,24 @@ metadata:
   name: contribute-omp
   namespace: contribute
 data:
-  models.yml: "providers:\n  lab-worker:\n    baseUrl: http://llm-d-modelserver.llm-d.svc.cluster.local:8000/v1\n    api: openai-completions\n    apiKey: local\n    models:\n      - id: ornith\n       \
-    \ name: Ornith 1.5 35B-A3B Q6_K\n  lab-advisor:\n    baseUrl: http://llm-d-advisor.llm-d.svc.cluster.local:8000/v1\n    api: openai-completions\n    apiKey: local\n    models:\n      - id: qwen-advisor\n\
-    \        name: Qwen3.8 27B UD-Q6_K\n"
+  models.yml: |
+    providers:
+      lab-worker:
+        baseUrl: http://llm-d-modelserver.llm-d.svc.cluster.local:8000/v1
+        api: openai-completions
+        apiKey: local
+        models:
+        - id: ornith
+          name: Ornith 1.5 35B-A3B Q6_K
+          contextWindow: 102400
+      lab-advisor:
+        baseUrl: http://llm-d-advisor.llm-d.svc.cluster.local:8000/v1
+        api: openai-completions
+        apiKey: local
+        models:
+        - id: qwen-advisor
+          name: Qwen3.8 27B UD-Q6_K
+          contextWindow: 65536
   roles.yml: "# Layered last: every role the user's config.yml names is pinned to a local model.\nmodelRoles:\n  default: lab-worker/ornith\n  smol: lab-worker/ornith\n  advisor: lab-advisor/qwen-advisor\n"
 ---
 apiVersion: apps/v1
@@ -99,8 +114,14 @@ spec:
         command:
         - bash
         - -c
-        - mkdir -p ~/.omp/agent ~/.config/hive && install -m600 /seed/secret/config.yml ~/.omp/agent/config.yml && install -m600 /seed/omp/models.yml ~/.omp/agent/models.yml && install -m600 /seed/secret/contributor.env
-          ~/.config/hive/contributor.env
+        - |
+          set -euo pipefail
+          mkdir -p ~/.omp/agent ~/.config/hive
+          install -m600 /seed/secret/config.yml ~/.omp/agent/config.yml
+          install -m600 /seed/omp/models.yml ~/.omp/agent/models.yml
+          install -m600 /seed/secret/contributor.env ~/.config/hive/contributor.env
+          tar -xzf /seed/secret/ghost-context.tgz -C ~/.omp/agent
+          ln -sfn "$HOME/agent.md" ~/.omp/agent/AGENTS.md
         env:
         - name: HOME
           value: /home/hive

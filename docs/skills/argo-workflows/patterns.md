@@ -145,6 +145,45 @@ NVIDIA image builds are disabled for this clean distributed-build path.
 and `image-poll-dakota` (not suspended) drives it on every new `dakota:testing`
 digest.
 
+### Driving a GTK app through AT-SPI in the nested Wayland session
+
+`run-chairlift-wayland-tests` runs an application's own behave suite inside
+`run-container-tests`' nested GNOME session. Three traps, each observed on
+ghost:
+
+- **qecore's script environment has no `WAYLAND_DISPLAY`.** qecore-headless
+  copies gnome-session's environment, which predates the compositor, and sets
+  `DISPLAY=:0` (Xwayland). Read `WAYLAND_DISPLAY` from
+  `systemctl --user show-environment`, check the socket, set
+  `GDK_BACKEND=wayland`, and unset `DISPLAY` so nothing falls back to X.
+- **New windows are not focused.** Mutter's focus-stealing prevention leaves a
+  window mapped without an activation token unfocused (`focus_window` is
+  null), so every synthesized key reaches nothing. Activate it with
+  `Main.activateWindow` over `Shell.Eval` (the headless drop-in's
+  `--unsafe-mode` allows it) and wait for `global.display.focus_window`.
+- **The first ponytail key is dropped** while gnome-ponytail-daemon's
+  remote-desktop session starts. Spend it on a bare Shift once per run.
+
+Screenshots come from `org.gnome.Shell.Screenshot.Screenshot`, which
+`--unsafe-mode` also opens to the test user; there is no root window for `xwd`.
+
+Two more traps, from driving the app's own privileged-adjacent paths:
+
+- **`podman exec` is not in the user's session.** A process started with
+  `podman exec` sits in the target's exec cgroup, so logind assigns it to no
+  session and polkit answers `auth_admin` to actions it allows an active
+  local `wheel` member without a prompt (a system Flatpak install, for one).
+  Run app-side steps the way GNOME starts an app:
+  `systemd-run --user --wait --pipe --slice=app.slice`. `pkcheck` from each
+  context is the evidence. To hand `pkcheck` a PID, read it from
+  `/proc/self/stat`. `systemd-run` expands `${VAR}` in its command line
+  itself, and in the qecore-launched script `$$` reached `pkcheck` as a bare
+  `$` (the cause was not isolated).
+- **The user slice's `TasksMax` is container-sized.** Inside a unit, brew's
+  download threads failed with "can't create Thread: Resource temporarily
+  unavailable". Lift `TasksMax` on `user-1000.slice`, `app.slice`, and the
+  unit itself.
+
 ## Concurrency and scheduling
 
 ### VM concurrency: k8s native scheduling, no semaphores

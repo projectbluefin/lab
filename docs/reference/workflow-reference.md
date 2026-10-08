@@ -15,6 +15,7 @@ template add or rename.
   - [dakota-build-pipeline](#dakota-build-pipeline)
   - [zot-candidate-lifecycle](#zot-candidate-lifecycle)
   - [bluefin-server-build-pipeline](#bluefin-server-build-pipeline)
+  - [run-chairlift-wayland-tests](#run-chairlift-wayland-tests)
 - [KubeStellar Workflows](#kubestellar-workflows)
 - [Supporting Templates](#supporting-templates)
 - [Distributed Build/RE Grid](#distributed-buildre-grid)
@@ -145,6 +146,97 @@ before retrying.
   and execution are identical to dakota.
 - **Cache policy:** CAS (`cache.storage-service`) and action cache use the shared Buildbarn frontend (`frontend.buildbarn.svc.cluster.local:8980`); artifacts and sources are indexed in `bb-remote-asset` (`:8984`) and pushed there, with upstream caches as read-only fallbacks. Source caches override the project entries. See `manifests/buildstream-remote-cache-config.yaml`.
 
+### run-chairlift-wayland-tests
+- **Purpose:** ChairLift's behave + dogtail AT-SPI suite
+  (`test/e2e/features`) in a live GNOME **Wayland** session, plus an
+  Enhanced Troubleshooting Goose-profile isolation check on x86_64.
+- **Parameters:** `chairlift-repo`, `chairlift-branch`, `image`
+  (`ghcr.io/projectbluefin/dakota`), `image-tag` (`testing`), `behave-tags`
+  (empty = every scenario), `goose-isolation-check` (`true`).
+- **Shape:** a `golang:1.26` init container clones the branch and runs
+  ChairLift's `make ci` on the untouched checkout. It fetches golangci-lint
+  v2.12.2, the version CI pins, by checksum, and records the result, which
+  the verdict gates on. It then runs `make build-e2e schemas`, stages
+  `chairlift` and `chairlift-wrapper` the way the Homebrew cask installs
+  them, and builds two lane tools inside the module: `navjson` (the
+  page/shortcut inventory the Go gate normally passes) and
+  `troubleshootcheck`. `troubleshootcheck` drives the branch's
+  `internal/troubleshoot` and `internal/aistack`: Setup, Agent Mode, the
+  model alias path, the PATH `Command` hands the launch, and a config
+  reader.
+  The runner then boots `run-container-tests`' nested systemd/GDM target:
+  headless GNOME Shell drop-in, linger, `lastchg`, and the resolver bind.
+  `/usr/share/chairlift` is masked and `/proc/cmdline` blanked, as the fixture
+  harness does. Behave runs from a hash-pinned venv under
+  `qecore-headless --session-type wayland`, with `GDK_BACKEND=wayland`, an
+  absolute `WAYLAND_DISPLAY`, and `DISPLAY` unset. Keys go through dogtail's
+  Mutter RemoteDesktop backend. Xvfb is never used.
+- **Screenshots:** ChairLift's own `capture_walkthrough.sh` runs under its
+  `wayland_session.sh` (headless Mutter at 900x700, frames from Mutter's
+  ScreenCast) inside the target, on a private bus beside the GDM session.
+  Only the page PNGs are kept, in `screenshots/`; the byproducts stay in
+  `screenshots-raw/`.
+- **Wayland traps:** qecore hands the script gnome-session's environment,
+  which has no `WAYLAND_DISPLAY`; the script reads it from
+  `systemctl --user show-environment`. Mutter's focus-stealing prevention
+  leaves each new window unfocused, so ChairLift's `environment.py`
+  activates it through `Shell.Eval` (needs `--unsafe-mode`). Dakota's
+  `brew-preinstall.service` and brew timers are masked so they cannot hold
+  Homebrew's locks during the Goose check.
+- **Goose check (end to end, ChairLift's own code throughout):**
+  1. `troubleshoot.Setup` installs the tap, `linux-mcp-server`, `cpio`, and
+     the `goose-linux` cask with `PATH=/usr/bin:/bin` and no
+     `brew shellenv`, as a direct `chairlift` launch would. The cask's bare
+     `rpm2cpio | cpio` preflight exits 127 unless ChairLift puts Homebrew's
+     bin on brew's PATH.
+  2. `aistack.Enable` turns Agent Mode on, on the stock host. The check
+     records that `brew trust` covers the `llmman` formula and not
+     `llmmanorg/tap`.
+  3. The smallest Qwen3 is resolved through aistack's live resolver, pulled
+     with `aistack.PullModel` (which must succeed on its own), and set as the
+     `bluefin-active` alias. llmman reports the alias as the
+     registry-qualified `hf.co/<ref>`. The lane also records `/llmman/node`
+     and `llmman ls`.
+  4. Two launches run with GNOME Shell's own environment and a PATH without
+     Homebrew, in an app.slice scope. The first is a cold
+     `chairlift --ask-bluefin`. The second is the distro menu's exact
+     command, `bash -c '…/chairlift-wrapper --ask-bluefin'`. Each must
+     exit 0 with Goose running through llmman. The lane reads the
+     environment Goose hands its `goose serve` backend (`GOOSE_PATH_ROOT`,
+     `XDG_CONFIG_HOME`, `GOOSE_PROVIDER=openai`, `OPENAI_HOST` on
+     `127.0.0.1:17434`, `GOOSE_MODEL`); the two launches must agree on it.
+     It also checks that the lock is in the profile and takes a screenshot.
+  5. `llmman launch goose -- run --text …`, run in the same profile, must
+     call a `linux-tools__*` tool and `bluefin-knowledge__search_knowledge`,
+     read back from `data/sessions/sessions.db`. The answer is compared
+     with `systemctl --failed` for 0.6B, 1.7B, and then 4B, and recorded.
+     Answer quality does not gate the run.
+
+  Throughout, the profile's lock, data, state, and config must stay inside
+  it, and only `linux-tools` and `bluefin-knowledge` may be enabled.
+- **ChairLift runs as an app unit:** every ChairLift step runs through
+  `systemd-run --user --slice=app.slice`, the way GNOME starts an app. The
+  script itself runs in podman's exec cgroup, outside any logind session,
+  where polkit answers `auth_admin` to the system Flatpak install Agent Mode
+  does; inside an app unit, an active `wheel` member gets `yes`. The test
+  user joins `wheel`, as Bluefin's first user does. `TasksMax` is lifted on
+  the user slice and on the units, because brew's download threads hit the
+  container-sized default.
+- **Verdicts:** the run fails if any of these happens:
+  - `make ci` fails;
+  - behave fails, or executes 0 scenarios;
+  - any engine check fails;
+  - the screenshot capture does not produce every page and the
+    reset-group marker.
+
+  Outputs `result`, `failed-scenarios`, and
+  `goose-isolation` (JSON). Everything under `/tmp/results` (behave log,
+  JUnit, per-scenario `chairlift.log`, `tree.txt`, `screen.png`; Goose
+  `setup.log`, `command-env.txt`, lock evidence, config, screenshot) is persisted to
+  ghost's result store under `<workflow>/chairlift-wayland/`.
+- **Submit:** not deployed until merged; until then submit the template
+  file as a Workflow (`kind: Workflow`, `generateName`) with `argo submit`.
+
 ## KubeStellar Workflows
 
 KubeStellar installation and upgrades are owned by the `kubestellar-applications`
@@ -267,5 +359,7 @@ Pod resource requests/limits used by workflow steps:
 | Template / container | CPU req/limit | Memory req/limit |
 | --- | --- | --- |
 | `run-container-tests` | 2 / 4 | 4Gi / 8Gi |
+| `run-chairlift-wayland-tests` `main` | 2 / 4 | 4Gi / 8Gi |
+| `run-chairlift-wayland-tests` `build-chairlift` | 2 / 4 | 2Gi / 4Gi |
 | `bst-build-re` `main` | 2 / 4 | 4Gi / 8Gi |
 | `bst-build-re` `publish` | 1 / 16 | 256Mi / 2Gi |

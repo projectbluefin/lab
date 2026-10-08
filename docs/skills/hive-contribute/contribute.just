@@ -8,8 +8,7 @@ contribute-on:
     #!/usr/bin/env bash
     set -euo pipefail
     reg="${HIVE_CONTRIBUTE_REGISTRATION:-$HOME/.config/hive/contributor.bluefin.env}"
-    profile="$HOME/.omp/profiles/ghost/agent"
-    omp="${HIVE_CONTRIBUTE_OMP_CONFIG:-$profile/config.yml}"
+    omp="${HIVE_CONTRIBUTE_OMP_CONFIG:-$HOME/.omp/agent/config.yml}"
     tok="$(mktemp)"; trap 'rm -f "$tok"' EXIT
     printf %s "$(gh auth token)" > "$tok"
     # Refresh the Hive registration token with the gh identity (upstream's contribute-move call),
@@ -22,13 +21,6 @@ contribute-on:
     yq '.modelRoles = {"default": "lab-worker/ornith", "smol": "lab-worker/ornith", "advisor": "lab-advisor/qwen-advisor"}' "$omp" > "$cfg"
     kubectl -n contribute create secret generic contribute \
       --from-file=GH_TOKEN="$tok" --from-file=contributor.env="$reg" --from-file=config.yml="$cfg" \
-      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-    kubectl -n contribute create configmap contribute-skills \
-      --from-file=local-model-capacity="$profile/skills/local-model-capacity/SKILL.md" \
-      --from-file=local-model-hive="$profile/skills/local-model-hive/SKILL.md" \
-      --from-file=local-model-learning="$profile/skills/local-model-learning/SKILL.md" \
-      --from-file=local-model-workflow="$profile/skills/local-model-workflow/SKILL.md" \
-      --from-file=append-system="$profile/APPEND_SYSTEM.md" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     kubectl -n llm-d scale deploy/llm-d-modelserver deploy/llm-d-advisor --replicas=1 >/dev/null
     kubectl -n contribute scale deploy/contribute --replicas=1 >/dev/null
@@ -53,13 +45,3 @@ contribute-off:
 contribute-status:
     kubectl -n llm-d get deploy,pods -o wide
     kubectl -n contribute get deploy,pods -o wide
-
-# Export learned skills for review; never automatically commit them to dotfiles.
-contribute-learning-export:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    pod="$(kubectl -n contribute get pods -l app.kubernetes.io/name=contribute -o jsonpath='{.items[0].metadata.name}')"
-    dest="${XDG_STATE_HOME:-$HOME/.local/state}/ghost-omp/learned-skills/$(date -u +%Y%m%dT%H%M%SZ)"
-    mkdir -p "$dest"
-    kubectl -n contribute cp -c contribute "$pod:/home/hive/.omp/agent/managed-skills/." "$dest"
-    printf 'Review skills and secrets before promotion: %s\n' "$dest"

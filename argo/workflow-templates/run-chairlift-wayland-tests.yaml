@@ -98,7 +98,7 @@ spec:
     # glib-compile-schemas is the one the application will read them with;
     # `make schemas` skips cleanly here because the builder lacks it.
     - name: build-chairlift
-      image: golang:1.26
+      image: golang:1.26 # registry-lint-ignore: Go toolchain for in-pod build, pulled from docker.io through local Zot cache
       resources:
         requests:
           cpu: "2"

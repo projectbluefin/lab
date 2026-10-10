@@ -1,0 +1,132 @@
+# manifests/node-timezone.yaml
+# Sets the host timezone and k3s/containerd to UTC across all nodes in the cluster.
+#
+# Why:
+#   containerd stamps pod log lines using the host's local timezone (Go time.Now()
+#   evaluating /etc/localtime). ghost had America/New_York while exo-0 was UTC,
+#   causing mismatched timestamps (-04:00 vs Z) across cluster logs.
+#
+#   Setting timedatectl to UTC and adding a systemd drop-in ensures both the host
+#   environment and k3s/containerd run entirely in UTC.
+#   Because Go caches time.Local on first call, containerd requires a restart
+#   (reboot) to reflect the new zone in live pod log timestamps.
+#   Node annotation: lab.projectbluefin.io/node-timezone = applied | pending-reboot
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-timezone
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-timezone
+  labels:
+    app.kubernetes.io/part-of: lab
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-timezone
+  labels:
+    app.kubernetes.io/part-of: lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-timezone
+subjects:
+  - kind: ServiceAccount
+    name: node-timezone
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-timezone
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: node-timezone
+    app.kubernetes.io/component: node-tuning
+    app.kubernetes.io/part-of: lab
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: node-timezone
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: node-timezone
+        app.kubernetes.io/component: node-tuning
+        app.kubernetes.io/part-of: lab
+    spec:
+      serviceAccountName: node-timezone
+      tolerations:
+        - operator: Exists
+      hostPID: true
+      initContainers:
+        - name: set-k3s-tz
+          image: cgr.dev/chainguard/kubectl:latest-dev
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          command: [bash, -c]
+          args:
+            - |
+              set -euo pipefail
+
+              host() { nsenter -t 1 -m -u -i -n -p -- "$@"; }
+
+              # 1. Set host system timezone to UTC
+              CURRENT_TZ="$(host timedatectl show -p Timezone --value 2>/dev/null || true)"
+              if [[ "${CURRENT_TZ}" != "UTC" && "${CURRENT_TZ}" != "Etc/UTC" ]]; then
+                echo "Setting host timezone from ${CURRENT_TZ} to UTC..."
+                host timedatectl set-timezone UTC || host ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+              fi
+
+              # 2. Add systemd drop-in for k3s / k3s-agent
+              for unit in k3s.service k3s-agent.service; do
+                if host systemctl list-unit-files "${unit}" >/dev/null 2>&1; then
+                  dropin="/etc/systemd/system/${unit}.d/10-timezone.conf"
+                  want=$'[Service]\nEnvironment=TZ=UTC'
+                  curr="$(host cat "${dropin}" 2>/dev/null || true)"
+                  if [[ "${curr}" != "${want}" ]]; then
+                    echo "writing ${dropin}"
+                    host mkdir -p "$(dirname "${dropin}")"
+                    printf '%s\n' "${want}" | host tee "${dropin}" >/dev/null
+                    host systemctl daemon-reload
+                  fi
+                fi
+              done
+
+              # 3. Determine if reboot is required
+              # containerd caches time.Local on process start. If the host wasn't UTC,
+              # running processes need a reboot to format logs in UTC.
+              STATE=applied
+              if [[ "${CURRENT_TZ}" != "UTC" && "${CURRENT_TZ}" != "Etc/UTC" ]]; then
+                STATE=pending-reboot
+              fi
+
+              echo "node ${NODE_NAME}: ${STATE}"
+              kubectl annotate node "${NODE_NAME}" \
+                "lab.projectbluefin.io/node-timezone=${STATE}" --overwrite
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi

@@ -48,6 +48,6 @@ RUN bazel --batch --output_user_root=/tmp/bazel test ${BAZEL_FLAGS} --test_outpu
       --platforms=@com_github_buildbarn_bb_storage//tools/platforms:linux_amd64 \
       //cmd/bb_storage /bb_storage
 
-FROM gcr.io/distroless/static@sha256:58133991db06659feaabe0f4e97a35cebf15ef4ea08f8a4c6d2ee5f75e4aa6a0
+FROM gcr.io/distroless/static@sha256:9e0130bec991f471279b70f1630ada11e46dad439ef2949544f96001225329fb
 COPY --from=build /bb_storage /app/bb_storage
 ENTRYPOINT ["/app/bb_storage"]

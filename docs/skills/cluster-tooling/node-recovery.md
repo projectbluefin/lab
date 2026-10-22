@@ -27,7 +27,16 @@ Always configure container memory limits well above this threshold for nodes run
 
 ### 3. SELinux Key Injection Warning
 When running privileged pods that mount the host root `/` (`hostPath: /`) and write or create files (like writing public keys to `/home/core/.ssh/authorized_keys`), containerd applies container-specific SELinux labels (`container_file_t` or `home_root_t`). This prevents `sshd` from reading the keys on the host, resulting in `Permission denied (publickey)`.
-- **Fix**: Run `nsenter -t 1 -m -u -i -n restorecon -R -v /home/core/.ssh` on the host OS from a privileged container to restore the correct `ssh_home_t` contexts.
+- **Fix**: run `restorecon -RFv <home>/.ssh` on the host from a privileged container. `-F` is required: `container_file_t` is a customizable type, so a plain `restorecon` logs "not reset as customized by admin" and changes nothing. Verified 2026-10-22 on ghost.
+- Login users differ per node: exo-0 (Fedora CoreOS) has only `core` (`/var/home/jorge` there is an empty root-owned directory); ghost (Bluefin) uses `jorge`.
+
+### 4. Host Actions Through Argo Without `hostPID`
+Argo Server runs `--auth-mode=server`, so the LAN REST API (`https://<node>:32746/api/v1/workflows/argo`) accepts a one-off Workflow without a token or kubeconfig. Pattern used on 2026-10-22 to install SSH keys and reboot ghost:
+- Privileged container, `nodeSelector` on the target node, `tolerations: [{operator: Exists}]`, and hostPath mounts of `/` at `/host` plus `/proc`, `/sys` and `/run` under it. Command `chroot /host /bin/sh -c '...'` runs host binaries.
+- `argo-quota` rejects pods without CPU and memory requests and limits on every container.
+- `systemctl` inside the chroot cannot reach systemd over its private socket without `hostPID` ("Failed to connect to system scope bus … No data available"). `SYSTEMCTL_FORCE_BUS=1 systemctl reboot` goes through D-Bus and works. Avoid `hostPID` (see the argoexec teardown risk below).
+- The reboot workflow ends `Error … exit code 255` because the reboot kills its own pod; judge success by the node returning.
+- Never print credentials in these pods: workflow logs are kept. Stage files into the user's home with mode 600 and copy them over SSH instead.
 
 ## Wedged Node Triage Without SSH (2026-07-09 incident)
 

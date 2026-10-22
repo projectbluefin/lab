@@ -42,7 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/projectbluefin/lab/main/docs/skills
 ```
 
 ```bash
-just contribute-on       # write Secret, scale models to 1 and contributor to 2, warm up, attach to tmux
+just contribute-on       # write Secret, scale models to 1, warm up, then scale contributors to 2 and attach
 just contribute          # alias of contribute-on
 just contribute-attach 1 # re-attach to contribute-0 (default) or 1 (detach: C-b d; it keeps running)
 just contribute-status
@@ -50,9 +50,9 @@ just contribute-off      # scale everything to 0; frees both GPUs for video jobs
 just contribute-learning-save # save learned skills to the isolated Ghost profile
 ```
 
-`contribute-on` runs a warm-up gate: it loads `qwen-advisor` then `ornith` on
-both nodes before starting the contributor. The first start downloads ~70 GB
-per node.
+`contribute-on` runs a warm-up gate before starting the contributors: it loads
+`qwen-advisor` then `ornith` on both nodes, so no relay leases a task while a
+model is still downloading or swapping. The first start downloads ~70 GB per node.
 
 The k8s MCP `resources_scale` tool can toggle the same Deployments and StatefulSet.
 Scaling up through MCP reuses the last Secret that `contribute-on` wrote and skips the warm-up.
@@ -60,7 +60,7 @@ Scaling up through MCP reuses the last Secret that `contribute-on` wrote and ski
 `contribute-on` sends, every time, with no login step:
 
 - `gh auth token` → `GH_TOKEN`. Hive contributors fork and open PRs as themselves (`gh-wrapper.sh`).
-- `~/.config/hive/contributor.bluefin.env`: the Hive registration (knuckle hive). Its token is reissued with your gh identity on every `contribute-on` (`POST /api/contribute/reissue-token`, what upstream's `contribute-move` does) and written back to the file. That invalidates any other client using this registration.
+- The registration file (`HIVE_CONTRIBUTE_REGISTRATION`; the repo default is `~/.config/hive/contributor.bluefin.env`, the owner's chezmoi default is `contributor.tunaos-lab.env`). Its `HIVE_HUB` picks the hive, so it decides whose work the lab takes. Its token is reissued with your gh identity on every `contribute-on` (`POST /api/contribute/reissue-token`, what upstream's `contribute-move` does) and written back to the file. That invalidates any other client using this registration. The recipe reissues only the first hub, so keep one hub per file.
 - `~/.omp/profiles/ghost/agent/config.yml`: isolated Ghost OMP settings, shipped with `modelRoles` rewritten (`yq`) to the lab models. The default workstation OMP configuration remains unchanged.
 - `skills/`, `managed-skills/` and `APPEND_SYSTEM.md` from that profile: bundled into the existing Secret, then copied into the container's native OMP agent directory by `seed-home`. The bundle ships the `ponytail` skill (profile `skills/ponytail` symlinks the omp ponytail plugin's skill; tar dereferences it), and `APPEND_SYSTEM.md` makes it always-on.
 
@@ -86,6 +86,42 @@ Override the paths with `HIVE_CONTRIBUTE_REGISTRATION` and `HIVE_CONTRIBUTE_OMP_
   `--reasoning-budget`, `--spec-draft-n-max` and `draft-mtp`, and the router-mode
   build in use. Ornith's official GGUF has no MTP head, so it runs without
   speculative decoding.
+
+## Choosing the hive
+
+Hives are separate hubs, each with its own registration. hivecommons-hosted
+hives appear in `https://hive.hivecommons.dev/api/saas/my-hives` (what
+`hive-contribute hives` reads); self-hosted forks do not. tunaOS runs its own
+spokes, for example `reef` (`wss://reef.tunaos.org/contribute`, the `tuna-os`
+org; layout in `hanthor/dotfiles` `talos-k8s/hive/README.md`).
+
+To join a hub where your GitHub account is already registered (check
+`GET <hub>/api/contribute/me` with your gh token as bearer), `register` will not
+hand the token back. Reissue it instead:
+`POST <hub>/api/contribute/reissue-token` (bearer = `gh auth token`) returns
+`registration_token` and `contributor_id`. Write them with the hub into a
+registration file (`HIVE_REGISTRATION_TOKEN`, `HIVE_HUB`, `CONTRIBUTOR_ID`,
+`AGENT_BACKEND=omp`, mode 600) and point `HIVE_CONTRIBUTE_REGISTRATION` at it.
+`hivectl hives add` does the same for multi-hub files, but needs podman and only
+edits `~/.config/hive/contributor.env`.
+
+## Failure modes
+
+- `400 model name=ornith is not running` in a contributor pane: the router
+  evicted a model as idle between admitting a request and proxying it, because
+  requests for the other model arrived at the same time. It persists in b11151
+  despite upstream #29217. OMP does not retry a 400, so the session stops.
+  Unstick it with `kubectl -n contribute exec contribute-<n> -c contribute -- tmux send-keys -t contributor '<continue message>' Enter`.
+  Avoid overlapping requests for the two models: never send manual requests to
+  a router while its contributor works.
+- `contribute-on` needs `jq`, `yq`, `gh` and `kubectl` as real binaries on PATH.
+  A shell function or alias works interactively and fails in a fresh shell.
+  If it fails after the reissue POST, just rerun it: the reissue authenticates
+  with gh, so the discarded token is replaced.
+- Applying `argocd/infra-application.yaml` with new Deployment names before the
+  manifests reach `main` removes the old names from the ignore list, so
+  self-heal scales the old Deployments back up until the sync prunes them.
+  Push the manifests first, or apply the app right after the push.
 
 ## Context and learned skills
 

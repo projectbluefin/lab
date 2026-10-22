@@ -29,9 +29,7 @@ contribute-on: contribute-learning-save
       --from-file=ghost-context.tgz="$bundle" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     kubectl -n llm-d scale deploy/llm-d-exo-0 deploy/llm-d-ghost --replicas=1 >/dev/null
-    kubectl -n contribute scale sts/contribute --replicas=2 >/dev/null
-    kubectl -n contribute rollout restart sts/contribute >/dev/null
-    echo "Waiting for the models (first start downloads ~70 GB per node) and the contributors..."
+    echo "Warming both models on each node (first start downloads ~70 GB per node) before starting contributors..."
     kubectl -n llm-d rollout status deploy/llm-d-exo-0 --timeout=60m
     kubectl -n llm-d rollout status deploy/llm-d-ghost --timeout=60m
     # Warm-up gate: download + load both models on each node; ornith ends resident.
@@ -44,6 +42,8 @@ contribute-on: contribute-learning-save
     }
     warm exo-0 & a=$!; warm ghost & b=$!
     wait "$a"; wait "$b"
+    kubectl -n contribute scale sts/contribute --replicas=2 >/dev/null
+    kubectl -n contribute rollout restart sts/contribute >/dev/null
     kubectl -n contribute rollout status sts/contribute --timeout=10m
     for n in 0 1; do
       until kubectl -n contribute exec "contribute-$n" -- tmux has-session -t contributor 2>/dev/null; do sleep 2; done

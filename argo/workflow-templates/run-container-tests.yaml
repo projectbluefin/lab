@@ -749,16 +749,21 @@ spec:
         with open("/tmp/results/results.json", encoding="utf-8") as result_file:
             data = json.load(result_file)
         safe_name = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .,:;()/_+-]{0,159}$")
-        failed = sum(
-            1 for feature in data for scenario in feature.get("elements", [])
-            if scenario.get("status") == "failed"
-        )
+        counts = {key: 0 for key in ("passed", "failed", "errors", "skipped", "unexecuted")}
+        error_statuses = {"error", "hook_error", "cleanup_error", "pending", "undefined"}
         failed_scenarios = []
         for feature in data:
             for scenario in feature.get("elements", []):
+                if scenario.get("type") != "scenario":
+                    continue
+                status = scenario.get("status")
+                key = "errors" if status in error_statuses else status
+                if key not in ("passed", "failed", "errors", "skipped"):
+                    key = "unexecuted"
+                counts[key] += 1
                 name = scenario.get("name")
                 if (
-                    scenario.get("status") == "failed"
+                    key in ("failed", "errors")
                     and isinstance(name, str)
                     and safe_name.fullmatch(name)
                     and not any(word in name.lower() for word in
@@ -768,8 +773,12 @@ spec:
                     failed_scenarios.append(name)
         with open("/tmp/results/failed-scenarios.json", "w", encoding="utf-8") as artifact_file:
             json.dump(failed_scenarios[:20], artifact_file, separators=(",", ":"))
-        total = sum(len(feature.get("elements", [])) for feature in data)
-        summary = f"{total - failed}/{total} scenarios passed"
+        total = sum(counts.values())
+        summary = (
+            f"{counts['passed']}/{total} scenarios passed "
+            f"({counts['failed']} failed, {counts['errors']} errors, "
+            f"{counts['skipped']} skipped, {counts['unexecuted']} unexecuted)"
+        )
         with open("/tmp/results/result-summary.txt", "w", encoding="utf-8") as summary_file:
             summary_file.write(summary)
         print(summary)

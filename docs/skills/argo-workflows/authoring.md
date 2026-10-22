@@ -143,6 +143,13 @@ pipeline's declared `image-digest` parameter. A matching task dependency does
 not propagate the value on its own. Source: `/argoproj/argo-workflows`,
 Workflow Inputs > Pass Outputs Between DAG Tasks.
 
+`run-container-tests` reports only JSON elements with `type: scenario`
+  (including expanded outline examples), not backgrounds. Its output summary
+  separates passed, failed, errors, skipped, and unexecuted scenarios; absent,
+  unknown, or untested statuses are unexecuted, never passes. The bounded,
+  sanitized `failed-scenarios` list includes failures and errors. Reporting
+  preserves behave's exit code; it does not impose a new no-run policy.
+
 ### 4. Output parameters — use `script` with stdout
 
 For steps that produce a value consumed by downstream steps, write the result to stdout and nothing else:

@@ -64,10 +64,15 @@ Lab-specific values (do not regress these):
 - `selfUpgrade.enabled: false` and `rbac.resourceQuotasReadOnly: true` — keep
   declarative upgrades and quota changes in Git instead of creating Console
   mutations that ArgoCD immediately reverts.
-- Do not configure `kubeconfig.content` for the single-cluster install. Chart
-  0.3.34 sets `KUBECONFIG` when it is present, which makes `/health` report
-  `in_cluster: false` and routes cards to local-agent/demo fallbacks instead of
-  the pod ServiceAccount-backed API.
+- Leave both `kubeconfig.content` and `kubeconfig.existingSecret` unset for
+  this single-cluster install. Chart 0.3.34 sets `KUBECONFIG` for either,
+  bypassing native ServiceAccount initialization even when the file itself
+  references the pod's CA/token. Keep the chart's `NO_LOCAL_AGENT=true`.
+  Native mode registers `Name: ghost`, `Context: in-cluster`,
+  `Source: in-cluster`; typed and dynamic clients accept both `ghost` and
+  `in-cluster` using the pod ServiceAccount. Require `/health.in_cluster=true`
+  and the startup log `Using in-cluster config`; leave `verify-datasource`
+  unchanged.
 
 ## Exposure and auth policy (locked)
 
@@ -123,7 +128,8 @@ client id/secret in a Secret referenced via `github.existingSecret`, keep
 
 BindingPolicy note: the `control.kubestellar.io` CRDs live in **wds1**, not
 the hosting cluster — `kubectl auth can-i get bindingpolicies` on ghost
-correctly answers no. The Console reaches wds1 as a registered cluster.
+correctly answers no. This native single-cluster install registers only ghost;
+it does not register the separate wds1 control plane.
 
 ## Failure modes
 
@@ -161,6 +167,8 @@ correctly answers no. The Console reaches wds1 as a registered cluster.
 
 - [ ] Every `enabledDashboards` ID exists in the pinned Console source
 - [ ] Demo and dynamic-card environment flags remain disabled
+- [ ] Unchanged `verify-datasource` passes: no `KUBECONFIG`, native startup log,
+  `/health.in_cluster=true`, and `/health.no_local_agent=true`
 - [ ] Required CRDs have only `get`, `list`, and `watch` access
 - [ ] No unsupported card JSON/ConfigMap manifests remain
 - [ ] Browser requests do not loop on `401 token signature is invalid`
@@ -174,6 +182,10 @@ correctly answers no. The Console reaches wds1 as a registered cluster.
   `deploy/helm/kubestellar-console/values.yaml`
 - KubeStellar Console v0.3.34 built-in project dashboards:
   `pkg/api/projects.go` and `web/src/config/routes.ts`
+- KubeStellar Console v0.3.34 native data mode:
+  `deploy/helm/kubestellar-console/templates/deployment.yaml`,
+  `pkg/api/routes_health.go`, `pkg/k8s/client.go`,
+  `pkg/k8s/client_clusters.go`, and `pkg/k8s/client_clients.go`
 - Context7 `/kubestellar/kubestellar` documents the WDS → ITS → WEC model but
   has no Console library entry; verify Console behavior against the pinned
   upstream tag instead.

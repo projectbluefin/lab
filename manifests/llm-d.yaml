@@ -1,9 +1,11 @@
 # Local LLM inference for hive-contribute (docs/skills/hive-contribute/SKILL.md).
-# worker (Ornith 35B-A3B Q6_K) on exo-0 and advisor (Qwen3.8 27B UD-Q6_K) on ghost, one GPU each.
+# exo-0 and ghost each serve both models (ornith worker, qwen-advisor) from one llama-server router
+# with --models-max 1: one model resident per GPU, swapped on request. Per-model flags live in llm-d-presets.
 # Keep replicas: 1 here so each WaitForFirstConsumer PVC binds on first sync; toggle with
 # `just contribute-on/off` (replicas are ignored by testing-lab-infra).
 # Recreate: one amd.com/gpu and an RWO PVC deadlock a rolling update.
-# The advisor's MTP draft is fetched by an init container: -hfd <repo>:Q4_0 picks the full 16 GB Q4_0 model.
+# The MTP draft is fetched by an init container: -hfd <repo>:Q4_0 picks the full 16 GB Q4_0 model.
+# PVC names are historical; kept so ArgoCD doesn't prune the cached models.
 # Image: immutable per-build tag (zot syncs tags only); never the floating :server-vulkan.
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
@@ -25,6 +27,53 @@ metadata:
     pod-security.kubernetes.io/audit: baseline
 ---
 apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llm-d-presets
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llm-d
+    app.kubernetes.io/part-of: testing-lab
+data:
+  presets.ini: |
+    version = 1
+
+    ; Shared by both models; each section below is the exact tuned flag set from the old per-model Deployments.
+    [*]
+    no-mmproj = true
+    n-gpu-layers = 999
+    flash-attn = on
+    load-mode = none
+    parallel = 1
+    threads = 12
+    temp = 0.6
+
+    [ornith]
+    hf-repo = ornith-ai/Ornith-1.5-35B-A3B-GGUF
+    hf-file = Ornith-1.5-35B-Q6_K.gguf
+    ctx-size = 102400
+    cache-ram = 512
+    reasoning-budget = 3600
+    reasoning-budget-message = OK, I've thought long enough. Either ask the advisor for advice, or answer.
+    batch-size = 1024
+    ubatch-size = 1024
+    load-on-startup = true
+
+    [qwen-advisor]
+    hf-repo = unsloth/Qwen3.8-27B-GGUF
+    hf-file = Qwen3.8-27B-UD-Q6_K.gguf
+    ctx-size = 65536
+    cache-ram = 256
+    reasoning-budget = 4000
+    reasoning-budget-message = OK, I've thought long enough. Let's answer.
+    spec-type = draft-mtp
+    spec-draft-model = /models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf
+    spec-draft-n-max = 4
+    spec-draft-ngl = 999
+    batch-size = 256
+    ubatch-size = 256
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: llm-d-model-cache
@@ -40,25 +89,44 @@ spec:
     requests:
       storage: 100Gi
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llm-d-advisor-cache
+  namespace: llm-d
+  labels:
+    app.kubernetes.io/name: llm-d-advisor
+    app.kubernetes.io/part-of: testing-lab
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 80Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llm-d-modelserver
+  name: llm-d-exo-0
   namespace: llm-d
   labels:
-    app.kubernetes.io/name: llm-d-modelserver
+    app.kubernetes.io/name: llm-d
+    app.kubernetes.io/instance: exo-0
     app.kubernetes.io/part-of: testing-lab
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: llm-d-modelserver
+      app.kubernetes.io/name: llm-d
+      app.kubernetes.io/instance: exo-0
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: llm-d-modelserver
+        app.kubernetes.io/name: llm-d
+        app.kubernetes.io/instance: exo-0
     spec:
       priorityClassName: llm-d-preempt
       nodeSelector:
@@ -75,39 +143,12 @@ spec:
           privileged: false
           allowPrivilegeEscalation: false
         args:
-        - --hf-repo
-        - ornith-ai/Ornith-1.5-35B-A3B-GGUF
-        - --hf-file
-        - Ornith-1.5-35B-Q6_K.gguf
-        - --no-mmproj
-        - --alias
-        - ornith
-        - --ctx-size
-        - '102400'
-        - --cache-ram
-        - '512'
-        - --reasoning-budget
-        - '3600'
-        - --reasoning-budget-message
-        - ' OK, I''ve thought long enough. Either ask the advisor for advice, or answer.'
-        - --temp
-        - '0.6'
-        - -b
-        - '1024'
-        - -ub
-        - '1024'
+        - --models-preset
+        - /etc/llm-d/presets.ini
+        - --models-max
+        - '1'
         - --port
         - '8000'
-        - -ngl
-        - '999'
-        - -fa
-        - 'on'
-        - --load-mode
-        - none
-        - --parallel
-        - '1'
-        - --threads
-        - '12'
         env:
         - name: LLAMA_CACHE
           value: /models
@@ -120,6 +161,9 @@ spec:
           mountPath: /models
         - name: dev-dri
           mountPath: /dev/dri
+        - name: presets
+          mountPath: /etc/llm-d
+          readOnly: true
         resources:
           requests:
             cpu: '4'
@@ -158,19 +202,35 @@ spec:
         hostPath:
           path: /dev/dri
           type: Directory
+      - name: presets
+        configMap:
+          name: llm-d-presets
+      initContainers:
+      - name: fetch-mtp-draft
+        image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11151
+        command:
+        - sh
+        - -c
+        - f=/models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf; test -s $f || { mkdir -p /models/mtp && curl -fsSL -o $f.tmp https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/MTP/mtp-Qwen3.8-27B-Q4_0.gguf
+          && mv $f.tmp $f; }
+        volumeMounts:
+        - name: model-cache
+          mountPath: /models
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: llm-d-modelserver
+  name: llm-d-exo-0
   namespace: llm-d
   labels:
-    app.kubernetes.io/name: llm-d-modelserver
+    app.kubernetes.io/name: llm-d
+    app.kubernetes.io/instance: exo-0
     app.kubernetes.io/part-of: testing-lab
 spec:
   type: NodePort
   selector:
-    app.kubernetes.io/name: llm-d-modelserver
+    app.kubernetes.io/name: llm-d
+    app.kubernetes.io/instance: exo-0
   ports:
   - name: http
     port: 8000
@@ -178,41 +238,28 @@ spec:
     nodePort: 30800
     protocol: TCP
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: llm-d-advisor-cache
-  namespace: llm-d
-  labels:
-    app.kubernetes.io/name: llm-d-advisor
-    app.kubernetes.io/part-of: testing-lab
-spec:
-  accessModes:
-  - ReadWriteOnce
-  storageClassName: local-path
-  resources:
-    requests:
-      storage: 80Gi
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llm-d-advisor
+  name: llm-d-ghost
   namespace: llm-d
   labels:
-    app.kubernetes.io/name: llm-d-advisor
+    app.kubernetes.io/name: llm-d
+    app.kubernetes.io/instance: ghost
     app.kubernetes.io/part-of: testing-lab
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: llm-d-advisor
+      app.kubernetes.io/name: llm-d
+      app.kubernetes.io/instance: ghost
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: llm-d-advisor
+        app.kubernetes.io/name: llm-d
+        app.kubernetes.io/instance: ghost
     spec:
       priorityClassName: llm-d-preempt
       nodeSelector:
@@ -229,47 +276,12 @@ spec:
           privileged: false
           allowPrivilegeEscalation: false
         args:
-        - --hf-repo
-        - unsloth/Qwen3.8-27B-GGUF
-        - --hf-file
-        - Qwen3.8-27B-UD-Q6_K.gguf
-        - --no-mmproj
-        - --alias
-        - qwen-advisor
-        - --ctx-size
-        - '65536'
-        - --cache-ram
-        - '256'
-        - --reasoning-budget
-        - '4000'
-        - --reasoning-budget-message
-        - OK, I've thought long enough. Let's answer.
-        - --spec-type
-        - draft-mtp
-        - --spec-draft-model
-        - /models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf
-        - --spec-draft-n-max
-        - '4'
-        - --spec-draft-ngl
-        - '999'
-        - --temp
-        - '0.6'
-        - -b
-        - '256'
-        - -ub
-        - '256'
+        - --models-preset
+        - /etc/llm-d/presets.ini
+        - --models-max
+        - '1'
         - --port
         - '8000'
-        - -ngl
-        - '999'
-        - -fa
-        - 'on'
-        - --load-mode
-        - none
-        - --parallel
-        - '1'
-        - --threads
-        - '12'
         env:
         - name: LLAMA_CACHE
           value: /models
@@ -282,14 +294,17 @@ spec:
           mountPath: /models
         - name: dev-dri
           mountPath: /dev/dri
+        - name: presets
+          mountPath: /etc/llm-d
+          readOnly: true
         resources:
           requests:
             cpu: '4'
-            memory: 32Gi
+            memory: 40Gi
             amd.com/gpu: '1'
           limits:
             cpu: '12'
-            memory: 44Gi
+            memory: 52Gi
             amd.com/gpu: '1'
         startupProbe:
           httpGet:
@@ -320,6 +335,9 @@ spec:
         hostPath:
           path: /dev/dri
           type: Directory
+      - name: presets
+        configMap:
+          name: llm-d-presets
       initContainers:
       - name: fetch-mtp-draft
         image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11151
@@ -335,15 +353,17 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: llm-d-advisor
+  name: llm-d-ghost
   namespace: llm-d
   labels:
-    app.kubernetes.io/name: llm-d-advisor
+    app.kubernetes.io/name: llm-d
+    app.kubernetes.io/instance: ghost
     app.kubernetes.io/part-of: testing-lab
 spec:
   type: NodePort
   selector:
-    app.kubernetes.io/name: llm-d-advisor
+    app.kubernetes.io/name: llm-d
+    app.kubernetes.io/instance: ghost
   ports:
   - name: http
     port: 8000

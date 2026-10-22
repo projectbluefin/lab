@@ -1,6 +1,7 @@
 # hive-contribute: projectbluefin/contribute (OMP in tmux) on the local llm-d models.
-# replicas: 0 in git; `just contribute-on` (in ~/.justfile) writes the Secret (your `gh auth token`,
-# Hive registration, OMP config.yml), scales it up and attaches. See docs/skills/hive-contribute/SKILL.md.
+# StatefulSet, replicas: 0 in git; `just contribute-on` (in ~/.justfile) writes the Secret (your `gh auth token`,
+# Hive registration, OMP config.yml) and scales it to 2. Pod ordinal picks the node: contribute-0 -> llm-d-exo-0,
+# contribute-1 -> llm-d-ghost. HIVE_SESSION=pod name so both relays share one registration. See docs/skills/hive-contribute/SKILL.md.
 # Files are copied into an emptyDir home by seed-home: subPath mounts would make
 # ~/.omp root-owned, and OMP must write ~/.omp/natives.
 apiVersion: v1
@@ -19,7 +20,7 @@ data:
   models.yml: |
     providers:
       lab-worker:
-        baseUrl: http://llm-d-modelserver.llm-d.svc.cluster.local:8000/v1
+        baseUrl: http://llm-d-NODE.llm-d.svc.cluster.local:8000/v1
         api: openai-completions
         apiKey: local
         models:
@@ -27,7 +28,7 @@ data:
           name: Ornith 1.5 35B-A3B Q6_K
           contextWindow: 102400
       lab-advisor:
-        baseUrl: http://llm-d-advisor.llm-d.svc.cluster.local:8000/v1
+        baseUrl: http://llm-d-NODE.llm-d.svc.cluster.local:8000/v1
         api: openai-completions
         apiKey: local
         models:
@@ -37,7 +38,7 @@ data:
   roles.yml: "# Layered last: every role the user's config.yml names is pinned to a local model.\nmodelRoles:\n  default: lab-worker/ornith\n  smol: lab-worker/ornith\n  advisor: lab-advisor/qwen-advisor\n"
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: contribute
   namespace: contribute
@@ -45,11 +46,11 @@ metadata:
     app.kubernetes.io/name: contribute
 spec:
   replicas: 0
+  serviceName: contribute
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       app.kubernetes.io/name: contribute
-  strategy:
-    type: Recreate
   template:
     metadata:
       labels:
@@ -74,6 +75,10 @@ spec:
           value: truecolor
         - name: PI_CONFIG_FILES
           value: /usr/share/hive/contribute/omp-config.yml:/etc/contribute/roles.yml
+        - name: HIVE_SESSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         - name: GH_TOKEN
           valueFrom:
             secretKeyRef:
@@ -118,13 +123,22 @@ spec:
           set -euo pipefail
           mkdir -p ~/.omp/agent ~/.config/hive
           install -m600 /seed/secret/config.yml ~/.omp/agent/config.yml
-          install -m600 /seed/omp/models.yml ~/.omp/agent/models.yml
+          case "$POD_NAME" in
+            contribute-0) node=exo-0 ;;
+            contribute-1) node=ghost ;;
+            *) echo "no llm-d node for pod $POD_NAME" >&2; exit 1 ;;
+          esac
+          sed "s/NODE/$node/" /seed/omp/models.yml > ~/.omp/agent/models.yml && chmod 600 ~/.omp/agent/models.yml
           install -m600 /seed/secret/contributor.env ~/.config/hive/contributor.env
           tar -xzf /seed/secret/ghost-context.tgz -C ~/.omp/agent
           ln -sfn "$HOME/agent.md" ~/.omp/agent/AGENTS.md
         env:
         - name: HOME
           value: /home/hive
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: home
           mountPath: /home/hive

@@ -13,7 +13,7 @@ Clients on the LAN submit work as Argo Workflows (`http://192.168.1.102:32746`).
 | Purpose | What runs | USB4 role | Status |
 |---|---|---|---|
 | **BuildStream build farm** | BuildGrid remote execution (`buildgrid` ns) with Buildbarn CAS/action cache (`buildbarn` ns), plus the dakota OCI pipeline: `dakota-build-pipeline` / `bluefin-server-build-pipeline` execute on BuildGrid, publish to the Zot registry (`:30500`), run Dakota QA and boot tests, and promote Zot candidates. Makes `projectbluefin/dakota`. | Hard admission gate: remote-execution actions and CAS transfers run pod-to-pod over the link; no Ethernet or local fallback. | Live |
-| **Local LLM inference** | llama.cpp on Vulkan, one model per node (`manifests/llm-d.yaml`): worker on `exo-0` (NodePort `30800`), advisor on `ghost` (`30801`), OpenAI-compatible `/v1`. | Carries client and in-cluster traffic to the model servers. | Live |
+| **Local LLM inference** | llama.cpp on Vulkan (`manifests/llm-d.yaml`): both nodes serve both models (`ornith`, `qwen-advisor`) serially via a router with `--models-max 1`; `exo-0` NodePort `30800`, `ghost` `30801`, OpenAI-compatible `/v1`. | Carries client and in-cluster traffic to the model servers. | Live |
 | **Distributed ffmpeg encoding** | Plain Workflows from client tools (`tools/farm.py` in the video repos): frame-grid segments, parallel ffmpeg, `concat -c copy` join, ffprobe verify. | Chunk exchange between the two nodes' pods. | Live per node; cross-node chunking over USB4 not built yet |
 
 ## Stack

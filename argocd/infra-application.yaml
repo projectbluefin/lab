@@ -1,6 +1,6 @@
 # ArgoCD Application — manages manifests/. Applied by hand, not by ArgoCD:
 #   kubectl apply -f argocd/infra-application.yaml
-# Replicas of llm-d-modelserver, llm-d-advisor and contribute are ignored so
+# Replicas of llm-d-exo-0, llm-d-ghost and contribute (StatefulSet) are ignored so
 # `just contribute-on/off` (or the k8s MCP scale tool) can toggle them.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -44,16 +44,16 @@ spec:
     kind: Deployment
     jsonPointers:
     - /spec/replicas
-    name: llm-d-modelserver
+    name: llm-d-exo-0
     namespace: llm-d
   - group: apps
     kind: Deployment
     jsonPointers:
     - /spec/replicas
-    name: llm-d-advisor
+    name: llm-d-ghost
     namespace: llm-d
   - group: apps
-    kind: Deployment
+    kind: StatefulSet
     jsonPointers:
     - /spec/replicas
     name: contribute

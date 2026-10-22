@@ -2,7 +2,7 @@
 name: hive-contribute
 description: >
   Run the projectbluefin/contribute Hive contributor (OMP in tmux) on the lab,
-  driven by two local llm-d models: a worker on exo-0 and an advisor on ghost.
+  driven by two local llm-d models served serially on both exo-0 and ghost.
   Use when turning contribution on/off, attaching to watch it, changing the
   models or their flags, or debugging why the contributor is idle.
 metadata:
@@ -16,13 +16,22 @@ metadata:
 
 | Piece | Where | Manifest |
 |---|---|---|
-| Worker model: `ornith-ai/Ornith-1.5-35B-A3B-GGUF` `Ornith-1.5-35B-Q6_K.gguf`, 100k ctx | `llm-d/llm-d-modelserver`, exo-0, NodePort 30800 | `manifests/llm-d.yaml` |
-| Advisor model: `unsloth/Qwen3.8-27B-GGUF` `Qwen3.8-27B-UD-Q6_K.gguf` + MTP draft, 64k ctx | `llm-d/llm-d-advisor`, ghost, NodePort 30801 | `manifests/llm-d.yaml` |
-| Contributor: `ghcr.io/projectbluefin/contribute:stable` | `contribute/contribute`, any node | `manifests/contribute.yaml` |
+| llama-server router (`--models-max 1`) serving `ornith` (`ornith-ai/Ornith-1.5-35B-A3B-GGUF` `Ornith-1.5-35B-Q6_K.gguf`, 100k ctx) and `qwen-advisor` (`unsloth/Qwen3.8-27B-GGUF` `Qwen3.8-27B-UD-Q6_K.gguf` + MTP draft, 64k ctx); per-model flags in ConfigMap `llm-d-presets` (`presets.ini`) | `llm-d/llm-d-exo-0`, exo-0, NodePort 30800 | `manifests/llm-d.yaml` |
+| Same router and models | `llm-d/llm-d-ghost`, ghost, NodePort 30801 | `manifests/llm-d.yaml` |
+| Contributor: `ghcr.io/projectbluefin/contribute:stable` | StatefulSet `contribute/contribute`, 2 replicas when on: `contribute-0` → exo-0 models, `contribute-1` → ghost models | `manifests/contribute.yaml` |
 
-One model per node, one GPU each. OMP roles are pinned by the `contribute-omp`
-ConfigMap (`roles.yml`, layered last via `PI_CONFIG_FILES`): `default` and
-`smol` → worker, `advisor` → advisor. No cloud provider keys enter the pod.
+Each node holds one model at a time; the router swaps on request (LRU). Ornith
+implements; Qwen reviews once at the end via OMP `advisor.reviewMode: agent-end`
+in the Ghost profile `config.yml` (no per-turn advisor). A Qwen concern sends
+Ornith back, which costs a model swap and a full re-prefill of Ornith's context.
+OMP roles are pinned by the `contribute-omp` ConfigMap (`roles.yml`, layered
+last via `PI_CONFIG_FILES`): `default` and `smol` → `ornith`, `advisor` →
+`qwen-advisor`, on the pod's own node. No cloud provider keys enter the pod.
+
+Both pods share one Hive registration: `HIVE_SESSION` is the pod name, and
+relays with distinct sessions hold independent tasks under one account
+(upstream hivecommons/hive v5 `contributor-relay.md`, "Running multiple
+backends under one account").
 
 ## Use
 
@@ -33,41 +42,50 @@ curl -fsSL https://raw.githubusercontent.com/projectbluefin/lab/main/docs/skills
 ```
 
 ```bash
-just contribute-on       # write Secret, scale models + contributor to 1, wait, attach to tmux
-just contribute-attach   # re-attach (detach: C-b d; the contributor keeps running)
+just contribute-on       # write Secret, scale models to 1 and contributor to 2, warm up, attach to tmux
+just contribute          # alias of contribute-on
+just contribute-attach 1 # re-attach to contribute-0 (default) or 1 (detach: C-b d; it keeps running)
 just contribute-status
-just contribute-off      # scale all three to 0; frees both GPUs for video jobs
+just contribute-off      # scale everything to 0; frees both GPUs for video jobs
 just contribute-learning-save # save learned skills to the isolated Ghost profile
 ```
 
-The k8s MCP `resources_scale` tool can toggle the same three Deployments.
-Scaling up through MCP reuses the last Secret that `contribute-on` wrote.
+`contribute-on` runs a warm-up gate: it loads `qwen-advisor` then `ornith` on
+both nodes before starting the contributor. The first start downloads ~70 GB
+per node.
+
+The k8s MCP `resources_scale` tool can toggle the same Deployments and StatefulSet.
+Scaling up through MCP reuses the last Secret that `contribute-on` wrote and skips the warm-up.
 
 `contribute-on` sends, every time, with no login step:
 
 - `gh auth token` → `GH_TOKEN`. Hive contributors fork and open PRs as themselves (`gh-wrapper.sh`).
 - `~/.config/hive/contributor.bluefin.env`: the Hive registration (knuckle hive). Its token is reissued with your gh identity on every `contribute-on` (`POST /api/contribute/reissue-token`, what upstream's `contribute-move` does) and written back to the file. That invalidates any other client using this registration.
 - `~/.omp/profiles/ghost/agent/config.yml`: isolated Ghost OMP settings, shipped with `modelRoles` rewritten (`yq`) to the lab models. The default workstation OMP configuration remains unchanged.
-- `skills/`, `managed-skills/` and `APPEND_SYSTEM.md` from that profile: bundled into the existing Secret, then copied into the container's native OMP agent directory by `seed-home`.
+- `skills/`, `managed-skills/` and `APPEND_SYSTEM.md` from that profile: bundled into the existing Secret, then copied into the container's native OMP agent directory by `seed-home`. The bundle ships the `ponytail` skill (profile `skills/ponytail` symlinks the omp ponytail plugin's skill; tar dereferences it), and `APPEND_SYSTEM.md` makes it always-on.
 
 Override the paths with `HIVE_CONTRIBUTE_REGISTRATION` and `HIVE_CONTRIBUTE_OMP_CONFIG`; `KUBECONFIG` defaults to `~/.kube/bluespeed.yaml`.
 
 ## Rules
 
-- Keep `replicas: 1` for the model Deployments in git, so each new
-  WaitForFirstConsumer PVC binds on first sync. `contribute` stays at 0 in git
-  because its Secret only exists after `contribute-on`. `testing-lab-infra` ignores
-  `/spec/replicas` for all three. That app is applied by hand:
-  `kubectl apply -f argocd/infra-application.yaml`.
+- Keep `replicas: 1` for `llm-d-exo-0` and `llm-d-ghost` in git, so each
+  WaitForFirstConsumer PVC binds on first sync (`llm-d-advisor-cache` is a
+  historical name, kept so ArgoCD does not prune cached models). The
+  `contribute` StatefulSet stays at 0 in git because its Secret only exists
+  after `contribute-on`. `testing-lab-infra` ignores `/spec/replicas` for all
+  three. That app is applied by hand: `kubectl apply -f argocd/infra-application.yaml`.
 - Don't run the workstation appliance under the same registration while the
   lab is on.
-- While the models are up they hold both GPUs, and `llm-d-preempt` evicts GPU
+- While the routers are up they hold both GPUs, and `llm-d-preempt` evicts GPU
   video jobs. Turn contribution off to hand the GPUs back.
 - `argo-cluster-read` excludes secrets, so Argo workflow pods cannot read the
   contribute Secret. Keep it that way.
+- Preset INI values cannot start with whitespace (llama.cpp `common/preset.cpp`
+  skips `ws` after `=`), so Ornith's reasoning-budget message lost its leading space.
 - Pinned llama.cpp build: `server-vulkan-b11151`. It is the first build with
-  `--reasoning-budget`, `--spec-draft-n-max` and `draft-mtp`. Ornith's official
-  GGUF has no MTP head, so the worker runs without speculative decoding.
+  `--reasoning-budget`, `--spec-draft-n-max` and `draft-mtp`, and the router-mode
+  build in use. Ornith's official GGUF has no MTP head, so it runs without
+  speculative decoding.
 
 ## Context and learned skills
 
@@ -90,7 +108,8 @@ still lose unsaved lessons; no persistent volume is introduced.
 Check the actual prompt with a disposable OMP `--mode rpc --no-session`
 instance and `get_state`, not a second process sharing an active session's
 state. Confirm skill names, a distinctive Hive knowledge phrase, and matching
-model context limits (worker 102400, advisor 65536). No inference call is needed
+model context limits (`ornith` 102400, `qwen-advisor` 65536), and that
+`curl <node>:3080x/v1/models` lists both ids. No inference call is needed
 to verify context construction. Never use a copied Hive entrypoint to lease
 additional work merely for a smoke check.
 

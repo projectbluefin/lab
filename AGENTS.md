@@ -21,8 +21,9 @@ Three purposes, all on the `ghost`<->`exo-0` USB4 link:
   every node) with Buildbarn CAS/action cache, BST pipelines (dakota,
   bluefin-server), the Zot registry, and the dakota OCI pipeline that makes
   `projectbluefin/dakota` (Dakota QA, boot tests, Zot candidate promotion).
-- **Local LLM inference** — llm-d (llama.cpp on Vulkan, one model per node:
-  `exo-0` NodePort 30800, `ghost` 30801, OpenAI-compatible `/v1`).
+- **Local LLM inference** — llm-d (llama.cpp on Vulkan; both nodes serve both
+  models serially, router `--models-max 1`: `exo-0` NodePort 30800, `ghost`
+  30801, OpenAI-compatible `/v1`).
 - **Distributed ffmpeg encoding** — plain Workflows from client tools
   (`tools/farm.py` in the video repos), plus `images/video-upscale`.
 

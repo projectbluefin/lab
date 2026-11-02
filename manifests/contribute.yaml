@@ -36,20 +36,10 @@ data:
           name: Qwen3.8 27B UD-Q6_K
           contextWindow: 65536
   roles.yml: |
-    # Layered last: every role the user's config.yml names is pinned to a local model.
-    # Advisor is disabled; tasks run serially with ornith then reviewed with qwen before submission.
+    # Layered last: pinned local models for worker roles
     modelRoles:
       default: lab-worker/ornith
       smol: lab-worker/ornith
-      advisor: lab-advisor/qwen-advisor
-    advisor:
-      enabled: false
-    async:
-      enabled: false
-    task:
-      batch: false
-      agentModelOverrides:
-        reviewer: lab-advisor/qwen-advisor
 ---
 apiVersion: apps/v1
 kind: StatefulSet

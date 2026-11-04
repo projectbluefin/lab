@@ -32,8 +32,8 @@ contribute-on advisor="local": contribute-learning-save
       advisor: github-copilot/gpt-6-luna:max
     advisor:
       enabled: true
-      reviewMode: agent-end
-      syncBacklog: strict
+      reviewMode: turn
+      syncBacklog: "off"
     async:
       enabled: false
     task:
@@ -49,8 +49,8 @@ contribute-on advisor="local": contribute-learning-save
       advisor: lab-advisor/ornith
     advisor:
       enabled: true
-      reviewMode: agent-end
-      syncBacklog: strict
+      reviewMode: turn
+      syncBacklog: "off"
     async:
       enabled: false
     task:

@@ -21,7 +21,7 @@ metadata:
 | Contributor: `ghcr.io/projectbluefin/contribute:stable` | StatefulSet `contribute/contribute`, 1 replica when on: `contribute-0` on exo-0 | `manifests/contribute.yaml` |
 
 exo-0 runs the Ornith worker model and ghost runs the Ornith advisor model.
-Ornith implements; the advisor reviews once at the end via OMP `advisor.reviewMode: agent-end`.
+Ornith implements; the advisor reviews concurrently per turn via OMP `advisor.reviewMode: turn` with `advisor.syncBacklog: "off"`.
 OMP roles are configured by `contribute-on`: `default` and `smol` → `ornith` on exo-0,
 `advisor` → `ornith` on ghost (or optionally Luna via `advisor="luna"`).
 

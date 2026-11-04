@@ -24,7 +24,8 @@ default:
 # After this, template changes take effect on git push — no kubectl apply needed.
 setup-argocd:
     kubectl apply -f argocd/application.yaml -n argocd
-    @echo "✓ ArgoCD Application deployed — syncs argo/workflow-templates from main automatically"
+    kubectl apply -f argocd/infra-application.yaml -n argocd
+    @echo "✓ ArgoCD Applications deployed — syncs templates and infra manifests automatically"
 
 # ── Template management (GitOps — prefer git push over manual sync) ──────────
 
@@ -51,13 +52,13 @@ logs:
 
 # List VMs in all test namespaces
 list-vms:
-    @echo "=== bluefin-test ===" && kubectl get vm -n bluefin-test 2>/dev/null || true
+    @echo "=== argo ===" && kubectl get vm -n {{ argo_ns }} 2>/dev/null || true
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 
 # Delete orphaned VMs in test namespaces
 delete-vms:
-    kubectl delete vm --all -n bluefin-test --ignore-not-found
+    kubectl delete vm --all -n {{ argo_ns }} --ignore-not-found
 
 # Delete all test workflows
 delete-workflows:

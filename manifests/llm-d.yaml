@@ -1,10 +1,9 @@
 # Local LLM inference for hive-contribute (docs/skills/hive-contribute/SKILL.md).
-# exo-0 and ghost each serve both models (ornith worker, qwen-advisor) from one llama-server router
-# with --models-max 1: one model resident per GPU, swapped on request. Per-model flags live in llm-d-presets.
+# exo-0 serves the Ornith worker; ghost serves its Ornith advisor.
+# Each keeps one Ornith model resident. Tuned flags live in llm-d-presets.
 # Keep replicas: 1 here so each WaitForFirstConsumer PVC binds on first sync; toggle with
 # `just contribute-on/off` (replicas are ignored by testing-lab-infra).
 # Recreate: one amd.com/gpu and an RWO PVC deadlock a rolling update.
-# The MTP draft is fetched by an init container: -hfd <repo>:Q4_0 picks the full 16 GB Q4_0 model.
 # PVC names are historical; kept so ArgoCD doesn't prune the cached models.
 # Image: immutable per-build tag (zot syncs tags only); never the floating :server-vulkan.
 apiVersion: scheduling.k8s.io/v1
@@ -38,7 +37,7 @@ data:
   presets.ini: |
     version = 1
 
-    ; Shared by both models; each section below is the exact tuned flag set from the old per-model Deployments.
+    ; Shared server flags for the Ornith worker and advisor.
     [*]
     no-mmproj = true
     n-gpu-layers = 999
@@ -58,20 +57,6 @@ data:
     batch-size = 1024
     ubatch-size = 1024
     load-on-startup = true
-
-    [qwen-advisor]
-    hf-repo = unsloth/Qwen3.8-27B-GGUF
-    hf-file = Qwen3.8-27B-UD-Q6_K.gguf
-    ctx-size = 65536
-    cache-ram = 256
-    reasoning-budget = 4000
-    reasoning-budget-message = OK, I've thought long enough. Let's answer.
-    spec-type = draft-mtp
-    spec-draft-model = /models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf
-    spec-draft-n-max = 4
-    spec-draft-ngl = 999
-    batch-size = 256
-    ubatch-size = 256
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -205,17 +190,6 @@ spec:
       - name: presets
         configMap:
           name: llm-d-presets
-      initContainers:
-      - name: fetch-mtp-draft
-        image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11151
-        command:
-        - sh
-        - -c
-        - f=/models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf; test -s $f || { mkdir -p /models/mtp && curl -fsSL -o $f.tmp https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/MTP/mtp-Qwen3.8-27B-Q4_0.gguf
-          && mv $f.tmp $f; }
-        volumeMounts:
-        - name: model-cache
-          mountPath: /models
 ---
 apiVersion: v1
 kind: Service
@@ -338,17 +312,6 @@ spec:
       - name: presets
         configMap:
           name: llm-d-presets
-      initContainers:
-      - name: fetch-mtp-draft
-        image: ghcr.io/ggml-org/llama.cpp:server-vulkan-b11151
-        command:
-        - sh
-        - -c
-        - f=/models/mtp/mtp-Qwen3.8-27B-Q4_0.gguf; test -s $f || { mkdir -p /models/mtp && curl -fsSL -o $f.tmp https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/main/MTP/mtp-Qwen3.8-27B-Q4_0.gguf
-          && mv $f.tmp $f; }
-        volumeMounts:
-        - name: model-cache
-          mountPath: /models
 ---
 apiVersion: v1
 kind: Service

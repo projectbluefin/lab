@@ -2,7 +2,7 @@
 name: hive-contribute
 description: >
   Run the projectbluefin/contribute Hive contributor (OMP in tmux) on the lab,
-  driven by two local llm-d models served serially on both exo-0 and ghost.
+  driven by local llm-d Ornith models on exo-0 (worker) and ghost (advisor).
   Use when turning contribution on/off, attaching to watch it, changing the
   models or their flags, or debugging why the contributor is idle.
 metadata:
@@ -16,17 +16,14 @@ metadata:
 
 | Piece | Where | Manifest |
 |---|---|---|
-| llama-server router (`--models-max 1`) serving `ornith` (`ornith-ai/Ornith-1.5-35B-A3B-GGUF` `Ornith-1.5-35B-Q6_K.gguf`, 100k ctx) and `qwen-advisor` (`unsloth/Qwen3.8-27B-GGUF` `Qwen3.8-27B-UD-Q6_K.gguf` + MTP draft, 64k ctx); per-model flags in ConfigMap `llm-d-presets` (`presets.ini`) | `llm-d/llm-d-exo-0`, exo-0, NodePort 30800 | `manifests/llm-d.yaml` |
-| Same router and models | `llm-d/llm-d-ghost`, ghost, NodePort 30801 | `manifests/llm-d.yaml` |
-| Contributor: `ghcr.io/projectbluefin/contribute:stable` | StatefulSet `contribute/contribute`, 2 replicas when on: `contribute-0` → exo-0 models, `contribute-1` → ghost models | `manifests/contribute.yaml` |
+| llama-server (`ornith-ai/Ornith-1.5-35B-A3B-GGUF` `Ornith-1.5-35B-Q6_K.gguf`, 100k ctx); flags in ConfigMap `llm-d-presets` (`presets.ini`) | `llm-d/llm-d-exo-0`, exo-0, NodePort 30800 (worker) | `manifests/llm-d.yaml` |
+| Same Ornith model as dedicated advisor | `llm-d/llm-d-ghost`, ghost, NodePort 30801 (advisor) | `manifests/llm-d.yaml` |
+| Contributor: `ghcr.io/projectbluefin/contribute:stable` | StatefulSet `contribute/contribute`, 1 replica when on: `contribute-0` on exo-0 | `manifests/contribute.yaml` |
 
-Each node holds one model at a time; the router swaps on request (LRU). Ornith
-implements; Qwen reviews once at the end via OMP `advisor.reviewMode: agent-end`
-in the Ghost profile `config.yml` (no per-turn advisor). A Qwen concern sends
-Ornith back, which costs a model swap and a full re-prefill of Ornith's context.
-OMP roles are pinned by the `contribute-omp` ConfigMap (`roles.yml`, layered
-last via `PI_CONFIG_FILES`): `default` and `smol` → `ornith`, `advisor` →
-`qwen-advisor`, on the pod's own node. No cloud provider keys enter the pod.
+exo-0 runs the Ornith worker model and ghost runs the Ornith advisor model.
+Ornith implements; the advisor reviews once at the end via OMP `advisor.reviewMode: agent-end`.
+OMP roles are configured by `contribute-on`: `default` and `smol` → `ornith` on exo-0,
+`advisor` → `ornith` on ghost (or optionally Luna via `advisor="luna"`).
 
 Both pods share one Hive registration: `HIVE_SESSION` is the pod name, and
 relays with distinct sessions hold independent tasks under one account
@@ -42,17 +39,16 @@ curl -fsSL https://raw.githubusercontent.com/projectbluefin/lab/main/docs/skills
 ```
 
 ```bash
-just contribute-on       # write Secret, scale models to 1, warm up, then scale contributors to 2 and attach
+just contribute-on       # write Secret, scale models to 1, warm up, scale contributor to 1 and attach
 just contribute          # alias of contribute-on
-just contribute-attach 1 # re-attach to contribute-0 (default) or 1 (detach: C-b d; it keeps running)
+just contribute-attach   # attach to contribute-0 (detach: C-b d)
 just contribute-status
 just contribute-off      # scale everything to 0; frees both GPUs for video jobs
 just contribute-learning-save # save learned skills to the isolated Ghost profile
 ```
 
-`contribute-on` runs a warm-up gate before starting the contributors: it loads
-`qwen-advisor` then `ornith` on both nodes, so no relay leases a task while a
-model is still downloading or swapping. The first start downloads ~70 GB per node.
+`contribute-on` runs a warm-up gate before starting the contributor: it ensures
+`ornith` is loaded and responsive on both nodes.
 
 The k8s MCP `resources_scale` tool can toggle the same Deployments and StatefulSet.
 Scaling up through MCP reuses the last Secret that `contribute-on` wrote and skips the warm-up.
@@ -107,6 +103,22 @@ edits `~/.config/hive/contributor.env`.
 
 ## Failure modes
 
+- `/advisor status` shows `[no model]` although `modelRoles.advisor` is set:
+  compare the selected role with `kubectl -n contribute exec contribute-0 -c contribute -- omp models lab-advisor --json`.
+  Local mode requires `lab-advisor/ornith`; a catalog that still lists only
+  `lab-advisor/qwen-advisor` cannot resolve it. The catalog in
+  `manifests/contribute.yaml` must register `ornith` at
+  `http://llm-d-ghost.llm-d.svc.cluster.local:8000/v1`.
+  Wait until the active contributor finishes or is idle before pushing the
+  manifest changes to git: ArgoCD auto-syncs `testing-lab-infra` on push, and
+  the pod template diff (removing `POD_NAME` and updating `seed-home`) triggers
+  an immediate rolling restart under Kubernetes default `RollingUpdate`, while
+  `manifests/llm-d.yaml` removes init containers from the model servers.
+  Push to `main` only when the active task completes, then run
+  `just contribute-on` to seed the refreshed `models.yml` and attach.
+  `seed-home` copies `models.yml` at pod initialization: syncing the ConfigMap
+  alone does not update the running pod's `~/.omp/agent/models.yml`.
+  Do not overwrite workstation settings or start another Hive relay to debug it.
 - `400 model name=ornith is not running` in a contributor pane: the router
   evicted a model as idle between admitting a request and proxying it, because
   requests for the other model arrived at the same time. It persists in b11151
@@ -144,8 +156,8 @@ still lose unsaved lessons; no persistent volume is introduced.
 Check the actual prompt with a disposable OMP `--mode rpc --no-session`
 instance and `get_state`, not a second process sharing an active session's
 state. Confirm skill names, a distinctive Hive knowledge phrase, and matching
-model context limits (`ornith` 102400, `qwen-advisor` 65536), and that
-`curl <node>:3080x/v1/models` lists both ids. No inference call is needed
+model context limits (`ornith` 102400), and that
+`curl <node>:3080x/v1/models` lists the Ornith id. No inference call is needed
 to verify context construction. Never use a copied Hive entrypoint to lease
 additional work merely for a smoke check.
 

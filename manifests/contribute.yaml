@@ -69,6 +69,9 @@ data:
       of repeated shell find/grep/head pipelines. Scope searches to the relevant
       subsystem and read the returned ranges; do not guess files or treat a
       truncated search as evidence of absence.
+      A contiguous window is `path:100-130`; `path:100,130` selects separate
+      lines, not the interval. Widen a useful window instead of repeatedly
+      reading overlapping tiny snippets.
     - Before native `edit`, read the target without `:raw` and copy its current
       `[PATH#TAG]` snapshot header. Use `PUT`/`CUT` operations, not pasted old
       numbered lines. Insert with `PUT >N:` or `PUT <N:`; replace an inclusive

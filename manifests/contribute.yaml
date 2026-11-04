@@ -50,6 +50,30 @@ data:
         }
       }
     }
+  tooling.md: |
+    ## Contributor tooling defaults
+
+    Repository instructions override these defaults.
+    - Start with a shallow checkout (`gh repo clone OWNER/REPO PATH -- --depth=1`)
+      rather than an unrestricted full clone. If a fork is needed, create or reuse
+      it without cloning first (`gh repo fork OWNER/REPO --clone=false`). Confirm
+      the current upstream base before coding; existing forks may be stale.
+      Fetch the specific base ref, and deepen history or fetch tags only when the
+      investigation, build, or repository policy needs them. Do not substitute a
+      shallow-history result for evidence that requires full history.
+    - Each bash call has a fresh shell. Pass its `cwd` explicitly or use
+      `cd /absolute/repository/path && command` in the same call; a previous `cd`
+      does not persist. Chain dependent commands with `&&`; use `set -o pipefail`
+      when a pipeline must retain the producer's failure status.
+    - Use native `read`, `grep`, and `glob` for repository investigation instead
+      of repeated shell find/grep/head pipelines. Scope searches to the relevant
+      subsystem and read the returned ranges; do not guess files or treat a
+      truncated search as evidence of absence.
+    - Read the complete issue acceptance criteria and current maintainer scope
+      before changing code. Do not pipe issue bodies or comments through `head`.
+      Read overflow artifacts/ranges rather than losing requirements. Use the
+      configured Bluefin knowledge and Context7 tools for platform/API facts;
+      separate verified facts from hypotheses.
   roles.yml: |
     # Layered last: pinned local models for worker roles and priority advisor settings
     modelRoles:

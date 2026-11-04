@@ -9,6 +9,7 @@ metadata:
   context7-sources:
     - /can1357/oh-my-pi
     - /ggml-org/llama.cpp
+    - /websites/cli_github_manual
 ---
 
 # hive-contribute
@@ -71,6 +72,14 @@ it into `~/.omp/agent/mcp.json`. It enables the Bluefin knowledge server
 Ghost-profile MCP settings. No workstation API keys are copied. The canonical
 configuration lives in `manifests/contribute.yaml`; both local and Luna
 launches use it. Changing this ConfigMap does not restart the contributor.
+
+The same ConfigMap's `tooling.md` is appended to the profile's
+`APPEND_SYSTEM.md` in the bundle, without editing the workstation profile.
+It establishes shallow initial checkouts with on-demand history, explicit
+per-call working directories, native scoped investigation tools, and complete
+acceptance-context reads. Repository policy still wins. GitHub CLI forwards
+clone flags after `--`: `gh repo clone OWNER/REPO PATH -- --depth=1`
+([source](https://cli.github.com/manual/gh_repo_clone)).
 
 ## Rules
 

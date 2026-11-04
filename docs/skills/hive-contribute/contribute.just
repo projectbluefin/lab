@@ -23,8 +23,10 @@ contribute-on advisor="local": contribute-learning-save
     cfg="$(mktemp)"; bundle="$(mktemp)"; context="$(mktemp -d)"
     trap 'rm -f "$tok" "$cfg" "$bundle"; rm -rf "$context"' EXIT
     mkdir -p "$profile/managed-skills"
-    kubectl -n contribute get configmap contribute-omp -o json | jq -er '.data["mcp.json"]' > "$context/mcp.json"
-    tar -czhf "$bundle" -C "$profile" skills managed-skills APPEND_SYSTEM.md -C "$context" mcp.json
+    kubectl -n contribute get configmap contribute-omp -o json > "$context/config.json"
+    jq -er '.data["mcp.json"]' "$context/config.json" > "$context/mcp.json"
+    { cat "$profile/APPEND_SYSTEM.md"; printf '\n'; jq -er '.data["tooling.md"]' "$context/config.json"; } > "$context/APPEND_SYSTEM.md"
+    tar -czhf "$bundle" -C "$profile" skills managed-skills -C "$context" APPEND_SYSTEM.md mcp.json
     advisor_mode="{{advisor}}"
     if [ "$advisor_mode" = "luna" ]; then
       cat > "$cfg" <<'EOF'

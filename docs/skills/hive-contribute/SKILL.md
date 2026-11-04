@@ -8,6 +8,7 @@ description: >
 metadata:
   context7-sources:
     - /can1357/oh-my-pi
+    - /ggml-org/llama.cpp
 ---
 
 # hive-contribute
@@ -62,6 +63,15 @@ Scaling up through MCP reuses the last Secret that `contribute-on` wrote and ski
 
 Override the paths with `HIVE_CONTRIBUTE_REGISTRATION` and `HIVE_CONTRIBUTE_OMP_CONFIG`; `KUBECONFIG` defaults to `~/.kube/bluespeed.yaml`.
 
+Every `contribute-on` launch reads `mcp.json` from the `contribute-omp`
+ConfigMap and includes it in the existing context bundle. `seed-home` extracts
+it into `~/.omp/agent/mcp.json`. It enables the Bluefin knowledge server
+(`https://mcp.projectbluefin.io/mcp`) and Context7
+(`https://mcp.context7.com/mcp`) over HTTP, independently of workstation or
+Ghost-profile MCP settings. No workstation API keys are copied. The canonical
+configuration lives in `manifests/contribute.yaml`; both local and Luna
+launches use it. Changing this ConfigMap does not restart the contributor.
+
 ## Rules
 
 - Keep `replicas: 1` for `llm-d-exo-0` and `llm-d-ghost` in git, so each
@@ -78,10 +88,21 @@ Override the paths with `HIVE_CONTRIBUTE_REGISTRATION` and `HIVE_CONTRIBUTE_OMP_
   contribute Secret. Keep it that way.
 - Preset INI values cannot start with whitespace (llama.cpp `common/preset.cpp`
   skips `ws` after `=`), so Ornith's reasoning-budget message lost its leading space.
-- Pinned llama.cpp build: `server-vulkan-b11151`. It is the first build with
-  `--reasoning-budget`, `--spec-draft-n-max` and `draft-mtp`, and the router-mode
-  build in use. Ornith's official GGUF has no MTP head, so it runs without
-  speculative decoding.
+- Pinned llama.cpp build: `server-vulkan-b11151`. Its native MTP path reuses
+  target weights; enable it with `spec-type = draft-mtp` and
+  `spec-draft-n-max = 1` in the Ornith preset. The cached official Q6_K file
+  contains a draft head (`blk.40.*`); without MTP the server ignores those
+  tensors. Do not set a separate draft-model path: that loads another model.
+  Verify `/slots?model=ornith` reports `speculative: true` and compare the
+  response's `timings.predicted_per_second` and draft acceptance counters.
+  Source: [pinned MTP initialization](https://github.com/ggml-org/llama.cpp/blob/b11151/common/speculative.cpp#L2532-L2588).
+- Benchmark only on an isolated node: disable the advisor with `/advisor off`,
+  unload its router model, and run the same binary and cached GGUF on a separate
+  loopback port. Keep context, batching, sampling and prompts identical between
+  configurations. Stop the disposable server and reload the router model before
+  `/advisor on`. Never benchmark against the busy worker. Code-quality probes
+  need an output allowance above the 3600-token reasoning budget; a shorter
+  allowance can consume every token in reasoning and return no final code.
 
 ## Choosing the hive
 

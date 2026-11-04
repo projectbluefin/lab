@@ -20,9 +20,11 @@ contribute-on advisor="local": contribute-learning-save
     new="$(curl -fsS --max-time 20 -X POST "${http}/api/contribute/reissue-token" -H "Authorization: Bearer $(cat "$tok")" | jq -er .registration_token)"
     sed -i "s|^HIVE_REGISTRATION_TOKEN=.*|HIVE_REGISTRATION_TOKEN=${new}|" "$reg"
     # Ship standalone contributor config with Ornith worker and Ornith advisor
-    cfg="$(mktemp)"; bundle="$(mktemp)"; trap 'rm -f "$tok" "$cfg" "$bundle"' EXIT
+    cfg="$(mktemp)"; bundle="$(mktemp)"; context="$(mktemp -d)"
+    trap 'rm -f "$tok" "$cfg" "$bundle"; rm -rf "$context"' EXIT
     mkdir -p "$profile/managed-skills"
-    tar -czhf "$bundle" -C "$profile" skills managed-skills APPEND_SYSTEM.md
+    kubectl -n contribute get configmap contribute-omp -o json | jq -er '.data["mcp.json"]' > "$context/mcp.json"
+    tar -czhf "$bundle" -C "$profile" skills managed-skills APPEND_SYSTEM.md -C "$context" mcp.json
     advisor_mode="{{advisor}}"
     if [ "$advisor_mode" = "luna" ]; then
       cat > "$cfg" <<'EOF'
@@ -91,10 +93,59 @@ contribute-off: contribute-learning-save
     kubectl -n contribute scale sts/contribute --replicas=0
     kubectl -n llm-d scale deploy/llm-d-exo-0 deploy/llm-d-ghost --replicas=0
 
-# Replica state of both contributors and both nodes' models.
+# Read-only node resources, pod state and Ornith inference snapshots (no model requests).
 contribute-status:
-    kubectl -n llm-d get deploy,pods -o wide
-    kubectl -n contribute get sts,pods -o wide
+    #!/usr/bin/env bash
+    set -uo pipefail
+    k() { timeout --kill-after=2s 15s kubectl --request-timeout=10s "$@"; }
+    echo 'Node CPU/memory (not GPU utilization):'
+    k top nodes || echo 'Node CPU/memory: unavailable (metrics/API query failed).'
+    echo
+    echo 'Model servers:'
+    k -n llm-d get deploy,pods -o wide || echo 'Model server pod listing: unavailable.'
+    echo
+    echo 'Contributors:'
+    k -n contribute get sts,pods -o wide || echo 'Contributor pod listing: unavailable.'
+    echo
+    echo 'Inference snapshot (cache = cached/total prompt tokens, not aggregate hit rate):'
+    for node in exo-0 ghost; do
+      if ! pods="$(k -n llm-d get pods -l "app.kubernetes.io/name=llm-d,app.kubernetes.io/instance=$node" -o json)"; then
+        printf '%s: unavailable (pod query failed).\n' "$node"
+        continue
+      fi
+      pod="$(jq -r '[.items[] | select(.metadata.deletionTimestamp == null and .status.phase == "Running")
+        | select(any(.status.conditions[]?; .type == "Ready" and .status == "True"))
+        | select(any(.status.containerStatuses[]?; .name == "modelserver" and .ready == true and .state.running != null))]
+        | sort_by(.metadata.creationTimestamp) | last | .metadata.name // empty' <<< "$pods")"
+      if [ -z "$pod" ]; then
+        printf '%s: no Running Ready modelserver (stopped or not ready); inference not queried.\n' "$node"
+        continue
+      fi
+      printf '%s (%s): ' "$node" "$pod"
+      if ! models="$(k -n llm-d exec "$pod" -c modelserver --pod-running-timeout=5s -- curl -fsS --connect-timeout 2 --max-time 5 http://localhost:8000/v1/models)"; then
+        echo 'Ornith load state unavailable (/v1/models query failed).'
+        continue
+      fi
+      if ! state="$(jq -er '(.data | map(select(.id == "ornith")) | first) as $model
+        | if $model == null then "not listed" else ($model.status.value // "unknown") end' <<< "$models")"; then
+        echo 'Ornith load state unavailable (invalid /v1/models response).'
+        continue
+      fi
+      printf 'ornith=%s\n' "$state"
+      if [ "$state" != loaded ]; then
+        echo '  slots: not queried (Ornith is not confirmed loaded).'
+        continue
+      fi
+      if ! slots="$(k -n llm-d exec "$pod" -c modelserver --pod-running-timeout=5s -- curl -fsS --connect-timeout 2 --max-time 5 'http://localhost:8000/slots?model=ornith')"; then
+        echo '  slots: unavailable (/slots query failed; activity unknown).'
+        continue
+      fi
+      jq -er 'if type != "array" then error("invalid slot response")
+        elif length == 0 then "  slots: none (no activity reported)"
+        else .[] | "  slot \(.id): \(if .is_processing == true then "busy" elif .is_processing == false then "idle" else "unknown" end) ctx=\(.n_ctx) prompt=\(.n_prompt_tokens) processed=\(.n_prompt_tokens_processed) cached=\(.n_prompt_tokens_cache) (\(if .n_prompt_tokens > 0 then ((100 * .n_prompt_tokens_cache / .n_prompt_tokens) | floor | tostring) + "%" else "n/a" end))"
+        end' <<< "$slots" || echo '  slots: unavailable (invalid response; activity unknown).'
+    done
+    echo 'Busy/idle and prompt counters are sampled slot state, not measured GPU load or throughput.'
 
 # Save lessons before a normal stop/restart; review before capturing with chezmoi.
 contribute-learning-save pod="":

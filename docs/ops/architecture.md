@@ -26,6 +26,14 @@ standard Ethernet only — none currently have a physical USB4/Thunderbolt link 
 - External LAN access and ingress to cluster services
 - All other nodes reach the cluster exclusively over this Ethernet LAN
 
+exo-0's k3s `node-ip` is pinned to `192.168.1.170`. Its NetworkManager
+`Wired connection 1` profile includes `192.168.1.170/24` alongside DHCP;
+the advertised node address must remain present on `enp191s0`. If only a
+different DHCP address is present, ghost's host-gw return route targets the
+wrong address: worker pods can reach public resolvers directly while queries
+through CoreDNS time out. Compare the node's advertised IP, NIC addresses,
+and the peer's DNS return route before changing CoreDNS upstreams.
+
 ### Data Plane — Point-to-Point USB4 Link (ghost <-> exo-0 only)
 
 > **STATUS (2026-07-09): LINK UP AND ROUTED.** After the 2026-07-08 EC/PD failure

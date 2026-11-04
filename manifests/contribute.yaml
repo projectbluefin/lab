@@ -36,11 +36,12 @@ data:
           name: Ornith 1.5 35B-A3B Q6_K
           contextWindow: 102400
   roles.yml: |
-    # Layered last: pinned local models for worker roles
+    # Layered last: pinned local models for worker roles and priority advisor settings
     modelRoles:
       default: lab-worker/ornith
       smol: lab-worker/ornith
----
+    advisor:
+      syncBacklog: "off"
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

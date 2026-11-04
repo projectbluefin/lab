@@ -80,6 +80,9 @@ per-call working directories, native scoped investigation tools, and complete
 acceptance-context reads. Repository policy still wins. GitHub CLI forwards
 clone flags after `--`: `gh repo clone OWNER/REPO PATH -- --depth=1`
 ([source](https://cli.github.com/manual/gh_repo_clone)).
+Native edits need the current non-raw read snapshot and `PUT`/`CUT` operations;
+copied old numbered lines are not a patch. Dependency-gated regression tests
+must execute in the repository's supported environment, not merely skip.
 
 ## Rules
 

@@ -71,8 +71,10 @@ data:
       truncated search as evidence of absence.
     - Before native `edit`, read the target without `:raw` and copy its current
       `[PATH#TAG]` snapshot header. Use `PUT`/`CUT` operations, not pasted old
-      numbered lines: an insertion is `PUT >N:` followed by `+`-prefixed new
-      lines. Do not invent tags or keep using stale anchors after an edit.
+      numbered lines. Insert with `PUT >N:` or `PUT <N:`; replace an inclusive
+      range with `PUT N.=M:` (not `PUT N,M:`); delete with `CUT N.=M`.
+      `PUT` bodies contain only `+`-prefixed new lines. Do not invent tags or
+      keep using stale anchors after an edit.
     - Verify the targeted regression actually runs. Install the repository's
       declared test dependencies in its supported isolated environment when
       imports are missing; skipped tests do not prove the change. Do not stub

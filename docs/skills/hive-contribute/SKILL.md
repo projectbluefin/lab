@@ -10,9 +10,26 @@ metadata:
     - /can1357/oh-my-pi
     - /ggml-org/llama.cpp
     - /websites/cli_github_manual
+    - /git/htmldocs
 ---
 
 # hive-contribute
+
+## When to Use
+
+Use when launching, observing, stopping, or changing the lab contributor and
+its local worker/advisor models or deterministic tooling.
+
+## When NOT to Use
+
+Do not start another Hive relay merely to inspect context or test tools.
+General cluster administration belongs to the relevant cluster operations skill.
+
+## Core Process
+
+1. Use the entrypoints below; preserve the separate workstation profile.
+2. Exercise changed contracts in a disposable native OMP session first.
+3. Follow the verification checks before activating changes at a clean start.
 
 ## Shape
 
@@ -51,6 +68,8 @@ just contribute-learning-save # save learned skills to the isolated Ghost profil
 
 `contribute-on` runs a warm-up gate before starting the contributor: it ensures
 `ornith` is loaded and responsive on both nodes.
+Context and safe-tool assets are validated before the registration token is
+reissued, so an invalid startup bundle does not invalidate the active lease.
 
 The k8s MCP `resources_scale` tool can toggle the same Deployments and StatefulSet.
 Scaling up through MCP reuses the last Secret that `contribute-on` wrote and skips the warm-up.
@@ -73,16 +92,45 @@ Ghost-profile MCP settings. No workstation API keys are copied. The canonical
 configuration lives in `manifests/contribute.yaml`; both local and Luna
 launches use it. Changing this ConfigMap does not restart the contributor.
 
-The same ConfigMap's `tooling.md` is appended to the profile's
-`APPEND_SYSTEM.md` in the bundle, without editing the workstation profile.
-It establishes shallow initial checkouts with on-demand history, explicit
-per-call working directories, native scoped investigation tools, and complete
-acceptance-context reads. Repository policy still wins. GitHub CLI forwards
-clone flags after `--`: `gh repo clone OWNER/REPO PATH -- --depth=1`
-([source](https://cli.github.com/manual/gh_repo_clone)).
-Native edits need the current non-raw read snapshot and `PUT`/`CUT` operations;
-copied old numbered lines are not a patch. Dependency-gated regression tests
-must execute in the repository's supported environment, not merely skip.
+The ConfigMap also ships `safe-tools.js`, `checkout.py`, and `verify.py` through
+the context bundle into `~/.omp/agent/hooks/pre/`. New OMP sessions discover
+the extension there; no workstation profile or contributor pod template is
+changed. The remaining `tooling.md` is appended to the profile's
+`APPEND_SYSTEM.md` without editing the profile.
+
+- `contribute_checkout` accepts a Git URL, a new absolute destination, an
+  optional ref and positive depth (default 1). It fetches that ref into a
+  detached checkout and returns its absolute `cwd` and commit. Existing
+  destinations are rejected; no fork, push, deletion, retry, or global Git
+  interception occurs. Extra history and fork setup remain explicit Git work.
+- Every native `bash` call must supply an existing absolute `cwd`; missing,
+  relative, nonexistent and non-directory values are blocked before execution.
+  Commands are not rewritten and no directory is silently inferred.
+- `contribute_verify` takes `cwd`, a `runner` (`unittest` or `junit`), and exact
+  `required` test IDs. Unittest loads the supplied `tests` selectors (defaulting
+  to `required`) with the selected `python` interpreter. JUnit runs an explicit
+  argv `command` containing one `{report}` placeholder and checks its fresh
+  report. Required tests must actually pass; missing, skipped, duplicate JUnit
+  IDs, failed processes or failed reports reject verification. Unrelated skips
+  remain allowed.
+- Optional `setup` is a list of caller-selected argv commands, executed once
+  in order before testing. Any setup failure stops verification. Use the
+  repository's supported isolated environment and declared dependencies;
+  neither package manager nor packages are guessed or automatically installed.
+
+These helpers are mechanical gates, not a claim that tests cover the task or
+that the chosen working directory is semantically correct. Native read/edit
+syntax and complete acceptance-context reads still require model judgment.
+These are tool-level contracts: arbitrary Git/test commands and Hive completion
+signals are not intercepted. JUnit evidence comes from the caller's trusted
+test runner; it is not an attestation against deliberately fabricated reports.
+New extension modules are not assumed hot-loadable in OMP 18.12.6: install
+them in the existing startup bundle, verify a disposable native session, and
+activate on a clean contributor start without abandoning a live task.
+Source: [pinned hook discovery and interception](https://github.com/can1357/oh-my-pi/blob/v18.12.6/docs/hooks.md).
+Use an ESM `export default` factory for the pinned native loader. Local
+`file://` checkouts use Git's built-in upload-pack command because the slim
+image may omit its standalone executable.
 
 ## Rules
 
@@ -201,5 +249,23 @@ For a persistence check, save a disposable marker through the real recipe,
 delete the disposable consumer, restore into a replacement and inspect its
 OMP prompt; remove the marker from both the profile and Secret afterward.
 
-Red flags: replacing the workstation profile, starting a second Hive relay
-to inspect context, or treating an unsaved file in an ephemeral pod as durable.
+- [ ] `dumpTools` registers both helper names in a disposable native session.
+- [ ] Invalid-cwd bash cannot write a file; valid-cwd bash executes.
+- [ ] A real checkout returns the requested commit and depth.
+- [ ] Required regression skips and missing tests fail the gate.
+- [ ] Startup bundle errors do not reissue registration.
+- [ ] Existing owner context and credentials remain unchanged.
+
+## Common Rationalizations
+
+- "A zero test-process exit proves the regression passed" — require its exact
+  executed test ID and passing outcome, not a skip or absent report entry.
+- "Editing an extension file activates it" — verify native discovery on a new
+  session; do not claim a live reload without observing execution.
+
+
+## Red Flags
+
+Replacing the workstation profile, starting a second Hive relay to inspect
+context, treating an unsaved ephemeral file as durable, or claiming a guard is
+active before observing its execution.

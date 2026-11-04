@@ -50,21 +50,380 @@ data:
         }
       }
     }
+  checkout.py: |
+    #!/usr/bin/env python3
+    """Fetch one requested upstream ref into a new, shallow detached checkout."""
+    
+    import json
+    import os
+    from pathlib import Path
+    import shutil
+    import subprocess
+    import sys
+    from urllib.parse import unquote, urlsplit
+    
+    
+    def request_fields(request):
+        if not isinstance(request, dict):
+            raise ValueError("request must be a JSON object")
+    
+        url = request.get("url")
+        if not isinstance(url, str) or not url or url != url.strip():
+            raise ValueError("url must be an HTTP(S) URL or an absolute file:// URL")
+        if any(ord(character) < 32 or ord(character) == 127 for character in url):
+            raise ValueError("url must not contain control characters")
+        try:
+            parsed = urlsplit(url)
+            if parsed.username is not None or parsed.password is not None:
+                raise ValueError("embedded URL credentials are not permitted")
+            if parsed.scheme in ("https", "http"):
+                if not parsed.hostname:
+                    raise ValueError("HTTP(S) url must include a hostname")
+                parsed.port
+            elif parsed.scheme == "file":
+                path = unquote(parsed.path)
+                if (
+                    not url.lower().startswith("file://")
+                    or parsed.netloc not in ("", "localhost")
+                    or not os.path.isabs(path)
+                ):
+                    raise ValueError("file:// url must identify an absolute local repository")
+                if parsed.query or parsed.fragment or "\x00" in path:
+                    raise ValueError("file:// url must identify an absolute local repository")
+            else:
+                raise ValueError("url must use HTTP(S) or file://")
+        except ValueError as error:
+            # Do not echo the supplied URL: a rejected URL may contain a secret.
+            if "credential" in str(error):
+                raise ValueError("embedded URL credentials are not permitted") from None
+            raise ValueError("invalid repository url: expected HTTP(S) or absolute local file://") from None
+    
+        destination = request.get("destination")
+        if (
+            not isinstance(destination, str)
+            or not destination
+            or "\x00" in destination
+            or not os.path.isabs(destination)
+        ):
+            raise ValueError("destination must be an absolute filesystem path")
+    
+        depth = request.get("depth", 1)
+        if type(depth) is not int or depth <= 0:
+            raise ValueError("depth must be a positive integer")
+    
+        ref = request.get("ref", "HEAD")
+        if not isinstance(ref, str) or not ref or ref.startswith("-"):
+            raise ValueError("ref must be a nonempty branch, tag, or commit")
+        if any(ord(character) < 32 or ord(character) == 127 for character in ref):
+            raise ValueError("ref must not contain control characters")
+    
+        return url, Path(destination), ref, depth, parsed.hostname
+    
+    
+    def checkout(request):
+        url, destination, ref, depth, hostname = request_fields(request)
+        environment = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        # Caller repository overrides must not redirect writes out of this checkout.
+        for name in (
+            "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+            "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        ):
+            environment.pop(name, None)
+        # Validate the ref before creating anything. A fetch refspec is not a ref:
+        # reject destinations, wildcards and options rather than interpreting them.
+        valid_ref = subprocess.run(
+            ["git", "check-ref-format", "--allow-onelevel", ref],
+            env=environment,
+            stdout=sys.stderr,
+            stderr=sys.stderr,
+        )
+        if valid_ref.returncode:
+            raise ValueError("ref must be a valid branch, tag, or commit, not a fetch refspec")
+    
+        if os.path.lexists(destination):
+            raise ValueError(f"destination already exists and was left untouched: {destination}")
+        try:
+            destination.mkdir()
+        except OSError as error:
+            raise ValueError(f"cannot create destination {destination}: {error.strerror}") from None
+    
+        # mkdir reserves the destination atomically. Every subsequent failure keeps
+        # that new partial checkout; never remove work to hide or retry a failure.
+        partial_path = str(destination)
+        try:
+            destination = destination.resolve(strict=True)
+            partial_path = str(destination)
+            git_argv = ["git"]
+            if hostname == "github.com" and shutil.which("gh"):
+                git_argv += [
+                    "-c", "credential.helper=",
+                    "-c", "credential.helper=!gh auth git-credential",
+                ]
+    
+            def git(*arguments, capture=False):
+                result = subprocess.run(
+                    [*git_argv, *arguments],
+                    cwd=destination,
+                    env=environment,
+                    stdout=subprocess.PIPE if capture else sys.stderr,
+                    stderr=sys.stderr,
+                    text=True,
+                )
+                if result.returncode:
+                    raise ValueError(f"git {arguments[0]} failed (exit {result.returncode})")
+                return result.stdout.strip() if capture else None
+    
+            git("init", "-q")
+            git("remote", "add", "upstream", url)
+            # Slim images may omit the standalone git-upload-pack executable.
+            upload_pack = ["--upload-pack=git upload-pack"] if urlsplit(url).scheme == "file" else []
+            git("fetch", "--depth", str(depth), *upload_pack, "--", "upstream", ref)
+            git("checkout", "--detach", "FETCH_HEAD")
+            commit = git("rev-parse", "HEAD", capture=True)
+            return {"ok": True, "cwd": str(destination), "commit": commit, "ref": ref, "depth": depth}
+        except (OSError, ValueError, RuntimeError) as error:
+            raise ValueError(f"checkout failed; partial checkout retained at {partial_path}: {error}") from None
+    
+    
+    def main():
+        try:
+            if len(sys.argv) != 2:
+                raise ValueError("expected one JSON request argument")
+            request = json.loads(sys.argv[1])
+            result = checkout(request)
+        except (OSError, ValueError, RuntimeError) as error:
+            print(json.dumps({"ok": False, "error": str(error)}))
+            return 1
+        print(json.dumps(result))
+        return 0
+    
+    
+    if __name__ == "__main__":
+        sys.exit(main())
+  verify.py: |
+    import json
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    import tempfile
+    import xml.etree.ElementTree as ET
+    
+    
+    UNITTEST_RUNNER = r'''
+    import json, os, sys, unittest
+    sys.path.insert(0, os.getcwd())
+    
+    class Result(unittest.TextTestResult):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.passed = []
+        def addSuccess(self, test):
+            super().addSuccess(test)
+            self.passed.append(test.id())
+    
+    suite = unittest.TestLoader().loadTestsFromNames(json.loads(sys.argv[2]))
+    result = unittest.TextTestRunner(stream=sys.stderr, verbosity=2, resultclass=Result).run(suite)
+    with open(sys.argv[1], 'w') as stream:
+        json.dump({'passed': result.passed,
+                   'skipped': [test.id() for test, reason in result.skipped],
+                   'failures': len(result.failures), 'errors': len(result.errors),
+                   'unexpected_successes': len(result.unexpectedSuccesses)}, stream)
+    sys.exit(0 if result.wasSuccessful() else 1)
+    '''
+    
+    
+    def strings(value, label):
+        if not isinstance(value, list) or not value or any(not isinstance(item, str) or not item.strip() or '\x00' in item for item in value):
+            raise ValueError(label + ' must be a nonempty array of nonempty strings')
+        return value
+    
+    
+    def validate(request):
+        if not isinstance(request, dict):
+            raise ValueError('request must be an object')
+        cwd = request.get('cwd')
+        if not isinstance(cwd, str) or not os.path.isabs(cwd) or not os.path.isdir(cwd):
+            raise ValueError('cwd must be an existing absolute directory')
+        required = strings(request.get('required'), 'required')
+        if len(set(required)) != len(required):
+            raise ValueError('required test IDs must be unique')
+        runner = request.get('runner')
+        if runner not in ('unittest', 'junit'):
+            raise ValueError('runner must be unittest or junit')
+        setup = request.get('setup', [])
+        if not isinstance(setup, list):
+            raise ValueError('setup must be an array of argv arrays')
+        for command in setup:
+            strings(command, 'setup command')
+        if 'tests' in request:
+            strings(request['tests'], 'tests')
+        if 'python' in request:
+            python = request['python']
+            if not isinstance(python, str) or not python.strip() or '\x00' in python:
+                raise ValueError('python must be a nonempty interpreter path or name')
+        if 'command' in request:
+            strings(request['command'], 'command')
+        if runner == 'junit':
+            command = strings(request.get('command'), 'command')
+            if sum(arg.count('{report}') for arg in command) != 1:
+                raise ValueError('command must contain exactly one {report} placeholder')
+        return cwd, required, runner, setup
+    
+    
+    def run(command, cwd):
+        return subprocess.run(command, cwd=cwd, stdout=sys.stderr, stderr=sys.stderr).returncode
+    
+    
+    def junit_report(path):
+        root = ET.parse(path).getroot()
+        if root.tag not in ('testsuite', 'testsuites'):
+            raise ValueError('JUnit report root must be testsuite or testsuites')
+        passed, skipped, counts = [], [], {}
+        failed = False
+        for element in root.iter():
+            if element.tag in ('failure', 'error'):
+                failed = True
+            if element.tag in ('testsuite', 'testsuites'):
+                for attribute in ('failures', 'errors'):
+                    value = element.get(attribute)
+                    if value is not None:
+                        count = int(value)
+                        if count < 0:
+                            raise ValueError('invalid JUnit failure count')
+                        failed = failed or count > 0
+            if element.tag != 'testcase':
+                continue
+            name = element.get('name')
+            if not name:
+                raise ValueError('JUnit testcase must have a name')
+            classname = element.get('classname', '')
+            identifier = classname + '.' + name if classname else name
+            counts[identifier] = counts.get(identifier, 0) + 1
+            if element.find('failure') is not None or element.find('error') is not None:
+                continue
+            status = element.get('status', '').strip().lower()
+            outcome = element.get('result', '').strip().lower()
+            if element.find('skipped') is not None or status in ('notrun', 'skipped', 'disabled') or outcome in ('suppressed', 'skipped'):
+                skipped.append(identifier)
+            else:
+                passed.append(identifier)
+        return passed, skipped, counts, failed
+    
+    
+    def verify(request):
+        cwd, required, runner, setup = validate(request)
+        for command in setup:
+            code = run(command, cwd)
+            if code != 0:
+                raise ValueError('setup command failed with exit code ' + str(code))
+        with tempfile.TemporaryDirectory(prefix='contribute-verify-') as directory:
+            report = Path(directory) / ('report.json' if runner == 'unittest' else 'report.xml')
+            if runner == 'unittest':
+                command = [request.get('python', sys.executable), '-c', UNITTEST_RUNNER,
+                           str(report), json.dumps(request.get('tests', required))]
+            else:
+                command = [arg.replace('{report}', str(report)) for arg in request['command']]
+            code = run(command, cwd)
+            if code != 0:
+                raise ValueError('test command failed with exit code ' + str(code))
+            if not report.is_file():
+                raise ValueError('test command did not produce its fresh report')
+            if runner == 'unittest':
+                data = json.loads(report.read_text())
+                passed, skipped = data['passed'], data['skipped']
+                failed = bool(data['failures'] or data['errors'] or data['unexpected_successes'])
+                counts = None
+            else:
+                passed, skipped, counts, failed = junit_report(report)
+            summary = {'passed': passed, 'skipped': skipped}
+            if failed:
+                return {'ok': False, 'error': 'test report contains failures or errors', **summary}
+            if counts is not None and any(counts.get(identifier, 0) > 1 for identifier in required):
+                return {'ok': False, 'error': 'required test ID appears more than once in report', **summary}
+            missing = [identifier for identifier in required if identifier not in passed or identifier in skipped]
+            if missing:
+                return {'ok': False, 'error': 'required tests did not pass: ' + ', '.join(missing), **summary}
+            return {'ok': True, **summary}
+    
+    
+    def main():
+        try:
+            if len(sys.argv) != 2:
+                raise ValueError('expected one JSON request argument')
+            result = verify(json.loads(sys.argv[1]))
+        except (ValueError, OSError, KeyError, TypeError, ET.ParseError) as error:
+            result = {'ok': False, 'error': str(error)}
+        print(json.dumps(result))
+        return 0 if result['ok'] else 1
+    
+    
+    if __name__ == '__main__':
+        sys.exit(main())
+  safe-tools.js: |
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { fileURLToPath } from 'node:url';
+    const assetDirectory = path.dirname(fileURLToPath(import.meta.url));
+
+    export default function safeContributorTools(pi) {
+      pi.on('tool_call', (event) => {
+        if (event.toolName !== 'bash') return;
+        const cwd = event.input?.cwd;
+        let directory = false;
+        if (typeof cwd === 'string' && path.isAbsolute(cwd)) {
+          try { directory = fs.statSync(cwd).isDirectory(); } catch { /* Reject unreadable or missing paths. */ }
+        }
+        if (!directory) {
+          return { block: true, reason: 'bash requires an explicit existing absolute cwd. Pass cwd; no command was executed.' };
+        }
+      });
+    
+      const z = pi.zod;
+      const argv = z.array(z.string());
+      async function runAsset(asset, params, signal, ctx) {
+        const result = await pi.exec('python3', [path.join(assetDirectory, asset), JSON.stringify(params)], { cwd: ctx.cwd, signal });
+        return {
+          content: [{ type: 'text', text: [result.stdout, result.stderr].filter(Boolean).join('\n') }],
+          details: { exitCode: result.code, killed: result.killed },
+          isError: result.code !== 0,
+        };
+      }
+    
+      pi.registerTool({
+        name: 'contribute_checkout',
+        label: 'Checkout repository',
+        description: 'Checkout a Git URL into a new absolute destination. Default depth 1; preserve explicit ref. Returns cwd and commit. Never overwrites, forks, pushes, or intercepts other Git commands.',
+        loadMode: 'essential',
+        parameters: z.object({
+          url: z.string(), destination: z.string(), ref: z.string().optional(),
+          depth: z.number().int().positive().optional(),
+        }),
+        execute: (_id, params, signal, _update, ctx) => runAsset('checkout.py', params, signal, ctx),
+      });
+    
+      pi.registerTool({
+        name: 'contribute_verify',
+        label: 'Verify required regressions',
+        description: 'Execute explicit setup and tests; required exact test IDs must actually pass. Use unittest selectors or a JUnit-producing argv command containing {report}. Unrelated skips are allowed. No inferred package installation.',
+        loadMode: 'essential',
+        parameters: z.object({
+          cwd: z.string(), runner: z.enum(['unittest', 'junit']), required: argv,
+          tests: argv.optional(), python: z.string().optional(), command: argv.optional(),
+          setup: z.array(argv).optional(),
+        }),
+        execute: (_id, params, signal, _update, ctx) => runAsset('verify.py', params, signal, ctx),
+      });
+    };
   tooling.md: |
     ## Contributor tooling defaults
 
     Repository instructions override these defaults.
-    - Start with a shallow checkout (`gh repo clone OWNER/REPO PATH -- --depth=1`)
-      rather than an unrestricted full clone. If a fork is needed, create or reuse
-      it without cloning first (`gh repo fork OWNER/REPO --clone=false`). Confirm
-      the current upstream base before coding; existing forks may be stale.
-      Fetch the specific base ref, and deepen history or fetch tags only when the
-      investigation, build, or repository policy needs them. Do not substitute a
-      shallow-history result for evidence that requires full history.
-    - Each bash call has a fresh shell. Pass its `cwd` explicitly or use
-      `cd /absolute/repository/path && command` in the same call; a previous `cd`
-      does not persist. Chain dependent commands with `&&`; use `set -o pipefail`
-      when a pipeline must retain the producer's failure status.
+    - Prefer `contribute_checkout` for an initial checkout; it returns the
+      absolute cwd and fetched commit without overwriting existing work. Fork
+      setup and extra history remain explicit, policy-driven Git commands.
+    - Every bash call requires an explicit existing absolute `cwd`. Dependent
+      commands still need `&&`; use `set -o pipefail` for relevant pipelines.
     - Use native `read`, `grep`, and `glob` for repository investigation instead
       of repeated shell find/grep/head pipelines. Scope searches to the relevant
       subsystem and read the returned ranges; do not guess files or treat a
@@ -78,11 +437,9 @@ data:
       range with `PUT N.=M:` (not `PUT N,M:`); delete with `CUT N.=M`.
       `PUT` bodies contain only `+`-prefixed new lines. Do not invent tags or
       keep using stale anchors after an edit.
-    - Verify the targeted regression actually runs. Install the repository's
-      declared test dependencies in its supported isolated environment when
-      imports are missing; skipped tests do not prove the change. Do not stub
-      dependencies, remove skip guards, or weaken acceptance budgets to claim
-      passing verification.
+    - Use `contribute_verify` with exact required regression IDs. Supply the
+      repository's supported interpreter/test command and explicit dependency
+      setup argv; never guess packages or weaken tests and acceptance budgets.
     - Read the complete issue acceptance criteria and current maintainer scope
       before changing code. Do not pipe issue bodies or comments through `head`.
       Read overflow artifacts/ranges rather than losing requirements. Use the

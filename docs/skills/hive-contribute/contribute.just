@@ -14,11 +14,6 @@ contribute-on advisor="local": contribute-learning-save
     omp="${HIVE_CONTRIBUTE_OMP_CONFIG:-$profile/config.yml}"
     tok="$(mktemp)"; trap 'rm -f "$tok"' EXIT
     printf %s "$(gh auth token)" > "$tok"
-    # Refresh the Hive registration token with the gh identity (upstream's contribute-move call),
-    # so a stale or reissued-elsewhere token never needs a manual repair. The lab is the one contributor.
-    hub="$(sed -nE 's/^HIVE_HUB=//p' "$reg" | head -1)"; http="https://${hub#wss://}"; http="${http%/contribute}"
-    new="$(curl -fsS --max-time 20 -X POST "${http}/api/contribute/reissue-token" -H "Authorization: Bearer $(cat "$tok")" | jq -er .registration_token)"
-    sed -i "s|^HIVE_REGISTRATION_TOKEN=.*|HIVE_REGISTRATION_TOKEN=${new}|" "$reg"
     # Ship standalone contributor config with Ornith worker and Ornith advisor
     cfg="$(mktemp)"; bundle="$(mktemp)"; context="$(mktemp -d)"
     trap 'rm -f "$tok" "$cfg" "$bundle"; rm -rf "$context"' EXIT
@@ -26,7 +21,11 @@ contribute-on advisor="local": contribute-learning-save
     kubectl -n contribute get configmap contribute-omp -o json > "$context/config.json"
     jq -er '.data["mcp.json"]' "$context/config.json" > "$context/mcp.json"
     { cat "$profile/APPEND_SYSTEM.md"; printf '\n'; jq -er '.data["tooling.md"]' "$context/config.json"; } > "$context/APPEND_SYSTEM.md"
-    tar -czhf "$bundle" -C "$profile" skills managed-skills -C "$context" APPEND_SYSTEM.md mcp.json
+    mkdir -p "$context/hooks/pre"
+    for asset in safe-tools.js checkout.py verify.py; do
+      jq -er --arg name "$asset" '.data[$name]' "$context/config.json" > "$context/hooks/pre/$asset"
+    done
+    tar -czhf "$bundle" -C "$profile" skills managed-skills -C "$context" APPEND_SYSTEM.md mcp.json hooks
     advisor_mode="{{advisor}}"
     if [ "$advisor_mode" = "luna" ]; then
       cat > "$cfg" <<'EOF'
@@ -63,6 +62,11 @@ contribute-on advisor="local": contribute-learning-save
       enabled: false
     EOF
     fi
+    # Refresh the Hive registration token with the gh identity (upstream's contribute-move call),
+    # so a stale or reissued-elsewhere token never needs a manual repair. The lab is the one contributor.
+    hub="$(sed -nE 's/^HIVE_HUB=//p' "$reg" | head -1)"; http="https://${hub#wss://}"; http="${http%/contribute}"
+    new="$(curl -fsS --max-time 20 -X POST "${http}/api/contribute/reissue-token" -H "Authorization: Bearer $(cat "$tok")" | jq -er .registration_token)"
+    sed -i "s|^HIVE_REGISTRATION_TOKEN=.*|HIVE_REGISTRATION_TOKEN=${new}|" "$reg"
     kubectl -n contribute create secret generic contribute \
       --from-file=GH_TOKEN="$tok" --from-file=contributor.env="$reg" --from-file=config.yml="$cfg" \
       --from-file=ghost-context.tgz="$bundle" \

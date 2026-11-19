@@ -1,7 +1,8 @@
 # hive-contribute: projectbluefin/contribute (OMP in tmux) on the local llm-d models.
-# StatefulSet, replicas: 0 in git; `just contribute-on` (in ~/.justfile) writes the Secret (your `gh auth token`,
-# Hive registration, OMP config.yml) and scales it to 1. Ornith on exo-0 implements;
-# Ornith on ghost advises. See docs/skills/hive-contribute/SKILL.md.
+# StatefulSet, replicas: 0 in Git. Each contributor uses the Ornith server on
+# its own node for both implementation and the separate review session.
+# Rollout requires the pinned review runtime and a drained StatefulSet recreate:
+# Kubernetes cannot add volumeClaimTemplates to an existing StatefulSet.
 # Files are copied into an emptyDir home by seed-home: subPath mounts would make
 # ~/.omp root-owned, and OMP must write ~/.omp/natives.
 apiVersion: v1
@@ -20,15 +21,7 @@ data:
   models.yml: |
     providers:
       lab-worker:
-        baseUrl: http://llm-d-exo-0.llm-d.svc.cluster.local:8000/v1
-        api: openai-completions
-        apiKey: local
-        models:
-        - id: ornith
-          name: Ornith 1.5 35B-A3B Q6_K
-          contextWindow: 262144
-      lab-advisor:
-        baseUrl: http://llm-d-ghost.llm-d.svc.cluster.local:8000/v1
+        baseUrl: http://llm-d-@NODE_NAME@.llm-d.svc.cluster.local:8000/v1
         api: openai-completions
         apiKey: local
         models:
@@ -446,17 +439,19 @@ data:
       configured Bluefin knowledge and Context7 tools for platform/API facts;
       separate verified facts from hypotheses.
   roles.yml: |
-    # Layered last: pinned local models for worker roles and priority advisor settings
+    # Layered last: the relay runs a separate review, not OMP's advisor.
     modelRoles:
       default: lab-worker/ornith
       smol: lab-worker/ornith
     advisor:
-      syncBacklog: "off"
+      enabled: false
+    autolearn:
+      enabled: true
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: contribute
+  name: contribute-reviewed
   namespace: contribute
   labels:
     app.kubernetes.io/name: contribute
@@ -469,17 +464,43 @@ spec:
       app.kubernetes.io/name: contribute
   template:
     metadata:
+      annotations:
+        bluefin.io/contributor-mode: dual-review-v1
       labels:
         app.kubernetes.io/name: contribute
     spec:
+      automountServiceAccountToken: false
+      shareProcessNamespace: false
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values: [exo-0, ghost]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: contribute
+            topologyKey: kubernetes.io/hostname
       securityContext:
         runAsUser: 65532
         runAsGroup: 65532
         fsGroup: 65532
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: contribute
-        image: ghcr.io/projectbluefin/contribute:stable
+        image: &review_image 192.168.1.102:30500/lab-contribute@sha256:30f5a7de16abde578864172ff5a58a911b4e013a1b6f13730c54188874feb96f
         imagePullPolicy: Always
+        command: ["/usr/local/bin/hive-review-runtime", "worker"]
+        securityContext: &unprivileged
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         env:
         - name: AGENT_BACKEND
           value: omp
@@ -491,15 +512,10 @@ spec:
           value: truecolor
         - name: PI_CONFIG_FILES
           value: /usr/share/hive/contribute/omp-config.yml:/etc/contribute/roles.yml
-        - name: HIVE_SESSION
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: GH_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: contribute
-              key: GH_TOKEN
+        readinessProbe:
+          exec:
+            command: ["/usr/bin/tmux", "has-session", "-t", "=contributor"]
+          periodSeconds: 5
         volumeMounts:
         - name: home
           mountPath: /home/hive
@@ -508,6 +524,13 @@ spec:
         - name: omp
           mountPath: /etc/contribute
           readOnly: true
+        - name: handoff
+          mountPath: /handoff
+        - name: worker-socket
+          mountPath: /run/hive-worker
+        - name: hive-knowledge
+          mountPath: /run/hive-knowledge
+          readOnly: true
         resources:
           requests:
             cpu: '1'
@@ -515,40 +538,146 @@ spec:
           limits:
             cpu: '8'
             memory: 16Gi
+      - name: relay
+        image: *review_image
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/hive-review-runtime", "relay"]
+        securityContext: *unprivileged
+        env:
+        - name: HIVE_SESSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: HIVE_OPERATOR_DRAIN_FILE
+          value: /tmp/hive-operator-drain
+        - name: HIVE_PREPUBLISH_REVIEW_DIR
+          value: /handoff
+        - name: HIVE_REVIEW_EVIDENCE_DIR
+          value: /var/lib/hive-review
+        readinessProbe:
+          exec:
+            command: ["/usr/bin/bash", "-c", "test -s /home/hive/.config/hive/relay-status.json"]
+          periodSeconds: 5
+        volumeMounts:
+        - name: registration
+          mountPath: /registration
+          readOnly: true
+        - name: relay-tmp
+          mountPath: /tmp
+        - name: worker-socket
+          mountPath: /run/hive-worker
+        - name: reviewer-socket
+          mountPath: /run/hive-reviewer
+        - name: handoff
+          mountPath: /handoff
+        - name: hive-knowledge
+          mountPath: /run/hive-knowledge
+        - name: review-evidence
+          mountPath: /var/lib/hive-review
+          subPath: evidence
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: '2'
+            memory: 2Gi
+      - name: reviewer
+        image: *review_image
+        imagePullPolicy: Always
+        command: ["/usr/local/bin/hive-review-runtime", "reviewer"]
+        securityContext: *unprivileged
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        readinessProbe:
+          exec:
+            command: ["/usr/bin/bash", "-c", "test -S /run/hive-reviewer/review.sock"]
+          periodSeconds: 5
+        volumeMounts:
+        - name: reviewer-tmp
+          mountPath: /tmp
+        - name: reviewer-socket
+          mountPath: /run/hive-reviewer
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: '2'
+            memory: 2Gi
       volumes:
       - name: home
         emptyDir:
           sizeLimit: 50Gi
       - name: tmp
         emptyDir: {}
+      - name: relay-tmp
+        emptyDir: {}
+      - name: reviewer-tmp
+        emptyDir: {}
+      - name: worker-socket
+        emptyDir: {}
+      - name: reviewer-socket
+        emptyDir: {}
+      - name: hive-knowledge
+        emptyDir: {}
+      - name: handoff
+        emptyDir:
+          sizeLimit: 512Mi
+      - name: registration
+        secret:
+          secretName: contribute
+          defaultMode: 288
+          items:
+          - key: contributor.env
+            path: contributor.env
       - name: secret
         secret:
           secretName: contribute
           defaultMode: 288
+          items:
+          - key: config.yml
+            path: config.yml
+          - key: ghost-context.tgz
+            path: ghost-context.tgz
       - name: omp
         configMap:
           name: contribute-omp
       initContainers:
       - name: seed-home
-        image: ghcr.io/projectbluefin/contribute:stable
+        image: *review_image
         imagePullPolicy: Always
+        securityContext: *unprivileged
         command:
         - bash
         - -c
         - |
           set -euo pipefail
+          case "${NODE_NAME:-}" in
+            exo-0|ghost) ;;
+            *) printf 'Unsupported contributor node: %s\n' "${NODE_NAME:-<unset>}" >&2; exit 1 ;;
+          esac
+          umask 077
           mkdir -p ~/.omp/agent ~/.config/hive
           [ -d ~/workspace ] && [ ! -O ~/workspace ] && rm -rf ~/workspace || true
           mkdir -p ~/workspace
           chmod 755 ~/workspace
           install -m600 /seed/secret/config.yml ~/.omp/agent/config.yml
-          install -m600 /seed/omp/models.yml ~/.omp/agent/models.yml
-          install -m600 /seed/secret/contributor.env ~/.config/hive/contributor.env
+          sed "s/@NODE_NAME@/$NODE_NAME/" "/seed/omp/models.yml" > ~/.omp/agent/models.yml
           tar -xzf /seed/secret/ghost-context.tgz -C ~/.omp/agent
-          ln -sfn "$HOME/agent.md" ~/.omp/agent/AGENTS.md
+          ln -sfn /run/hive-knowledge/agent.md ~/.omp/agent/AGENTS.md
+          # local-path's volume root may be world writable; expose only this private directory.
+          install -d -m0700 "/seed/review/evidence"
         env:
         - name: HOME
           value: /home/hive
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         volumeMounts:
         - name: home
           mountPath: /home/hive
@@ -558,3 +687,14 @@ spec:
         - name: omp
           mountPath: /seed/omp
           readOnly: true
+        - name: review-evidence
+          mountPath: /seed/review
+  volumeClaimTemplates:
+  - metadata:
+      name: review-evidence
+    spec:
+      accessModes: [ReadWriteOnce]
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 1Gi

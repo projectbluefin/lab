@@ -35,7 +35,7 @@ General cluster administration belongs to the relevant cluster operations skill.
 
 | Piece | Where | Manifest |
 |---|---|---|
-| llama-server (`ornith-ai/Ornith-1.5-35B-A3B-GGUF` `Ornith-1.5-35B-Q6_K.gguf`, 100k ctx); flags in ConfigMap `llm-d-presets` (`presets.ini`) | `llm-d/llm-d-exo-0`, exo-0, NodePort 30800 (worker) | `manifests/llm-d.yaml` |
+| llama-server (`ornith-ai/Ornith-1.5-35B-A3B-GGUF` `Ornith-1.5-35B-Q6_K.gguf`, 262,144 tokens); flags in ConfigMap `llm-d-presets` (`presets.ini`) | `llm-d/llm-d-exo-0`, exo-0, NodePort 30800 (worker) | `manifests/llm-d.yaml` |
 | Same Ornith model as dedicated advisor | `llm-d/llm-d-ghost`, ghost, NodePort 30801 (advisor) | `manifests/llm-d.yaml` |
 | Contributor: `ghcr.io/projectbluefin/contribute:stable` | StatefulSet `contribute/contribute`, 1 replica when on: `contribute-0` on exo-0 | `manifests/contribute.yaml` |
 
@@ -156,6 +156,11 @@ image may omit its standalone executable.
   Verify `/slots?model=ornith` reports `speculative: true` and compare the
   response's `timings.predicted_per_second` and draft acceptance counters.
   Source: [pinned MTP initialization](https://github.com/ggml-org/llama.cpp/blob/b11151/common/speculative.cpp#L2532-L2588).
+- Keep the Ornith preset's `ctx-size` and the OMP catalog's `contextWindow`
+  in sync. Check `GET /props?model=ornith` (`default_generation_settings.n_ctx`)
+  and `GET /slots?model=ornith` on each endpoint. Canary changes with a cold
+  prompt beyond the old window, not just a successful model load. Check
+  `/proc/meminfo` and GPU driver counters separately: CPU and GPU share RAM.
 - Benchmark only on an isolated node: disable the advisor with `/advisor off`,
   unload its router model, and run the same binary and cached GGUF on a separate
   loopback port. Keep context, batching, sampling and prompts identical between
@@ -237,7 +242,7 @@ still lose unsaved lessons; no persistent volume is introduced.
 Check the actual prompt with a disposable OMP `--mode rpc --no-session`
 instance and `get_state`, not a second process sharing an active session's
 state. Confirm skill names, a distinctive Hive knowledge phrase, and matching
-model context limits (`ornith` 102400), and that
+model context limits (`ornith` 262144), and that
 `curl <node>:3080x/v1/models` lists the Ornith id. No inference call is needed
 to verify context construction. Never use a copied Hive entrypoint to lease
 additional work merely for a smoke check.
